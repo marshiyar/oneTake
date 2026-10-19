@@ -170,8 +170,9 @@ let package = Package(
         // Release-build grade benchmark, CPU port vs the Vulkan / Direct3D 11 compute renderer (`swift run -c release MpvfxColorBench`).
         .executableTarget(name: "MpvfxColorBench", dependencies: ["MpvfxColor", "MpvfxShared"]),
         // Release-build preview playback benchmark through the compositor, engine decode and canvas paint
-        // (`sh scripts/preview-bench.sh`; tools/MpvfxPreviewBench/main.swift lists the scenarios).
-        .executableTarget(name: "MpvfxPreviewBench", dependencies: ["MpvfxPlayer", "MpvfxCanvas", "MpvfxShared"],
+        // (`sh scripts/preview-bench.sh`; tools/MpvfxPreviewBench/main.swift lists the scenarios). Its input clips are
+        // written by the media engine's own H.264 encoder (`MpvfxPreviewBench --make-clips`, OneTakeMedia).
+        .executableTarget(name: "MpvfxPreviewBench", dependencies: ["MpvfxPlayer", "MpvfxCanvas", "MpvfxShared", mediaEngine],
                           path: "tools/MpvfxPreviewBench"),
         .executableTarget(name: "MpvfxDesktop", dependencies: [
             "MpvfxShared", keyframeEngine, "MpvfxRuntime", "MpvfxDesktopCore", "MpvfxBackend", "MpvfxCanvas", "MpvfxTimeline", "MpvfxPlayer", "MpvfxAudio", "MpvfxAudioGraph", "MpvfxPanels", "MpvfxTheme",
