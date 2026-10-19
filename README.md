@@ -53,7 +53,7 @@ The media engine decides what each format supports; the app's list is
 
 - **Import:** MP4/M4V/MOV with H.264 video (8-bit 4:2:0) or HEVC video (Main and Main 10, 4:2:0, such as iPhone
   `.mov` clips) and LPCM, FLAC, AAC (AAC-LC, HE-AAC, HE-AAC v2) or MP2 sound; WAV, FLAC, M4A, ADTS `.aac` and MPEG
-  audio Layer I/II (`.mp2`) files; Ogg Vorbis and Opus (`.ogg`, `.oga`, `.opus`) files; PNG, JPEG and BMP images. Any other format is refused with a message that names
+  audio Layer I/II (`.mp2`) files; Ogg Vorbis and SILK-only Opus (`.ogg`, `.oga`, `.opus`; CELT and hybrid Opus streams are refused) files; PNG, JPEG and BMP images. Any other format is refused with a message that names
   it. HEVC, MP2, Vorbis and Opus decode inside the media engine.
 - **MP3 sound:** a file with MP3 (Layer III) sound imports without sound, and `.mp3` files are
   refused (not decided yet).
