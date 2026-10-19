@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-// Golden-value tests for Engine/VkfBakedEngine.swift (bakeTrackSamples, createBakedEngine, frame budget,
+// Golden-value tests for Engine/BakedKeyframeEngine.swift (bakeTrackSamples, createBakedEngine, frame budget,
 // install slot). Expected values come from the recorded reference values in Fixtures/engineParity.json,
 // recorded over the stub engine defined identically below and in
 // the recording's generator (not part of this repo).
@@ -28,13 +28,13 @@ private let invalidArgument = "sampleTrack(track, firstFrame, count) needs a fin
 /// Mirror of the generator's stub engine.
 final class StubEngine: KeyframeEngine {
     let version = "stub-1"
-    func validate(_ t: VkfTrack) throws {
+    func validate(_ t: KeyframeTrack) throws {
         if t.keyframes.isEmpty { throw KeyframeEngineError(code: "empty-track", message: "Track has no keyframes") }
         for k in t.keyframes where !jsIsInteger(k.frame) || k.frame < 0 {
             throw KeyframeEngineError(code: "invalid-keyframe-frame", message: "Keyframe frame must be an integer project frame")
         }
     }
-    func evaluate(_ t: VkfTrack, frame f: Double) throws -> NativeParameterValue {
+    func evaluate(_ t: KeyframeTrack, frame f: Double) throws -> NativeParameterValue {
         try validate(t)
         switch t.valueType {
         case .number: return .number(f * 2)
@@ -42,22 +42,22 @@ final class StubEngine: KeyframeEngine {
         case .rgba: return .rgba(RgbaValue(red: f, green: 0, blue: 1, alpha: 0.5))
         }
     }
-    func sample(_ t: VkfTrack, firstFrame first: Double, count: Int) throws -> [Double] {
-        try vkfAssertFrameBudget(Double(count))
+    func sample(_ t: KeyframeTrack, firstFrame first: Double, count: Int) throws -> [Double] {
+        try assertKeyframeFrameBudget(Double(count))
         try validate(t)
         if !first.isFinite || count < 0 { throw KeyframeEngineError(code: "invalid-argument", message: invalidArgument) }
-        let n = vkfComponentCount(t.valueType)
+        let n = keyframeComponentCount(t.valueType)
         var out = [Double](repeating: 0, count: count * n)
         for i in 0..<count { for c in 0..<n { out[i * n + c] = (first + Double(i)) * 10 + Double(c) + 0.25 } }
         return out
     }
-    func tangentAngle(_ t: VkfTrack, frame f: Double) throws -> Double {
+    func tangentAngle(_ t: KeyframeTrack, frame f: Double) throws -> Double {
         try validate(t)
         return jsRemainder(f, 3) == 0 ? .nan : f / 8
     }
-    func slice(_ t: VkfTrack, fromFrame a: Double, untilFrameExclusive b: Double) throws -> [VkfSlicedKey] {
+    func slice(_ t: KeyframeTrack, fromFrame a: Double, untilFrameExclusive b: Double) throws -> [KeyframeSlicedKey] {
         try validate(t)
-        return [VkfSlicedKey(frame: 0, value: .number(a), outgoing: .hold, sourceFrame: a, generated: b > a)]
+        return [KeyframeSlicedKey(frame: 0, value: .number(a), outgoing: .hold, sourceFrame: a, generated: b > a)]
     }
 }
 
@@ -78,12 +78,12 @@ private func paramValue(_ v: NativeJSONValue) -> NativeParameterValue {
     if v["red"] != nil { return .rgba(RgbaValue(red: num(v["red"]), green: num(v["green"]), blue: num(v["blue"]), alpha: num(v["alpha"]))) }
     return .number(num(v))
 }
-private func track(_ v: NativeJSONValue) -> VkfTrack {
-    VkfTrack(valueType: NativeValueType(rawValue: v["valueType"]!.stringValue!)!, keyframes: v["keyframes"]!.arrayValue!.map {
+private func track(_ v: NativeJSONValue) -> KeyframeTrack {
+    KeyframeTrack(valueType: NativeValueType(rawValue: v["valueType"]!.stringValue!)!, keyframes: v["keyframes"]!.arrayValue!.map {
         .init(frame: num($0["frame"]), value: paramValue($0["value"]!), outgoing: .linear) })
 }
-private func bakedTrack(_ v: NativeJSONValue) -> VkfBakedTrack {
-    VkfBakedTrack(valueType: NativeValueType(rawValue: v["valueType"]!.stringValue!)!, samples: v["samples"]!.arrayValue!.map { num($0) },
+private func bakedTrack(_ v: NativeJSONValue) -> BakedKeyframeTrack {
+    BakedKeyframeTrack(valueType: NativeValueType(rawValue: v["valueType"]!.stringValue!)!, samples: v["samples"]!.arrayValue!.map { num($0) },
                   angles: v["angles"]?.arrayValue?.map { if case .null = $0 { return nil }; return num($0) })
 }
 private func same(_ a: Double, _ b: Double) -> Bool { a.bitPattern == b.bitPattern || (a.isNaN && b.isNaN) }
@@ -103,8 +103,8 @@ private func describe(_ error: Error) -> [String?] {
         if e.isLimitError { return ["VkfLimitError", e.code, e.message] }
         if e.trackErrorCode != nil { return ["VkfTrackError", e.code, e.message] }
         return ["Error", e.code, e.message]
-    case let e as VkfBakedEngineError: return [e.kind.rawValue, nil, e.message]
-    case let e as VkfEngineNotLoadedError: return ["Error", nil, e.description]
+    case let e as BakedKeyframeEngineError: return [e.kind.rawValue, nil, e.message]
+    case let e as KeyframeEngineNotLoadedError: return ["Error", nil, e.description]
     default: return ["unexpected", nil, "\(error)"]
     }
 }
@@ -149,14 +149,14 @@ final class EngineBakedParityTests: XCTestCase {
         for c in cases {
             let name = c["track"]!.stringValue!
             let bakedJSON = fixture["baked"]![name]
-            let t: VkfTrack
+            let t: KeyframeTrack
             switch name {
             case "unbaked": t = track(fixture["tracks"]!["num"]!)
             case "unbakedInvalid": t = track(fixture["tracks"]!["empty"]!)
-            default: t = VkfTrack(valueType: NativeValueType(rawValue: bakedJSON!["valueType"]!.stringValue!)!, keyframes: [.init(frame: 0, value: .number(0), outgoing: .linear)])
+            default: t = KeyframeTrack(valueType: NativeValueType(rawValue: bakedJSON!["valueType"]!.stringValue!)!, keyframes: [.init(frame: 0, value: .number(0), outgoing: .linear)])
             }
             let baked = bakedJSON.map(bakedTrack)
-            let engine = VkfBakedEngine(version: "capture-1", lookup: { $0 == t ? baked : nil },
+            let engine = BakedKeyframeEngine(version: "capture-1", lookup: { $0 == t ? baked : nil },
                                         fallback: c["fallback"] == .bool(true) ? stub : nil)
             for row in c["ops"]!.arrayValue! {
                 ops += 1
@@ -196,11 +196,11 @@ final class EngineBakedParityTests: XCTestCase {
 
     func testBakedTrackJSONRoundTrip() throws {
         for (name, v) in fixture["baked"]!.objectValue! {
-            let parsed = try XCTUnwrap(VkfBakedTrack(json: v), name)
+            let parsed = try XCTUnwrap(BakedKeyframeTrack(json: v), name)
             XCTAssertEqual(jsJSONStringify(parsed.jsonValue), jsJSONStringify(v), name)
         }
-        XCTAssertNil(VkfBakedTrack(json: try NativeJSONValue.parse(#"{"valueType":"vec3","samples":[]}"#)))
-        XCTAssertNil(VkfBakedTrack(json: try NativeJSONValue.parse(#"{"valueType":"number","samples":["1"]}"#)))
+        XCTAssertNil(BakedKeyframeTrack(json: try NativeJSONValue.parse(#"{"valueType":"vec3","samples":[]}"#)))
+        XCTAssertNil(BakedKeyframeTrack(json: try NativeJSONValue.parse(#"{"valueType":"number","samples":["1"]}"#)))
     }
 
     func testEngineSlotWhenNothingIsInstalled() throws {
