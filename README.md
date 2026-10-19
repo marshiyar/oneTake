@@ -30,9 +30,8 @@ MPVFX_DEMO=1 swift run MpVFX         # the built-in demo timeline
 `fetch-binaries.py` stops with a clear message when the pinned engine release is not published yet or a download does
 not match its checksum.
 
-**Status:** the media engine is pinned (0.1.0). The keyframe engine's first release is still pending: until it is
-published and pinned in `binaries.lock`, `fetch-binaries.py` reports it missing and the app does not build or link. On Windows, add `mpvfx-swift\.binaries\media\bin` and `...\keyframes\bin` to `PATH` before
-`swift run` or `swift test`.
+**Status:** the media engine is pinned at 0.1.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`. On Windows, add
+`mpvfx-swift\.binaries\media\bin` and `...\keyframes\bin` to `PATH` before `swift run` or `swift test`.
 
 ## Test
 
