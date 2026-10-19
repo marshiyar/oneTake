@@ -53,8 +53,8 @@ The media engine decides what each format supports; the app's list is
 
 - **Import:** MP4/M4V/MOV with H.264 video (8-bit 4:2:0) or HEVC video (Main and Main 10, 4:2:0, such as iPhone
   `.mov` clips) and LPCM, FLAC, AAC (AAC-LC, HE-AAC, HE-AAC v2) or MP2 sound; WAV, FLAC, M4A, ADTS `.aac` and MPEG
-  audio Layer I/II (`.mp2`) files; PNG, JPEG and BMP images. Any other format is refused with a message that names
-  it. HEVC and MP2 decode inside the media engine.
+  audio Layer I/II (`.mp2`) files; Ogg Vorbis and Opus (`.ogg`, `.oga`, `.opus`) files; PNG, JPEG and BMP images. Any other format is refused with a message that names
+  it. HEVC, MP2, Vorbis and Opus decode inside the media engine.
 - **MP3 sound:** a file with MP3 (Layer III) sound imports without sound, and `.mp3` files are
   refused (not decided yet).
 - **Export:**
@@ -86,7 +86,7 @@ not match its checksum. If `swift build` reports "Could not find Package.swift",
 if it cannot find `mpvfx_media.h` or `cvkf.h`, or the link step misses `mpvfx_media` or `cvkf`, run
 `python3 scripts/fetch-binaries.py` first. `MPVFX_PROJECT` takes a project folder or its `.studio/project.json`.
 
-**Status:** the media engine is pinned at 0.1.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`.
+**Status:** the media engine is pinned at 0.2.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`.
 
 Installers (macOS disk image, Windows setup.exe, Ubuntu/Debian .deb) are built by CI and published as releases; how
 to get, build and sign them: [`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md).
