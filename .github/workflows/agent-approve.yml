@@ -51,3 +51,25 @@ jobs:
           [ "$ok" -gt 0 ] || { echo "::error::ci-ok has not passed on $sha"; exit 1; }
           gh api -X POST "repos/$REPO/pulls/$PR/reviews" -f commit_id="$sha" -f event=APPROVE \
             -f body="Approved after review ($COMMENT_URL): ci-ok passed on $sha." --jq '.html_url'
+      # The approval is the last thing a pull request needs: from here GitHub merges it (squash) once every required
+      # check passes, through the merge queue when the ruleset has one. Done with the App's token, so the merge is a
+      # push that starts the workflows on main (a merge made with the workflow's own token would not).
+      - name: Merge when the required checks pass
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -u
+          sha=$(printf '%s\n' "$BODY" | head -n 1 | sed -n 's|^/agent-approve \([0-9a-f]\{40\}\)[[:space:]]*$|\1|p')
+          id=$(gh api "repos/$REPO/pulls/$PR" --jq .node_id)
+          if out=$(gh api graphql -f id="$id" -f query='mutation($id: ID!) {
+                enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) { clientMutationId } }' 2>&1); then
+            echo "auto-merge on: GitHub merges #$PR when its required checks pass"
+          elif printf '%s' "$out" | grep -qi "clean status"; then
+            # Already mergeable (green, approved, up to date): auto-merge refuses that state, so merge it now.
+            gh api -X PUT "repos/$REPO/pulls/$PR/merge" -f merge_method=squash -f sha="$sha" --jq '.message'
+          else
+            echo "::warning::auto-merge not turned on for #$PR: $out (it needs Settings > General > Allow auto-merge)"
+          fi
