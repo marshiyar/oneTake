@@ -100,7 +100,7 @@ final class ImportFormatsTests: XCTestCase {
     }
 
     /// H.264 with PCM, FLAC or AAC in every other container of formats.md imports with its sound: Matroska, AVI,
-    /// MPEG-TS, M2TS (.m2ts and .mts) and MXF, each written by FFmpeg from an MP4/MOV fixture; HEVC with AAC in
+    /// MPEG-TS, M2TS (.m2ts and .mts) and MXF, each holding the streams of an MP4/MOV fixture; HEVC with AAC in
     /// Matroska imports too.
     func testImportsH264InEveryVideoContainer() throws {
         let rows: [(String, String)] = [

@@ -66,7 +66,7 @@ extension TestMedia {
         }
     }
 
-    /// 16-bit PCM mono WAV at 48 kHz: a sine at `amplitude` (FFmpeg's lavfi `sine` default is 1/8).
+    /// 16-bit PCM mono WAV at 48 kHz: a sine at `amplitude` (default 1/8).
     static func wav(_ frequency: Double, seconds: Double, to path: String, amplitude: Float = 0.125) throws {
         let samples = sine(frequency, amplitude: amplitude, frames: 0..<Int(seconds * 48_000), channels: 1)
         var d = Data("RIFF".utf8)
