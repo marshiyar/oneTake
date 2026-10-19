@@ -79,9 +79,11 @@ jobs:
           build-mode: manual
           queries: security-and-quality
       - name: Build under the CodeQL tracer
-        # --disable-sandbox: under the tracer SwiftPM's sandbox-exec for the manifest fails with "Bad CPU type in
-        # executable" (job 118273895982); the sandbox only wraps the manifest and plugins, not what is analysed.
-        run: swift build --disable-sandbox
+        # The tracer starts SwiftPM as x86_64 (Rosetta), which then builds for x86_64 and cannot link the arm64 engine
+        # libraries (job 118341253370), so the target is pinned to the runner's arm64. --disable-sandbox: under the
+        # tracer SwiftPM's sandbox-exec for the manifest fails with "Bad CPU type in executable" (job 118273895982);
+        # the sandbox only wraps the manifest and plugins, not what is analysed.
+        run: swift build --disable-sandbox --triple arm64-apple-macosx15.0
       - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           category: /language:swift
