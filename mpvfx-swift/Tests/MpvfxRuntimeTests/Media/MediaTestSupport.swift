@@ -216,7 +216,7 @@ enum TestMedia {
     }
 
     /// An AAC-LC track carrying the access units of the engine fixture `isobmff/mp4_aac.mp4` (0.5 s of a 440 Hz sine,
-    /// 48 kHz mono, FFmpeg's encoder; fixtures/README.md), cut out at the packet offsets its committed ffprobe listing
+    /// 48 kHz mono; fixtures/README.md), cut out at the packet offsets its committed packet listing (`.json`)
     /// records. No edit list: the 1024-frame encoder delay plays as a short silence at the start.
     static func aacTrack() throws -> Track {
         let fixture = engineFixture("isobmff/mp4_aac.mp4")

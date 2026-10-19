@@ -141,7 +141,7 @@ final class ExportNodeParityTests: XCTestCase {
     }
 
     /// Frame counts and the file-size label follow the recorded values bit for bit. (The recorded CRF and audio
-    /// size cases described FFmpeg's encoders; ExportCapabilityTests covers the engine's audio estimate.)
+    /// size cases are not checked here; ExportCapabilityTests covers the engine's audio estimate.)
     func testFramesAndFileSize() {
         let frames = ExportFixture.list(c["frames"]), sizes = ExportFixture.list(c["fileSize"])
         XCTAssertGreaterThan(frames.count, 0); XCTAssertGreaterThan(sizes.count, 0)

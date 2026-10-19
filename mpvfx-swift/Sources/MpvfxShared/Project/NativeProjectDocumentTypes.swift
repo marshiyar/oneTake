@@ -236,8 +236,9 @@ public struct NativeProjectSequence: Codable, Equatable {
 }
 
 /// The timeline kind a document stores in `mediaEngine`. Every document is a native timeline drawn by the Swift
-/// renderer: parsing accepts `"native"`, the older stored name `"ffmpeg"` and a missing field, and writes `"native"`
-/// back, so the first save after opening an older project migrates it (nothing else in the document changes).
+/// renderer: parsing accepts `"native"`, `"ffmpeg"` (a legacy value written by older versions) and a missing
+/// field, and writes `"native"` back, so the first save after opening an older project migrates it (nothing else
+/// in the document changes).
 public enum NativeMediaEngine: String, Codable {
     case native
     /// Every stored spelling of the native timeline; parseNativeProjectDocument rewrites them to `native`.
