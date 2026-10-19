@@ -24,7 +24,7 @@ behaviour is fixed on purpose because saved data depends on it.
 
 - Numbers: source-time math runs in overflow-checked Int64; a value that does not fit throws
   `NativeSourceTimeRangeError` and the edit is rejected (`NativeSourceTime.swift`).
-- Baked keyframe samples (gap 2): a number track read outside its samples returns NaN (`VkfBakedEngine.swift`).
+- Baked keyframe samples (gap 2): a number track read outside its samples returns NaN (`BakedKeyframeEngine.swift`).
 - Library payloads keep unknown keys and key order and re-encode them verbatim, but a command with an unknown
   `type` throws `UnknownType` (`Sources/MpvfxShared/Library/Library.swift`).
 - `preferredMediaImportMimeType` looks the extension up in a dictionary, so an extension such as `constructor`

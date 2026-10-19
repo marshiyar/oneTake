@@ -18,8 +18,8 @@ import Foundation
 public let VKF_ENGINE_API_VERSION = 1
 public let VKF_MAX_MATERIALIZED_FRAMES: Double = 24 * 60 * 60 * 120
 
-/// VkfTrack: what the engine needs from a track.
-public struct VkfTrack: Equatable {
+/// KeyframeTrack: what the engine needs from a track.
+public struct KeyframeTrack: Equatable {
     public struct Key: Equatable {
         public var frame: Double; public var value: NativeParameterValue
         public var outgoing: NativeInterpolation; public var outgoingPath: NativeMotionPath?
@@ -35,7 +35,7 @@ public struct VkfTrack: Equatable {
     }
 }
 
-public struct VkfSlicedKey: Equatable {
+public struct KeyframeSlicedKey: Equatable {
     public var frame: Double; public var value: NativeParameterValue
     public var outgoing: NativeInterpolation; public var outgoingPath: NativeMotionPath?
     public var sourceFrame: Double; public var generated: Bool
@@ -45,26 +45,26 @@ public struct VkfSlicedKey: Equatable {
 }
 
 /// Track rejection codes the engine raises.
-public enum VkfTrackErrorCode: String, CaseIterable {
+public enum KeyframeTrackErrorCode: String, CaseIterable {
     case emptyTrack = "empty-track", invalidKeyframeFrame = "invalid-keyframe-frame"
     case duplicateKeyframeFrame = "duplicate-keyframe-frame", invalidValue = "invalid-value"
     case invalidInterpolation = "invalid-interpolation", invalidPath = "invalid-path"
 }
 
 /// Single error type for every engine failure, so a C layer returning (code, message)
-/// maps onto it directly. `code` is one of VkfTrackErrorCode raw values (a track rejection)
+/// maps onto it directly. `code` is one of KeyframeTrackErrorCode raw values (a track rejection)
 /// or "limit-exceeded" (a size limit); any other code is an engine-internal failure.
 public struct KeyframeEngineError: Error, Equatable, CustomStringConvertible {
     public static let limitExceeded = "limit-exceeded"
     public let code: String
     public let message: String
     public init(code: String, message: String) { self.code = code; self.message = message }
-    public var trackErrorCode: VkfTrackErrorCode? { VkfTrackErrorCode(rawValue: code) }
+    public var trackErrorCode: KeyframeTrackErrorCode? { KeyframeTrackErrorCode(rawValue: code) }
     public var isLimitError: Bool { code == Self.limitExceeded }
     public var description: String { message }
 }
 
-public struct VkfEngineNotLoadedError: Error, CustomStringConvertible {
+public struct KeyframeEngineNotLoadedError: Error, CustomStringConvertible {
     public var description: String { "The keyframe engine is not loaded in this process" }
 }
 
@@ -72,12 +72,12 @@ public struct VkfEngineNotLoadedError: Error, CustomStringConvertible {
 public protocol KeyframeEngine: AnyObject {
     var version: String { get }
     /// Throws KeyframeEngineError (track code) when the engine rejects the track.
-    func validate(_ track: VkfTrack) throws
-    func evaluate(_ track: VkfTrack, frame: Double) throws -> NativeParameterValue
+    func validate(_ track: KeyframeTrack) throws
+    func evaluate(_ track: KeyframeTrack, frame: Double) throws -> NativeParameterValue
     /// Throws KeyframeEngineError("limit-exceeded") above VKF_MAX_MATERIALIZED_FRAMES.
-    func sample(_ track: VkfTrack, firstFrame: Double, count: Int) throws -> [Double]
-    func tangentAngle(_ track: VkfTrack, frame: Double) throws -> Double
-    func slice(_ track: VkfTrack, fromFrame: Double, untilFrameExclusive: Double) throws -> [VkfSlicedKey]
+    func sample(_ track: KeyframeTrack, firstFrame: Double, count: Int) throws -> [Double]
+    func tangentAngle(_ track: KeyframeTrack, frame: Double) throws -> Double
+    func slice(_ track: KeyframeTrack, fromFrame: Double, untilFrameExclusive: Double) throws -> [KeyframeSlicedKey]
 }
 
 /// One engine per process (installed at startup). Functions also accept an explicit engine.
@@ -89,7 +89,7 @@ public func installKeyframeEngine(_ engine: KeyframeEngine?) {
 }
 public func keyframeEngine() throws -> KeyframeEngine {
     engineLock.lock(); defer { engineLock.unlock() }
-    guard let e = installedEngine else { throw VkfEngineNotLoadedError() }
+    guard let e = installedEngine else { throw KeyframeEngineNotLoadedError() }
     return e
 }
 public func keyframeEngineInstalled() -> Bool {

@@ -139,7 +139,7 @@ private func replaceClip(_ d: NativeProjectDocument, _ loc: ClipLocation, _ repl
 private func rebaseTrack(_ track: NativeParameterTrack, _ from: Double, _ until: Double, _ nextId: String, _ engine: KeyframeEngine?) throws -> NativeParameterTrack {
     var authoredIdByFrame: [Double: String] = [:]
     for k in track.keyframes { authoredIdByFrame[k.frame] = k.id }   // JS Map: a later duplicate frame wins (cannot occur)
-    let keys = try (engine ?? keyframeEngine()).slice(VkfTrack(track), fromFrame: from, untilFrameExclusive: until).map { k in
+    let keys = try (engine ?? keyframeEngine()).slice(KeyframeTrack(track), fromFrame: from, untilFrameExclusive: until).map { k in
         NativeKeyframe(id: (!k.generated ? authoredIdByFrame[k.sourceFrame] : nil).flatMap { $0.isEmpty ? nil : $0 }
                             ?? nativeSplitBaselineKeyframeId(track.id, k.sourceFrame),
                        frame: k.frame, value: k.value, outgoing: k.outgoing, outgoingPath: k.outgoingPath)
