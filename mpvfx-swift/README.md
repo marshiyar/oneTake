@@ -95,7 +95,7 @@ first. `MPVFX_PROJECT` takes a project folder or its `.studio/project.json`.
 | [`Sources/MpvfxTimeline`](Sources/MpvfxTimeline), [`Sources/MpvfxPanels`](Sources/MpvfxPanels), [`Sources/MpvfxCanvas`](Sources/MpvfxCanvas) | timeline, inspector and side panels, drawing abstraction |
 | [`Sources/MpvfxShared`](Sources/MpvfxShared) | document schema, validation, export policy, shared types |
 | [`docs/`](docs/) | [`STATUS.md`](docs/STATUS.md), [`FEATURES.md`](docs/FEATURES.md), [`MEMORY.md`](docs/MEMORY.md) |
-| [`scripts/`](scripts/) | [`check.sh`](scripts/check.sh), [`fetch-binaries.py`](scripts/fetch-binaries.py), [`capture-readme.sh`](scripts/capture-readme.sh) |
+| [`scripts/`](scripts/) | [`check.sh`](scripts/check.sh), [`doctor.sh`](scripts/doctor.sh), [`fetch-binaries.py`](scripts/fetch-binaries.py), [`capture-readme.sh`](scripts/capture-readme.sh) |
 
 ## Development and checks
 
@@ -104,7 +104,12 @@ From `mpvfx-swift/`, before every push:
 ```sh
 sh scripts/check.sh          # engine libraries, fetch-script tests, copyright blocks, shaders, swift build, swift test
 sh scripts/check.sh --fast   # the same without swift build and swift test
+sh scripts/doctor.sh         # what a full run needs that is missing, with fixes
 ```
+
+A full run first runs [`scripts/doctor.sh`](scripts/doctor.sh); with a prerequisite missing (Python 3, Swift, on Linux
+the GTK/SQLite/PulseAudio dev packages or a Vulkan driver) it stops at once with `check: UNAVAILABLE` and exit code
+2, which is neither passed nor failed.
 
 CI ([`../.github/workflows/mpvfx-ci.yml`](../.github/workflows/mpvfx-ci.yml)) builds, tests and packages the app on
 Linux, Windows and macOS with the engine libraries pinned in [`binaries.lock`](binaries.lock); `ci-ok` is the
