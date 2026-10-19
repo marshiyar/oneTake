@@ -70,4 +70,9 @@ final class VideoFrameTests: XCTestCase {
             XCTAssertEqual($0 as? VideoFrame.Error, .invalidComponentCount(expected: 16, actual: 15))
         }
     }
+
+    func testNonFiniteLinearComponentsConvertWithoutTrapping() throws {
+        let frame = try VideoFrame(width: 1, height: 1, storage: .rgba16F([.nan, .infinity, -.infinity, .nan]))
+        XCTAssertEqual(try frame.convertedToRGBA8().storage, .rgba8([0, 255, 0, 0]))
+    }
 }

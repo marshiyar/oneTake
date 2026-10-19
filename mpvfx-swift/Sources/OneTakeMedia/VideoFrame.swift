@@ -59,7 +59,8 @@ public struct VideoFrame: Equatable, Sendable {
 
     public let width: Int
     public let height: Int
-    public var storage: VideoFrameStorage
+    /// Read-only so the component count always matches `width * height * 4` (checked in `init`).
+    public let storage: VideoFrameStorage
 
     public var pixelFormat: VideoPixelFormat { storage.pixelFormat }
     public var byteCount: Int { storage.byteCount }
@@ -117,12 +118,15 @@ public struct VideoFrame: Equatable, Sendable {
         value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
     }
 
+    /// `value` clamped to 0...1; NaN maps to 0 so a non-finite component cannot trap the byte conversion.
+    private static func unit(_ value: Float) -> Float { value.isNaN ? 0 : min(max(value, 0), 1) }
+
     private static func linearToSRGB(_ value: Float) -> Float {
-        let value = min(max(value, 0), 1)
+        let value = unit(value)
         return value <= 0.0031308 ? value * 12.92 : 1.055 * pow(value, 1 / 2.4) - 0.055
     }
 
     private static func byte(_ value: Float) -> UInt8 {
-        UInt8((min(max(value, 0), 1) * 255).rounded())
+        UInt8((unit(value) * 255).rounded())
     }
 }
