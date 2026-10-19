@@ -28,10 +28,12 @@ import CoreGraphics
 
 // Preview playback benchmark through the app's own path: PreviewCompositor -> PreviewDecodeLane -> MediaFrameStream ->
 // VideoFrameReader (engine decode, convert, scale, FFI copy) -> PreviewGrader -> PreviewPainter on the platform canvas
-// (Cairo on Linux, Core Graphics on macOS). Build with -c release; scripts/preview-bench.sh makes the fixtures and runs
-// every scenario in its own process (so peak memory is per scenario), appending one JSON line per run to a file.
+// (Cairo on Linux, Core Graphics on macOS). Build with -c release; scripts/preview-bench.sh makes the fixtures
+// (--make-clips) and runs every scenario in its own process (so peak memory is per scenario), appending one JSON line
+// per run to a file.
 //
 //   MpvfxPreviewBench <scenario> <fixtures dir> <results file> [frames] [--no-realtime]
+//   MpvfxPreviewBench --make-clips <fixtures dir>   (writes the clips with the media engine's encoder; Clips.swift)
 //   (--no-realtime: playback only, for allocation counts under valgrind --tool=dhat)
 //   scenarios: 1080p, 4k, stacked, graded, scrub
 
@@ -227,8 +229,10 @@ func scenario(_ name: String) -> (clips: [Clip], seconds: Double)? {
 
 func main() throws {
     let args = CommandLine.arguments
+    if args.count == 3 && args[1] == "--make-clips" { try makeClips(args[2]); return }
     guard args.count >= 4, let sc = scenario(args[1]) else {
-        print("usage: MpvfxPreviewBench <1080p|4k|stacked|graded|scrub> <fixtures dir> <results file> [frames]"); exit(2)
+        print("usage: MpvfxPreviewBench <1080p|4k|stacked|graded|scrub> <fixtures dir> <results file> [frames]")
+        print("       MpvfxPreviewBench --make-clips <fixtures dir>"); exit(2)
     }
     let (width, height) = (1280, 720)
     let doc = try document(sc.clips, dir: args[2], seconds: sc.seconds)
