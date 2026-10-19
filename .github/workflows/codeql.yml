@@ -1,7 +1,7 @@
 name: codeql
 
-# GitHub's code scanning on the three kinds of code this repository holds: the Swift app (built on the macOS runner
-# with the pinned engine libraries, as mpvfx-ci does), the Python scripts behind CI and packaging, and the workflow
+# GitHub's code scanning on the three kinds of code this repository holds: the Swift app (built in the Linux CI
+# container with the pinned engine libraries, as mpvfx-ci does), the Python scripts behind CI and packaging, and the workflow
 # files themselves (the `actions` language: injection, unpinned actions, token scope). Results land under Security >
 # Code scanning. Runs on pull requests, pushes to main and weekly; separate from mpvfx-ci and never a required check.
 
@@ -23,8 +23,6 @@ concurrency:
   group: codeql-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  XCODE_VERSION: '27.0'
 
 jobs:
   scripts-and-workflows:
@@ -48,7 +46,9 @@ jobs:
           category: /language:${{ matrix.language }}
 
   swift:
-    runs-on: xcode-27
+    # On Linux in the CI's own Swift 6.3.3 container: CodeQL supports Swift up to 6.3.3, and the macOS runners ship 6.4.
+    runs-on: ubuntu-24.04
+    container: swift:6.3.3-noble
     timeout-minutes: 90
     permissions:
       contents: read
@@ -58,17 +58,16 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Xcode ${{ env.XCODE_VERSION }}
+      - name: System packages
+        working-directory: /
         run: |
-          x=/Applications/Xcode_${XCODE_VERSION}.app
-          test -d "$x" || { echo "::error::$x is not on this runner"; ls -d /Applications/Xcode*.app; exit 1; }
-          sudo xcode-select -s "$x/Contents/Developer"
-          swift --version
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+            git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
+            python3 libvulkan-dev
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
-      - name: Metal toolchain
-        run: sh ../.github/ci/metal-toolchain.sh
       - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: swift
