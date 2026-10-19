@@ -120,10 +120,10 @@ final class ImportFormatsTests: XCTestCase {
         let vorbis = try MediaProbe.probe(path: paths[0])
         XCTAssertEqual(vorbis.container, "ogg")
         XCTAssertEqual(vorbis.audio?.codec, "vorbis"); XCTAssertEqual(vorbis.audio?.sampleRate, 44_100); XCTAssertEqual(vorbis.audio?.channels, 2)
-        XCTAssertEqual(vorbis.duration, 11072.0 / 44_100, accuracy: 1e-9)
+        XCTAssertEqual(vorbis.duration ?? -1, 11072.0 / 44_100, accuracy: 1e-9)
         let opus = try MediaProbe.probe(path: paths[2])
         XCTAssertEqual(opus.audio?.codec, "opus"); XCTAssertEqual(opus.audio?.sampleRate, 48_000)
-        XCTAssertEqual(opus.duration, 0.25, accuracy: 1e-9)
+        XCTAssertEqual(opus.duration ?? -1, 0.25, accuracy: 1e-9)
         XCTAssertEqual(ImportFormats.kind(of: "a.opus"), .audio); XCTAssertEqual(ImportFormats.kind(of: "a.OGA"), .audio)
         XCTAssertEqual(ProjectMediaCatalog.category(of: "a.opus"), .audio)
         // An Ogg file that is not Vorbis or Opus (here junk) is refused after the probe, not by its extension.
