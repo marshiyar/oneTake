@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.claude/hooks/session-start.sh\"",
+            "command": "root=$(git rev-parse --show-toplevel) && CLAUDE_PROJECT_DIR=\"$root\" sh \"$root/.claude/hooks/session-start.sh\"",
             "statusMessage": "Rendering the agent harness"
           }
         ]

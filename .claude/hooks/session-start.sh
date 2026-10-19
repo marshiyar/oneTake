@@ -13,11 +13,23 @@
 #
 #===----------------------------------------------------------------------===#
 # Session start: when a private agent harness is checked out beside this repository, render it in; otherwise nothing.
-# A harness is a sibling directory holding HARNESS_PIN and scripts/setup-session.sh. When its setup fails, an owner
+# A harness is a sibling directory holding HARNESS_PIN and scripts/setup-session.sh whose git origin is marshiyar/mpvfx-agents. When its setup fails, an owner
 # agent session (MPVFX_AGENT_SESSION=1) stops here (exit 2); any other session prints the failure and goes on.
 app=${CLAUDE_PROJECT_DIR:-$(pwd)}
-for d in "$(dirname "$app")"/*/; do
-  if [ -f "$d/HARNESS_PIN" ] && [ -f "$d/scripts/setup-session.sh" ]; then
+# A managed git worktree (codex --worktree) lives elsewhere; the harness sits beside the original checkout.
+common=$(git -C "$app" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && home=$(dirname "$common") || home=$app
+# Only a checkout whose git origin is the private harness repository is ever executed.
+is_harness() {
+  [ -f "$1/HARNESS_PIN" ] && [ -f "$1/scripts/setup-session.sh" ] || return 1
+  case $(git -C "$1" remote get-url origin 2>/dev/null) in
+    https://github.com/marshiyar/mpvfx-agents | https://github.com/marshiyar/mpvfx-agents.git | \
+    git@github.com:marshiyar/mpvfx-agents | git@github.com:marshiyar/mpvfx-agents.git | \
+    ssh://git@github.com/marshiyar/mpvfx-agents | ssh://git@github.com/marshiyar/mpvfx-agents.git) return 0 ;;
+  esac
+  return 1
+}
+for d in "$(dirname "$app")"/*/ "$(dirname "$home")"/*/; do
+  if is_harness "$d"; then
     sh "$d/scripts/setup-session.sh" --app "$app" 1>&2 && exit 0
     status=$?
     if [ "${MPVFX_AGENT_SESSION:-}" = 1 ]; then
