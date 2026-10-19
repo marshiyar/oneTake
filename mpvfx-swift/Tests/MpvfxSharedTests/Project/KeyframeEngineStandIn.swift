@@ -17,15 +17,15 @@
 
 final class KeyframeEngineStandIn: KeyframeEngine {
     let version = "stand-in"
-    var validateCalls: [VkfTrack] = []
+    var validateCalls: [KeyframeTrack] = []
     var rejectWith: KeyframeEngineError?
     struct NotAvailable: Error {}
-    func validate(_ track: VkfTrack) throws { validateCalls.append(track); if let e = rejectWith { throw e } }
+    func validate(_ track: KeyframeTrack) throws { validateCalls.append(track); if let e = rejectWith { throw e } }
     /// Plumbing only: when set, evaluate returns this fixed opaque value for every call (shape-matched to the
     /// track's value type with NaN components), so callers' non-value logic can run. It never interpolates.
     var opaqueEvaluate = false
-    var evaluateCalls: [(VkfTrack, Double)] = []
-    func evaluate(_ track: VkfTrack, frame: Double) throws -> NativeParameterValue {
+    var evaluateCalls: [(KeyframeTrack, Double)] = []
+    func evaluate(_ track: KeyframeTrack, frame: Double) throws -> NativeParameterValue {
         evaluateCalls.append((track, frame))
         guard opaqueEvaluate else { throw NotAvailable() }
         switch track.valueType {
@@ -34,9 +34,9 @@ final class KeyframeEngineStandIn: KeyframeEngine {
         case .rgba: return .rgba(.init(red: .nan, green: .nan, blue: .nan, alpha: .nan))
         }
     }
-    func sample(_ track: VkfTrack, firstFrame: Double, count: Int) throws -> [Double] { throw NotAvailable() }
-    func tangentAngle(_ track: VkfTrack, frame: Double) throws -> Double { throw NotAvailable() }
-    func slice(_ track: VkfTrack, fromFrame: Double, untilFrameExclusive: Double) throws -> [VkfSlicedKey] { throw NotAvailable() }
+    func sample(_ track: KeyframeTrack, firstFrame: Double, count: Int) throws -> [Double] { throw NotAvailable() }
+    func tangentAngle(_ track: KeyframeTrack, frame: Double) throws -> Double { throw NotAvailable() }
+    func slice(_ track: KeyframeTrack, fromFrame: Double, untilFrameExclusive: Double) throws -> [KeyframeSlicedKey] { throw NotAvailable() }
 }
 
 let cvkfSkipReason = "requires the keyframe engine engine (real interpolation/validation output); stand-in does not compute it"

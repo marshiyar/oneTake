@@ -26,5 +26,5 @@ public func evaluateNativeParameterTrack(_ track: NativeParameterTrack, projectF
     if track.keyframes.isEmpty {
         throw NativeKeyframeEvaluationError(message: "Native parameter track \(track.id) has no keyframes")
     }
-    return try (engine ?? keyframeEngine()).evaluate(VkfTrack(track), frame: projectFrame)
+    return try (engine ?? keyframeEngine()).evaluate(KeyframeTrack(track), frame: projectFrame)
 }

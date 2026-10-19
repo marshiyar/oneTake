@@ -185,7 +185,7 @@ public struct ExportColorSpace: Equatable, Sendable {
 }
 public struct ExportFormatCapability: Equatable, Sendable {
     public struct Video: Equatable, Sendable {
-        /// `encoder` names the mpvfx-media crate that writes the stream (crates/h264enc, crates/png); nil when the
+        /// `encoder` names the media engine encoder that writes the stream; nil when the
         /// app has no encoder for the format (it is refused).
         public let codec: String, encoder: String?, pixelFormat: String?
         /// How quality is chosen: "quality-preset" (draft/standard/high), "lossless", or nil when nothing is encoded.
@@ -226,7 +226,7 @@ public func exportFormatCapability(_ format: ExportFormat) -> ExportFormatCapabi
     switch format {
     case .mp4:
         return .init(label: "MP4", name: "MP4", extension: ".mp4", mimeType: "video/mp4", unsupportedMessage: nil,
-                     video: .init(codec: "h264", encoder: "mpvfx-h264enc", pixelFormat: "yuv420p",
+                     video: .init(codec: "h264", encoder: "native-h264", pixelFormat: "yuv420p",
                                   rateControl: "quality-preset", qualityApplies: true),
                      audio: stereo48k("flac", encoder: "mpvfx-flac"), alpha: .init(supported: false, bitDepth: 0),
                      color: .init(sdr: SDR_BT709_LIMITED, hdr: false), supportsResolutionScaling: true)
