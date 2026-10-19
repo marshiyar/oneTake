@@ -138,7 +138,8 @@ class Findings:
 
 def load_config():
     try:
-        return tomllib.load(open(CONFIG, "rb"))
+        with open(CONFIG, "rb") as fh:
+            return tomllib.load(fh)
     except FileNotFoundError:
         return {}
 
@@ -275,7 +276,8 @@ def scan_lock(root, f):
     path = os.path.join(root, rel)
     if not os.path.isfile(path):
         return
-    text = open(path, encoding="utf-8").read()
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
     for i, line in enumerate(text.splitlines(), 1):
         for url in re.findall(r"https?://[^\s\"']+", line):
             if not url.startswith(RELEASE_HOST):
@@ -293,7 +295,8 @@ def scan_repo(root, config, f):
         ext = os.path.splitext(rel)[1].lower()
         if ext in SOURCE_EXT or rel.startswith(".github/") or "/scripts/" in rel or "/packaging/" in rel:
             try:
-                text = open(os.path.join(root, rel), encoding="utf-8").read()
+                with open(os.path.join(root, rel), encoding="utf-8") as fh:
+                    text = fh.read()
             except (UnicodeDecodeError, OSError):
                 continue
             scan_text(rel, text, f)
@@ -535,7 +538,8 @@ def compare_baseline(shown, name, libs, funcs, baseline, out_dir, f):
     if not os.path.isfile(path):
         f.add(shown, "import-baseline", "file", f"no baseline `{os.path.relpath(path)}`: {len(now)} imports to record")
         return
-    known = set(open(path, encoding="utf-8").read().split("\n"))
+    with open(path, encoding="utf-8") as fh:
+        known = set(fh.read().split("\n"))
     for line in now:
         if line not in known:
             f.add(shown, "import-added", line, f"not in `{os.path.basename(path)}`")
