@@ -27,7 +27,7 @@ import MpvfxTimeline
 ///     └─ timeline section (height timelineH, px-px pb-px): timeline card (rounded-lg …) = toolbar + timeline
 ///
 /// Column widths come from `PanelFit`/`PanelLayoutState`; the timeline height is
-/// `PanelFit.fitTimelineHeight`, default 360 (NLEContext DEFAULT_TIMELINE_H).
+/// `PanelFit.fitTimelineHeight`, with a default of 360 points.
 struct EditorShellFrames: Equatable {
     var size: CanvasSize
     var left: CanvasRect
@@ -45,12 +45,12 @@ struct EditorShellFrames: Equatable {
 
     static let previewTopBarHeight = 36.0     // `top-9`
     static let timelineDividerHeight = 3.0    // `h-[3px]`
-    static let defaultTimelineHeight = 360.0  // NLEContext DEFAULT_TIMELINE_H
+    static let defaultTimelineHeight = 360.0
 
     static func compute(size: CanvasSize, layout: PanelLayoutState, timelineHeight: Double, fullscreen: Bool) -> EditorShellFrames {
         let zero = CanvasRect(x: 0, y: 0, width: 0, height: 0)
         if fullscreen {
-            // PreviewPane drops its chrome in fullscreen and fills the screen; the stage starts at top-0.
+            // The preview drops its chrome in fullscreen and fills the screen; the stage starts at the top.
             let all = CanvasRect(x: 0, y: 0, width: size.width, height: size.height)
             return EditorShellFrames(size: size, left: zero, leftSeamHit: nil, preview: all,
                                      previewTopBar: CanvasRect(x: 0, y: 0, width: size.width, height: 0), player: all,
