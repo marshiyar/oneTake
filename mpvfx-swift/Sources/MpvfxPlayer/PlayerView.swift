@@ -17,13 +17,13 @@ import MpvfxTimeline
 import MpvfxPanels
 import MpvfxTheme
 
-/// The preview pane (PreviewPane / NLEPreview / PreviewOverlays / DomEditOverlay / PlayerControls): the preview
-/// tools bar, the zoomable composition stage with its overlays (grid, snap guides, hover, marquee, selection,
+/// The preview pane contains the tools bar, the zoomable composition stage with its overlays (grid, snap guides,
+/// hover, marquee, selection,
 /// group and crop chrome, zoom readout, fit button, canvas menu) and the transport row.
 public final class PlayerView {
     public static let controlsHeight = 40.0            // h-10
     public static let controlsPaddingX = 12.0          // px-3
-    /// NLEPreview: `p-2` viewport, stage `absolute inset-2`.
+    /// Padding between the viewport and the composition stage.
     public static let stagePadding = 8.0
     public static let handleDot = 12.0, handleHit = 16.0
     // Chrome colours follow the appearance (ThemeTokens); the stage canvas and the chrome drawn over the
@@ -38,7 +38,7 @@ public final class PlayerView {
     /// PREVIEW_PLAYER_SURFACE_COLOR (themed) / PREVIEW_CANVAS_SURFACE_COLOR (neutral in both modes).
     public static var viewportSurface: CanvasColor { CanvasColor(ThemeTokens.viewportPair.now) }
     public static let canvasSurface = CanvasColor(ThemeTokens.stageCanvas)
-    /// SnapGuideOverlay colours.
+    /// Snap-guide colours.
     public static let guideColor = CanvasColor(ThemeTokens.guide.alpha(0.85)), spacingColor = CanvasColor(ThemeTokens.guide.alpha(0.6))
     public static let spacingBackground = CanvasColor(ThemeTokens.guide.alpha(0.15))
     static let zoomHudSeconds = 1.2, zoomSettleSeconds = 0.2, hudFadeSeconds = 0.2, morphSeconds = 0.28
@@ -82,14 +82,14 @@ public final class PlayerView {
     public var liveElementIds: (() -> Set<String>)?
     /// Keeps animation frames coming while it returns true (recording, a pending nudge or zoom save).
     public var keepAnimating: (() -> Bool)?
-    /// Pointer trail of the gesture being recorded (view px), drawn as GestureTrailOverlay does.
+    /// Pointer trail of the gesture being recorded, in view pixels.
     public var recordingTrail: [CanvasPoint] = []
-    /// Sibling stepped over by the last bring-forward / send-backward, and when (useZOrderCrossedFlash).
+    /// Sibling stepped over by the last bring-forward / send-backward, and when.
     public var zOrderFlash: (id: String, start: Double)?
     static let zOrderFlashSeconds = 0.6
     /// A library or media asset is being dragged over the stage.
     public var assetDropActive = false
-    /// Transient message over the stage (StudioOverlays toast).
+    /// Transient message over the stage.
     public var toast: (message: String, isError: Bool, start: Double)?
     static let toastSeconds = 3.0
 
@@ -144,7 +144,7 @@ public final class PlayerView {
         return CanvasRect(x: 0, y: 0, width: 0, height: 0)
     }
 
-    /// Zoom readout pill and the fit button (NLEPreview hud / reset), in view px.
+    /// Zoom readout pill and the fit button, in view pixels.
     public func zoomHudRect(in size: CanvasSize, _ c: CanvasContext?) -> CanvasRect {
         let v = viewportRect(in: size)
         let tw = c?.measureText(zoom.label, font: .mono(14)).width ?? Double(zoom.label.count) * 8.4
@@ -281,20 +281,20 @@ public final class PlayerView {
     }
 
     func drawOverlays(_ c: CanvasContext, size: CanvasSize, frame: CanvasRect) {
-        // Grid (GridOverlay): 1px rgba(255,255,255,0.12) lines at each division.
+        // Grid: 1px rgba(255,255,255,0.12) lines at each division.
         if toolbar.gridVisible {
             let edges = SnapEngine.gridEdges(frame: frame, divisions: toolbar.gridDivisions)
             for x in edges.x { c.fillRect(CanvasRect(x: x.rounded(.down), y: frame.y, width: 1, height: frame.height), PanelTheme.stageInk.withAlpha(0.12)) }
             for y in edges.y { c.fillRect(CanvasRect(x: frame.x, y: y.rounded(.down), width: frame.width, height: 1), PanelTheme.stageInk.withAlpha(0.12)) }
         }
-        // Selection, hover and marquee chrome stand down while playing or recording (shouldShowSelectedDomBounds).
+        // Selection, hover and marquee chrome stand down while playing or recording.
         guard !playback.isPlaying else { return drawGuides(c, frame: frame) }
         // Hover: border-2 accent/80, square, in the element's rotated frame.
         if let h = hoveredElement, !selectedIds.contains(h), marquee == nil, let e = elements.first(where: { $0.id == h }) {
             let ve = chromeElement(e, in: size)
             rotated(c, ve) { Self.strokeSquare(c, ve.visibleRect, theme.accent.withAlpha(0.8), width: 2) }
         }
-        // Selection: one element gets handles; several get member outlines and the group box (DomEditGroupChrome).
+        // Selection: one element gets handles; several get member outlines and the group box.
         if selectedIds.count > 1, let gb = groupBounds(in: size) {
             for e in elements where selectedIds.contains(e.id) {
                 let b = Self.bounds(chromeElement(e, in: size))
@@ -319,7 +319,7 @@ public final class PlayerView {
         drawGuides(c, frame: frame)
     }
 
-    /// Snap guides (SnapGuideOverlay): full-frame 1px lines and dashed equal-gap boxes with their size.
+    /// Snap guides: full-frame 1px lines and dashed equal-gap boxes with their size.
     func drawGuides(_ c: CanvasContext, frame: CanvasRect) {
         for g in snapGuides.prefix(6) {
             let r = g.axis == .x ? CanvasRect(x: g.position, y: frame.y, width: 1, height: frame.height)
@@ -391,7 +391,7 @@ public final class PlayerView {
                 c.fillRoundedRect(dot, radius: d / 2, PanelTheme.stageInk)
                 c.strokeRoundedRect(dot.insetBy(0.75), radius: d / 2, theme.accent, width: 1.5)
             }
-            // Rotate chip (DomEditRotateHandle), drawn in the element's rotated frame.
+            // Rotate chip, drawn in the element's rotated frame.
             let cx = r.x + r.width / 2, cy = r.maxY + 12 + 11
             let chip = CanvasRect(x: cx - 9, y: cy - 9, width: 18, height: 18)
             c.fillRoundedRect(chip, radius: 9, Self.studioSurface)
@@ -409,7 +409,7 @@ public final class PlayerView {
         }
     }
 
-    /// DomEditCropHandles: 1px accent outline on the crop rect, accent edge lines extended 12px, 10px white
+    /// Crop handles: 1px accent outline on the crop rect, accent edge lines extended 12px, 10px white
     /// square knobs with an accent border at each edge midpoint.
     func drawCrop(_ c: CanvasContext, _ ve: StageElement) {
         let r = ve.visibleRect
