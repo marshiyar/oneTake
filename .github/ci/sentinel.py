@@ -88,9 +88,9 @@ RULES = [
      "a bidi or zero-width character that renders differently from what the compiler reads"),
 ]
 LITERAL = re.compile(r'"([A-Za-z0-9+/=_-]{80,})"')
-WORKFLOW_EVENT = re.compile(r"\$\{\{\s*github\.(event\.(issue|comment|pull_request|review|review_comment|discussion|"
-                            r"commits|head_commit|workflow_run|inputs)[.\[][^}]*(title|body|message|name|email|ref|"
-                            r"label|branch|default_branch|login|description)[^}]*|head_ref)\s*\}\}")
+WORKFLOW_EVENT = re.compile(r"\$\{\{[^}]*github\.(event\.(issue|comment|pull_request|review|review_comment|discussion|"
+                            r"commits|head_commit|workflow_run|inputs)(\.[A-Za-z_]+|\[[^\]]*\])*\.(title|body|message|name|"
+                            r"email|ref|head_ref|head_branch|branch|default_branch|login|description|path)\b|head_ref)")
 ENV_LINE = re.compile(r"^\s*[A-Za-z_][A-Za-z0-9_]*:\s*\$\{\{")
 USES = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)")
 NETWORK_IMPORTS = {"connect", "socket", "getaddrinfo", "gethostbyname", "gethostbyname2", "getnameinfo", "sendto",

@@ -3,8 +3,10 @@
 # (artifact); `match` narrows it to a symbol or detail text.
 
 [repo]
-# Data the text rules do not read: generated shader words, media and audio fixtures, images.
+# Data the text rules do not read: generated shader words, media and audio fixtures, images; and the scanner itself,
+# whose patterns and tests spell out what it looks for (a change to these three files is reviewed as the policy).
 skip = [
+    ".github/ci/sentinel.py", ".github/ci/test_sentinel.py", ".github/sentinel.toml",
     "mpvfx-swift/scripts/gpu/generated/**",
     "mpvfx-swift/Tests/EngineFixtures/**",
     "mpvfx-swift/Tests/MpvfxAudioGraphTests/Fixtures/**",
