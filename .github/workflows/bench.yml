@@ -15,6 +15,23 @@ on:
     workflows: [mpvfx-ci]
     types: [completed]
     branches: [main]
+  # A pull request that touches performance-sensitive code is benchmarked too; agentbot compares it with main.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mpvfx-swift/Sources/MpvfxPlayer/**'
+      - 'mpvfx-swift/Sources/MpvfxColor/**'
+      - 'mpvfx-swift/Sources/MpvfxMetal/**'
+      - 'mpvfx-swift/Sources/CMpvfxVulkan/**'
+      - 'mpvfx-swift/Sources/CMpvfxWin32/d3d11_grade.cpp'
+      - 'mpvfx-swift/Sources/MpvfxAudio/**'
+      - 'mpvfx-swift/Sources/MpvfxAudioGraph/**'
+      - 'mpvfx-swift/Sources/OneTakeMedia/**'
+      - 'mpvfx-swift/Sources/MpvfxDesktop/main.swift'
+      - 'mpvfx-swift/binaries.lock'
+      - 'mpvfx-swift/tools/MpvfxPreviewBench/**'
+      - '.github/ci/bench.py'
+      - '.github/workflows/bench.yml'
   schedule:
     - cron: '20 4 * * 0'
   workflow_dispatch:
