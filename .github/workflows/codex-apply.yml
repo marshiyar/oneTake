@@ -72,8 +72,10 @@ jobs:
           URL: ${{ github.event.comment.html_url }}
         run: |
           set -eu
-          git apply --check "$RUNNER_TEMP/change.patch"
-          git apply "$RUNNER_TEMP/change.patch"
+          # Codex sometimes writes hunks without context lines (`git diff -U0`); git applies those only when told to.
+          if git apply --check "$RUNNER_TEMP/change.patch" 2>/dev/null; then z=""; else z="--unidiff-zero"; fi
+          git apply $z --check "$RUNNER_TEMP/change.patch"
+          git apply $z "$RUNNER_TEMP/change.patch"
           git add -A
           git -c user.name="Arshiya Rahgozar" -c user.email="57055687+marshiyar@users.noreply.github.com" commit -q \
             -m "Apply Codex's change" -m "From $URL" \
