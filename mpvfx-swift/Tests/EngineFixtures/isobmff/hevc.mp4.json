@@ -1,0 +1,56 @@
+{
+    "packets": [
+        {
+            "stream_index": 0,
+            "pts": 0,
+            "dts": -4096,
+            "duration": 2048,
+            "size": "1955",
+            "pos": "44",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 4096,
+            "dts": -2048,
+            "duration": 2048,
+            "size": "1299",
+            "pos": "1999",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 2048,
+            "dts": 0,
+            "duration": 2048,
+            "size": "600",
+            "pos": "3298",
+            "flags": "___"
+        }
+    ],
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "hevc",
+            "profile": "Main",
+            "codec_type": "video",
+            "codec_tag_string": "hvc1",
+            "width": 160,
+            "height": 90,
+            "color_range": "tv",
+            "time_base": "1/10240",
+            "start_pts": 0,
+            "duration_ts": 6144
+        }
+    ],
+    "format": {
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration": "0.600000"
+    }
+}

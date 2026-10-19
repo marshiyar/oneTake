@@ -1,0 +1,258 @@
+{
+    "packets": [
+        {
+            "stream_index": 0,
+            "pts": 0,
+            "dts": 0,
+            "duration": 512,
+            "size": "2715",
+            "pos": "48",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 512,
+            "dts": 512,
+            "duration": 512,
+            "size": "512",
+            "pos": "2763",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 1024,
+            "dts": 1024,
+            "duration": 512,
+            "size": "557",
+            "pos": "3275",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 1536,
+            "dts": 1536,
+            "duration": 512,
+            "size": "518",
+            "pos": "3832",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 2048,
+            "dts": 2048,
+            "duration": 512,
+            "size": "598",
+            "pos": "4350",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 2560,
+            "dts": 2560,
+            "duration": 512,
+            "size": "675",
+            "pos": "4948",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 3072,
+            "dts": 3072,
+            "duration": 512,
+            "size": "603",
+            "pos": "5623",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 3584,
+            "dts": 3584,
+            "duration": 512,
+            "size": "389",
+            "pos": "6226",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 4096,
+            "dts": 4096,
+            "duration": 512,
+            "size": "591",
+            "pos": "6615",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 4608,
+            "dts": 4608,
+            "duration": 512,
+            "size": "568",
+            "pos": "7206",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 5120,
+            "dts": 5120,
+            "duration": 512,
+            "size": "656",
+            "pos": "7774",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 5632,
+            "dts": 5632,
+            "duration": 512,
+            "size": "607",
+            "pos": "8430",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 6144,
+            "dts": 6144,
+            "duration": 512,
+            "size": "512",
+            "pos": "9037",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 6656,
+            "dts": 6656,
+            "duration": 512,
+            "size": "674",
+            "pos": "9549",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 7168,
+            "dts": 7168,
+            "duration": 512,
+            "size": "527",
+            "pos": "10223",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 7680,
+            "dts": 7680,
+            "duration": 512,
+            "size": "570",
+            "pos": "10750",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 8192,
+            "dts": 8192,
+            "duration": 512,
+            "size": "585",
+            "pos": "11320",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 8704,
+            "dts": 8704,
+            "duration": 512,
+            "size": "585",
+            "pos": "11905",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 9216,
+            "dts": 9216,
+            "duration": 512,
+            "size": "589",
+            "pos": "12490",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 9728,
+            "dts": 9728,
+            "duration": 512,
+            "size": "552",
+            "pos": "13079",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 10240,
+            "dts": 10240,
+            "duration": 512,
+            "size": "601",
+            "pos": "13631",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 10752,
+            "dts": 10752,
+            "duration": 512,
+            "size": "680",
+            "pos": "14232",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 11264,
+            "dts": 11264,
+            "duration": 512,
+            "size": "579",
+            "pos": "14912",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 11776,
+            "dts": 11776,
+            "duration": 512,
+            "size": "491",
+            "pos": "15491",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 12288,
+            "dts": 12288,
+            "duration": 512,
+            "size": "440",
+            "pos": "15982",
+            "flags": "___"
+        }
+    ],
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "h264",
+            "profile": "High",
+            "codec_type": "video",
+            "codec_tag_string": "avc1",
+            "width": 160,
+            "height": 90,
+            "time_base": "1/12800",
+            "start_pts": 0,
+            "duration_ts": 12800,
+            "side_data_list": [
+                {
+                    "rotation": -180
+                }
+            ]
+        }
+    ],
+    "format": {
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration": "1.000000"
+    }
+}

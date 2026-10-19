@@ -1,0 +1,1116 @@
+{
+  "generator": "studio/runtime/media/timelineRenderer.ts renderNativeTimeline via vite-node",
+  "ffmpeg": "third_party/ffmpeg/linux-x64/ffmpeg",
+  "windowSeconds": 0.1,
+  "scenarios": {
+    "plainMutedGroup": {
+      "schemaVersion": 1,
+      "mediaEngine": "ffmpeg",
+      "id": "mute",
+      "revision": 0,
+      "frameRate": {
+        "numerator": 10,
+        "denominator": 1
+      },
+      "canvas": {
+        "width": 64,
+        "height": 32,
+        "background": "#000000"
+      },
+      "assets": [
+        {
+          "id": "red",
+          "kind": "video",
+          "name": "red",
+          "source": "red.mp4",
+          "durationFrames": 20
+        },
+        {
+          "id": "bed",
+          "kind": "audio",
+          "name": "bed.wav",
+          "source": "bed.wav",
+          "durationFrames": 20
+        },
+        {
+          "id": "voice",
+          "kind": "audio",
+          "name": "voice.wav",
+          "source": "voice.wav",
+          "durationFrames": 20
+        }
+      ],
+      "sequence": {
+        "id": "sequence",
+        "name": "Sequence",
+        "audioGroups": [
+          {
+            "id": "music",
+            "label": "Music",
+            "volume": 1,
+            "muted": true
+          }
+        ],
+        "tracks": [
+          {
+            "id": "video",
+            "kind": "video",
+            "clips": [
+              {
+                "id": "red",
+                "assetId": "red",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "bed-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 1,
+              "displayTrack": 1
+            },
+            "clips": [
+              {
+                "id": "bed",
+                "assetId": "bed",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "voice-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 2,
+              "displayTrack": 2
+            },
+            "clips": [
+              {
+                "id": "voice",
+                "assetId": "voice",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "mutedGroupWithBusFx": {
+      "schemaVersion": 1,
+      "mediaEngine": "ffmpeg",
+      "id": "mute",
+      "revision": 0,
+      "frameRate": {
+        "numerator": 10,
+        "denominator": 1
+      },
+      "canvas": {
+        "width": 64,
+        "height": 32,
+        "background": "#000000"
+      },
+      "assets": [
+        {
+          "id": "red",
+          "kind": "video",
+          "name": "red",
+          "source": "red.mp4",
+          "durationFrames": 20
+        },
+        {
+          "id": "bed",
+          "kind": "audio",
+          "name": "bed.wav",
+          "source": "bed.wav",
+          "durationFrames": 20
+        },
+        {
+          "id": "voice",
+          "kind": "audio",
+          "name": "voice.wav",
+          "source": "voice.wav",
+          "durationFrames": 20
+        }
+      ],
+      "sequence": {
+        "id": "sequence",
+        "name": "Sequence",
+        "audioGroups": [
+          {
+            "id": "music",
+            "label": "Music",
+            "volume": 1,
+            "muted": true,
+            "fxChain": "{\"version\":1,\"nodes\":[{\"type\":\"gain\",\"params\":{\"gain\":-6},\"enabled\":true}]}"
+          }
+        ],
+        "tracks": [
+          {
+            "id": "video",
+            "kind": "video",
+            "clips": [
+              {
+                "id": "red",
+                "assetId": "red",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "bed-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 1,
+              "displayTrack": 1
+            },
+            "clips": [
+              {
+                "id": "bed",
+                "assetId": "bed",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "voice-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 2,
+              "displayTrack": 2
+            },
+            "clips": [
+              {
+                "id": "voice",
+                "assetId": "voice",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "mutedGroupWithBusAutomation": {
+      "schemaVersion": 1,
+      "mediaEngine": "ffmpeg",
+      "id": "mute",
+      "revision": 0,
+      "frameRate": {
+        "numerator": 10,
+        "denominator": 1
+      },
+      "canvas": {
+        "width": 64,
+        "height": 32,
+        "background": "#000000"
+      },
+      "assets": [
+        {
+          "id": "red",
+          "kind": "video",
+          "name": "red",
+          "source": "red.mp4",
+          "durationFrames": 20
+        },
+        {
+          "id": "bed",
+          "kind": "audio",
+          "name": "bed.wav",
+          "source": "bed.wav",
+          "durationFrames": 20
+        },
+        {
+          "id": "voice",
+          "kind": "audio",
+          "name": "voice.wav",
+          "source": "voice.wav",
+          "durationFrames": 20
+        }
+      ],
+      "sequence": {
+        "id": "sequence",
+        "name": "Sequence",
+        "audioGroups": [
+          {
+            "id": "music",
+            "label": "Music",
+            "volume": 1,
+            "muted": true,
+            "automation": "{\"version\":1,\"lanes\":[]}"
+          }
+        ],
+        "tracks": [
+          {
+            "id": "video",
+            "kind": "video",
+            "clips": [
+              {
+                "id": "red",
+                "assetId": "red",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "bed-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 1,
+              "displayTrack": 1
+            },
+            "clips": [
+              {
+                "id": "bed",
+                "assetId": "bed",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "voice-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 2,
+              "displayTrack": 2
+            },
+            "clips": [
+              {
+                "id": "voice",
+                "assetId": "voice",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "mutedGroupMemberWithFx": {
+      "schemaVersion": 1,
+      "mediaEngine": "ffmpeg",
+      "id": "mute",
+      "revision": 0,
+      "frameRate": {
+        "numerator": 10,
+        "denominator": 1
+      },
+      "canvas": {
+        "width": 64,
+        "height": 32,
+        "background": "#000000"
+      },
+      "assets": [
+        {
+          "id": "red",
+          "kind": "video",
+          "name": "red",
+          "source": "red.mp4",
+          "durationFrames": 20
+        },
+        {
+          "id": "bed",
+          "kind": "audio",
+          "name": "bed.wav",
+          "source": "bed.wav",
+          "durationFrames": 20
+        },
+        {
+          "id": "voice",
+          "kind": "audio",
+          "name": "voice.wav",
+          "source": "voice.wav",
+          "durationFrames": 20
+        }
+      ],
+      "sequence": {
+        "id": "sequence",
+        "name": "Sequence",
+        "audioGroups": [
+          {
+            "id": "music",
+            "label": "Music",
+            "volume": 1,
+            "muted": true
+          }
+        ],
+        "tracks": [
+          {
+            "id": "video",
+            "kind": "video",
+            "clips": [
+              {
+                "id": "red",
+                "assetId": "red",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "bed-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 1,
+              "displayTrack": 1
+            },
+            "clips": [
+              {
+                "id": "bed",
+                "assetId": "bed",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music",
+                "audioFxChain": "{\"version\":1,\"nodes\":[{\"type\":\"gain\",\"params\":{\"gain\":-6},\"enabled\":true}]}"
+              }
+            ]
+          },
+          {
+            "id": "voice-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 2,
+              "displayTrack": 2
+            },
+            "clips": [
+              {
+                "id": "voice",
+                "assetId": "voice",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "mutedGroupMemberWithAutomation": {
+      "schemaVersion": 1,
+      "mediaEngine": "ffmpeg",
+      "id": "mute",
+      "revision": 0,
+      "frameRate": {
+        "numerator": 10,
+        "denominator": 1
+      },
+      "canvas": {
+        "width": 64,
+        "height": 32,
+        "background": "#000000"
+      },
+      "assets": [
+        {
+          "id": "red",
+          "kind": "video",
+          "name": "red",
+          "source": "red.mp4",
+          "durationFrames": 20
+        },
+        {
+          "id": "bed",
+          "kind": "audio",
+          "name": "bed.wav",
+          "source": "bed.wav",
+          "durationFrames": 20
+        },
+        {
+          "id": "voice",
+          "kind": "audio",
+          "name": "voice.wav",
+          "source": "voice.wav",
+          "durationFrames": 20
+        }
+      ],
+      "sequence": {
+        "id": "sequence",
+        "name": "Sequence",
+        "audioGroups": [
+          {
+            "id": "music",
+            "label": "Music",
+            "volume": 1,
+            "muted": true
+          }
+        ],
+        "tracks": [
+          {
+            "id": "video",
+            "kind": "video",
+            "clips": [
+              {
+                "id": "red",
+                "assetId": "red",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "bed-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 1,
+              "displayTrack": 1
+            },
+            "clips": [
+              {
+                "id": "bed",
+                "assetId": "bed",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music",
+                "audioAutomation": "{\"version\":1,\"lanes\":[]}"
+              }
+            ]
+          },
+          {
+            "id": "voice-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 2,
+              "displayTrack": 2
+            },
+            "clips": [
+              {
+                "id": "voice",
+                "assetId": "voice",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "mutedGroupAtHalfVolume": {
+      "schemaVersion": 1,
+      "mediaEngine": "ffmpeg",
+      "id": "mute",
+      "revision": 0,
+      "frameRate": {
+        "numerator": 10,
+        "denominator": 1
+      },
+      "canvas": {
+        "width": 64,
+        "height": 32,
+        "background": "#000000"
+      },
+      "assets": [
+        {
+          "id": "red",
+          "kind": "video",
+          "name": "red",
+          "source": "red.mp4",
+          "durationFrames": 20
+        },
+        {
+          "id": "bed",
+          "kind": "audio",
+          "name": "bed.wav",
+          "source": "bed.wav",
+          "durationFrames": 20
+        },
+        {
+          "id": "voice",
+          "kind": "audio",
+          "name": "voice.wav",
+          "source": "voice.wav",
+          "durationFrames": 20
+        }
+      ],
+      "sequence": {
+        "id": "sequence",
+        "name": "Sequence",
+        "audioGroups": [
+          {
+            "id": "music",
+            "label": "Music",
+            "volume": 0.5,
+            "muted": true
+          }
+        ],
+        "tracks": [
+          {
+            "id": "video",
+            "kind": "video",
+            "clips": [
+              {
+                "id": "red",
+                "assetId": "red",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "bed-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 1,
+              "displayTrack": 1
+            },
+            "clips": [
+              {
+                "id": "bed",
+                "assetId": "bed",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "voice-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 2,
+              "displayTrack": 2
+            },
+            "clips": [
+              {
+                "id": "voice",
+                "assetId": "voice",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "droppedReference": {
+      "schemaVersion": 1,
+      "mediaEngine": "ffmpeg",
+      "id": "mute",
+      "revision": 0,
+      "frameRate": {
+        "numerator": 10,
+        "denominator": 1
+      },
+      "canvas": {
+        "width": 64,
+        "height": 32,
+        "background": "#000000"
+      },
+      "assets": [
+        {
+          "id": "red",
+          "kind": "video",
+          "name": "red",
+          "source": "red.mp4",
+          "durationFrames": 20
+        },
+        {
+          "id": "bed",
+          "kind": "audio",
+          "name": "bed.wav",
+          "source": "bed.wav",
+          "durationFrames": 20
+        },
+        {
+          "id": "voice",
+          "kind": "audio",
+          "name": "voice.wav",
+          "source": "voice.wav",
+          "durationFrames": 20
+        }
+      ],
+      "sequence": {
+        "id": "sequence",
+        "name": "Sequence",
+        "tracks": [
+          {
+            "id": "video",
+            "kind": "video",
+            "clips": [
+              {
+                "id": "red",
+                "assetId": "red",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": true,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          },
+          {
+            "id": "bed-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 1,
+              "displayTrack": 1
+            },
+            "clips": [
+              {
+                "id": "bed",
+                "assetId": "bed",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": true,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          },
+          {
+            "id": "voice-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 2,
+              "displayTrack": 2
+            },
+            "clips": [
+              {
+                "id": "voice",
+                "assetId": "voice",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "mutedGroupMemberWithoutAudioStream": {
+      "schemaVersion": 1,
+      "mediaEngine": "ffmpeg",
+      "id": "mute",
+      "revision": 0,
+      "frameRate": {
+        "numerator": 10,
+        "denominator": 1
+      },
+      "canvas": {
+        "width": 64,
+        "height": 32,
+        "background": "#000000"
+      },
+      "assets": [
+        {
+          "id": "red",
+          "kind": "video",
+          "name": "red",
+          "source": "silent.mp4",
+          "durationFrames": 20
+        },
+        {
+          "id": "bed",
+          "kind": "audio",
+          "name": "bed.wav",
+          "source": "bed.wav",
+          "durationFrames": 20
+        },
+        {
+          "id": "voice",
+          "kind": "audio",
+          "name": "voice.wav",
+          "source": "voice.wav",
+          "durationFrames": 20
+        }
+      ],
+      "sequence": {
+        "id": "sequence",
+        "name": "Sequence",
+        "audioGroups": [
+          {
+            "id": "music",
+            "label": "Music",
+            "volume": 1,
+            "muted": true
+          }
+        ],
+        "tracks": [
+          {
+            "id": "video",
+            "kind": "video",
+            "clips": [
+              {
+                "id": "red",
+                "assetId": "red",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "bed-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 1,
+              "displayTrack": 1
+            },
+            "clips": [
+              {
+                "id": "bed",
+                "assetId": "bed",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": [],
+                "audioGroupId": "music"
+              }
+            ]
+          },
+          {
+            "id": "voice-track",
+            "kind": "audio",
+            "lane": {
+              "authoredTrack": 2,
+              "displayTrack": 2
+            },
+            "clips": [
+              {
+                "id": "voice",
+                "assetId": "voice",
+                "startFrame": 0,
+                "durationFrames": 10,
+                "sourceInFrame": 0,
+                "playbackRate": {
+                  "numerator": 1,
+                  "denominator": 1
+                },
+                "muted": false,
+                "effects": [],
+                "parameterTracks": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "results": {
+    "plainMutedGroup": {
+      "ok": true,
+      "streams": [
+        "video",
+        "audio"
+      ],
+      "rms": [
+        0.08819,
+        0.08815,
+        0.08844,
+        0.08802,
+        0.08801,
+        0.08828,
+        0.08827,
+        0.08877,
+        0.08754,
+        0.0884
+      ]
+    },
+    "mutedGroupWithBusFx": {
+      "ok": true,
+      "streams": [
+        "video",
+        "audio"
+      ],
+      "rms": [
+        0.08819,
+        0.08815,
+        0.08844,
+        0.08802,
+        0.08801,
+        0.08828,
+        0.08827,
+        0.08877,
+        0.08754,
+        0.0884
+      ]
+    },
+    "mutedGroupWithBusAutomation": {
+      "ok": true,
+      "streams": [
+        "video",
+        "audio"
+      ],
+      "rms": [
+        0.08819,
+        0.08815,
+        0.08844,
+        0.08802,
+        0.08801,
+        0.08828,
+        0.08827,
+        0.08877,
+        0.08754,
+        0.0884
+      ]
+    },
+    "mutedGroupMemberWithFx": {
+      "ok": true,
+      "streams": [
+        "video",
+        "audio"
+      ],
+      "rms": [
+        0.08819,
+        0.08815,
+        0.08844,
+        0.08802,
+        0.08801,
+        0.08828,
+        0.08827,
+        0.08877,
+        0.08754,
+        0.0884
+      ]
+    },
+    "mutedGroupMemberWithAutomation": {
+      "ok": true,
+      "streams": [
+        "video",
+        "audio"
+      ],
+      "rms": [
+        0.08819,
+        0.08815,
+        0.08844,
+        0.08802,
+        0.08801,
+        0.08828,
+        0.08827,
+        0.08877,
+        0.08754,
+        0.0884
+      ]
+    },
+    "mutedGroupAtHalfVolume": {
+      "ok": true,
+      "streams": [
+        "video",
+        "audio"
+      ],
+      "rms": [
+        0.08819,
+        0.08815,
+        0.08844,
+        0.08802,
+        0.08801,
+        0.08828,
+        0.08827,
+        0.08877,
+        0.08754,
+        0.0884
+      ]
+    },
+    "droppedReference": {
+      "ok": true,
+      "streams": [
+        "video",
+        "audio"
+      ],
+      "rms": [
+        0.08816,
+        0.08815,
+        0.08821,
+        0.08802,
+        0.08785,
+        0.08823,
+        0.08825,
+        0.08861,
+        0.08749,
+        0.0882
+      ]
+    },
+    "mutedGroupMemberWithoutAudioStream": {
+      "ok": false,
+      "error": "Clip red cannot join an audio group: its media has no audio stream"
+    }
+  }
+}

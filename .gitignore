@@ -1,0 +1,21 @@
+# Agent harness, rendered at session start from the private marshiyar/mpvfx-agents (scripts/setup-session.sh).
+# .claude/settings.json and .claude/hooks/ are the only tracked agent files.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/__pycache__/
+CLAUDE.md
+
+# Build output and editor state.
+.build/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+.DS_Store
+__pycache__/
+
+# Prebuilt engine libraries, downloaded by mpvfx-swift/scripts/fetch-binaries.py from the versions in binaries.lock.
+.binaries/
+
+# CI bookkeeping written by the test jobs.
+.test-pass

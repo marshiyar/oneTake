@@ -1,0 +1,196 @@
+{
+ "generator": "gen/generateCatalogFixture.py (SQL extracted from library_node.cpp)",
+ "sqlite": "3.46.1",
+ "steps": [
+  {
+   "action": "create",
+   "args": [
+    "11111111-1111-4111-8111-111111111111",
+    "Film"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[],\"projects\":[],\"assets\":[],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "event",
+   "args": [
+    "22222222-2222-4222-8222-222222222222",
+    "Media"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[],\"assets\":[],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "project",
+   "args": [
+    "33333333-3333-4333-8333-333333333333",
+    "22222222-2222-4222-8222-222222222222",
+    "Main Edit"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"pending\"}],\"assets\":[],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "projectReady",
+   "args": [
+    "33333333-3333-4333-8333-333333333333"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"}],\"assets\":[],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "project",
+   "args": [
+    "44444444-4444-4444-8444-444444444444",
+    "22222222-2222-4222-8222-222222222222",
+    "Short Version"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "asset",
+   "args": [
+    "55555555-5555-4555-8555-555555555555",
+    "22222222-2222-4222-8222-222222222222",
+    "Khé¿.png",
+    "image",
+    "managed",
+    "Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png",
+    "abababababababababababababababababababababababababababababababab"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"pending\"}],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "assetReady",
+   "args": [
+    "55555555-5555-4555-8555-555555555555"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"}],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "asset",
+   "args": [
+    "66666666-6666-4666-8666-666666666666",
+    "22222222-2222-4222-8222-222222222222",
+    "linked.wav",
+    "audio",
+    "linked",
+    "/media/linked.wav",
+    "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/linked.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "relink",
+   "args": [
+    "66666666-6666-4666-8666-666666666666",
+    "/media/moved.wav"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "relink",
+   "args": [
+    "55555555-5555-4555-8555-555555555555",
+    "/ignored/managed"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[],\"jobs\":[]}"
+  },
+  {
+   "action": "attach",
+   "args": [
+    "33333333-3333-4333-8333-333333333333",
+    "55555555-5555-4555-8555-555555555555",
+    "assets/55555555-5555-4555-8555-555555555555/Khé¿.png"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[{\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"assetId\":\"55555555-5555-4555-8555-555555555555\",\"path\":\"assets/55555555-5555-4555-8555-555555555555/Khé¿.png\"}],\"jobs\":[]}"
+  },
+  {
+   "action": "attach",
+   "args": [
+    "33333333-3333-4333-8333-333333333333",
+    "55555555-5555-4555-8555-555555555555",
+    "assets/55555555-5555-4555-8555-555555555555/renamed.png"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[{\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"assetId\":\"55555555-5555-4555-8555-555555555555\",\"path\":\"assets/55555555-5555-4555-8555-555555555555/renamed.png\"}],\"jobs\":[]}"
+  },
+  {
+   "action": "job",
+   "args": [
+    "77777777-7777-4777-8777-777777777777",
+    "33333333-3333-4333-8333-333333333333",
+    "Snapshots/77777777-7777-4777-8777-777777777777"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[{\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"assetId\":\"55555555-5555-4555-8555-555555555555\",\"path\":\"assets/55555555-5555-4555-8555-555555555555/renamed.png\"}],\"jobs\":[{\"id\":\"77777777-7777-4777-8777-777777777777\",\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"snapshot\":\"Snapshots/77777777-7777-4777-8777-777777777777\",\"status\":\"rendering\",\"output\":\"\",\"error\":\"\"}]}"
+  },
+  {
+   "action": "jobFinish",
+   "args": [
+    "77777777-7777-4777-8777-777777777777",
+    "complete",
+    "renders/33333333-3333-4333-8333-333333333333/out.mp4",
+    ""
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[{\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"assetId\":\"55555555-5555-4555-8555-555555555555\",\"path\":\"assets/55555555-5555-4555-8555-555555555555/renamed.png\"}],\"jobs\":[{\"id\":\"77777777-7777-4777-8777-777777777777\",\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"snapshot\":\"Snapshots/77777777-7777-4777-8777-777777777777\",\"status\":\"complete\",\"output\":\"renders/33333333-3333-4333-8333-333333333333/out.mp4\",\"error\":\"\"}]}"
+  },
+  {
+   "action": "job",
+   "args": [
+    "88888888-8888-4888-8888-888888888888",
+    "33333333-3333-4333-8333-333333333333",
+    "Snapshots/88888888-8888-4888-8888-888888888888"
+   ],
+   "ok": true,
+   "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[{\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"assetId\":\"55555555-5555-4555-8555-555555555555\",\"path\":\"assets/55555555-5555-4555-8555-555555555555/renamed.png\"}],\"jobs\":[{\"id\":\"77777777-7777-4777-8777-777777777777\",\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"snapshot\":\"Snapshots/77777777-7777-4777-8777-777777777777\",\"status\":\"complete\",\"output\":\"renders/33333333-3333-4333-8333-333333333333/out.mp4\",\"error\":\"\"},{\"id\":\"88888888-8888-4888-8888-888888888888\",\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"snapshot\":\"Snapshots/88888888-8888-4888-8888-888888888888\",\"status\":\"rendering\",\"output\":\"\",\"error\":\"\"}]}"
+  },
+  {
+   "action": "project",
+   "args": [
+    "33333333-3333-4333-8333-333333333333",
+    "22222222-2222-4222-8222-222222222222",
+    "Duplicate"
+   ],
+   "ok": false,
+   "error": "UNIQUE constraint failed: projects.id"
+  },
+  {
+   "action": "project",
+   "args": [
+    "99999999-9999-4999-8999-999999999999",
+    "no-such-event",
+    "Orphan"
+   ],
+   "ok": false,
+   "error": "FOREIGN KEY constraint failed"
+  },
+  {
+   "action": "attach",
+   "args": [
+    "44444444-4444-4444-8444-444444444444",
+    "55555555-5555-4555-8555-555555555555",
+    "assets/55555555-5555-4555-8555-555555555555/Khé¿.png",
+    "extra"
+   ],
+   "ok": false,
+   "error": "Incorrect number of bindings supplied. The current statement uses 3, and there are 4 supplied."
+  }
+ ],
+ "finalRead": {
+  "ok": true,
+  "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[{\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"assetId\":\"55555555-5555-4555-8555-555555555555\",\"path\":\"assets/55555555-5555-4555-8555-555555555555/renamed.png\"}],\"jobs\":[{\"id\":\"77777777-7777-4777-8777-777777777777\",\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"snapshot\":\"Snapshots/77777777-7777-4777-8777-777777777777\",\"status\":\"complete\",\"output\":\"renders/33333333-3333-4333-8333-333333333333/out.mp4\",\"error\":\"\"},{\"id\":\"88888888-8888-4888-8888-888888888888\",\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"snapshot\":\"Snapshots/88888888-8888-4888-8888-888888888888\",\"status\":\"rendering\",\"output\":\"\",\"error\":\"\"}]}"
+ },
+ "recoverOnReopen": {
+  "ok": true,
+  "snapshot": "{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"Film\",\"events\":[{\"id\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Media\"}],\"projects\":[{\"id\":\"33333333-3333-4333-8333-333333333333\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Main Edit\",\"state\":\"ready\"},{\"id\":\"44444444-4444-4444-8444-444444444444\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Short Version\",\"state\":\"pending\"}],\"assets\":[{\"id\":\"55555555-5555-4555-8555-555555555555\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"Khé¿.png\",\"kind\":\"image\",\"mode\":\"managed\",\"source\":\"Media/Originals/55555555-5555-4555-8555-555555555555/Khé¿.png\",\"fingerprint\":\"abababababababababababababababababababababababababababababababab\",\"state\":\"ready\"},{\"id\":\"66666666-6666-4666-8666-666666666666\",\"eventId\":\"22222222-2222-4222-8222-222222222222\",\"name\":\"linked.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"source\":\"/media/moved.wav\",\"fingerprint\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"state\":\"pending\"}],\"placements\":[{\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"assetId\":\"55555555-5555-4555-8555-555555555555\",\"path\":\"assets/55555555-5555-4555-8555-555555555555/renamed.png\"}],\"jobs\":[{\"id\":\"77777777-7777-4777-8777-777777777777\",\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"snapshot\":\"Snapshots/77777777-7777-4777-8777-777777777777\",\"status\":\"complete\",\"output\":\"renders/33333333-3333-4333-8333-333333333333/out.mp4\",\"error\":\"\"},{\"id\":\"88888888-8888-4888-8888-888888888888\",\"projectId\":\"33333333-3333-4333-8333-333333333333\",\"snapshot\":\"Snapshots/88888888-8888-4888-8888-888888888888\",\"status\":\"interrupted\",\"output\":\"\",\"error\":\"Application closed before export completion; export again from the saved snapshot\"}]}"
+ }
+}

@@ -1,0 +1,55 @@
+# Prebuilt engine libraries the app links. The engines are proprietary and are not built from this repository: each
+# entry pins one release of marshiyar/mpvfx-media-binaries by version, download URL and SHA-256 per platform.
+# `python3 scripts/fetch-binaries.py` downloads the archive for this machine, checks the SHA-256 and unpacks it into
+# .binaries/<component>/. A component whose sha256 is empty is pending: its release is not published yet, and
+# fetching it fails with a message saying so. Never edit a sha256 by hand: `python3 scripts/fetch-binaries.py --update <component> <version>`
+# reads the release and rewrites the entry.
+#
+# Release archive contract: <asset>.tar.gz (or .zip on Windows) per platform, optionally inside one top-level folder,
+# plus a SHA256SUMS file in the release:
+#   include/<header>                  the C interface
+#   lib/lib<library>.dylib            macOS, install name @rpath/lib<library>.dylib
+#   lib/lib<library>.so               Linux, SONAME lib<library>.so
+#   lib/<library>.lib (or .dll.lib) and bin/ or lib/<library>.dll   Windows x64 (import library + DLL)
+#   LICENSE, NOTICE                   the binary licence and third-party notices (shipped with the app)
+# Platforms: macos-arm64, macos-x86_64, linux-x86_64, linux-aarch64, windows-x86_64.
+
+[media]
+version = "0.1.0"
+tag = "media-v0.1.0"
+repo = "marshiyar/mpvfx-media-binaries"
+asset = "mpvfx-media-{version}-{platform}"
+library = "mpvfx_ffi"
+header = "mpvfx_media.h"
+
+[media.platforms.macos-arm64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-macos-arm64.tar.gz"
+sha256 = "3d1d714627c9b147e17867f6e008ee7e783e8042c94ddbffebf3c8da03c0f3fe"
+
+[media.platforms.linux-x86_64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-linux-x86_64.tar.gz"
+sha256 = "e24ac383d5a5bdd729874d20592772f5f70fde386d64cf70e6f5436a1c33213f"
+
+[media.platforms.windows-x86_64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-windows-x86_64.zip"
+sha256 = "7417eb1b651e4ed3da616ddb3dff073966b2aa4e19293338af22a6413f158f97"
+
+[keyframes]
+version = "1.0.0"
+tag = "keyframes-v1.0.0"
+repo = "marshiyar/mpvfx-media-binaries"
+asset = "keyframes-{version}-{platform}"
+library = "cvkf"
+header = "cvkf.h"
+
+[keyframes.platforms.macos-arm64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-macos-arm64.tar.gz"
+sha256 = ""
+
+[keyframes.platforms.linux-x86_64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-linux-x86_64.tar.gz"
+sha256 = ""
+
+[keyframes.platforms.windows-x86_64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-windows-x86_64.tar.gz"
+sha256 = ""

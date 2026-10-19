@@ -1,0 +1,228 @@
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of MpVFX.
+//
+// Copyright (c) 2026 Arshiya Rahgozar.
+//
+// Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0) or the MIT license (LICENSE-MIT
+// or http://opensource.org/licenses/MIT), at your option.
+//
+// SPDX-License-Identifier: MIT OR Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+import Foundation
+
+/// The colour tokens with no dependencies, so any module (timeline, panels, player) can share
+/// them without a dependency cycle. Values: the `studio.*` theme colours, the Tailwind default
+/// palette the panels use, and the accent mint (`--hf-accent`). Map to a drawing colour at the use site.
+///
+/// Every token has a dark value (the original palette) and a light value (
+/// derived from the dark one: surfaces and the neutral ramp are mirrored, accents are darkened until text in
+/// them reaches WCAG AA on the light panel surfaces). A token reads the value for `Theme.mode`, so code that
+/// asks for a token at draw time follows a live appearance switch without a restart.
+public struct ThemeColor: Equatable, Sendable {
+    public var r, g, b, a: Double
+    public init(r: Double, g: Double, b: Double, a: Double = 1) { self.r = r; self.g = g; self.b = b; self.a = a }
+    /// 0xRRGGBB.
+    public init(_ rgb: UInt32, alpha: Double = 1) {
+        self.init(r: Double((rgb >> 16) & 0xFF) / 255, g: Double((rgb >> 8) & 0xFF) / 255, b: Double(rgb & 0xFF) / 255, a: alpha)
+    }
+    public func alpha(_ a: Double) -> ThemeColor { ThemeColor(r: r, g: g, b: b, a: a) }
+
+    /// WCAG 2.x relative luminance of the opaque colour.
+    public var relativeLuminance: Double {
+        func lin(_ c: Double) -> Double { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    }
+    /// WCAG contrast ratio between two opaque colours (1...21).
+    public func contrast(_ o: ThemeColor) -> Double {
+        let a = relativeLuminance, b = o.relativeLuminance
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+}
+
+/// The resolved colour scheme the UI draws in.
+public enum ThemeMode: String, Sendable, CaseIterable { case dark, light }
+
+/// The user's appearance setting. `system` follows the OS (macOS effective appearance, GTK prefer-dark on Linux).
+public enum ThemeAppearance: String, Sendable, CaseIterable {
+    case system, light, dark
+    /// Preferences key (`<userData>/preferences.json`).
+    public static let preferenceKey = "mpvfx-appearance"
+    /// The stored value; anything missing or unknown is the default, `system`.
+    public init(preference: String?) { self = preference.flatMap(ThemeAppearance.init(rawValue:)) ?? .system }
+    public var label: String {
+        switch self { case .system: "System"; case .light: "Light"; case .dark: "Dark" }
+    }
+    public func resolve(systemPrefersDark: Bool) -> ThemeMode {
+        switch self {
+        case .system: systemPrefersDark ? .dark : .light
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+}
+
+/// The current mode and its change observers. Set it from the main thread; drawing code reads it.
+public enum Theme {
+    public private(set) static var mode: ThemeMode = .dark
+    private static var observers: [(id: Int, fn: (ThemeMode) -> Void)] = []
+    private static var nextObserver = 0
+
+    /// Switches the mode and tells the observers (only when it changes).
+    public static func setMode(_ m: ThemeMode) {
+        guard m != mode else { return }
+        mode = m
+        for o in observers { o.fn(m) }
+    }
+    /// Calls `fn` after every mode change. Returns an id for `removeObserver`.
+    @discardableResult
+    public static func addObserver(_ fn: @escaping (ThemeMode) -> Void) -> Int {
+        nextObserver += 1
+        observers.append((nextObserver, fn))
+        return nextObserver
+    }
+    public static func removeObserver(_ id: Int) { observers.removeAll { $0.id == id } }
+}
+
+/// A token's two values.
+public struct ThemePair: Sendable {
+    public let dark: ThemeColor, light: ThemeColor
+    public init(_ dark: ThemeColor, _ light: ThemeColor) { self.dark = dark; self.light = light }
+    public init(_ dark: UInt32, _ light: UInt32, alpha: Double = 1) { self.init(ThemeColor(dark, alpha: alpha), ThemeColor(light, alpha: alpha)) }
+    public func value(_ m: ThemeMode) -> ThemeColor { m == .light ? light : dark }
+    public var now: ThemeColor { value(Theme.mode) }
+}
+
+public enum ThemeTokens {
+    // studio.* / panel.* (theme.js)
+    /// `studio-accent` (#2D7FFF): Tailwind `text-studio-accent`.
+    public static let studioAccentPair = ThemePair(0x2D7FFF, 0x1A5FCC)
+    public static var studioAccent: ThemeColor { studioAccentPair.now }
+    /// `--hf-accent` mint used by inline styles and the timeline.
+    public static let mintPair = ThemePair(0x3CE6AC, 0x06704F)
+    public static var mint: ThemeColor { mintPair.now }
+    /// shellBackground (#0A0A0B): ruler, toolbar strip and timeline card surface.
+    public static let timelineSurfacePair = ThemePair(0x0A0A0B, 0xF4F4F5)
+    public static var timelineSurface: ThemeColor { timelineSurfacePair.now }
+
+    // Tailwind neutral (light mirrors the ramp: 100 <-> 900; 400 and 500 a step darker so text keeps its dark contrast)
+    public static let neutralPairs: [Int: ThemePair] = [
+        50: ThemePair(0xFAFAFA, 0x0A0A0A), 100: ThemePair(0xF5F5F5, 0x171717), 200: ThemePair(0xE5E5E5, 0x262626),
+        300: ThemePair(0xD4D4D4, 0x404040), 400: ThemePair(0xA3A3A3, 0x4D4D4D), 500: ThemePair(0x737373, 0x666666),
+        600: ThemePair(0x525252, 0xA3A3A3), 700: ThemePair(0x404040, 0xD4D4D4), 800: ThemePair(0x262626, 0xE5E5E5),
+        900: ThemePair(0x171717, 0xF5F5F5), 950: ThemePair(0x0A0A0A, 0xFAFAFA),
+    ]
+    public static func neutral(_ n: Int) -> ThemeColor { neutralPairs[n]!.now }
+    public static var neutral50: ThemeColor { neutral(50) }
+    public static var neutral100: ThemeColor { neutral(100) }
+    public static var neutral200: ThemeColor { neutral(200) }
+    public static var neutral300: ThemeColor { neutral(300) }
+    public static var neutral400: ThemeColor { neutral(400) }
+    public static var neutral500: ThemeColor { neutral(500) }
+    public static var neutral600: ThemeColor { neutral(600) }
+    public static var neutral700: ThemeColor { neutral(700) }
+    public static var neutral800: ThemeColor { neutral(800) }
+    public static var neutral900: ThemeColor { neutral(900) }
+    public static var neutral950: ThemeColor { neutral(950) }
+
+    // Tailwind red / green / blue / violet (light: the darker shade that reads as the same role on white)
+    public static let red300Pair = ThemePair(0xFCA5A5, 0xB91C1C), red400Pair = ThemePair(0xF87171, 0xC81E1E)
+    public static let red500Pair = ThemePair(0xEF4444, 0xC81E1E), red600Pair = ThemePair(0xDC2626, 0xB91C1C)
+    public static let red950Pair = ThemePair(0x450A0A, 0xFEE2E2)
+    public static let green500Pair = ThemePair(0x22C55E, 0x15803D)
+    public static let blue400Pair = ThemePair(0x60A5FA, 0x2563EB), blue500Pair = ThemePair(0x3B82F6, 0x1D4ED8)
+    public static let violet400Pair = ThemePair(0xA78BFA, 0x6D4ED6), purple500Pair = ThemePair(0xA855F7, 0x7E22CE)
+    public static var red300: ThemeColor { red300Pair.now }
+    public static var red400: ThemeColor { red400Pair.now }
+    public static var red500: ThemeColor { red500Pair.now }
+    public static var red600: ThemeColor { red600Pair.now }
+    public static var red950: ThemeColor { red950Pair.now }
+    public static var green500: ThemeColor { green500Pair.now }
+    public static var blue400: ThemeColor { blue400Pair.now }
+    public static var blue500: ThemeColor { blue500Pair.now }
+    public static var violet400: ThemeColor { violet400Pair.now }
+    public static var purple500: ThemeColor { purple500Pair.now }
+
+    /// The strongest foreground ("white" in the dark studio: hover text, seams as white/12, slider thumbs).
+    /// Light mode inks with near-black, so `white.alpha(0.06)` hover washes stay a faint tint of the text colour.
+    public static let whitePair = ThemePair(0xFFFFFF, 0x09090B)
+    public static var white: ThemeColor { whitePair.now }
+    /// The opposite end ("black" in the dark studio).
+    public static let blackPair = ThemePair(0x000000, 0xFFFFFF)
+    public static var black: ThemeColor { blackPair.now }
+
+    // MARK: panel.* (studio theme)
+    public static let studioBgPair = ThemePair(0x0A0A0A, 0xE7E7EA)
+    public static let studioSurfacePair = ThemePair(0x4A4A4A, 0xC9C9CE)
+    public static let studioBorderPair = ThemePair(0x262626, 0xD4D4D8)
+    public static let studioTextPair = ThemePair(0xE5E5E5, 0x27272A)
+    public static let studioMutedPair = ThemePair(0x737373, 0x666666)
+    public static let panelBgPair = ThemePair(0x0C0C0E, 0xFAFAFA)
+    public static let panelBgInsetPair = ThemePair(0x121214, 0xF4F4F5)
+    public static let panelInputPair = ThemePair(0x161618, 0xFFFFFF)
+    public static let panelSurfacePair = ThemePair(0x18181B, 0xE9E9EC)
+    public static let panelHoverPair = ThemePair(0x27272A, 0xE4E4E7)
+    public static let panelBorderPair = ThemePair(0x1E1E1E, 0xE1E1E4)
+    public static let panelBorderInputPair = ThemePair(0x27272A, 0xD4D4D8)
+    public static let panelHairlinePair = ThemePair(0x1A1A1C, 0xEAEAEC)
+    /// Panel text ramp (text0 strongest). Light values keep each step at or above its dark contrast.
+    public static let textPairs: [ThemePair] = [
+        ThemePair(0xFAFAFA, 0x09090B), ThemePair(0xE4E4E7, 0x27272A), ThemePair(0xA1A1AA, 0x4A4A52),
+        ThemePair(0x71717A, 0x63636B), ThemePair(0x52525B, 0x8E8E96), ThemePair(0x3F3F46, 0xB4B4BB),
+    ]
+    public static let dangerPair = ThemePair(0xEF4444, 0xC81E1E)
+    public static let mediaPair = ThemePair(0x00E3FF, 0x0A6F8A)
+    public static let containerPair = ThemePair(0xF5A623, 0x955600)
+    /// Popover/menu card (`#161618`, white/8 border).
+    public static let popoverPair = ThemePair(0x161618, 0xFFFFFF)
+    /// Timeline lanes (studio timeline theme rowBackground / gutterBackground).
+    public static let timelineRowPair = ThemePair(0x101014, 0xFFFFFF)
+    public static let timelineGutterPair = ThemePair(0x0E0F12, 0xF7F7F8)
+    /// Timeline clip while dragged (opaque so the lanes under it do not show through), audio and visual.
+    public static let clipDragAudioPair = ThemePair(ThemeColor(0x3C3454, alpha: 0.96), ThemeColor(0xE4DDFB, alpha: 0.96))
+    public static let clipDragPair = ThemePair(ThemeColor(0x262A34, alpha: 0.96), ThemeColor(0xDDE1EA, alpha: 0.96))
+    /// Audio waveform bars.
+    public static let waveformPair = ThemePair(0x4BA3D2, 0x2B7DB0)
+    /// Native range control (Grade level slider): the darker edge of the accent fill.
+    public static let accentEdgePair = ThemePair(0x517ABA, 0x1A52AB)
+    /// Curve editor point outline.
+    public static let curvePointOutlinePair = ThemePair(0x111111, 0xFFFFFF)
+    /// Curve editor line and point colour per curve tab (CurveGraph's tab colours). Dark: the original values
+    /// (Master gray-200, R rose-400, G green-400, B blue-400, Hue/Hue fuchsia-300, Hue/Sat yellow-400, Hue/Luma
+    /// slate-50); light: text1 ink for Master and Hue/Luma, a darker shade of the same hue for the rest, each at
+    /// least 3:1 on the light curve graph.
+    public static let curveMasterPair = ThemePair(0xE5E7EB, 0x27272A)
+    public static let curveRedPair = ThemePair(0xFB7185, 0xE11D48)
+    public static let curveGreenPair = ThemePair(0x4ADE80, 0x15803D)
+    public static let curveBluePair = ThemePair(0x60A5FA, 0x2563EB)
+    public static let curveHueHuePair = ThemePair(0xF0ABFC, 0xC026D3)
+    public static let curveHueSatPair = ThemePair(0xFACC15, 0xA16207)
+    public static let curveHueLumaPair = ThemePair(0xF8FAFC, 0x27272A)
+    /// Preview viewport around the stage (`bg-neutral-950`).
+    public static let viewportPair = ThemePair(0x0A0A0A, 0xE7E7EA)
+
+    // MARK: Fixed (the same in both modes)
+    /// Media/stage canvas surface: the stage stays neutral so pictures are judged on the same grey.
+    public static let stageCanvas = ThemeColor(0x202329)
+    /// Document background when a project names none.
+    public static let stageDefaultBackground = ThemeColor(0x111111)
+    /// Chrome drawn over the picture (preview toolbar pills, stage hints): dark scrim, white ink, both modes.
+    public static let stageScrim = ThemeColor(0x000000)
+    public static let stageInk = ThemeColor(0xFFFFFF)
+    /// Label/glyph on an accent or danger fill (always white).
+    public static let onAccent = ThemeColor(0xFFFFFF)
+    /// Glyph on the mint accent: black on the bright dark-mode mint, white on the light mode's darker mint.
+    public static let onAccentMintPair = ThemePair(0x000000, 0xFFFFFF)
+    /// Dark ink on a mint fill (timeline band labels).
+    public static let onMint = ThemeColor(0x09110E)
+    /// Native range control's unfilled track and its edge (the platform control is light in both modes).
+    public static let nativeRangeTrack = ThemeColor(0xEFEFEF), nativeRangeEdge = ThemeColor(0xB2B2B2)
+    /// Smart guides and spacing marks (magenta, both modes).
+    public static let guide = ThemeColor(0xFF44CC)
+    /// Timeline band edge colours (identity, both modes).
+    public static let bandEdges: [ThemeColor] = [0x3CE6AC, 0x5BA6FF, 0xBE77FF, 0xFFB04D, 0xFF6799].map { ThemeColor($0) }
+    /// Timeline pre-roll stripe (preRollBackground).
+    public static let preRoll = ThemeColor(0xFF5353)
+}

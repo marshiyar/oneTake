@@ -1,0 +1,81 @@
+{
+    "packets": [
+        {
+            "stream_index": 0,
+            "pts": 162000,
+            "dts": 126000,
+            "duration": 18000,
+            "size": "4340",
+            "pos": "564",
+            "flags": "K__",
+            "side_data_list": [
+                {
+
+                }
+            ]
+        },
+        {
+            "stream_index": 0,
+            "pts": 198000,
+            "dts": 144000,
+            "duration": 18000,
+            "size": "1306",
+            "pos": "5452",
+            "flags": "___",
+            "side_data_list": [
+                {
+
+                }
+            ]
+        },
+        {
+            "stream_index": 0,
+            "pts": 180000,
+            "dts": 162000,
+            "duration": 18000,
+            "size": "607",
+            "pos": "7332",
+            "flags": "___",
+            "side_data_list": [
+                {
+
+                }
+            ]
+        }
+    ],
+    "programs": [
+        {
+            "streams": [
+                {
+                    "index": 0,
+                    "codec_name": "hevc",
+                    "codec_type": "video",
+                    "codec_tag_string": "HEVC",
+                    "width": 160,
+                    "height": 90,
+                    "time_base": "1/90000",
+                    "start_pts": 162000
+                }
+            ]
+        }
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "hevc",
+            "codec_type": "video",
+            "codec_tag_string": "HEVC",
+            "width": 160,
+            "height": 90,
+            "time_base": "1/90000",
+            "start_pts": 162000
+        }
+    ],
+    "format": {
+        "format_name": "mpegts",
+        "duration": "0.600000"
+    }
+}

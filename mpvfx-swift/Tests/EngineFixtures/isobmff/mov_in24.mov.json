@@ -1,0 +1,63 @@
+{
+    "packets": [
+        {
+            "stream_index": 0,
+            "pts": 0,
+            "dts": 0,
+            "duration": 1024,
+            "size": "3072",
+            "pos": "36",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 1024,
+            "dts": 1024,
+            "duration": 1024,
+            "size": "3072",
+            "pos": "3108",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 2048,
+            "dts": 2048,
+            "duration": 1024,
+            "size": "3072",
+            "pos": "6180",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 3072,
+            "dts": 3072,
+            "duration": 928,
+            "size": "2784",
+            "pos": "9252",
+            "flags": "K__"
+        }
+    ],
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "pcm_s24le",
+            "codec_type": "audio",
+            "codec_tag_string": "in24",
+            "sample_rate": "8000",
+            "channels": 1,
+            "time_base": "1/8000",
+            "start_pts": 0,
+            "duration_ts": 4000
+        }
+    ],
+    "format": {
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration": "0.500000"
+    }
+}

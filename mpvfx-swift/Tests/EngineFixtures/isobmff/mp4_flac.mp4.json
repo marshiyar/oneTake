@@ -1,0 +1,81 @@
+{
+    "packets": [
+        {
+            "stream_index": 0,
+            "pts": 0,
+            "dts": 0,
+            "duration": 4608,
+            "size": "1260",
+            "pos": "44",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 4608,
+            "dts": 4608,
+            "duration": 4608,
+            "size": "1265",
+            "pos": "1304",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 9216,
+            "dts": 9216,
+            "duration": 4608,
+            "size": "1260",
+            "pos": "2569",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 13824,
+            "dts": 13824,
+            "duration": 4608,
+            "size": "1261",
+            "pos": "3829",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 18432,
+            "dts": 18432,
+            "duration": 4608,
+            "size": "1263",
+            "pos": "5090",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 23040,
+            "dts": 23040,
+            "duration": 960,
+            "size": "351",
+            "pos": "6353",
+            "flags": "K__"
+        }
+    ],
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "flac",
+            "codec_type": "audio",
+            "codec_tag_string": "fLaC",
+            "sample_rate": "48000",
+            "channels": 1,
+            "time_base": "1/48000",
+            "start_pts": 0,
+            "duration_ts": 24000
+        }
+    ],
+    "format": {
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration": "0.500000"
+    }
+}

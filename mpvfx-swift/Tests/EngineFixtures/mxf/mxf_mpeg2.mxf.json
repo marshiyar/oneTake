@@ -1,0 +1,121 @@
+{
+    "packets": [
+        {
+            "stream_index": 0,
+            "pts": 0,
+            "dts": -1,
+            "duration": 1,
+            "size": "4979",
+            "pos": "6144",
+            "flags": "K__"
+        },
+        {
+            "stream_index": 0,
+            "pts": 1,
+            "dts": 0,
+            "duration": 1,
+            "size": "3906",
+            "pos": "11776",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 2,
+            "dts": 1,
+            "duration": 1,
+            "size": "3580",
+            "pos": "16384",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 3,
+            "dts": 2,
+            "duration": 1,
+            "size": "3419",
+            "pos": "20992",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 4,
+            "dts": 3,
+            "duration": 1,
+            "size": "3573",
+            "pos": "25088",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 5,
+            "dts": 4,
+            "duration": 1,
+            "size": "3918",
+            "pos": "29696",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 6,
+            "dts": 5,
+            "duration": 1,
+            "size": "2503",
+            "pos": "34304",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 7,
+            "dts": 6,
+            "duration": 1,
+            "size": "2619",
+            "pos": "37376",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 8,
+            "dts": 7,
+            "duration": 1,
+            "size": "1965",
+            "pos": "40960",
+            "flags": "___"
+        },
+        {
+            "stream_index": 0,
+            "pts": 9,
+            "dts": 8,
+            "duration": 1,
+            "size": "2362",
+            "pos": "43520",
+            "flags": "___"
+        }
+    ],
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "mpeg2video",
+            "codec_type": "video",
+            "codec_tag_string": "[0][0][0][0]",
+            "width": 160,
+            "height": 90,
+            "time_base": "1/25",
+            "start_pts": 0,
+            "side_data_list": [
+                {
+
+                }
+            ]
+        }
+    ],
+    "format": {
+        "format_name": "mxf",
+        "duration": "0.400000"
+    }
+}

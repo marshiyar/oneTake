@@ -1,0 +1,137 @@
+{
+ "generator": "generateLibraryFixture.ts",
+ "node": "v20.19.2",
+ "v8": "11.3.244.8-node.38",
+ "typescript": "5.9.3",
+ "commands": [
+  {
+   "text": "{\"type\":\"list\"}",
+   "roundTrip": "{\"type\":\"list\"}"
+  },
+  {
+   "text": "{\"type\":\"create\"}",
+   "roundTrip": "{\"type\":\"create\"}"
+  },
+  {
+   "text": "{\"type\":\"open\"}",
+   "roundTrip": "{\"type\":\"open\"}"
+  },
+  {
+   "text": "{\"type\":\"event\",\"libraryId\":\"L1\",\"name\":\"Wedding\"}",
+   "roundTrip": "{\"type\":\"event\",\"libraryId\":\"L1\",\"name\":\"Wedding\"}"
+  },
+  {
+   "text": "{\"type\":\"project\",\"libraryId\":\"L1\",\"eventId\":\"E1\",\"name\":\"Cut A\"}",
+   "roundTrip": "{\"type\":\"project\",\"libraryId\":\"L1\",\"eventId\":\"E1\",\"name\":\"Cut A\"}"
+  },
+  {
+   "text": "{\"type\":\"import\",\"libraryId\":\"L1\",\"eventId\":\"E1\",\"mode\":\"managed\"}",
+   "roundTrip": "{\"type\":\"import\",\"libraryId\":\"L1\",\"eventId\":\"E1\",\"mode\":\"managed\"}"
+  },
+  {
+   "text": "{\"type\":\"import\",\"libraryId\":\"L1\",\"eventId\":\"E1\",\"mode\":\"linked\",\"projectId\":\"P1\"}",
+   "roundTrip": "{\"type\":\"import\",\"libraryId\":\"L1\",\"eventId\":\"E1\",\"mode\":\"linked\",\"projectId\":\"P1\"}"
+  },
+  {
+   "text": "{\"type\":\"attach\",\"libraryId\":\"L1\",\"projectId\":\"P1\",\"assetId\":\"A1\"}",
+   "roundTrip": "{\"type\":\"attach\",\"libraryId\":\"L1\",\"projectId\":\"P1\",\"assetId\":\"A1\"}"
+  },
+  {
+   "text": "{\"type\":\"reveal\",\"libraryId\":\"L1\"}",
+   "roundTrip": "{\"type\":\"reveal\",\"libraryId\":\"L1\"}"
+  },
+  {
+   "text": "{\"type\":\"relink\",\"libraryId\":\"L1\",\"assetId\":\"A1\"}",
+   "roundTrip": "{\"type\":\"relink\",\"libraryId\":\"L1\",\"assetId\":\"A1\"}"
+  },
+  {
+   "text": "{\"type\":\"saveOutput\",\"libraryId\":\"L1\",\"jobId\":\"J1\"}",
+   "roundTrip": "{\"type\":\"saveOutput\",\"libraryId\":\"L1\",\"jobId\":\"J1\"}"
+  }
+ ],
+ "results": [
+  {
+   "text": "{\"libraries\":[]}",
+   "roundTrip": "{\"libraries\":[]}"
+  },
+  {
+   "text": "{\"libraries\":[{\"id\":\"L1\",\"name\":\"Main\",\"path\":\"/libs/main.mpvfxlib\",\"events\":[{\"id\":\"E1\",\"name\":\"Wedding\"}],\"projects\":[{\"id\":\"P1\",\"eventId\":\"E1\",\"name\":\"Cut A\",\"state\":\"ready\"}],\"assets\":[{\"id\":\"A1\",\"eventId\":\"E1\",\"name\":\"a.mp4\",\"kind\":\"video\",\"mode\":\"managed\",\"state\":\"ready\",\"available\":true},{\"id\":\"A2\",\"eventId\":\"E1\",\"name\":\"b.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"state\":\"pending\"}],\"jobs\":[{\"id\":\"J1\",\"projectId\":\"P1\",\"status\":\"done\",\"output\":\"out.mp4\",\"error\":\"\"}]}]}",
+   "roundTrip": "{\"libraries\":[{\"id\":\"L1\",\"name\":\"Main\",\"path\":\"/libs/main.mpvfxlib\",\"events\":[{\"id\":\"E1\",\"name\":\"Wedding\"}],\"projects\":[{\"id\":\"P1\",\"eventId\":\"E1\",\"name\":\"Cut A\",\"state\":\"ready\"}],\"assets\":[{\"id\":\"A1\",\"eventId\":\"E1\",\"name\":\"a.mp4\",\"kind\":\"video\",\"mode\":\"managed\",\"state\":\"ready\",\"available\":true},{\"id\":\"A2\",\"eventId\":\"E1\",\"name\":\"b.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"state\":\"pending\"}],\"jobs\":[{\"id\":\"J1\",\"projectId\":\"P1\",\"status\":\"done\",\"output\":\"out.mp4\",\"error\":\"\"}]}]}"
+  },
+  {
+   "text": "{\"libraries\":[{\"id\":\"L1\",\"name\":\"Main\",\"path\":\"/libs/main.mpvfxlib\",\"events\":[{\"id\":\"E1\",\"name\":\"Wedding\"}],\"projects\":[{\"id\":\"P1\",\"eventId\":\"E1\",\"name\":\"Cut A\",\"state\":\"ready\"}],\"assets\":[{\"id\":\"A1\",\"eventId\":\"E1\",\"name\":\"a.mp4\",\"kind\":\"video\",\"mode\":\"managed\",\"state\":\"ready\",\"available\":true},{\"id\":\"A2\",\"eventId\":\"E1\",\"name\":\"b.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"state\":\"pending\"}],\"jobs\":[{\"id\":\"J1\",\"projectId\":\"P1\",\"status\":\"done\",\"output\":\"out.mp4\",\"error\":\"\"}]}],\"projectId\":\"P1\"}",
+   "roundTrip": "{\"libraries\":[{\"id\":\"L1\",\"name\":\"Main\",\"path\":\"/libs/main.mpvfxlib\",\"events\":[{\"id\":\"E1\",\"name\":\"Wedding\"}],\"projects\":[{\"id\":\"P1\",\"eventId\":\"E1\",\"name\":\"Cut A\",\"state\":\"ready\"}],\"assets\":[{\"id\":\"A1\",\"eventId\":\"E1\",\"name\":\"a.mp4\",\"kind\":\"video\",\"mode\":\"managed\",\"state\":\"ready\",\"available\":true},{\"id\":\"A2\",\"eventId\":\"E1\",\"name\":\"b.wav\",\"kind\":\"audio\",\"mode\":\"linked\",\"state\":\"pending\"}],\"jobs\":[{\"id\":\"J1\",\"projectId\":\"P1\",\"status\":\"done\",\"output\":\"out.mp4\",\"error\":\"\"}]}],\"projectId\":\"P1\"}"
+  },
+  {
+   "text": "{\"libraries\":[],\"path\":\"/x\",\"errors\":[\"Invalid library command\"]}",
+   "roundTrip": "{\"libraries\":[],\"path\":\"/x\",\"errors\":[\"Invalid library command\"]}"
+  }
+ ],
+ "rawCommands": [
+  {
+   "text": "{\"type\":\"event\",\"libraryId\":\"L1\",\"name\":\"N\",\"extra\":{\"a\":1},\"10\":\"ten\",\"2\":\"two\"}",
+   "roundTrip": "{\"2\":\"two\",\"10\":\"ten\",\"type\":\"event\",\"libraryId\":\"L1\",\"name\":\"N\",\"extra\":{\"a\":1}}",
+   "keys": [
+    "2",
+    "10",
+    "type",
+    "libraryId",
+    "name",
+    "extra"
+   ]
+  },
+  {
+   "text": "{\"name\":\"N\",\"type\":\"event\",\"libraryId\":\"L1\"}",
+   "roundTrip": "{\"name\":\"N\",\"type\":\"event\",\"libraryId\":\"L1\"}",
+   "keys": [
+    "name",
+    "type",
+    "libraryId"
+   ]
+  },
+  {
+   "text": "{\"type\":\"import\",\"libraryId\":\"L1\",\"eventId\":\"E1\",\"mode\":\"linked\",\"projectId\":null}",
+   "roundTrip": "{\"type\":\"import\",\"libraryId\":\"L1\",\"eventId\":\"E1\",\"mode\":\"linked\",\"projectId\":null}",
+   "keys": [
+    "type",
+    "libraryId",
+    "eventId",
+    "mode",
+    "projectId"
+   ]
+  },
+  {
+   "text": "{\"type\":\"list\",\"libraryId\":\"ignored\",\"z\":[1,2]}",
+   "roundTrip": "{\"type\":\"list\",\"libraryId\":\"ignored\",\"z\":[1,2]}",
+   "keys": [
+    "type",
+    "libraryId",
+    "z"
+   ]
+  },
+  {
+   "text": "{\"type\":\"saveOutput\",\"jobId\":\"J1\",\"libraryId\":\"L1\",\"note\":-0}",
+   "roundTrip": "{\"type\":\"saveOutput\",\"jobId\":\"J1\",\"libraryId\":\"L1\",\"note\":0}",
+   "keys": [
+    "type",
+    "jobId",
+    "libraryId",
+    "note"
+   ]
+  }
+ ],
+ "rawResults": [
+  {
+   "text": "{\"libraries\":[{\"id\":\"L1\",\"name\":\"Main\",\"path\":\"/p\",\"events\":[{\"id\":\"E1\",\"name\":\"W\",\"color\":\"red\"}],\"projects\":[{\"state\":\"ready\",\"id\":\"P1\",\"eventId\":\"E1\",\"name\":\"C\",\"7\":\"x\"}],\"assets\":[{\"id\":\"A1\",\"eventId\":\"E1\",\"name\":\"a\",\"kind\":\"video\",\"mode\":\"managed\",\"state\":\"ready\",\"available\":null,\"size\":12}],\"jobs\":[{\"id\":\"J1\",\"projectId\":\"P1\",\"status\":\"done\",\"output\":\"o\",\"error\":\"\",\"snapshot\":\"s\"}],\"extra\":true}],\"errors\":[\"e\"],\"debug\":{\"t\":1}}",
+   "roundTrip": "{\"libraries\":[{\"id\":\"L1\",\"name\":\"Main\",\"path\":\"/p\",\"events\":[{\"id\":\"E1\",\"name\":\"W\",\"color\":\"red\"}],\"projects\":[{\"7\":\"x\",\"state\":\"ready\",\"id\":\"P1\",\"eventId\":\"E1\",\"name\":\"C\"}],\"assets\":[{\"id\":\"A1\",\"eventId\":\"E1\",\"name\":\"a\",\"kind\":\"video\",\"mode\":\"managed\",\"state\":\"ready\",\"available\":null,\"size\":12}],\"jobs\":[{\"id\":\"J1\",\"projectId\":\"P1\",\"status\":\"done\",\"output\":\"o\",\"error\":\"\",\"snapshot\":\"s\"}],\"extra\":true}],\"errors\":[\"e\"],\"debug\":{\"t\":1}}"
+  },
+  {
+   "text": "{\"path\":\"/x\",\"libraries\":[],\"projectId\":\"P9\"}",
+   "roundTrip": "{\"path\":\"/x\",\"libraries\":[],\"projectId\":\"P9\"}"
+  },
+  {
+   "text": "{\"libraries\":[],\"errors\":null}",
+   "roundTrip": "{\"libraries\":[],\"errors\":null}"
+  }
+ ]
+}

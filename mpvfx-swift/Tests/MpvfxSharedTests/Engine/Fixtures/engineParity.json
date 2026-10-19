@@ -1,0 +1,6546 @@
+{
+ "generatedBy": "Fixtures/gen/generateEngineFixture.ts (vite-node, real studio/shared/engine/vkfEngine.ts over a stub engine)",
+ "node": "v20.19.2",
+ "v8": "11.3.244.8-node.38",
+ "typescript": "5.9.3",
+ "constants": {
+  "apiVersion": 1,
+  "maxFrames": 10368000
+ },
+ "tracks": {
+  "num": {
+   "valueType": "number",
+   "keyframes": [
+    {
+     "frame": 0,
+     "value": 0,
+     "outgoing": {
+      "type": "linear"
+     }
+    },
+    {
+     "frame": 4,
+     "value": 1,
+     "outgoing": {
+      "type": "linear"
+     }
+    }
+   ]
+  },
+  "vec": {
+   "valueType": "vec2",
+   "keyframes": [
+    {
+     "frame": 2,
+     "value": {
+      "x": 0,
+      "y": 0
+     },
+     "outgoing": {
+      "type": "linear"
+     }
+    },
+    {
+     "frame": 7,
+     "value": {
+      "x": 1,
+      "y": 1
+     },
+     "outgoing": {
+      "type": "linear"
+     }
+    }
+   ]
+  },
+  "rgba": {
+   "valueType": "rgba",
+   "keyframes": [
+    {
+     "frame": 0,
+     "value": {
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 1
+     },
+     "outgoing": {
+      "type": "linear"
+     }
+    }
+   ]
+  },
+  "empty": {
+   "valueType": "number",
+   "keyframes": []
+  },
+  "fractional": {
+   "valueType": "number",
+   "keyframes": [
+    {
+     "frame": 1.5,
+     "value": 0,
+     "outgoing": {
+      "type": "linear"
+     }
+    }
+   ]
+  },
+  "negative": {
+   "valueType": "vec2",
+   "keyframes": [
+    {
+     "frame": -1,
+     "value": {
+      "x": 0,
+      "y": 0
+     },
+     "outgoing": {
+      "type": "linear"
+     }
+    }
+   ]
+  },
+  "nanFrame": {
+   "valueType": "number",
+   "keyframes": [
+    {
+     "frame": "NaN",
+     "value": 0,
+     "outgoing": {
+      "type": "linear"
+     }
+    }
+   ]
+  },
+  "far": {
+   "valueType": "rgba",
+   "keyframes": [
+    {
+     "frame": 0,
+     "value": {
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 1
+     },
+     "outgoing": {
+      "type": "linear"
+     }
+    },
+    {
+     "frame": 50000000,
+     "value": {
+      "red": 1,
+      "green": 1,
+      "blue": 1,
+      "alpha": 1
+     },
+     "outgoing": {
+      "type": "linear"
+     }
+    }
+   ]
+  },
+  "farFraction": {
+   "valueType": "number",
+   "keyframes": [
+    {
+     "frame": 50000000.5,
+     "value": 0,
+     "outgoing": {
+      "type": "linear"
+     }
+    }
+   ]
+  }
+ },
+ "baked": {
+  "num": {
+   "valueType": "number",
+   "samples": [
+    0.25,
+    10.25,
+    20.25,
+    30.25,
+    40.25,
+    50.25
+   ]
+  },
+  "vec": {
+   "valueType": "vec2",
+   "samples": [
+    0.25,
+    1.25,
+    10.25,
+    11.25,
+    20.25,
+    21.25,
+    30.25,
+    31.25,
+    40.25,
+    41.25,
+    50.25,
+    51.25,
+    60.25,
+    61.25,
+    70.25,
+    71.25
+   ],
+   "angles": [
+    null,
+    0.125,
+    0.25,
+    null,
+    0.5,
+    0.625,
+    null,
+    0.875
+   ]
+  },
+  "rgba": {
+   "valueType": "rgba",
+   "samples": [
+    0.25,
+    1.25,
+    2.25,
+    3.25,
+    10.25,
+    11.25,
+    12.25,
+    13.25,
+    20.25,
+    21.25,
+    22.25,
+    23.25
+   ]
+  },
+  "emptyNum": {
+   "valueType": "number",
+   "samples": []
+  },
+  "ragged": {
+   "valueType": "vec2",
+   "samples": [
+    1,
+    2,
+    3
+   ],
+   "angles": []
+  },
+  "nullAngles": {
+   "valueType": "vec2",
+   "samples": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "angles": [
+    null,
+    0.5
+   ]
+  },
+  "noAngles": {
+   "valueType": "vec2",
+   "samples": [
+    5,
+    6
+   ]
+  }
+ },
+ "bake": [
+  {
+   "track": "num",
+   "frameCount": 0,
+   "result": {
+    "valueType": "number",
+    "samples": [
+     0.25,
+     10.25,
+     20.25,
+     30.25,
+     40.25
+    ]
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": 1,
+   "result": {
+    "valueType": "number",
+    "samples": [
+     0.25,
+     10.25,
+     20.25,
+     30.25,
+     40.25
+    ]
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": 2.7,
+   "result": {
+    "valueType": "number",
+    "samples": [
+     0.25,
+     10.25,
+     20.25,
+     30.25,
+     40.25
+    ]
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": 5,
+   "result": {
+    "valueType": "number",
+    "samples": [
+     0.25,
+     10.25,
+     20.25,
+     30.25,
+     40.25
+    ]
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": 12,
+   "result": {
+    "valueType": "number",
+    "samples": [
+     0.25,
+     10.25,
+     20.25,
+     30.25,
+     40.25,
+     50.25,
+     60.25,
+     70.25,
+     80.25,
+     90.25,
+     100.25,
+     110.25
+    ]
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": -3,
+   "result": {
+    "valueType": "number",
+    "samples": [
+     0.25,
+     10.25,
+     20.25,
+     30.25,
+     40.25
+    ]
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": "NaN",
+   "error": {
+    "name": "Error",
+    "code": "invalid-argument",
+    "message": "sampleTrack(track, firstFrame, count) needs a finite frame and count"
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": "-Infinity",
+   "result": {
+    "valueType": "number",
+    "samples": [
+     0.25,
+     10.25,
+     20.25,
+     30.25,
+     40.25
+    ]
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "num",
+   "frameCount": 10368000,
+   "resultLength": 10368000
+  },
+  {
+   "track": "num",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": 0,
+   "result": {
+    "valueType": "vec2",
+    "samples": [
+     0.25,
+     1.25,
+     10.25,
+     11.25,
+     20.25,
+     21.25,
+     30.25,
+     31.25,
+     40.25,
+     41.25,
+     50.25,
+     51.25,
+     60.25,
+     61.25,
+     70.25,
+     71.25
+    ],
+    "angles": [
+     null,
+     0.125,
+     0.25,
+     null,
+     0.5,
+     0.625,
+     null,
+     0.875
+    ]
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": 1,
+   "result": {
+    "valueType": "vec2",
+    "samples": [
+     0.25,
+     1.25,
+     10.25,
+     11.25,
+     20.25,
+     21.25,
+     30.25,
+     31.25,
+     40.25,
+     41.25,
+     50.25,
+     51.25,
+     60.25,
+     61.25,
+     70.25,
+     71.25
+    ],
+    "angles": [
+     null,
+     0.125,
+     0.25,
+     null,
+     0.5,
+     0.625,
+     null,
+     0.875
+    ]
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": 2.7,
+   "result": {
+    "valueType": "vec2",
+    "samples": [
+     0.25,
+     1.25,
+     10.25,
+     11.25,
+     20.25,
+     21.25,
+     30.25,
+     31.25,
+     40.25,
+     41.25,
+     50.25,
+     51.25,
+     60.25,
+     61.25,
+     70.25,
+     71.25
+    ],
+    "angles": [
+     null,
+     0.125,
+     0.25,
+     null,
+     0.5,
+     0.625,
+     null,
+     0.875
+    ]
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": 5,
+   "result": {
+    "valueType": "vec2",
+    "samples": [
+     0.25,
+     1.25,
+     10.25,
+     11.25,
+     20.25,
+     21.25,
+     30.25,
+     31.25,
+     40.25,
+     41.25,
+     50.25,
+     51.25,
+     60.25,
+     61.25,
+     70.25,
+     71.25
+    ],
+    "angles": [
+     null,
+     0.125,
+     0.25,
+     null,
+     0.5,
+     0.625,
+     null,
+     0.875
+    ]
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": 12,
+   "result": {
+    "valueType": "vec2",
+    "samples": [
+     0.25,
+     1.25,
+     10.25,
+     11.25,
+     20.25,
+     21.25,
+     30.25,
+     31.25,
+     40.25,
+     41.25,
+     50.25,
+     51.25,
+     60.25,
+     61.25,
+     70.25,
+     71.25,
+     80.25,
+     81.25,
+     90.25,
+     91.25,
+     100.25,
+     101.25,
+     110.25,
+     111.25
+    ],
+    "angles": [
+     null,
+     0.125,
+     0.25,
+     null,
+     0.5,
+     0.625,
+     null,
+     0.875,
+     1,
+     null,
+     1.25,
+     1.375
+    ]
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": -3,
+   "result": {
+    "valueType": "vec2",
+    "samples": [
+     0.25,
+     1.25,
+     10.25,
+     11.25,
+     20.25,
+     21.25,
+     30.25,
+     31.25,
+     40.25,
+     41.25,
+     50.25,
+     51.25,
+     60.25,
+     61.25,
+     70.25,
+     71.25
+    ],
+    "angles": [
+     null,
+     0.125,
+     0.25,
+     null,
+     0.5,
+     0.625,
+     null,
+     0.875
+    ]
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": "NaN",
+   "error": {
+    "name": "Error",
+    "code": "invalid-argument",
+    "message": "sampleTrack(track, firstFrame, count) needs a finite frame and count"
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": "-Infinity",
+   "result": {
+    "valueType": "vec2",
+    "samples": [
+     0.25,
+     1.25,
+     10.25,
+     11.25,
+     20.25,
+     21.25,
+     30.25,
+     31.25,
+     40.25,
+     41.25,
+     50.25,
+     51.25,
+     60.25,
+     61.25,
+     70.25,
+     71.25
+    ],
+    "angles": [
+     null,
+     0.125,
+     0.25,
+     null,
+     0.5,
+     0.625,
+     null,
+     0.875
+    ]
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "vec",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": 0,
+   "result": {
+    "valueType": "rgba",
+    "samples": [
+     0.25,
+     1.25,
+     2.25,
+     3.25
+    ]
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": 1,
+   "result": {
+    "valueType": "rgba",
+    "samples": [
+     0.25,
+     1.25,
+     2.25,
+     3.25
+    ]
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": 2.7,
+   "result": {
+    "valueType": "rgba",
+    "samples": [
+     0.25,
+     1.25,
+     2.25,
+     3.25,
+     10.25,
+     11.25,
+     12.25,
+     13.25
+    ]
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": 5,
+   "result": {
+    "valueType": "rgba",
+    "samples": [
+     0.25,
+     1.25,
+     2.25,
+     3.25,
+     10.25,
+     11.25,
+     12.25,
+     13.25,
+     20.25,
+     21.25,
+     22.25,
+     23.25,
+     30.25,
+     31.25,
+     32.25,
+     33.25,
+     40.25,
+     41.25,
+     42.25,
+     43.25
+    ]
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": 12,
+   "result": {
+    "valueType": "rgba",
+    "samples": [
+     0.25,
+     1.25,
+     2.25,
+     3.25,
+     10.25,
+     11.25,
+     12.25,
+     13.25,
+     20.25,
+     21.25,
+     22.25,
+     23.25,
+     30.25,
+     31.25,
+     32.25,
+     33.25,
+     40.25,
+     41.25,
+     42.25,
+     43.25,
+     50.25,
+     51.25,
+     52.25,
+     53.25,
+     60.25,
+     61.25,
+     62.25,
+     63.25,
+     70.25,
+     71.25,
+     72.25,
+     73.25,
+     80.25,
+     81.25,
+     82.25,
+     83.25,
+     90.25,
+     91.25,
+     92.25,
+     93.25,
+     100.25,
+     101.25,
+     102.25,
+     103.25,
+     110.25,
+     111.25,
+     112.25,
+     113.25
+    ]
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": -3,
+   "result": {
+    "valueType": "rgba",
+    "samples": [
+     0.25,
+     1.25,
+     2.25,
+     3.25
+    ]
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": "NaN",
+   "error": {
+    "name": "Error",
+    "code": "invalid-argument",
+    "message": "sampleTrack(track, firstFrame, count) needs a finite frame and count"
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": "-Infinity",
+   "result": {
+    "valueType": "rgba",
+    "samples": [
+     0.25,
+     1.25,
+     2.25,
+     3.25
+    ]
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "rgba",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": 0,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "empty-track",
+    "message": "Track has no keyframes"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": 1,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "empty-track",
+    "message": "Track has no keyframes"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": 2.7,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "empty-track",
+    "message": "Track has no keyframes"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": 5,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "empty-track",
+    "message": "Track has no keyframes"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": 12,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "empty-track",
+    "message": "Track has no keyframes"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": -3,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "empty-track",
+    "message": "Track has no keyframes"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": "NaN",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "empty-track",
+    "message": "Track has no keyframes"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": "-Infinity",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "empty-track",
+    "message": "Track has no keyframes"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "empty",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": 0,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": 1,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": 2.7,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": 5,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": 12,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": -3,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": "NaN",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": "-Infinity",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "fractional",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": 0,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": 1,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": 2.7,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": 5,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": 12,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": -3,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": "NaN",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": "-Infinity",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "negative",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": 0,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": 1,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": 2.7,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": 5,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": 12,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": -3,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": "NaN",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": "-Infinity",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "nanFrame",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": 0,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": 1,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": 2.7,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": 5,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": 12,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": -3,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": "NaN",
+   "error": {
+    "name": "Error",
+    "code": "invalid-argument",
+    "message": "sampleTrack(track, firstFrame, count) needs a finite frame and count"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": "-Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "far",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": 0,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": 1,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": 2.7,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": 5,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": 12,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": -3,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": "NaN",
+   "error": {
+    "name": "VkfTrackError",
+    "code": "invalid-keyframe-frame",
+    "message": "Keyframe frame must be an integer project frame"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": "Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": "-Infinity",
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": 100000000,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  },
+  {
+   "track": "farFraction",
+   "frameCount": 10368001,
+   "error": {
+    "name": "VkfLimitError",
+    "code": "limit-exceeded",
+    "message": "Engine sample count exceeds the 10368000-frame limit"
+   }
+  }
+ ],
+ "bakedCases": [
+  {
+   "track": "num",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": 0.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": 10.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": 20.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": 50.25
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": 0.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": 50.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": 0.25
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": 50.25
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      0.25,
+      10.25,
+      20.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      0.25,
+      0.25,
+      0.25,
+      10.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      40.25,
+      50.25,
+      50.25,
+      50.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      50.25,
+      50.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "vec",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "x": 0.25,
+      "y": 1.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "x": 10.25,
+      "y": 11.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "x": 20.25,
+      "y": 21.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "x": 50.25,
+      "y": 51.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "x": 0.25,
+      "y": 1.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "x": 70.25,
+      "y": 71.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "x": 0.25,
+      "y": 1.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "x": 70.25,
+      "y": 71.25
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": 0.125
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": 0.25
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": 0.625
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": 0.875
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": 0.875
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      0.25,
+      1.25,
+      10.25,
+      11.25,
+      20.25,
+      21.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      0.25,
+      1.25,
+      0.25,
+      1.25,
+      0.25,
+      1.25,
+      10.25,
+      11.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      40.25,
+      41.25,
+      50.25,
+      51.25,
+      60.25,
+      61.25,
+      70.25,
+      71.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      70.25,
+      71.25,
+      70.25,
+      71.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "rgba",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "red": 0.25,
+      "green": 1.25,
+      "blue": 2.25,
+      "alpha": 3.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "red": 10.25,
+      "green": 11.25,
+      "blue": 12.25,
+      "alpha": 13.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "red": 20.25,
+      "green": 21.25,
+      "blue": 22.25,
+      "alpha": 23.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "red": 20.25,
+      "green": 21.25,
+      "blue": 22.25,
+      "alpha": 23.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "red": 0.25,
+      "green": 1.25,
+      "blue": 2.25,
+      "alpha": 3.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "red": 20.25,
+      "green": 21.25,
+      "blue": 22.25,
+      "alpha": 23.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "red": 0.25,
+      "green": 1.25,
+      "blue": 2.25,
+      "alpha": 3.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "red": 20.25,
+      "green": 21.25,
+      "blue": 22.25,
+      "alpha": 23.25
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      0.25,
+      1.25,
+      2.25,
+      3.25,
+      10.25,
+      11.25,
+      12.25,
+      13.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      0.25,
+      1.25,
+      2.25,
+      3.25,
+      0.25,
+      1.25,
+      2.25,
+      3.25,
+      0.25,
+      1.25,
+      2.25,
+      3.25,
+      10.25,
+      11.25,
+      12.25,
+      13.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      20.25,
+      21.25,
+      22.25,
+      23.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      20.25,
+      21.25,
+      22.25,
+      23.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "emptyNum",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": "undefined"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Cannot use 'in' operator to search for 'x' in undefined"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Cannot use 'in' operator to search for 'x' in undefined"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Cannot use 'in' operator to search for 'x' in undefined"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Cannot use 'in' operator to search for 'x' in undefined"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "ragged",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      1,
+      2,
+      2,
+      3,
+      2,
+      3
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      2,
+      3
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      2,
+      3,
+      2,
+      3,
+      2,
+      3,
+      2,
+      3
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      2,
+      3,
+      2,
+      3
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "nullAngles",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": 0.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": 0.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": 0.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": 0.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": 0.5
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      1,
+      2,
+      3,
+      4,
+      3,
+      4
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      3,
+      4,
+      3,
+      4,
+      3,
+      4,
+      3,
+      4
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      3,
+      4,
+      3,
+      4
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "noAngles",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      5,
+      6,
+      5,
+      6,
+      5,
+      6
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      5,
+      6,
+      5,
+      6,
+      5,
+      6,
+      5,
+      6
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      5,
+      6,
+      5,
+      6,
+      5,
+      6,
+      5,
+      6
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      5,
+      6,
+      5,
+      6
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "unbaked",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "unbakedInvalid",
+   "fallback": false,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "No engine samples were prepared for this track"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "num",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": 0.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": 10.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": 20.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": 50.25
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": 0.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": 50.25
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": 0.25
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": 50.25
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      0.25,
+      10.25,
+      20.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      0.25,
+      0.25,
+      0.25,
+      10.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      40.25,
+      50.25,
+      50.25,
+      50.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      50.25,
+      50.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "vec",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "x": 0.25,
+      "y": 1.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "x": 10.25,
+      "y": 11.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "x": 20.25,
+      "y": 21.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "x": 50.25,
+      "y": 51.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "x": 0.25,
+      "y": 1.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "x": 70.25,
+      "y": 71.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "x": 0.25,
+      "y": 1.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "x": 70.25,
+      "y": 71.25
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": 0.125
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": 0.25
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": 0.625
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": 0.875
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": 0.875
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      0.25,
+      1.25,
+      10.25,
+      11.25,
+      20.25,
+      21.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      0.25,
+      1.25,
+      0.25,
+      1.25,
+      0.25,
+      1.25,
+      10.25,
+      11.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      40.25,
+      41.25,
+      50.25,
+      51.25,
+      60.25,
+      61.25,
+      70.25,
+      71.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      70.25,
+      71.25,
+      70.25,
+      71.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "rgba",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "red": 0.25,
+      "green": 1.25,
+      "blue": 2.25,
+      "alpha": 3.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "red": 10.25,
+      "green": 11.25,
+      "blue": 12.25,
+      "alpha": 13.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "red": 20.25,
+      "green": 21.25,
+      "blue": 22.25,
+      "alpha": 23.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "red": 20.25,
+      "green": 21.25,
+      "blue": 22.25,
+      "alpha": 23.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "red": 0.25,
+      "green": 1.25,
+      "blue": 2.25,
+      "alpha": 3.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "red": 20.25,
+      "green": 21.25,
+      "blue": 22.25,
+      "alpha": 23.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "red": 0.25,
+      "green": 1.25,
+      "blue": 2.25,
+      "alpha": 3.25
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "red": 20.25,
+      "green": 21.25,
+      "blue": 22.25,
+      "alpha": 23.25
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      0.25,
+      1.25,
+      2.25,
+      3.25,
+      10.25,
+      11.25,
+      12.25,
+      13.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      0.25,
+      1.25,
+      2.25,
+      3.25,
+      0.25,
+      1.25,
+      2.25,
+      3.25,
+      0.25,
+      1.25,
+      2.25,
+      3.25,
+      10.25,
+      11.25,
+      12.25,
+      13.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      20.25,
+      21.25,
+      22.25,
+      23.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      20.25,
+      21.25,
+      22.25,
+      23.25,
+      20.25,
+      21.25,
+      22.25,
+      23.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "emptyNum",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": "undefined"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Cannot use 'in' operator to search for 'x' in undefined"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Cannot use 'in' operator to search for 'x' in undefined"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Cannot use 'in' operator to search for 'x' in undefined"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Cannot use 'in' operator to search for 'x' in undefined"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "ragged",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      1,
+      2,
+      2,
+      3,
+      2,
+      3
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      2,
+      3
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      2,
+      3,
+      2,
+      3,
+      2,
+      3,
+      2,
+      3
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      2,
+      3,
+      2,
+      3
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "nullAngles",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": 0.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": 0.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": 0.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": 0.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": 0.5
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      1,
+      2,
+      3,
+      4,
+      3,
+      4
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      1,
+      2,
+      1,
+      2,
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      3,
+      4,
+      3,
+      4,
+      3,
+      4,
+      3,
+      4
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      3,
+      4,
+      3,
+      4
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "noAngles",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": "NaN"
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      5,
+      6,
+      5,
+      6,
+      5,
+      6
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      5,
+      6,
+      5,
+      6,
+      5,
+      6,
+      5,
+      6
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      5,
+      6,
+      5,
+      6,
+      5,
+      6,
+      5,
+      6
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      5,
+      6,
+      5,
+      6
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "TypeError",
+      "code": null,
+      "message": "Pre-computed engine values exist only for integer frames"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "Error",
+      "code": null,
+      "message": "Editing keyframes is not available on export pages"
+     }
+    }
+   ]
+  },
+  {
+   "track": "unbaked",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "result": "undefined"
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "result": 0
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "result": 2
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "result": 4
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "result": 10
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "result": -10
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "result": 200
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "result": 3
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "result": "-0"
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "result": "NaN"
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "result": "Infinity"
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "result": 18014398509481984
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "result": 0.125
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "result": 0.25
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "result": 0.625
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "result": -0.625
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "result": 12.5
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "result": 0.1875
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "result": "NaN"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "result": "Infinity"
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "result": 1125899906842624
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "result": [
+      0.25,
+      10.25,
+      20.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "result": [
+      -19.75,
+      -9.75,
+      0.25,
+      10.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "result": [
+      40.25,
+      50.25,
+      60.25,
+      70.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "result": [
+      15.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "Error",
+      "code": "invalid-argument",
+      "message": "sampleTrack(track, firstFrame, count) needs a finite frame and count"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "result": []
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "result": [
+      980.25,
+      990.25
+     ]
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "Error",
+      "code": "invalid-argument",
+      "message": "sampleTrack(track, firstFrame, count) needs a finite frame and count"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "Error",
+      "code": "invalid-argument",
+      "message": "sampleTrack(track, firstFrame, count) needs a finite frame and count"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "result": [
+      {
+       "frame": 0,
+       "value": 2,
+       "outgoing": {
+        "type": "hold"
+       },
+       "sourceFrame": 2,
+       "generated": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "track": "unbakedInvalid",
+   "fallback": true,
+   "ops": [
+    {
+     "op": "version",
+     "result": "capture-1"
+    },
+    {
+     "op": "validate",
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 0,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 2,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 5,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": -5,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 100,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 1.5,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "-0",
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "NaN",
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": "Infinity",
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "evaluate",
+     "frame": 9007199254740992,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 0,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 2,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 5,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": -5,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 100,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 1.5,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "-0",
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "NaN",
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": "Infinity",
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "tangentAngle",
+     "frame": 9007199254740992,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": 3,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": -2,
+     "count": 4,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 4,
+     "count": 4,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 1.5,
+     "count": 1,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 0,
+     "count": -1,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 5,
+     "count": 0,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": 98,
+     "count": 2,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "NaN",
+     "count": 1,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "sample",
+     "firstFrame": "Infinity",
+     "count": 1,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    },
+    {
+     "op": "slice",
+     "from": 2,
+     "until": 5,
+     "error": {
+      "name": "VkfTrackError",
+      "code": "empty-track",
+      "message": "Track has no keyframes"
+     }
+    }
+   ]
+  }
+ ],
+ "notInstalled": {
+  "result": [
+   false,
+   {
+    "error": {
+     "name": "Error",
+     "code": null,
+     "message": "The keyframe engine is not loaded in this process"
+    }
+   }
+  ]
+ }
+}
