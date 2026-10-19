@@ -40,6 +40,10 @@ jobs:
 
   flakes:
     if: github.event.workflow_run.name == 'mpvfx-ci' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.run_attempt > 1
+    # One at a time across runs: each reads the "Flaky tests" issue, adds its counts and writes it back.
+    concurrency:
+      group: agentbot-flakes
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

@@ -55,7 +55,8 @@ class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoAuthRedirect)
 
 
-def api(method, path, body=None, raw=False):
+def api(method, path, body=None, raw=False, limit=None):
+    """limit: with raw, the most bytes to read; a longer body raises ValueError."""
     url = path if path.startswith("http") else f"{API}/repos/{REPO}/{path.lstrip('/')}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={
@@ -64,7 +65,9 @@ def api(method, path, body=None, raw=False):
     if data is not None:
         req.add_header("Content-Type", "application/json")
     with _opener.open(req, timeout=120) as r:
-        payload = r.read()
+        payload = r.read(limit + 1) if limit else r.read()
+    if limit and len(payload) > limit:
+        raise ValueError(f"{path}: more than {limit} bytes")
     return payload if raw else (json.loads(payload) if payload else None)
 
 
@@ -107,7 +110,8 @@ PRIMARY = re.compile(r"(: error: |^error(\[E\d+\])?: |Test Case '[^']+' failed|�
                      r"^FAIL: |^ERROR: |Traceback \(most recent call last\)|^##\[error\](?!Process completed with exit code))")
 NOISE = re.compile(r"^(##\[(group|endgroup)\]|shell: |env:$|  [A-Z_]+: |\[command\]|Post job cleanup|Cleaning up|"
                    r"Test Case '[^']+' (started|passed)|--- batch |Test Suite '[^']+' (started|passed)|##\[error\]Process completed)")
-TEST_NAME = re.compile(r"Test Case '(?:-\[)?([^' \]]+)[ \]]?[^']*' failed|✘ Test (\S+?)\(?\)? (?:recorded|failed)")
+TEST_NAME = re.compile(r"Test Case '-\[([^' \]]+) ([^' \]]+)\]' failed|Test Case '([^' ]+)' failed|"
+                       r"✘ Test (\S+?)\(?\)? (?:recorded|failed)")
 
 
 def clean(text):
@@ -146,7 +150,7 @@ def failure_lines(text, limit=40):
 def failed_tests(text):
     names = []
     for m in TEST_NAME.finditer("\n".join(clean(text))):
-        name = (m.group(1) or m.group(2) or "").strip()
+        name = (f"{m.group(1)}.{m.group(2)}" if m.group(1) else m.group(3) or m.group(4) or "").strip()
         if name and name not in names:
             names.append(name)
     return names
@@ -213,6 +217,18 @@ def flakes_body(state):
     return "\n".join(lines) + "\n\n<!-- agentbot:flakes " + json.dumps(state, sort_keys=True) + " -->\n"
 
 
+def failed_attempts(attempt, conclusion_of):
+    """The attempts to scan for a run that passed on `attempt`: the failures just before it, walking back until an
+    attempt that succeeded (its failures were recorded when that attempt passed), so a rerun of a passing run
+    never records the same failure twice."""
+    out = []
+    for a in range(attempt - 1, 0, -1):
+        if conclusion_of(a) == "success":
+            break
+        out.append(a)
+    return sorted(out)
+
+
 def flakes(run_id):
     run = api("GET", f"actions/runs/{run_id}")
     attempt = run.get("run_attempt", 1)
@@ -220,7 +236,7 @@ def flakes(run_id):
         print("flakes: not a run that passed on a re-run")
         return
     found = []
-    for a in range(1, attempt):
+    for a in failed_attempts(attempt, lambda n: api("GET", f"actions/runs/{run_id}/attempts/{n}").get("conclusion")):
         for j in pages(f"actions/runs/{run_id}/attempts/{a}/jobs", "jobs"):
             if j.get("conclusion") in ("failure", "timed_out") and j["name"] != "ci-ok":
                 names = failed_tests(job_log(j["id"]))
@@ -331,20 +347,30 @@ def png_compare(a, b, threshold=8):
     return changed / (wa * ha), total / (wa * ha * 3), rows
 
 
+MAX_ARTIFACT = 64 * 1024 * 1024  # the most a downloaded artifact ZIP, and each file read out of it, may hold
+
+
 def artifact_files(run_id, name, suffix):
     """{file name: bytes} of the files ending in `suffix` inside the run's artifact `name` (empty when absent)."""
     arts = api("GET", f"actions/runs/{run_id}/artifacts?name={name}")["artifacts"]
     if not arts or arts[0].get("expired"):
         return {}
-    data = api("GET", f"actions/artifacts/{arts[0]['id']}/zip", raw=True)
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        return {os.path.basename(n): z.read(n) for n in z.namelist() if n.endswith(suffix)}
+    try:
+        data = api("GET", f"actions/artifacts/{arts[0]['id']}/zip", raw=True, limit=MAX_ARTIFACT)
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            return {os.path.basename(i.filename): z.read(i) for i in z.infolist()
+                    if i.filename.endswith(suffix) and i.file_size <= MAX_ARTIFACT}
+    except (ValueError, zipfile.BadZipFile) as e:
+        print(f"::warning::artifact {name} of run {run_id} not read: {e}")
+        return {}
 
 
-def latest_main_run(workflow, artifact):
+def latest_main_run(workflow, artifact, accept=None):
+    """The newest green main run with `artifact` (and, when given, for which accept(run id) is true)."""
     for r in api("GET", f"actions/workflows/{workflow}/runs?branch=main&event=push&per_page=20")["workflow_runs"]:
         if r.get("conclusion") == "success" and api("GET", f"actions/runs/{r['id']}/artifacts?name={artifact}")["artifacts"]:
-            return r
+            if accept is None or accept(r["id"]):
+                return r
     return None
 
 
@@ -403,7 +429,7 @@ def bench_compare(mine, theirs, threshold=0.15):
     rows, flagged = [], 0
     for name, m in sorted(mine.get("metrics", {}).items()):
         t = theirs.get("metrics", {}).get(name)
-        if not t or not t.get("p50"):
+        if not t or not t.get("p50") or t.get("unit") != m.get("unit"):  # a changed unit is not comparable
             continue
         change = (m["p50"] - t["p50"]) / t["p50"]
         flag = abs(change) > threshold
@@ -425,15 +451,23 @@ def bench(run_id):
     for os_name in ("linux", "windows", "macos"):
         art = f"bench-{os_name}"
         mine = artifact_files(run_id, art, ".json")
-        base = latest_main_run("bench.yml", art)
-        theirs = artifact_files(base["id"], art, ".json") if base else {}
-        if not mine or not theirs:
-            parts.append(f"\n**{os_name}**: {'no result on this run' if not mine else 'no main run to compare against yet'}\n")
+        mine_report = json.loads(next(iter(mine.values()))) if mine else {}
+        klass = mine_report.get("machine", {}).get("class")
+        loaded = {}
+
+        def same_class(rid):
+            files = artifact_files(rid, art, ".json")
+            if not files:
+                return False
+            loaded[rid] = json.loads(next(iter(files.values())))
+            return loaded[rid].get("machine", {}).get("class") == klass
+
+        # The newest main run measured on the same class of machine, not just the newest one.
+        base = latest_main_run("bench.yml", art, same_class) if mine else None
+        if not mine or not base:
+            parts.append(f"\n**{os_name}**: {'no result on this run' if not mine else 'no main run of the same machine class to compare against yet'}\n")
             continue
-        m, t = json.loads(next(iter(mine.values()))), json.loads(next(iter(theirs.values())))
-        if m.get("machine", {}).get("class") != t.get("machine", {}).get("class"):
-            parts.append(f"\n**{os_name}**: different machine classes; not compared\n")
-            continue
+        m, t = mine_report, loaded[base["id"]]
         rows, flagged = bench_compare(m, t)
         parts.append(f"\n**{os_name}** (main `{t['commit'][:7]}`, {flagged} flagged)\n\n| metric | unit | p50 | p95 | p50 change |\n"
                      "|---|---|---:|---:|---:|\n" + "\n".join(rows) + "\n")

@@ -63,9 +63,13 @@ jobs:
         run: |
           set -u
           sha=$(printf '%s\n' "$BODY" | head -n 1 | sed -n 's|^/agent-approve \([0-9a-f]\{40\}\)[[:space:]]*$|\1|p')
-          id=$(gh api "repos/$REPO/pulls/$PR" --jq .node_id)
-          if out=$(gh api graphql -f id="$id" -f query='mutation($id: ID!) {
-                enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) { clientMutationId } }' 2>&1); then
+          [ -n "$sha" ] || { echo "::error::no approved sha in the comment"; exit 1; }
+          # Bind to the approved commit: read the head again right before, and let GitHub check it too (expectedHeadOid).
+          set -- $(gh api "repos/$REPO/pulls/$PR" --jq '"\(.head.sha) \(.node_id)"')
+          [ "$1" = "$sha" ] || { echo "::error::the PR head is now $1, not the approved $sha: auto-merge not turned on"; exit 1; }
+          id=$2
+          if out=$(gh api graphql -f id="$id" -f sha="$sha" -f query='mutation($id: ID!, $sha: GitObjectID!) {
+                enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $sha}) { clientMutationId } }' 2>&1); then
             echo "auto-merge on: GitHub merges #$PR when its required checks pass"
           elif printf '%s' "$out" | grep -qi "clean status"; then
             # Already mergeable (green, approved, up to date): auto-merge refuses that state, so merge it now.

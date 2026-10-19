@@ -79,6 +79,14 @@ class FailureLines(unittest.TestCase):
                                                      "##[error]Process completed with exit code 1."])
 
 
+class TestNames(unittest.TestCase):
+    def test_objc_style_xctest_names_keep_the_method(self):
+        log = ("Test Case '-[Module.FooTests testOne]' failed (0.1 seconds).\n"
+               "Test Case '-[Module.FooTests testTwo]' failed (0.1 seconds).\n"
+               "Test Case 'Module.BarTests.testThree' failed (0.1 seconds)\n")
+        self.assertEqual(bot.failed_tests(log), ["Module.FooTests.testOne", "Module.FooTests.testTwo", "Module.BarTests.testThree"])
+
+
 class Png(unittest.TestCase):
     def test_decode_rgb_and_rgba_and_compare(self):
         a = bot.png_decode(png(2, 1, [[10, 20, 30, 255, 40, 50, 60, 255]]))
@@ -109,8 +117,23 @@ class Bench(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertIn("+20.0% **⚑**", rows[0])
 
+    def test_a_changed_unit_is_not_compared(self):
+        main = {"metrics": {"a": {"unit": "ms", "p50": 10, "p95": 12}}}
+        pr = {"metrics": {"a": {"unit": "us", "p50": 10000, "p95": 12000}}}
+        self.assertEqual(bot.bench_compare(pr, main), ([], 0))
+
 
 class Flakes(unittest.TestCase):
+    def test_a_failure_is_scanned_once_across_reruns(self):
+        # attempt 1 failed, 2 passed (recorded then), 3 is a rerun of the passing run: nothing new to scan.
+        c = {1: "failure", 2: "success"}
+        self.assertEqual(bot.failed_attempts(3, c.get), [])
+        self.assertEqual(bot.failed_attempts(2, c.get), [1])
+        # two failures in a row before the pass are both scanned
+        c = {1: "failure", 2: "failure"}
+        self.assertEqual(bot.failed_attempts(3, c.get), [1, 2])
+
+
     def test_counts_accumulate_and_survive_the_issue_body(self):
         state = bot.record_flakes({}, ["A.testOne"], "https://x/1", "2026-10-19T00:00:00Z")
         body = bot.flakes_body(bot.record_flakes(state, ["A.testOne", "job: linux"], "https://x/2", "2026-10-20T00:00:00Z"))
