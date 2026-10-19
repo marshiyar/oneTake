@@ -19,7 +19,7 @@ import XCTest
 /// against the graph
 /// instead of the encoded export (same rms windows, same tolerances).
 final class NativeTimelinePortTests: XCTestCase {
-    // lavfi sine is amplitude 1/8; the fixtures there are 440/880/660 Hz.
+    // The sines are amplitude 1/8; the fixtures there are 440/880/660 Hz.
     let red = sine(440, seconds: 2), blue = sine(880, seconds: 2), voice = sine(660, seconds: 2)
 
     /// toBeCloseTo(x, 1): |a - x| < 0.05.
