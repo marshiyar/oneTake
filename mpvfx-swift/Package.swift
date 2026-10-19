@@ -178,7 +178,8 @@ let package = Package(
             "MpvfxShared", keyframeEngine, "MpvfxRuntime", "MpvfxDesktopCore", "MpvfxBackend", "MpvfxCanvas", "MpvfxTimeline", "MpvfxPlayer", "MpvfxAudio", "MpvfxAudioGraph", "MpvfxPanels", "MpvfxTheme",
             .target(name: "CGtk3", condition: .when(platforms: [.linux])), win32,
         ]),
-        .testTarget(name: "MpvfxSharedTests", dependencies: ["MpvfxShared"]),
+        .testTarget(name: "MpvfxSharedTests", dependencies: ["MpvfxShared"],
+                    exclude: ["Engine/Fixtures", "Export/Fixtures", "Library/Fixtures", "Media/Fixtures", "Project/Fixtures"]),
         .testTarget(name: "MpvfxThemeTests", dependencies: ["MpvfxTheme"]),
         // Launches the built MpVFX binary (Linux, under Xvfb) and compares window snapshots; OneTakeMedia decodes the PNGs.
         .testTarget(name: "MpvfxAppSmokeTests", dependencies: [mediaEngine]),
@@ -194,7 +195,8 @@ let package = Package(
         .testTarget(name: "CSQLiteTests", dependencies: ["CSQLite", "MpvfxRuntime"]),
         // MpvfxPlayer + OneTakeMedia: export tests paint with the app's frame renderer, build inputs and decode outputs
         // with the media engine (no FFmpeg).
-        .testTarget(name: "MpvfxRuntimeTests", dependencies: ["MpvfxRuntime", "MpvfxShared", keyframeEngine, "MpvfxColor", "MpvfxPlayer", mediaEngine, "MpvfxCanvas"]),
+        .testTarget(name: "MpvfxRuntimeTests", dependencies: ["MpvfxRuntime", "MpvfxShared", keyframeEngine, "MpvfxColor", "MpvfxPlayer", mediaEngine, "MpvfxCanvas"],
+                    exclude: ["Library/Fixtures", "Media/Fixtures", "Projects/Fixtures"]),
         .testTarget(name: "MpvfxCanvasTests", dependencies: ["MpvfxCanvas"]),
         .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", keyframeEngine]),
         .testTarget(name: "MpvfxStartupTests", dependencies: [keyframeEngine, "MpvfxShared", "MpvfxRuntime"]),

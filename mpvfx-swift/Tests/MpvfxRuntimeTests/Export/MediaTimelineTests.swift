@@ -28,7 +28,7 @@ final class MediaTimelineTests: XCTestCase {
     }
 
     func testRendersANativeMediaDocumentAsIs() throws {
-        var document = try project()
+        let document = try project()
         document.assets[0].source = "assets/clip.mov"
         XCTAssertEqual(try mediaTimelineForExport(document), document)
     }

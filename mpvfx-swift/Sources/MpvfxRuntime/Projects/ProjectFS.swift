@@ -30,8 +30,18 @@ public struct ProjectFSError: Error, Equatable, CustomStringConvertible {
     public let syscall: String
     public let path: String
     public let errno: Int32
-    public var message: String { "\(code): \(String(cString: strerror(errno)).lowercased()), \(syscall) '\(path)'" }
+    public var message: String { "\(code): \(systemErrorMessage(errno).lowercased()), \(syscall) '\(path)'" }
     public var description: String { message }
+}
+
+private func systemErrorMessage(_ error: Int32) -> String {
+    #if os(Windows)
+    var buffer = [CChar](repeating: 0, count: 256)
+    strerror_s(&buffer, buffer.count, error)
+    return String(cString: buffer)
+    #else
+    return String(cString: strerror(error))
+    #endif
 }
 
 let errnoNames: [Int32: String] = [ENOENT: "ENOENT", EEXIST: "EEXIST", EISDIR: "EISDIR", EINVAL: "EINVAL", EPERM: "EPERM",

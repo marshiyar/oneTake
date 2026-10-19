@@ -20,6 +20,14 @@ import Glibc
 import WinSDK
 #endif
 
+#if os(Windows)
+private final class MemoryNotificationHandle: @unchecked Sendable {
+    let value: HANDLE
+    init(_ value: HANDLE) { self.value = value }
+    deinit { CloseHandle(value) }
+}
+#endif
+
 /// Byte budgets for the app's in-memory caches, sized from the machine's physical memory.
 ///
 /// Every cache that holds pictures or samples has one of these and evicts least recently used entries to stay
@@ -167,17 +175,17 @@ public final class MemoryPressureMonitor: @unchecked Sendable {
         // LowMemoryResourceNotification is signalled while available physical memory is low: one warning per low
         // spell, delivered on the main queue, then wait for the spell to end before arming again.
         lock.lock()
-        guard lowMemoryWatcher == nil, let handle = CreateMemoryResourceNotification(LowMemoryResourceNotification) else {
+        guard lowMemoryWatcher == nil, let rawHandle = CreateMemoryResourceNotification(LowMemoryResourceNotification) else {
             lock.unlock(); return
         }
+        let handle = MemoryNotificationHandle(rawHandle)
         let watcher = Thread { [weak self] in
-            while WaitForSingleObject(handle, DWORD.max) == 0 {   // INFINITE, WAIT_OBJECT_0
+            while WaitForSingleObject(handle.value, DWORD.max) == 0 {   // INFINITE, WAIT_OBJECT_0
                 guard self != nil else { break }
                 self?.deliverOnUIThread { self?.notify(.warning) }
                 var low: WindowsBool = true
-                while QueryMemoryResourceNotification(handle, &low), low.boolValue { Thread.sleep(forTimeInterval: 1) }
+                while QueryMemoryResourceNotification(handle.value, &low), low.boolValue { Thread.sleep(forTimeInterval: 1) }
             }
-            CloseHandle(handle)
         }
         lowMemoryWatcher = watcher
         lock.unlock()
