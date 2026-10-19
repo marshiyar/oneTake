@@ -174,7 +174,27 @@ jobs:
           path: mpvfx-swift/.build
           key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
 
+  signing-check:
+    # Seconds on Linux, before any macOS runner is waited for: the certificate opens, holds its key, is a valid
+    # Developer ID Application certificate of the configured team, and the notarization login has the right shape.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Signing and notarization secrets
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: sh mpvfx-swift/packaging/macos/check-signing.sh
+
   package:
+    # Pull requests package ad-hoc and have no signing check; every other run packages only after it passed.
+    needs: signing-check
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.signing-check.result == 'success') }}
     runs-on: xcode-27
     timeout-minutes: 30
     defaults:
@@ -189,6 +209,25 @@ jobs:
           test -d "$x" || { echo "::error::$x is not on this runner"; ls -d /Applications/Xcode*.app; exit 1; }
           sudo xcode-select -s "$x/Contents/Developer"
           xcodebuild -version && swift --version
+      - name: Signing certificate (Developer ID)
+        if: github.event_name != 'pull_request'
+        id: cert
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          [ -n "$MACOS_CERT_P12_BASE64" ] && [ -n "$MACOS_CERT_PASSWORD" ] || { echo "::error::the signing certificate secrets are not set"; exit 1; }
+          identity=$(sh packaging/macos/import-cert.sh)
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+      - name: Notarization login (before the build)
+        if: github.event_name != 'pull_request'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+            --output-format json > /dev/null || { echo "::error::Apple refused the notarization login (Apple ID, app-specific password or team)"; exit 1; }
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
@@ -213,16 +252,6 @@ jobs:
       # Two separate paths, never a fallback from one to the other: pull requests get no secrets and package an ad-hoc
       # signed image for testing; every other run (main, tags, nightly, by hand) signs with the Developer ID, notarizes
       # and staples, and fails if any part of that is missing or refused.
-      - name: Signing certificate (Developer ID)
-        if: github.event_name != 'pull_request'
-        id: cert
-        env:
-          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-        run: |
-          [ -n "$MACOS_CERT_P12_BASE64" ] && [ -n "$MACOS_CERT_PASSWORD" ] || { echo "::error::the signing certificate secrets are not set"; exit 1; }
-          identity=$(sh packaging/macos/import-cert.sh)
-          echo "identity=$identity" >> "$GITHUB_OUTPUT"
       - name: Package, signed and notarized (disk image with the engine libraries in Contents/Frameworks)
         if: github.event_name != 'pull_request'
         env:
