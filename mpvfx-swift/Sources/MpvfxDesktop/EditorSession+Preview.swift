@@ -27,7 +27,7 @@ extension EditorSession {
         let previousOnChange = editor.onChange
         editor.onChange = { [weak self] in previousOnChange?(); self?.syncStage(); self?.redraw() }
         let prefs = FilePreviewPreferencesStore.at(userData: userData)
-        player.usePreferences(prefs)
+        player.attachPreferencesStore(prefs)
         if let v = prefs.load().audioVolume { transport.volume.volume = v }
         let rateChange = transport.speed.onRateChange, volumeChange = transport.volume.onChange
         transport.speed.onRateChange = { [weak self] r in rateChange?(r); self?.player.playbackRateChosen(r) }
