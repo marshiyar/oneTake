@@ -5,8 +5,8 @@
 A user on macOS watched MpVFX climb to about 120 GB of memory during a long editing session. The cause was not one
 big cache. It was thousands of small buffers that were never freed:
 
-- At the time, every place that read raw frames or audio from the FFmpeg subprocess the app then used (preview
-  decoding, the audio stream, export grading) read the pipe with `FileHandle.read`. Each read returns a new `Data` of about 64 KB, and on macOS that is
+- At the time, every place that read raw frames or audio from the external decoder subprocess older versions of
+  the app used (preview decoding, the audio stream, export grading) read the pipe with `FileHandle.read`. Each read returns a new `Data` of about 64 KB, and on macOS that is
   an autoreleased object.
 - Autoreleased objects are freed when the surrounding autorelease pool drains. A pool normally drains when code
   returns to the run loop. Our decoders, the audio feeder, export and the Metal grader run long `while` loops on
@@ -21,8 +21,8 @@ background loop.
 
 ## What changed
 
-- **No pipe reads remain.** The FFmpeg frame and audio streams read their pipe straight into the destination
-  array (`PipeRead`, now deleted with them); the engine hands decoded frames and samples over in memory instead.
+- **No pipe reads remain.** The subprocess frame and audio streams, and `PipeRead` that read their pipe straight
+  into the destination array, are deleted; the engine hands decoded frames and samples over in memory instead.
 - **Long loops drain a pool every step.** `withAutoreleasePool` (a real pool on Apple platforms, a plain call on
   Linux) wraps each step of: the preview decode lane (one decoded frame), the audio feeder (one block), the live
   audio graph updater (one rebuild), export grading (one frame), the preview grader (one grade) and Metal grading
