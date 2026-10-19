@@ -99,7 +99,12 @@ From `mpvfx-swift/`, before every push:
 sh scripts/check.sh          # engine libraries, fetch-script tests, copyright blocks, shaders, swift build, swift test
 sh scripts/check.sh --fast   # the same without swift build and swift test
 swift test                   # the whole suite
+sh scripts/doctor.sh         # what a full run needs that is missing, with fixes
 ```
+
+A full run first runs [`scripts/doctor.sh`](mpvfx-swift/scripts/doctor.sh); with a prerequisite missing (Python 3,
+Swift, on Linux the GTK and SQLite dev packages, or a Vulkan driver when the Vulkan headers are installed) it stops
+at once with `check: UNAVAILABLE` and exit code 2, which is neither passed nor failed.
 
 CI ([`.github/workflows/mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests and packages the app on Linux,
 Windows and macOS with the engine libraries pinned in [`binaries.lock`](mpvfx-swift/binaries.lock); `ci-ok` is the
@@ -118,7 +123,7 @@ required check. Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`Sources/MpvfxTimeline`](mpvfx-swift/Sources/MpvfxTimeline), [`Sources/MpvfxPanels`](mpvfx-swift/Sources/MpvfxPanels), [`Sources/MpvfxCanvas`](mpvfx-swift/Sources/MpvfxCanvas) | timeline, inspector and side panels, drawing abstraction |
 | [`mpvfx-swift/Sources/MpvfxShared`](mpvfx-swift/Sources/MpvfxShared) | document schema, validation, export policy, shared types |
 | [`mpvfx-swift/docs/`](mpvfx-swift/docs/) | [`STATUS.md`](mpvfx-swift/docs/STATUS.md), [`FEATURES.md`](mpvfx-swift/docs/FEATURES.md), [`MEMORY.md`](mpvfx-swift/docs/MEMORY.md), [`PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md) |
-| [`mpvfx-swift/scripts/`](mpvfx-swift/scripts/) | [`check.sh`](mpvfx-swift/scripts/check.sh), [`fetch-binaries.py`](mpvfx-swift/scripts/fetch-binaries.py), [`capture-readme.sh`](mpvfx-swift/scripts/capture-readme.sh) |
+| [`mpvfx-swift/scripts/`](mpvfx-swift/scripts/) | [`check.sh`](mpvfx-swift/scripts/check.sh), [`doctor.sh`](mpvfx-swift/scripts/doctor.sh), [`fetch-binaries.py`](mpvfx-swift/scripts/fetch-binaries.py), [`capture-readme.sh`](mpvfx-swift/scripts/capture-readme.sh) |
 | [`mpvfx-swift/binaries.lock`](mpvfx-swift/binaries.lock) | engine versions, download URLs and SHA-256 per platform |
 | [`.github/`](.github/) | CI: build, test, package and publish on all three platforms |
 
