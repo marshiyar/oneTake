@@ -38,18 +38,18 @@ sha256 = "7417eb1b651e4ed3da616ddb3dff073966b2aa4e19293338af22a6413f158f97"
 version = "1.0.0"
 tag = "keyframes-v1.0.0"
 repo = "marshiyar/mpvfx-media-binaries"
-asset = "keyframes-{version}-{platform}"
+asset = "video-keyframing-{version}-{platform}"
 library = "cvkf"
 header = "cvkf.h"
 
 [keyframes.platforms.macos-arm64]
-url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-macos-arm64.tar.gz"
-sha256 = ""
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/video-keyframing-1.0.0-macos-arm64.tar.gz"
+sha256 = "6c9f3219c5b66236d7fbeb45d87360bf6968f7260ca0d639866cd4c6c844366e"
 
 [keyframes.platforms.linux-x86_64]
-url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-linux-x86_64.tar.gz"
-sha256 = ""
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/video-keyframing-1.0.0-linux-x86_64.tar.gz"
+sha256 = "e05dbf4fc2eb355b05662ca0f1480cb8b8a138eb14d2cbb4fa8a66db045a617f"
 
 [keyframes.platforms.windows-x86_64]
-url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-windows-x86_64.tar.gz"
-sha256 = ""
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/video-keyframing-1.0.0-windows-x86_64.zip"
+sha256 = "c7284019ecbb852d4de9b7b036d0942b713a9d1c617a07b46d1c36624f009ac0"
