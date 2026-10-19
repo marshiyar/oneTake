@@ -29,7 +29,7 @@ Publishing is a separate, deliberate step once the report is clean: push the tre
 - CI: the old jobs without the engine builds and without tokens; `ci-ok` aggregate; `agent-approve.yml` (needs
   `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`).
 - `.gitignore` for the session tooling rendered at start; `.claude/settings.json` only runs
-  `.claude/hooks/session-start.sh`, which runs the private setup when it is present and fetches the engines.
+  `.claude/hooks/session-start.sh`, which renders a private harness checked out beside the app when there is one.
 
 ## Release archive contract (for the binaries repository)
 

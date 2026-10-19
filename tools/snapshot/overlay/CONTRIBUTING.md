@@ -29,6 +29,6 @@ here. Changes to how the app calls them belong in the app's adapters (`mpvfx-swi
 
 ## Maintainer tooling
 
-Maintainers may keep extra, private session tooling in a git-ignored `.maintainer/` folder; the Claude Code
-session-start hook runs its `setup.sh` when present. Nothing in it is needed to
-build, test or contribute.
+Maintainers may check out private session tooling beside this repository; the Claude Code session-start hook renders
+it in when present (into git-ignored paths) and otherwise does nothing. Nothing in it is needed to build, test or
+contribute.
