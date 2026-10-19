@@ -202,7 +202,7 @@ final class PanelSnapshotTests: XCTestCase {
             let frameH = (tile0.width - 2) * 9 / 16
             assertPixel(t, tile0.midX, tile0.y + 1 + frameH / 2, scale: scale, "#e61414", tol: 6)   // neutral: the host's frame
             assertPixel(t, tile2.midX, tile2.y + 1 + frameH / 2, scale: scale, "#1414e6", tol: 6)   // another preset, its own frame
-            assertPixel(t, tile1.midX, tile1.y + 1 + frameH / 2, scale: scale, "#1d1d1d", tol: 8)   // still rendering: empty frame
+            assertPixel(t, tile1.midX, tile1.y + 1 + frameH / 2, scale: scale, "#141414", tol: 8)   // still rendering: empty frame
             XCTAssertEqual(Set(asked.map(\.presetId)).count, ColorGrading.gradePresets.count, "every tile asks for its preset")
             let req = try XCTUnwrap(asked.first)
             XCTAssertEqual(req.clipId, "clip:a")
