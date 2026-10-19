@@ -15,18 +15,18 @@ import Foundation
 import XCTest
 @testable import MpvfxAudioGraph
 
-/// The Web Audio native nodes cannot be referenced without Chrome, so these
-/// check each model against its analytic definition (documented tolerances).
-final class NativeNodeModelTests: XCTestCase {
+/// Checks each native DSP primitive against its analytic definition using the
+/// documented tolerances.
+final class DSPPrimitiveTests: XCTestCase {
     let sr = 48000.0
 
     func run(_ unit: FxUnit, _ x: [Float]) -> [Float] {
         var out: [Float] = []
         var q = 0
         while q < x.count {
-            let b = (0..<renderQuantum).map { q + $0 < x.count ? x[q + $0] : 0 }
+            let b = (0..<dspBlockSize).map { q + $0 < x.count ? x[q + $0] : 0 }
             out += unit.process([b, b], frame: q)[0]
-            q += renderQuantum
+            q += dspBlockSize
         }
         return Array(out.prefix(x.count))
     }
