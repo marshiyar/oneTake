@@ -16,7 +16,7 @@ import MpvfxCanvas
 import MpvfxTimeline
 import MpvfxShared
 
-/// Stage pointer logic (DomEditOverlay + usePreviewInteraction + NLEPreview): tools bar, transport, select
+/// Stage pointer logic for the tools bar, transport, selection
 /// (shift toggles, marquee on empty canvas), move with snapping, group move, corner resize (⇧ uniform), rotate
 /// (⇧ snaps to 15°), the crop tool (draft insets; Apply / Cancel / Reset), hover outline, canvas menu, and
 /// preview zoom (ctrl/⌘ + wheel about the cursor) and pan (wheel, middle-button drag).
@@ -83,7 +83,7 @@ public final class PlayerController {
     var nudgeAt: Double?
     public static let nudgeCommitSeconds = 0.4
 
-    /// Persisted snap/grid/zoom preferences (ui-preferences.json); set by `usePreferences`.
+    /// Persisted snap/grid/zoom preferences (ui-preferences.json); set by `attachPreferencesStore`.
     public internal(set) var preferences: PreviewPreferencesStore?
     var zoomTouchedAt: Double?
     var savedZoom = PreviewZoom.fit
