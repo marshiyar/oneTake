@@ -113,7 +113,7 @@ final class StemDecoderTests: XCTestCase {
     /// list names, ADTS has none to drop. The clip plays in the mix.
     func testAacDecodesAndTheClipPlays() throws {
         let cases: [(String, Double, Int)] = [
-            ("isobmff/mp4_aac.mp4", 0.5, 24_000),       // 48 kHz mono sine, FFmpeg's encoder
+            ("isobmff/mp4_aac.mp4", 0.5, 24_000),       // 48 kHz mono sine
             ("isobmff/mov_aac.mov", 0.5, 24_000),
             ("aac/lc_44k_stereo.mp4", 0.3, 14_400),     // 44.1 kHz stereo (13230 frames), resampled
             ("aac/lc_44k_stereo.aac", 0.325, 15_604),   // the same access units as ADTS: 14 x 1024 frames
