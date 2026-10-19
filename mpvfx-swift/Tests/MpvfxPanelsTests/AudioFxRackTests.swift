@@ -280,22 +280,22 @@ final class AudioFxRackSnapshotTests: XCTestCase {
             let presets = try XCTUnwrap(p.hits.rect { $0 == .button("fx:presets") })
             let checks: [(String, Double, Double, String)] = [
                 ("Tone edge (smart tint)", x0 + 0.5, tone.midY, "#99bd7f"),
-                ("Tone body", x0 + 60, tone.maxY + 8, "#121214"),
+                ("Tone body", x0 + 60, tone.maxY + 8, "#191919"),
                 ("Clean Voice edge", x0 + 0.5, run.midY, "#61bbef"),
                 ("Clean Voice wash", x0 + 4, run.midY, "#161e22"),
                 ("Echo edge, bypassed", x0 + 0.5, echo.midY, "#4e6b65"),
                 ("Presets border", presets.midX, presets.y + 0.5, "#fafafa"),
-                ("Presets inside", presets.midX - 60, presets.midY, "#121214"),
+                ("Presets inside", presets.midX - 60, presets.midY, "#191919"),
             ]
             for (what, x, y, want) in checks { XCTAssertTrue(near(px(t, x, y, scale), want), "\(what) @\(scale)x: \(px(t, x, y, scale)) want \(want)") }
             let amount = try XCTUnwrap(p.hits.rect { $0 == .slider("run:voice-clean-3:amount") })
-            XCTAssertTrue(near(px(t, amount.x + 20, amount.midY, scale), "#2d7fff", tol: 10), "amount fill")
+            XCTAssertTrue(near(px(t, amount.x + 20, amount.midY, scale), "#4c8df0", tol: 10), "amount fill")
             // EQ open: the fader fill runs up from 0 dB in the accent.
             p.audioFxUI.openEq = eqId
             let t2 = render(p, "audiofx-eq-open", scale: scale)
             let bass = try XCTUnwrap(p.hits.rect { $0 == .slider("eq:Bass") })
-            XCTAssertTrue(near(px(t2, bass.midX, bass.midY - 4, scale), "#2d7fff", tol: 12), "Bass +3 fill above the detent")
-            XCTAssertFalse(near(px(t2, bass.midX, bass.midY + 6, scale), "#2d7fff", tol: 40), "nothing below it")
+            XCTAssertTrue(near(px(t2, bass.midX, bass.midY - 4, scale), "#4c8df0", tol: 12), "Bass +3 fill above the detent")
+            XCTAssertFalse(near(px(t2, bass.midX, bass.midY + 6, scale), "#4c8df0", tol: 40), "nothing below it")
         }
         // Light: the same rack in the light palette, every hue darkened to hold 3:1 and the washes near-white.
         Theme.setMode(.light)

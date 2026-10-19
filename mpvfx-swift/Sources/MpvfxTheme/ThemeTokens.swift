@@ -188,6 +188,10 @@ public enum ThemeTokens {
     /// Timeline clip fill by media kind (docs/DESIGN.md), at rest and under the pointer.
     public static let clipVideoPair = ThemePair(0x1D4A64, 0xCFE3F0), clipVideoHoverPair = ThemePair(0x245A79, 0xBCD7EA)
     public static let clipAudioPair = ThemePair(0x2F4A17, 0xDCEACB), clipAudioHoverPair = ThemePair(0x3A5A1D, 0xCFE2B8)
+    /// Opacity of the `white` ink for a clip's name and timecode on its fill (the name reaches 4.5:1, the timecode 3:1).
+    public static let clipNameAlpha = 0.92, clipTimecodeAlpha = 0.72
+    /// Height of the kind-coloured strip that keeps the name readable over thumbnails.
+    public static let clipHeaderHeight = 18.0
     /// Timeline clip while dragged (opaque so the lanes under it do not show through), audio and visual.
     public static let clipDragAudioPair = ThemePair(ThemeColor(0x3C3454, alpha: 0.96), ThemeColor(0xE4DDFB, alpha: 0.96))
     public static let clipDragPair = ThemePair(ThemeColor(0x262A34, alpha: 0.96), ThemeColor(0xDDE1EA, alpha: 0.96))

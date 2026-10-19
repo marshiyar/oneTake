@@ -11,11 +11,14 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
 
 1. **One flat surface.** Panels are one grey (`panelBg`) and sit edge to edge. They are separated by the black shell
    showing through a thin seam, not by rounded cards, drop shadows or wide gaps.
-2. **One accent.** Blue is the only chrome colour. It marks the active tool, the focused panel, the playhead,
-   selections and values the user has changed. Nothing else in the chrome is coloured; mint, violet and other
-   identity colours are not used for chrome.
+2. **One accent.** Blue is the only accent. It marks the active tool, the focused panel, the playhead,
+   selections and values the user has changed. The only other colours in the chrome are signals with a fixed
+   meaning: red for recording and cutting (auto-keyframe armed, the razor guide) and errors, green for beat
+   markers. Mint, violet and other identity colours are not used for chrome.
 3. **Content is visible.** Clips show what they hold: video clips show frame thumbnails, audio clips show their
-   waveform. The clip colour says what kind of media it is; the name sits in a thin strip at the top.
+   waveform. The clip colour says what kind of media it is; over thumbnails the name sits on an 18 px strip of that
+   colour, which also carries the hover state. The name is drawn at 92% ink (4.5:1 on the fill), the timecode at
+   72% (3:1).
 4. **Dense, not cramped.** 12 px body text, 11 px secondary text, 24–28 px rows. Empty space is a sign that a panel
    has nothing to show; show a short hint there instead.
 5. **Time is timecode.** Times read `HH:MM:SS:FF` (or `MM:SS:FF` under an hour) in tabular figures, in the accent

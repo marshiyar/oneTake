@@ -115,6 +115,20 @@ final class VisualSpecTests: XCTestCase {
         }
     }
 
+    /// The clip name and timecode as drawn (the ink at its alpha over the fill, hovered or not) stay readable.
+    func testClipLabelsAsDrawn() {
+        func over(_ ink: ThemeColor, _ a: Double, _ bg: ThemeColor) -> ThemeColor {
+            ThemeColor(r: bg.r + (ink.r - bg.r) * a, g: bg.g + (ink.g - bg.g) * a, b: bg.b + (ink.b - bg.b) * a)
+        }
+        for m in ThemeMode.allCases {
+            let ink = T.whitePair.value(m)
+            for fill in [T.clipVideoPair, T.clipVideoHoverPair, T.clipAudioPair, T.clipAudioHoverPair].map({ $0.value(m) }) {
+                XCTAssertGreaterThanOrEqual(over(ink, T.clipNameAlpha, fill).contrast(fill), 4.5, "\(m) clip name")
+                XCTAssertGreaterThanOrEqual(over(ink, T.clipTimecodeAlpha, fill).contrast(fill), 3, "\(m) clip timecode")
+            }
+        }
+    }
+
     /// The editor is dark until the user picks an appearance.
     func testDefaultAppearanceIsDark() {
         XCTAssertEqual(ThemeAppearance.default, .dark)
