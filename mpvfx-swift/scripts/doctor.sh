@@ -27,15 +27,20 @@ command -v swift >/dev/null 2>&1 ||
   need "swift" "install the Swift toolchain from https://www.swift.org/install"
 
 if [ "$(uname -s)" = "Linux" ]; then
-  for pc in gtk+-3.0 sqlite3 libpulse-simple; do
+  for pc in gtk+-3.0 sqlite3; do
     pkg-config --exists "$pc" 2>/dev/null ||
-      need "pkg-config module $pc" "apt-get install pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev"
+      need "pkg-config module $pc" "apt-get install pkg-config libgtk-3-dev libsqlite3-dev"
   done
-  # the GPU grade tests need a Vulkan device; Mesa's llvmpipe is a software one
-  icd=no
-  for f in /usr/share/vulkan/icd.d/*.json /etc/vulkan/icd.d/*.json; do [ -f "$f" ] && icd=yes; done
-  [ "$icd" = yes ] ||
-    need "a Vulkan driver (ICD)" "apt-get install mesa-vulkan-drivers libvulkan-dev"
+  # Optional, as in Package.swift: audio output builds only with the PulseAudio headers.
+  pkg-config --exists libpulse-simple 2>/dev/null ||
+    echo "note: no libpulse-simple; the app builds without audio output (apt-get install libpulse-dev)"
+  # Vulkan is built only when its header exists; then the GPU grade tests need a device (Mesa's llvmpipe is one).
+  if [ -f /usr/include/vulkan/vulkan.h ]; then
+    icd=no
+    for f in /usr/share/vulkan/icd.d/*.json /etc/vulkan/icd.d/*.json; do [ -f "$f" ] && icd=yes; done
+    [ "$icd" = yes ] ||
+      need "a Vulkan driver (ICD)" "apt-get install mesa-vulkan-drivers"
+  fi
 fi
 
 if [ $missing -ne 0 ]; then echo "doctor: NOT READY"; exit 2; fi
