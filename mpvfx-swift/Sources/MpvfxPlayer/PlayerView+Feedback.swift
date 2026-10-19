@@ -55,7 +55,7 @@ extension PlayerView {
                 rotated(c, ve) { Self.strokeSquare(c, ve.visibleRect, theme.accent.withAlpha(a), width: 2) }
             } else if since >= Self.zOrderFlashSeconds { zOrderFlash = nil }
         }
-        // GestureTrailOverlay (recording): accent polyline, 2px, 60 % opacity, round joins.
+        // Recording gesture trail: accent polyline, 2px, 60 % opacity, round joins.
         if recordingTrail.count > 1 {
             var p = CanvasPath()
             p.move(to: recordingTrail[0])
