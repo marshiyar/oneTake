@@ -17,31 +17,31 @@
 import OneTakeKeyframes
 
 extension KeyframeRuntime: KeyframeEngine {
-    public func validate(_ track: VkfTrack) throws {
+    public func validate(_ track: KeyframeTrack) throws {
         try bridged { try self.validate(Self.engineTrack(track)) }
     }
 
-    public func evaluate(_ track: VkfTrack, frame: Double) throws -> NativeParameterValue {
+    public func evaluate(_ track: KeyframeTrack, frame: Double) throws -> NativeParameterValue {
         try bridged { Self.nativeValue(try self.evaluate(Self.engineTrack(track), frame: frame)) }
     }
 
-    public func sample(_ track: VkfTrack, firstFrame: Double, count: Int) throws -> [Double] {
+    public func sample(_ track: KeyframeTrack, firstFrame: Double, count: Int) throws -> [Double] {
         try bridged { try self.sample(Self.engineTrack(track), firstFrame: firstFrame, count: count) }
     }
 
-    public func tangentAngle(_ track: VkfTrack, frame: Double) throws -> Double {
+    public func tangentAngle(_ track: KeyframeTrack, frame: Double) throws -> Double {
         try bridged { try self.tangentAngle(Self.engineTrack(track), frame: frame) }
     }
 
     /// Not part of KeyframeEngine: the tangent angle at each of `count` frames.
-    public func sampleTangentAngle(_ track: VkfTrack, firstFrame: Double, count: Int) throws -> [Double] {
+    public func sampleTangentAngle(_ track: KeyframeTrack, firstFrame: Double, count: Int) throws -> [Double] {
         try bridged { try self.sampleTangentAngle(Self.engineTrack(track), firstFrame: firstFrame, count: count) }
     }
 
-    public func slice(_ track: VkfTrack, fromFrame: Double, untilFrameExclusive: Double) throws -> [VkfSlicedKey] {
+    public func slice(_ track: KeyframeTrack, fromFrame: Double, untilFrameExclusive: Double) throws -> [KeyframeSlicedKey] {
         try bridged {
             try self.slice(Self.engineTrack(track), fromFrame: fromFrame, untilFrameExclusive: untilFrameExclusive).map {
-                VkfSlicedKey(frame: $0.frame, value: Self.nativeValue($0.value), outgoing: Self.nativeInterpolation($0.outgoing),
+                KeyframeSlicedKey(frame: $0.frame, value: Self.nativeValue($0.value), outgoing: Self.nativeInterpolation($0.outgoing),
                              outgoingPath: $0.outgoingPath.map(Self.nativePath), sourceFrame: $0.sourceFrame, generated: $0.generated)
             }
         }
@@ -55,7 +55,7 @@ extension KeyframeRuntime: KeyframeEngine {
         }
     }
 
-    static func engineTrack(_ t: VkfTrack) -> KeyframeRuntime.Track {
+    static func engineTrack(_ t: KeyframeTrack) -> KeyframeRuntime.Track {
         KeyframeRuntime.Track(valueType: engineValueType(t.valueType), keyframes: t.keyframes.map {
             KeyframeRuntime.Key(frame: $0.frame, value: engineValue($0.value), outgoing: engineInterpolation($0.outgoing),
                           outgoingPath: $0.outgoingPath.map(enginePath))

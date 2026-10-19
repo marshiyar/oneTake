@@ -111,7 +111,7 @@ final class ExportClipSampler {
               let eng = engine ?? (try? keyframeEngine()) else { return 0 }
         func angle(_ f: Double) -> Double {
             if let a = tangentCache[f] { return a }
-            let a = (try? eng.tangentAngle(VkfTrack(track), frame: f)).flatMap { $0.isFinite ? $0 * 180 / .pi : nil } ?? 0
+            let a = (try? eng.tangentAngle(KeyframeTrack(track), frame: f)).flatMap { $0.isFinite ? $0 * 180 / .pi : nil } ?? 0
             tangentCache[f] = a
             return a
         }

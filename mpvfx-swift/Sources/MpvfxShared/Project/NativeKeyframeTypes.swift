@@ -309,7 +309,7 @@ public func createNativeParameterTrack(_ input: NativeParameterTrackInput, engin
     }
     let e = try engine ?? keyframeEngine()
     do {
-        try e.validate(VkfTrack(valueType: input.valueType, keyframes: keyframes.map {
+        try e.validate(KeyframeTrack(valueType: input.valueType, keyframes: keyframes.map {
             .init(frame: $0.frame, value: $0.value, outgoing: $0.outgoing, outgoingPath: $0.outgoingPath) }))
     } catch let err as KeyframeEngineError {
         guard let code = err.trackErrorCode else { throw err }   // non-track errors propagate
