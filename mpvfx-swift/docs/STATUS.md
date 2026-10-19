@@ -1,6 +1,6 @@
 # Status
 
-What the app does at this revision, feature by feature. "Works" means wired into the running Linux and macOS app
+What the app does at this revision, feature by feature. "Works" means wired into the running Linux, macOS and Windows app
 and covered by tests; "partial" means some of it is there; "stub" means the call exists but throws or does nothing;
 "missing" means there is no code for it.
 
