@@ -119,6 +119,7 @@ required check. Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`Sources/MpvfxTimeline`](mpvfx-swift/Sources/MpvfxTimeline), [`Sources/MpvfxPanels`](mpvfx-swift/Sources/MpvfxPanels), [`Sources/MpvfxCanvas`](mpvfx-swift/Sources/MpvfxCanvas) | timeline, inspector and side panels, drawing abstraction |
 | [`mpvfx-swift/Sources/MpvfxShared`](mpvfx-swift/Sources/MpvfxShared) | document schema, validation, export policy, shared types |
 | [`mpvfx-swift/docs/`](mpvfx-swift/docs/) | [`STATUS.md`](mpvfx-swift/docs/STATUS.md), [`FEATURES.md`](mpvfx-swift/docs/FEATURES.md), [`MEMORY.md`](mpvfx-swift/docs/MEMORY.md), [`PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md) |
+| [`mpvfx-swift/scripts/`](mpvfx-swift/scripts/) | [`check.sh`](mpvfx-swift/scripts/check.sh), [`fetch-binaries.py`](mpvfx-swift/scripts/fetch-binaries.py), [`capture-readme.sh`](mpvfx-swift/scripts/capture-readme.sh) |
 | [`mpvfx-swift/binaries.lock`](mpvfx-swift/binaries.lock) | engine versions, download URLs and SHA-256 per platform |
 | [`.github/`](.github/) | CI: build, test, package and publish on all three platforms |
 
