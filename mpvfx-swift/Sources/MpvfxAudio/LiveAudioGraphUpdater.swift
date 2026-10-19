@@ -28,6 +28,7 @@ public final class LiveAudioGraphUpdater {
     var pending: DocumentAudioGraph.Inputs?
     var scheduled = false
     var builds_ = 0
+    var waits_ = 0
     // Worker-only state.
     /// Failures are cached too: an undecodable file is not re-opened on every edit.
     var stemCache: [DocumentAudioGraph.StemKey: Result<[[Float]], Error>] = [:]
@@ -57,8 +58,12 @@ public final class LiveAudioGraphUpdater {
         if busy { source.supersedeReplace() } else { queue.async { self.drain() } }
     }
 
+    /// `waitUntilIdle` calls so far. The edit path (`submit`, play, stop) never makes one; the stress test asserts it.
+    public var waits: Int { lock.lock(); defer { lock.unlock() }; return waits_ }
+
     /// Blocks until every submitted edit has been built (tests, closing a project).
     public func waitUntilIdle() {
+        lock.lock(); waits_ += 1; lock.unlock()
         while true {
             queue.sync {}
             lock.lock(); let idle = !scheduled && pending == nil; lock.unlock()
