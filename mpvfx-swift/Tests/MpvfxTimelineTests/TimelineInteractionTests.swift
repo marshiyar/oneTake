@@ -178,7 +178,7 @@ final class TimelineVisualTests: XCTestCase {
         let rowA = Int(TimelineLayout.rowTop(1))
         func rgb(_ x: Int, _ y: Int) -> [Int] { let p = t.pixel(x, y); return [Int(p.r), Int(p.g), Int(p.b)] }
         XCTAssertEqual(rgb(240, rowA + 20), [255, 83, 83], "video pre-roll #FF5353")
-        XCTAssertNotEqual(rgb(264, rowA + 3), [16, 16, 20], "clip at t=0 has a square top-left corner")
+        XCTAssertNotEqual(rgb(264, rowA + 3), [29, 29, 29], "clip at t=0 has a square top-left corner")
         let row0 = Int(TimelineLayout.rowTop(0))
         let squareCorner = rgb(264, rowA + 3), roundCorner = rgb(264 + 50, row0 + 3)   // unselected logo clip at 0.5s
         XCTAssertLessThan(roundCorner[0], squareCorner[0], "clip away from t=0 has an antialiased rounded corner")

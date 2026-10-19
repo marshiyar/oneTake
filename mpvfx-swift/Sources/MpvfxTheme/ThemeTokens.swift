@@ -14,10 +14,11 @@
 import Foundation
 
 /// The colour tokens with no dependencies, so any module (timeline, panels, player) can share
-/// them without a dependency cycle. Values: the `studio.*` theme colours, the Tailwind default
-/// palette the panels use, and the accent mint (`--hf-accent`). Map to a drawing colour at the use site.
+/// them without a dependency cycle. The dark values are the palette in docs/DESIGN.md (one flat grey, one blue
+/// accent, clips coloured by media kind); the panels also use the Tailwind neutral/red ramps. Map to a drawing
+/// colour at the use site.
 ///
-/// Every token has a dark value (the original palette) and a light value (
+/// Every token has a dark value and a light value (
 /// derived from the dark one: surfaces and the neutral ramp are mirrored, accents are darkened until text in
 /// them reaches WCAG AA on the light panel surfaces). A token reads the value for `Theme.mode`, so code that
 /// asks for a token at draw time follows a live appearance switch without a restart.
@@ -46,12 +47,15 @@ public struct ThemeColor: Equatable, Sendable {
 public enum ThemeMode: String, Sendable, CaseIterable { case dark, light }
 
 /// The user's appearance setting. `system` follows the OS (macOS effective appearance, GTK prefer-dark on Linux).
+/// Until the user picks, the editor is dark (docs/DESIGN.md): footage is judged on a dark surround.
 public enum ThemeAppearance: String, Sendable, CaseIterable {
     case system, light, dark
     /// Preferences key (`<userData>/preferences.json`).
     public static let preferenceKey = "mpvfx-appearance"
-    /// The stored value; anything missing or unknown is the default, `system`.
-    public init(preference: String?) { self = preference.flatMap(ThemeAppearance.init(rawValue:)) ?? .system }
+    /// The setting before the user picks one.
+    public static let `default`: ThemeAppearance = .dark
+    /// The stored value; anything missing or unknown is the default.
+    public init(preference: String?) { self = preference.flatMap(ThemeAppearance.init(rawValue:)) ?? .default }
     public var label: String {
         switch self { case .system: "System"; case .light: "Light"; case .dark: "Dark" }
     }
@@ -97,14 +101,15 @@ public struct ThemePair: Sendable {
 
 public enum ThemeTokens {
     // studio.* / panel.* (theme.js)
-    /// `studio-accent` (#2D7FFF): Tailwind `text-studio-accent`.
-    public static let studioAccentPair = ThemePair(0x2D7FFF, 0x1A5FCC)
+    /// The accent (docs/DESIGN.md): active tool, selection, focus, changed values.
+    public static let studioAccentPair = ThemePair(0x4C8DF0, 0x1A5FCC)
     public static var studioAccent: ThemeColor { studioAccentPair.now }
-    /// `--hf-accent` mint used by inline styles and the timeline.
-    public static let mintPair = ThemePair(0x3CE6AC, 0x06704F)
+    /// The accent's line form (playhead, drop slots, timeline highlights): the accent blue a step lighter so a 1 px
+    /// line stays visible. Named `mint` for the colour it used to be.
+    public static let mintPair = ThemePair(0x5A98F0, 0x1A5FCC)
     public static var mint: ThemeColor { mintPair.now }
-    /// shellBackground (#0A0A0B): ruler, toolbar strip and timeline card surface.
-    public static let timelineSurfacePair = ThemePair(0x0A0A0B, 0xF4F4F5)
+    /// shellBackground: ruler, toolbar strip and timeline surface.
+    public static let timelineSurfacePair = ThemePair(0x1D1D1D, 0xF4F4F5)
     public static var timelineSurface: ThemeColor { timelineSurfacePair.now }
 
     // Tailwind neutral (light mirrors the ramp: 100 <-> 900; 400 and 500 a step darker so text keeps its dark contrast)
@@ -154,19 +159,19 @@ public enum ThemeTokens {
     public static var black: ThemeColor { blackPair.now }
 
     // MARK: panel.* (studio theme)
-    public static let studioBgPair = ThemePair(0x0A0A0A, 0xE7E7EA)
+    public static let studioBgPair = ThemePair(0x000000, 0xE7E7EA)
     public static let studioSurfacePair = ThemePair(0x4A4A4A, 0xC9C9CE)
     public static let studioBorderPair = ThemePair(0x262626, 0xD4D4D8)
     public static let studioTextPair = ThemePair(0xE5E5E5, 0x27272A)
     public static let studioMutedPair = ThemePair(0x737373, 0x666666)
-    public static let panelBgPair = ThemePair(0x0C0C0E, 0xFAFAFA)
-    public static let panelBgInsetPair = ThemePair(0x121214, 0xF4F4F5)
-    public static let panelInputPair = ThemePair(0x161618, 0xFFFFFF)
-    public static let panelSurfacePair = ThemePair(0x18181B, 0xE9E9EC)
-    public static let panelHoverPair = ThemePair(0x27272A, 0xE4E4E7)
-    public static let panelBorderPair = ThemePair(0x1E1E1E, 0xE1E1E4)
-    public static let panelBorderInputPair = ThemePair(0x27272A, 0xD4D4D8)
-    public static let panelHairlinePair = ThemePair(0x1A1A1C, 0xEAEAEC)
+    public static let panelBgPair = ThemePair(0x1D1D1D, 0xFAFAFA)
+    public static let panelBgInsetPair = ThemePair(0x191919, 0xF4F4F5)
+    public static let panelInputPair = ThemePair(0x0E0E0E, 0xFFFFFF)
+    public static let panelSurfacePair = ThemePair(0x232323, 0xE9E9EC)
+    public static let panelHoverPair = ThemePair(0x2C2C2C, 0xE4E4E7)
+    public static let panelBorderPair = ThemePair(0x000000, 0xE1E1E4)
+    public static let panelBorderInputPair = ThemePair(0x333333, 0xD4D4D8)
+    public static let panelHairlinePair = ThemePair(0x141414, 0xEAEAEC)
     /// Panel text ramp (text0 strongest). Light values keep each step at or above its dark contrast.
     public static let textPairs: [ThemePair] = [
         ThemePair(0xFAFAFA, 0x09090B), ThemePair(0xE4E4E7, 0x27272A), ThemePair(0xA1A1AA, 0x4A4A52),
@@ -175,18 +180,21 @@ public enum ThemeTokens {
     public static let dangerPair = ThemePair(0xEF4444, 0xC81E1E)
     public static let mediaPair = ThemePair(0x00E3FF, 0x0A6F8A)
     public static let containerPair = ThemePair(0xF5A623, 0x955600)
-    /// Popover/menu card (`#161618`, white/8 border).
-    public static let popoverPair = ThemePair(0x161618, 0xFFFFFF)
-    /// Timeline lanes (studio timeline theme rowBackground / gutterBackground).
-    public static let timelineRowPair = ThemePair(0x101014, 0xFFFFFF)
-    public static let timelineGutterPair = ThemePair(0x0E0F12, 0xF7F7F8)
+    /// Popover/menu card (white/8 border).
+    public static let popoverPair = ThemePair(0x252525, 0xFFFFFF)
+    /// Timeline lanes (rowBackground) and track headers (gutterBackground).
+    public static let timelineRowPair = ThemePair(0x1D1D1D, 0xFFFFFF)
+    public static let timelineGutterPair = ThemePair(0x212121, 0xF7F7F8)
+    /// Timeline clip fill by media kind (docs/DESIGN.md), at rest and under the pointer.
+    public static let clipVideoPair = ThemePair(0x1D4A64, 0xCFE3F0), clipVideoHoverPair = ThemePair(0x245A79, 0xBCD7EA)
+    public static let clipAudioPair = ThemePair(0x2F4A17, 0xDCEACB), clipAudioHoverPair = ThemePair(0x3A5A1D, 0xCFE2B8)
     /// Timeline clip while dragged (opaque so the lanes under it do not show through), audio and visual.
     public static let clipDragAudioPair = ThemePair(ThemeColor(0x3C3454, alpha: 0.96), ThemeColor(0xE4DDFB, alpha: 0.96))
     public static let clipDragPair = ThemePair(ThemeColor(0x262A34, alpha: 0.96), ThemeColor(0xDDE1EA, alpha: 0.96))
     /// Audio waveform bars.
-    public static let waveformPair = ThemePair(0x4BA3D2, 0x2B7DB0)
+    public static let waveformPair = ThemePair(0x79C0F9, 0x2B7DB0)
     /// Native range control (Grade level slider): the darker edge of the accent fill.
-    public static let accentEdgePair = ThemePair(0x517ABA, 0x1A52AB)
+    public static let accentEdgePair = ThemePair(0x2F6BDF, 0x1A52AB)
     /// Curve editor point outline.
     public static let curvePointOutlinePair = ThemePair(0x111111, 0xFFFFFF)
     /// Curve editor line and point colour per curve tab (CurveGraph's tab colours). Dark: the original values
@@ -200,8 +208,8 @@ public enum ThemeTokens {
     public static let curveHueHuePair = ThemePair(0xF0ABFC, 0xC026D3)
     public static let curveHueSatPair = ThemePair(0xFACC15, 0xA16207)
     public static let curveHueLumaPair = ThemePair(0xF8FAFC, 0x27272A)
-    /// Preview viewport around the stage (`bg-neutral-950`).
-    public static let viewportPair = ThemePair(0x0A0A0A, 0xE7E7EA)
+    /// Preview viewport around the stage.
+    public static let viewportPair = ThemePair(0x141414, 0xE7E7EA)
 
     // MARK: Fixed (the same in both modes)
     /// Media/stage canvas surface: the stage stays neutral so pictures are judged on the same grey.

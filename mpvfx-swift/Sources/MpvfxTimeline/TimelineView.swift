@@ -59,10 +59,10 @@ public struct TimelineTheme: Sendable {
     public var tickText: CanvasColor { ink.withAlpha(Theme.mode == .light ? 0.45 : 0.34) }
     public var tickMajor: CanvasColor { ink.withAlpha(0.10) }
     public var tickMinor: CanvasColor { ink.withAlpha(0.06) }
-    public var clip: CanvasColor { ink.withAlpha(0.055) }              // TRACK_STYLE.clip
+    public var clip: CanvasColor { CanvasColor(ThemeTokens.clipVideoPair.now) }
     public var clipActive: CanvasColor { accent.withAlpha(0.16) }      // TRACK_STYLE.clipActive
     public var trackLabel: CanvasColor { ink.withAlpha(Theme.mode == .light ? 0.6 : 0.5) }   // TRACK_STYLE.label
-    public var accent: CanvasColor { CanvasColor(ThemeTokens.mint) }   // --hf-accent
+    public var accent: CanvasColor { CanvasColor(ThemeTokens.mint) }   // the accent's line form
     public var preRoll: CanvasColor { CanvasColor(ThemeTokens.preRoll) }   // preRollBackground
     public var clipRadius = 3.0
     public init() {}
@@ -443,11 +443,11 @@ public final class TimelineView {
     public static let uiFontFamily = "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
     public static let clipMonoFamily = "SF Mono, Fira Code, monospace"
 
-    /// studio.css .timeline-clip background by state (no box-shadow: the theme shadow tokens are unused).
+    /// Clip fill by media kind and state (docs/DESIGN.md): opaque, so a clip reads as a block of its kind.
     static func clipBackground(audio: Bool, hovered: Bool, dragging: Bool) -> CanvasColor {
         if dragging { return CanvasColor((audio ? ThemeTokens.clipDragAudioPair : ThemeTokens.clipDragPair).now) }
-        if audio { return CanvasColor(ThemeTokens.violet400.alpha(hovered ? 0.24 : 0.16)) }
-        return CanvasColor(ThemeTokens.white.alpha(hovered ? 0.09 : 0.055))
+        if audio { return CanvasColor((hovered ? ThemeTokens.clipAudioHoverPair : ThemeTokens.clipAudioPair).now) }
+        return CanvasColor((hovered ? ThemeTokens.clipVideoHoverPair : ThemeTokens.clipVideoPair).now)
     }
 
     /// text-overflow: ellipsis within `maxWidth`.

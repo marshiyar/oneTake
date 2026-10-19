@@ -143,7 +143,7 @@ final class AppearanceSwitchTests: XCTestCase {
         let ud = userData()
         var osDark = true
         let s = try makeSession(userData: ud, systemPrefersDark: { osDark })
-        XCTAssertEqual(s.appearance?.appearance, .system)
+        XCTAssertEqual(s.appearance?.appearance, .dark)
         XCTAssertEqual(differing(render(s), darkRef), 0)
         s.setAppearance(.light)
         XCTAssertEqual(differing(render(s), lightRef), 0, "menu Light repaints light")
