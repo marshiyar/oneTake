@@ -24,7 +24,8 @@ public func parseNativeProjectDocument(_ input: NativeJSONValue, engine: Keyfram
     if !issues.isEmpty { throw NativeProjectDocumentValidationError(issues: issues) }
     var doc = input
     doc["schemaVersion"] = .number(Double(NATIVE_PROJECT_DOCUMENT_SCHEMA_VERSION))
-    // One-time migration: "ffmpeg" (older stored name) and a missing field both mean the native timeline.
+    // One-time migration: "ffmpeg" (a legacy value written by older versions) and a missing field both mean the
+    // native timeline.
     doc["mediaEngine"] = .string(NativeMediaEngine.native.rawValue)
     var sequence = doc["sequence"]!
     if var groups = sequence["audioGroups"]?.arrayValue {

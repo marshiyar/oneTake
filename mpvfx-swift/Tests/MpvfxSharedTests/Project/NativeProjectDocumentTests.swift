@@ -96,8 +96,8 @@ final class NativeProjectDocumentTests: XCTestCase {
     }
 
     func testOlderEngineNamesMigrateToNativeOnTheNextSave() throws {
-        // "ffmpeg" (the older stored name) and a missing field are both the native timeline; the save writes "native"
-        // and changes nothing else.
+        // "ffmpeg" (a legacy value from older versions) and a missing field are both the native timeline; the save
+        // writes "native" and changes nothing else.
         var named = validNativeDocument(); named["mediaEngine"] = .string("ffmpeg")
         var missing = validNativeDocument(); missing["mediaEngine"] = nil
         var current = validNativeDocument(); current["mediaEngine"] = .string("native")

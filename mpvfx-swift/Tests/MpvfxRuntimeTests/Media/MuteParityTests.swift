@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 // Muted audio groups export silently. Fixtures/muteParity.json holds reference audio windows recorded from the
 // original renderer; the Swift export must match them within 0.001 RMS per 100 ms window. The inputs follow the
-// generator's recipe (FFmpeg lavfi sines at their default 1/8 amplitude, a red/green 64x32 picture at 10 fps), made
+// generator's recipe (sines at amplitude 1/8, a red/green 64x32 picture at 10 fps), made
 // here with our own code: WAV bytes written directly, the videos by MediaWriter (MP4 = H.264 + FLAC).
 import Foundation
 import XCTest
@@ -69,7 +69,7 @@ final class MuteParityTests: XCTestCase {
         for name in ["mutedGroupWithBusFx", "mutedGroupWithBusAutomation", "mutedGroupMemberWithFx", "mutedGroupMemberWithAutomation", "mutedGroupAtHalfVolume"] {
             XCTAssertEqual(expected(results, name), plain, name)
         }
-        // Voice-only level (660 Hz sine at ffmpeg's default 1/8 amplitude => RMS ~0.0884), so the 440/220 Hz members add nothing.
+        // Voice-only level (660 Hz sine at amplitude 1/8 => RMS ~0.0884), so the 440/220 Hz members add nothing.
         for v in plain { XCTAssertEqual(v, 0.125 / 2.0.squareRoot(), accuracy: 0.002) }
     }
 
