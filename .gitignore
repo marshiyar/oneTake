@@ -5,6 +5,7 @@
 !.claude/hooks/
 .claude/hooks/__pycache__/
 CLAUDE.md
+AGENTS.md
 
 # Build output and editor state.
 .build/
