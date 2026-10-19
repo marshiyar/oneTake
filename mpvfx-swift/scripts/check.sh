@@ -16,11 +16,16 @@
 #   engine libraries fetched and verified (binaries.lock), fetch script tests, copyright blocks,
 #   generated GPU shaders current (when glslangValidator and spirv-opt are installed),
 #   swift build and swift test (skipped with --fast).
-# Exit 0 when every check passed.
+# Exit 0 when every check passed, 1 when one failed, 2 = UNAVAILABLE: a full run's prerequisites are missing
+# (scripts/doctor.sh names them).
 set -u
 cd "$(dirname "$0")/.." || exit 2
 fail=0
 run() { echo "== $*"; "$@" || { echo "FAILED: $*"; fail=1; }; }
+# a full run needs its prerequisites; without one the verdict is UNAVAILABLE in seconds, not FAILED after the build
+if [ "${1:-}" != "--fast" ]; then
+  sh scripts/doctor.sh || { echo "check: UNAVAILABLE (prerequisites missing; see doctor above)"; exit 2; }
+fi
 
 run python3 -I -B scripts/fetch-binaries.py
 run python3 -I -B scripts/test_fetch_binaries.py
