@@ -103,7 +103,8 @@ swift test                   # the whole suite
 
 CI ([`.github/workflows/mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests and packages the app on Linux,
 Windows and macOS with the engine libraries pinned in [`binaries.lock`](mpvfx-swift/binaries.lock); `ci-ok` is the
-required check. Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
+required check. [`strip-check.yml`](.github/workflows/strip-check.yml) then verifies that every published binary is stripped
+([`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), "Symbols"). Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Repository layout
 

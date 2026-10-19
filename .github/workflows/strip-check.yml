@@ -1,0 +1,112 @@
+name: strip-check
+
+# Every shipped program and library is stripped, on every OS. Runs after each mpvfx-ci run that built installers
+# (and by hand for any run id): downloads that run's installer artifacts, unpacks each the way a user would (dpkg,
+# tar, zip, the disk image) and reads every binary's own headers with .github/ci/strip-check.py: no ELF .symtab or
+# .debug_*, no PE symbol table or CodeView (.pdb) record, no Mach-O stab or local symbols. The Swift and MSVC runtime
+# DLLs the Windows build redistributes are reported but not judged (this project does not build them).
+# Separate from mpvfx-ci on purpose: it checks what was published, and a failure here never blocks a merge; it is
+# the owner's signal that an installer leaked symbols.
+
+on:
+  workflow_run:
+    workflows: [mpvfx-ci]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: The mpvfx-ci run whose installer artifacts to check
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: strip-check-${{ github.event.workflow_run.id || inputs.run_id }}
+  cancel-in-progress: false
+
+env:
+  RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+
+jobs:
+  linux:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: dist
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Unpack the portable archive and the Debian package
+        run: |
+          ls -l dist
+          mkdir -p unpacked/portable unpacked/deb
+          tar -xzf dist/mpvfx-linux-x64-*.tar.gz -C unpacked/portable
+          dpkg-deb -x dist/mpvfx_*.deb unpacked/deb
+      - name: Every binary is stripped
+        run: python3 -I -B .github/ci/strip-check.py unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+
+  windows:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: dist
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Unpack the portable zip and the installer
+        run: |
+          ls -l dist
+          mkdir -p unpacked/portable unpacked/setup
+          unzip -q dist/mpvfx-windows-x64-*.zip -d unpacked/portable
+          # setup.exe is an IExpress self-extracting cabinet of the same folder; 7-Zip reads it.
+          7z x -y -ounpacked/setup dist/MpVFX-*-setup.exe >/dev/null || { echo "::error::7z could not unpack setup.exe"; exit 1; }
+          find unpacked -type f \( -name '*.exe' -o -name '*.dll' \) | sort
+      - name: Every binary is stripped (the Swift and MSVC runtimes are reported, not judged)
+        run: |
+          python3 -I -B .github/ci/strip-check.py \
+            --tolerate 'swift*.dll' --tolerate 'Foundation*.dll' --tolerate '_FoundationICU.dll' \
+            --tolerate 'dispatch.dll' --tolerate 'BlocksRuntime.dll' \
+            --tolerate 'vcruntime*.dll' --tolerate 'msvcp*.dll' --tolerate 'concrt140.dll' --tolerate 'vccorlib140.dll' \
+            unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+
+  macos:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: xcode-27
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos
+          path: dist
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Mount the disk image and copy the app out
+        run: |
+          ls -l dist
+          dmg=$(ls dist/MpVFX-*.dmg)
+          mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
+          mkdir -p unpacked; cp -R "$mnt/MpVFX.app" unpacked/; hdiutil detach "$mnt"
+          find unpacked/MpVFX.app/Contents/MacOS unpacked/MpVFX.app/Contents/Frameworks -type f | sort
+      - name: Every binary is stripped
+        run: python3 -I -B .github/ci/strip-check.py unpacked | tee -a "$GITHUB_STEP_SUMMARY"

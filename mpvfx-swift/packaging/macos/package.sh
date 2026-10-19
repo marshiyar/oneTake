@@ -23,6 +23,8 @@
 #   APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID
 #                        with an identity, the image is notarized by Apple and the ticket stapled to it.
 # MPVFX_BUILD (build number, default: git short sha) and MPVFX_VERSION (default: packaging/VERSION).
+# MPVFX_SYMBOLS_DIR: when set, the binary's dSYM is written there (<name>.dSYM.tar.gz) before the binary is stripped;
+# the shipped app never carries symbols (strip-check.yml verifies the disk image).
 set -eu
 
 dist=${1:?usage: package.sh <dist-dir>}
@@ -36,6 +38,12 @@ bin=$(swift build -c release --show-bin-path)
 
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
 cp "$bin/MpVFX" "$app/Contents/MacOS/MpVFX"
+if [ -n "${MPVFX_SYMBOLS_DIR:-}" ]; then
+  mkdir -p "$MPVFX_SYMBOLS_DIR"
+  dsymutil "$app/Contents/MacOS/MpVFX" -o "$work/MpVFX.dSYM"
+  tar -C "$work" -czf "$MPVFX_SYMBOLS_DIR/MpVFX-$version-macos-$arch.dSYM.tar.gz" MpVFX.dSYM
+fi
+strip -S -x "$app/Contents/MacOS/MpVFX"   # debug and local symbols; what dyld binds stays
 for b in "$bin"/*.bundle; do if [ -e "$b" ]; then cp -R "$b" "$app/Contents/Resources/"; fi; done
 # The Metal kernels ship inside the app or the app grades on the CPU (MetalGradePipeline.resourceBundle): refuse to
 # package an app without them rather than let a build machine's own copy hide it.
