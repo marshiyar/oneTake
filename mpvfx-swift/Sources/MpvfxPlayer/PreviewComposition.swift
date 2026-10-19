@@ -197,7 +197,7 @@ public struct PreviewComposition {
             values[track.parameterId] = v
             if track.parameterId == "transform.position", track.autoRotate == true,
                let eng = engine ?? (try? keyframeEngine()),
-               let a = try? eng.tangentAngle(VkfTrack(track), frame: local), a.isFinite {
+               let a = try? eng.tangentAngle(KeyframeTrack(track), frame: local), a.isFinite {
                 autoRotate = a * 180 / .pi
             }
         }

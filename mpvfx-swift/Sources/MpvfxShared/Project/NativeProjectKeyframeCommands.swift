@@ -234,7 +234,7 @@ func errorMessage(_ error: Error) -> String? {
     case let e as KeyframeEngineError: e.message
     case let e as NativeProjectDocumentValidationError: e.message
     case let e as NativeSourceTimeRangeError: e.message
-    case let e as VkfEngineNotLoadedError: e.description
+    case let e as KeyframeEngineNotLoadedError: e.description
     case let e as NativePlayheadError: e.message
     default: nil
     }
