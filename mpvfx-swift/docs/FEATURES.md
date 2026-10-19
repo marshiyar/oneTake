@@ -276,6 +276,7 @@ Every item of the owner's screenshot review, with its status now.
 | Ability | Why |
 | --- | --- |
 | Elements/blocks registry tab and block params | No native equivalent |
+| Telemetry and feedback card | Not part of the product |
 | Animation cards (tween presets) | Native keyframes cover animation |
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
