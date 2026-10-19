@@ -78,7 +78,11 @@ From `mpvfx-swift/`, before every push:
 ```sh
 sh scripts/check.sh          # engine libraries, fetch-script tests, copyright blocks, shaders, swift build, swift test
 sh scripts/check.sh --fast   # the same without swift build and swift test
+sh scripts/doctor.sh         # what a full run needs that is missing, with fixes
 ```
+
+A full run starts with [`scripts/doctor.sh`](mpvfx-swift/scripts/doctor.sh): with a prerequisite missing it stops at
+once with `check: UNAVAILABLE` (exit 2), neither passed nor failed.
 
 CI ([`mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests, packages and install-smokes the app on Linux,
 Windows and macOS; `ci-ok` is the required check, and a green `main` publishes the installers. Two more workflows
