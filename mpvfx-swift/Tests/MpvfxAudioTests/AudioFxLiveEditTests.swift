@@ -196,15 +196,34 @@ final class AudioFxLiveEditTests: XCTestCase {
     /// Every rack control (each preset, Add EQ, each EQ band as a drag, bypass, remove, Clear chain, the clip/bus
     /// volume) applied over and over on both racks, mixed with what the user does around edits: edit while playing,
     /// pause then edit then play, replay from the start, play from the playhead. The "main loop" (this thread)
-    /// only does what the session's UI thread does (build inputs, submit, play/stop) and beats a heartbeat; a
-    /// watchdog thread fails the test if any gap exceeds 250 ms. The feeder must keep delivering audio and the
-    /// last edit must be what plays.
+    /// only does what the session's UI thread does (build inputs, submit, play/stop) and beats a heartbeat. Two
+    /// things are measured. The property itself: the main loop makes no explicit wait on the graph worker
+    /// (`LiveAudioGraphUpdater.waits` stays where it was; the one wait the test needs runs on another thread), and
+    /// submit/play/stop each return in under 50 ms. And the wall clock: a watchdog thread records the largest gap
+    /// between heartbeats, which must stay under a limit that starts at 250 ms and scales with what this runner
+    /// does to an idle loop (a short calibration before the stress), so a GitHub runner shared with other jobs,
+    /// which stalls every thread for hundreds of milliseconds, does not fail an unrelated change. The feeder must
+    /// keep delivering audio and the last edit must be what plays.
     func testStressEveryControlBothRacksWithPlayPauseReplayNeverBlocksTheMainLoop() throws {
         let source = GraphAudioSource(project: Self.project(Self.inputs()))
         let updater = LiveAudioGraphUpdater(source: source, loadStem: Self.loadStem)
         updater.submit(Self.inputs()); updater.waitUntilIdle()
+        let waitsBeforeStress = updater.waits
         let output = ClockedNullAudioOutput(format: source.format)
         let playback = AudioPlayback(output: output, source: source)
+
+        // Calibration: the same 4 ms pacing the stress uses, with nothing of ours running yet. On an idle machine
+        // each lap takes ~4 ms; a runner loaded by other jobs stretches the median and throws in long stalls.
+        var laps: [UInt64] = []
+        let calibrationEnd = DispatchTime.now().uptimeNanoseconds + 400_000_000
+        while DispatchTime.now().uptimeNanoseconds < calibrationEnd {
+            let t = DispatchTime.now().uptimeNanoseconds
+            usleep(4000)
+            laps.append(DispatchTime.now().uptimeNanoseconds - t)
+        }
+        laps.sort()
+        let idleMedianMs = Double(laps[laps.count / 2]) / 1e6, idleMaxMs = Double(laps.last!) / 1e6
+        let gapLimitMs = max(250, idleMedianMs * 40, idleMaxMs * 4)
 
         let lock = NSLock()
         var beat = DispatchTime.now().uptimeNanoseconds, maxGap: UInt64 = 0, done = false, worst = ""
@@ -284,23 +303,25 @@ final class AudioFxLiveEditTests: XCTestCase {
         if !playback.isPlaying { try playback.play(from: 0) }
         let editSeconds = Date().timeIntervalSince(t0)
         // The UI never waits for the worker; the test does, from another thread, while the main loop keeps beating.
+        let waitsDuringStress = updater.waits - waitsBeforeStress
         let idle = DispatchSemaphore(value: 0)
         Thread.detachNewThread { updater.waitUntilIdle(); idle.signal() }
         var landed = false
         for _ in 0..<12000 {   // up to 120 s (debug build on a loaded CI box)
             if idle.wait(timeout: .now() + .milliseconds(10)) == .success { landed = true; break }
-            heartbeat("waiting for the worker")
+            heartbeat("idle: test polling for the worker")
         }
         heartbeat("landed")
         try playback.play(from: 0); heartbeat("final replay")
         for _ in 0..<30 { usleep(10_000); heartbeat("final play") }
         lock.lock(); done = true; let gapMs = Double(maxGap) / 1e6, worstPhase = worst; lock.unlock()
         let written = output.framesWritten - framesBefore
-        print(String(format: "AUDIOFX-STRESS steps=%d transport=%d editSecs=%.2f maxMainGapMs=%.1f(%@) maxSubmitMs=%.3f maxTransportMs=%.3f builds=%d framesWritten=%d lastReplace=%@",
-                     steps, replays, editSeconds, gapMs, worstPhase, Double(maxSubmit) / 1e6, Double(maxTransport) / 1e6, updater.builds, written,
+        print(String(format: "AUDIOFX-STRESS steps=%d transport=%d editSecs=%.2f waits=%d maxMainGapMs=%.1f(%@) gapLimitMs=%.0f idleMedianMs=%.2f idleMaxMs=%.1f maxSubmitMs=%.3f maxTransportMs=%.3f builds=%d framesWritten=%d lastReplace=%@",
+                     steps, replays, editSeconds, waitsDuringStress, gapMs, worstPhase, gapLimitMs, idleMedianMs, idleMaxMs, Double(maxSubmit) / 1e6, Double(maxTransport) / 1e6, updater.builds, written,
                      "\(source.lastReplace.map { "\($0)" } ?? "nil")"))
         XCTAssertTrue(landed, "the graph worker never finished")
-        XCTAssertLessThan(gapMs, 250, "the main loop stalled (\(worstPhase))")
+        XCTAssertEqual(waitsDuringStress, 0, "the main loop waited on the graph worker")
+        XCTAssertLessThan(gapMs, gapLimitMs, "the main loop stalled (\(worstPhase)); idle laps median \(idleMedianMs) ms, max \(idleMaxMs) ms")
         XCTAssertLessThan(Double(maxSubmit) / 1e6, 50, "submit must not wait on the graph")
         XCTAssertLessThan(Double(maxTransport) / 1e6, 50, "play/stop must not wait on the graph or the feeder")
         XCTAssertTrue(playback.isPlaying, "playback stopped")
