@@ -1,0 +1,7 @@
+// The media engine's C interface. The header and the dynamic library are not in this repository: they come from the
+// release pinned in binaries.lock (`python3 scripts/fetch-binaries.py` puts them in .binaries/media/).
+module CMediaEngine [system] {
+    header "../../.binaries/media/include/mpvfx_media.h"
+    link "mpvfx_media"
+    export *
+}

@@ -1,0 +1,30 @@
+# Build output and editor state.
+.build/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+.DS_Store
+__pycache__/
+
+# Prebuilt engine libraries, downloaded by mpvfx-swift/scripts/fetch-binaries.py from the versions in binaries.lock.
+.binaries/
+
+# CI bookkeeping written by the test jobs.
+.test-pass
+
+# Maintainer tooling that is set up at the start of a session and never committed here: agent instructions and
+# settings rendered from a separate private repository, and local Claude Code state. Only .claude/settings.json and
+# .claude/hooks/session-start.sh are part of this repository.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/session-start.sh
+CLAUDE.md
+**/CLAUDE.md
+AGENTS.md
+**/AGENTS.md
+.agents/
+**/.agents/
+agent-kit/
+.maintainer/

@@ -1,0 +1,53 @@
+# Approves a pull request as the project's review bot (a GitHub App), never as the account that wrote it. The
+# repository owner comments `/agent-approve <full head sha>` after reviewing; this job approves only when the comment
+# comes from the owner's account, names the PR's current head, and `ci-ok` passed on exactly that commit.
+# Needs the repository secrets AGENT_APP_ID and AGENT_APP_PRIVATE_KEY (the App's id and private key); without them the
+# job fails and nothing is approved.
+name: agent-approve
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-approve-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/agent-approve ') &&
+      github.event.comment.author_association == 'OWNER'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Token for the review App
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+      - name: Approve when the named head is the PR's head and ci-ok passed on it
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.comment.body }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+        run: |
+          set -eu
+          sha=$(printf '%s\n' "$BODY" | head -n 1 | sed -n 's|^/agent-approve \([0-9a-f]\{40\}\)[[:space:]]*$|\1|p')
+          [ -n "$sha" ] || { echo "::error::first line must be /agent-approve <40-character head sha>"; exit 1; }
+          set -- $(gh api "repos/$REPO/pulls/$PR" --jq '"\(.head.sha) \(.base.ref) \(.draft)"')
+          head=$1 base=$2 draft=$3
+          [ "$head" = "$sha" ] || { echo "::error::the PR head is $head, not $sha: review the new head first"; exit 1; }
+          [ "$base" = main ] && [ "$draft" = false ] || { echo "::error::only a ready pull request into main is approved"; exit 1; }
+          ok=$(gh api "repos/$REPO/commits/$sha/check-runs?check_name=ci-ok" \
+            --jq '[.check_runs[] | select(.app.slug == "github-actions" and .conclusion == "success")] | length')
+          [ "$ok" -gt 0 ] || { echo "::error::ci-ok has not passed on $sha"; exit 1; }
+          gh api -X POST "repos/$REPO/pulls/$PR/reviews" -f commit_id="$sha" -f event=APPROVE \
+            -f body="Approved after review ($COMMENT_URL): ci-ok passed on $sha." --jq '.html_url'

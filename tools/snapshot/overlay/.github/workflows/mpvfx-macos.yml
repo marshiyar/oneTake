@@ -1,0 +1,282 @@
+name: mpvfx-macos
+
+# macOS build, tests and disk image. Called by mpvfx-ci.yml on every pull request into main, every push to main and
+# every night, so one publish job there releases all platforms together; also run by hand on any branch (Run
+# workflow), where "skip_tests" gives a packaging-only run (artifact only, never published).
+#
+# The suite runs as 4 test shards beside the package job (.github/ci/test-shards.py, the same shards as Linux and
+# Windows). A shard that passed is recorded under the hash of every file its tests are built from; while none of those
+# files change it is not run again. The nightly run and full_tests run every shard. Every job downloads the prebuilt
+# engine libraries pinned in binaries.lock; the disk image carries them in MpVFX.app/Contents/Frameworks.
+#
+# Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
+# are optional (outside pull requests only): set, the disk image is signed with a Developer ID and notarized; unset, it
+# is ad-hoc signed.
+
+on:
+  workflow_call:
+    inputs:
+      skip_tests:
+        type: boolean
+        default: false
+      full_tests:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: Skip the test suite (packaging-only runs)
+        type: boolean
+        default: false
+      full_tests:
+        description: Run every test shard, ignoring passes recorded for unchanged inputs
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  XCODE_VERSION: '27.0'   # the stable default Xcode of the xcode-27 runner image
+
+jobs:
+  plan:
+    if: ${{ !inputs.skip_tests }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      shards: ${{ steps.pick.outputs.shards }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shards and their input keys
+        id: keys
+        run: |
+          swift package dump-package > "$RUNNER_TEMP/package.json"
+          echo "all=$(python3 -I -B ../.github/ci/test-shards.py --os macos "$RUNNER_TEMP/package.json")" >> "$GITHUB_OUTPUT"
+      - name: Pass recorded for library?
+        id: c0
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: macos-pass-library-${{ fromJSON(steps.keys.outputs.all)[0].key }}
+          lookup-only: true
+      - name: Pass recorded for audio-presets?
+        id: c1
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: macos-pass-audio-presets-${{ fromJSON(steps.keys.outputs.all)[1].key }}
+          lookup-only: true
+      - name: Pass recorded for audio-live?
+        id: c2
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: macos-pass-audio-live-${{ fromJSON(steps.keys.outputs.all)[2].key }}
+          lookup-only: true
+      - name: Pass recorded for rest?
+        id: c3
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: macos-pass-rest-${{ fromJSON(steps.keys.outputs.all)[3].key }}
+          lookup-only: true
+      - name: Shards to run
+        id: pick
+        env:
+          ALL: ${{ steps.keys.outputs.all }}
+          FULL: ${{ github.event_name == 'schedule' || inputs.full_tests }}
+          HITS: ${{ steps.c0.outputs.cache-hit }},${{ steps.c1.outputs.cache-hit }},${{ steps.c2.outputs.cache-hit }},${{ steps.c3.outputs.cache-hit }}
+        run: |
+          python3 -I -B - <<'PY'
+          import json, os
+          shards, hits = json.loads(os.environ["ALL"]), os.environ["HITS"].split(",")
+          assert len(hits) == len(shards), f"{len(shards)} shards, {len(hits)} lookups"
+          full = os.environ["FULL"] == "true"
+          run = [s for s, hit in zip(shards, hits) if full or hit != "true"]
+          for s in shards:
+              print(f"::notice::macos shard {s['shard']}: {'runs' if s in run else 'passed before on these exact inputs, not rerun'}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"shards={json.dumps(run)}\n")
+          PY
+
+  test:
+    needs: plan
+    if: ${{ !inputs.skip_tests && needs.plan.outputs.shards != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.shards) }}
+    name: test (${{ matrix.shard }})
+    runs-on: xcode-27
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode ${{ env.XCODE_VERSION }}
+        run: |
+          # Pinned, not "newest": the image's newest folder can hold a beta whose Metal Toolchain does not install.
+          x=/Applications/Xcode_${XCODE_VERSION}.app
+          test -d "$x" || { echo "::error::$x is not on this runner"; ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$x/Contents/Developer"
+          xcodebuild -version && swift --version
+      - name: Engine libraries (binaries.lock)
+        run: python3 -I -B scripts/fetch-binaries.py
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            macos27-debug-${{ github.ref_name }}-
+            macos27-debug-
+      - name: Forget build plans recorded on another runner
+        run: |
+          rm -rf .build/out/Intermediates.noindex/XCBuildData/*.xcbuilddata .build/out/Intermediates.noindex/XCBuildData/prior-build-descriptions.txt
+          rm -rf .build/*.yaml .build/*/*/description.json
+      - name: Compile Metal shaders
+        run: |
+          sh ../.github/ci/metal-toolchain.sh
+          xcrun -sdk macosx metal -c Sources/MpvfxMetal/Shaders/MpvfxColor.metal -o "$RUNNER_TEMP/MpvfxColor.air"
+          xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        env:
+          NSUnbufferedIO: "YES"
+          FILTER: ${{ matrix.filter }}
+          SKIP: ${{ matrix.skip }}
+        run: |
+          args=(); [ -n "$FILTER" ] && args+=(--filter "$FILTER"); [ -n "$SKIP" ] && args+=(--skip "$SKIP")
+          swift test --skip-build "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+      - name: Test counts
+        if: always()
+        run: |
+          grep -A2 -E "Test Suite '[^']+\.xctest' (passed|failed)" "$RUNNER_TEMP/test.log" | grep -oE "Executed [0-9]+ tests?, with [0-9]+ failures?" |
+            awk '{t+=$2; f+=$5} END {printf "XCTest: %d tests, %d failures in %d bundles\n", t, f, NR}' || true
+          grep -E "Test run with [0-9]+ tests" "$RUNNER_TEMP/test.log" | tail -1 || true
+      - name: Record the pass for these inputs
+        run: cp "$RUNNER_TEMP/test.log" .test-pass
+      - uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: macos-pass-${{ matrix.shard }}-${{ matrix.key }}
+      - name: Save caches
+        if: always() && matrix.shard == 'rest'
+        uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.build
+          key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
+
+  package:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode ${{ env.XCODE_VERSION }}
+        run: |
+          x=/Applications/Xcode_${XCODE_VERSION}.app
+          test -d "$x" || { echo "::error::$x is not on this runner"; ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$x/Contents/Developer"
+          xcodebuild -version && swift --version
+      - name: Engine libraries (binaries.lock)
+        run: python3 -I -B scripts/fetch-binaries.py
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            macos27-release-${{ github.ref_name }}-
+            macos27-release-
+      - name: Forget build plans recorded on another runner
+        run: |
+          rm -rf .build/out/Intermediates.noindex/XCBuildData/*.xcbuilddata .build/out/Intermediates.noindex/XCBuildData/prior-build-descriptions.txt
+          rm -rf .build/*.yaml .build/*/*/description.json
+      - name: Compile Metal shaders
+        run: |
+          sh ../.github/ci/metal-toolchain.sh
+          xcrun -sdk macosx metal -c Sources/MpvfxMetal/Shaders/MpvfxColor.metal -o "$RUNNER_TEMP/MpvfxColor.air"
+          xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
+      - name: Release build
+        run: swift build -c release
+      - name: Signing certificate (Developer ID, when the optional secrets are set)
+        id: cert
+        env:
+          MACOS_CERT_P12_BASE64: ${{ github.event_name != 'pull_request' && secrets.MACOS_CERT_P12_BASE64 || '' }}
+          MACOS_CERT_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.MACOS_CERT_PASSWORD || '' }}
+        run: |
+          if [ -n "$MACOS_CERT_P12_BASE64" ]; then
+            echo "identity=$(sh packaging/macos/import-cert.sh)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::MACOS_CERT_P12_BASE64 is not set: the disk image is ad-hoc signed and not notarized"
+          fi
+      - name: Package (disk image with the engine libraries in Contents/Frameworks)
+        env:
+          MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
+          APPLE_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_ID || '' }}
+          APPLE_APP_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.APPLE_APP_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_TEAM_ID || '' }}
+          MPVFX_BUILD: ${{ github.sha }}
+        run: |
+          export MPVFX_BUILD=${MPVFX_BUILD::7}
+          sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" | tee "$RUNNER_TEMP/package.log"
+          ls -l "$GITHUB_WORKSPACE/dist"
+      - name: Launch smoke from the installed disk image
+        timeout-minutes: 8
+        env:
+          SIGNED: ${{ steps.cert.outputs.identity != '' }}
+        run: |
+          dmg=$(ls "$GITHUB_WORKSPACE"/dist/MpVFX-*.dmg)
+          mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
+          apps=$(mktemp -d); cp -R "$mnt/MpVFX.app" "$apps/"; hdiutil detach "$mnt"
+          codesign --verify --deep --strict --verbose=2 "$apps/MpVFX.app"
+          ls -l "$apps/MpVFX.app/Contents/Frameworks"
+          otool -L "$apps/MpVFX.app/Contents/MacOS/MpVFX" | grep -E 'mpvfx_media|cvkf'
+          if [ "$SIGNED" = true ]; then
+            spctl --assess --type execute --verbose=4 "$apps/MpVFX.app"
+            spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
+          fi
+          # Hide the build tree and the fetched libraries: the installed app must run from its own bundle.
+          mv "$GITHUB_WORKSPACE/mpvfx-swift/.build" "$RUNNER_TEMP/build-hidden"
+          mv "$GITHUB_WORKSPACE/mpvfx-swift/.binaries" "$RUNNER_TEMP/binaries-hidden"
+          trap 'mv "$RUNNER_TEMP/build-hidden" "$GITHUB_WORKSPACE/mpvfx-swift/.build"; mv "$RUNNER_TEMP/binaries-hidden" "$GITHUB_WORKSPACE/mpvfx-swift/.binaries"' EXIT
+          env -i HOME="$HOME" PATH=/usr/bin:/bin NSUnbufferedIO=YES MPVFX_HIDDEN_TEST_WINDOW=1 MPVFX_SMOKE_DELAY_MS=2500 \
+            MPVFX_SMOKE_SNAPSHOT="$GITHUB_WORKSPACE/dist/mac-smoke.png" "$apps/MpVFX.app/Contents/MacOS/MpVFX" > "$RUNNER_TEMP/app.log" 2>&1 &
+          pid=$!
+          for i in $(seq 60); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+          echo "--- app output"; cat "$RUNNER_TEMP/app.log"
+          if kill -0 $pid 2>/dev/null; then
+            echo "--- still running after 60 s: main and all thread stacks"; sample $pid 3 -file "$RUNNER_TEMP/sample.txt" >/dev/null 2>&1 || true
+            sed -n '1,400p' "$RUNNER_TEMP/sample.txt"; kill -9 $pid; exit 1
+          fi
+          wait $pid; echo "exit code $?"
+          test -s "$GITHUB_WORKSPACE/dist/mac-smoke.png"; file "$GITHUB_WORKSPACE/dist/mac-smoke.png"
+          if grep -q "Metal grade unavailable" "$RUNNER_TEMP/app.log"; then
+            echo "::error::the installed app could not load its Metal kernels"; exit 1
+          fi
+      - name: Save caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.build
+          key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos
+          path: |
+            dist/*.dmg
+            dist/mac-smoke.png
+          if-no-files-found: ignore

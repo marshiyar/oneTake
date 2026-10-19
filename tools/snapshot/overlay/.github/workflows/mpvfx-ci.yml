@@ -1,0 +1,511 @@
+name: mpvfx-ci
+
+# The app on Linux and Windows (a build, package and install + launch job per OS beside its test shards) and on macOS
+# through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main and every night; when
+# every platform is green, one publish job releases all installers together as the latest release.
+#
+# The media and keyframe engines are not built here: every job downloads the prebuilt libraries pinned in
+# mpvfx-swift/binaries.lock (scripts/fetch-binaries.py checks each SHA-256) from public releases. No repository secret
+# is used by this workflow.
+#
+# Work already done on identical inputs is not repeated: a test shard runs only when its key (.github/ci/test-shards.py:
+# the files its tests are built from, binaries.lock included) has no pass recorded on that OS. The nightly run and a
+# dispatch with full_tests run everything.
+
+on:
+  # No paths filter on pull requests: ci-ok is the required check, and a workflow skipped by a paths filter leaves it
+  # pending forever.
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', '**/docs/**', '.gitignore']
+  schedule:
+    - cron: '17 6 * * *'   # nightly, 06:17 UTC: catches runner image and toolchain drift on an unchanged main
+  workflow_dispatch:
+    inputs:
+      full_tests:
+        description: Run every test shard, ignoring passes recorded for unchanged inputs
+        type: boolean
+        default: false
+
+concurrency:
+  group: mpvfx-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    # Which Linux and Windows test shards this run needs: those with no pass recorded for their inputs.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      linux_shards: ${{ steps.pick.outputs.linux }}
+      windows_shards: ${{ steps.pick.outputs.windows }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test shard keys
+        id: keys
+        run: |
+          swift package dump-package > "$RUNNER_TEMP/package.json"
+          echo "linux=$(python3 -I -B ../.github/ci/test-shards.py --os linux "$RUNNER_TEMP/package.json")" >> "$GITHUB_OUTPUT"
+          echo "windows=$(python3 -I -B ../.github/ci/test-shards.py --os windows "$RUNNER_TEMP/package.json")" >> "$GITHUB_OUTPUT"
+      - name: Pass recorded for linux library?
+        id: l0
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-library-${{ fromJSON(steps.keys.outputs.linux)[0].key }}
+          lookup-only: true
+      - name: Pass recorded for linux audio-presets?
+        id: l1
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-audio-presets-${{ fromJSON(steps.keys.outputs.linux)[1].key }}
+          lookup-only: true
+      - name: Pass recorded for linux audio-live?
+        id: l2
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-audio-live-${{ fromJSON(steps.keys.outputs.linux)[2].key }}
+          lookup-only: true
+      - name: Pass recorded for linux rest?
+        id: l3
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-rest-${{ fromJSON(steps.keys.outputs.linux)[3].key }}
+          lookup-only: true
+      - name: Pass recorded for windows library?
+        id: w0
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: windows-pass-library-${{ fromJSON(steps.keys.outputs.windows)[0].key }}
+          lookup-only: true
+          enableCrossOsArchive: true
+      - name: Pass recorded for windows audio-presets?
+        id: w1
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: windows-pass-audio-presets-${{ fromJSON(steps.keys.outputs.windows)[1].key }}
+          lookup-only: true
+          enableCrossOsArchive: true
+      - name: Pass recorded for windows audio-live?
+        id: w2
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: windows-pass-audio-live-${{ fromJSON(steps.keys.outputs.windows)[2].key }}
+          lookup-only: true
+          enableCrossOsArchive: true
+      - name: Pass recorded for windows rest?
+        id: w3
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: windows-pass-rest-${{ fromJSON(steps.keys.outputs.windows)[3].key }}
+          lookup-only: true
+          enableCrossOsArchive: true
+      - name: Shards to run
+        id: pick
+        env:
+          LINUX: ${{ steps.keys.outputs.linux }}
+          WINDOWS: ${{ steps.keys.outputs.windows }}
+          FULL: ${{ github.event_name == 'schedule' || inputs.full_tests == true }}
+          LINUX_HITS: ${{ steps.l0.outputs.cache-hit }},${{ steps.l1.outputs.cache-hit }},${{ steps.l2.outputs.cache-hit }},${{ steps.l3.outputs.cache-hit }}
+          WINDOWS_HITS: ${{ steps.w0.outputs.cache-hit }},${{ steps.w1.outputs.cache-hit }},${{ steps.w2.outputs.cache-hit }},${{ steps.w3.outputs.cache-hit }}
+        run: |
+          python3 -I -B - <<'PY'
+          import json, os
+          full = os.environ["FULL"] == "true"
+          def pick(label, shards, hits):
+              hits = os.environ[hits].split(",")
+              assert len(hits) == len(shards), f"{label}: {len(shards)} shards, {len(hits)} lookups"
+              run = [s for s, hit in zip(shards, hits) if full or hit != "true"]
+              for s in shards:
+                  print(f"::notice::{label} {s['shard']}: {'runs' if s in run else 'passed before on these exact inputs, not rerun'}")
+              return run
+          linux = pick("linux shard", json.loads(os.environ["LINUX"]), "LINUX_HITS")
+          windows = pick("windows shard", json.loads(os.environ["WINDOWS"]), "WINDOWS_HITS")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"linux={json.dumps(linux)}\nwindows={json.dumps(windows)}\n")
+          PY
+
+  checks:
+    # Fast checks that need no Swift build: the fetch script's tests and copyright blocks.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: fetch-binaries tests
+        run: python3 -I -B scripts/test_fetch_binaries.py
+      - name: Copyright blocks
+        working-directory: .
+        run: python3 -I -B mpvfx-swift/scripts/copyright.py
+
+  linux:
+    # Build, package and install smoke; the tests run in linux-test beside it.
+    runs-on: ubuntu-24.04
+    container: swift:6.3.3-noble
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - name: System packages
+        working-directory: /
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+            git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
+            xvfb xauth dbus-x11 python3 file patchelf libvulkan-dev mesa-vulkan-drivers glslang-tools spirv-tools
+      - uses: actions/checkout@v4
+      - name: Engine libraries (binaries.lock)
+        run: python3 -I -B scripts/fetch-binaries.py
+      - name: Generated GPU shaders are current
+        run: python3 -I scripts/gpu/gen-compute-shaders.py --check
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: linux-release-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            linux-release-${{ github.ref_name }}-
+            linux-release-
+      - name: Toolchain version
+        run: swift --version
+      - name: Release build (static Swift runtime)
+        run: swift build -c release --static-swift-stdlib
+      - name: Package
+        run: |
+          short=${GITHUB_SHA::7}; name=mpvfx-linux-x64-$short; out="$GITHUB_WORKSPACE/dist/$name"
+          mkdir -p "$out"
+          bin=$(swift build -c release --static-swift-stdlib --show-bin-path)
+          cp "$bin/MpVFX" "$out/"
+          for b in "$bin"/*.resources; do [ -e "$b" ] && cp -R "$b" "$out/"; done
+          # The engine libraries travel next to the program, which finds them through $ORIGIN.
+          cp -L .binaries/*/lib/*.so* "$out/"
+          patchelf --set-rpath '$ORIGIN' "$out/MpVFX"
+          cat > "$out/README.txt" <<TXT
+          MpVFX for Linux x86-64 ($GITHUB_SHA)
+          Run: ./MpVFX
+          The Swift runtime is linked into the binary; the media and keyframe engine libraries (proprietary, see
+          LICENSE in the source repository) are the .so files beside it. System libraries it needs:
+          GTK 3, PulseAudio client and SQLite 3 (Ubuntu 24.04 and later: sudo apt install libgtk-3-0t64 libpulse0 libsqlite3-0; older Debian/Ubuntu: libgtk-3-0).
+          TXT
+          sed -i 's/^ *//' "$out/README.txt"
+          echo "--- ldd"; ldd "$out/MpVFX" | tee "$RUNNER_TEMP/ldd.txt"
+          if grep -E "libswift|libFoundation|libdispatch|libBlocksRuntime|libicu|not found" "$RUNNER_TEMP/ldd.txt"; then
+            echo "::error::the binary needs toolchain libraries or misses an engine library"; exit 1
+          fi
+          tar -C "$GITHUB_WORKSPACE/dist" -czf "$GITHUB_WORKSPACE/dist/$name.tar.gz" "$name"
+          ls -l "$GITHUB_WORKSPACE/dist"
+      - name: Debian package
+        run: |
+          export MPVFX_BUILD=${GITHUB_SHA::7}
+          sh packaging/linux/build-deb.sh "$GITHUB_WORKSPACE/dist" "$(swift build -c release --static-swift-stdlib --show-bin-path)"
+      - name: Launch smoke from the installed package (Xvfb, no toolchain paths)
+        timeout-minutes: 8
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -yq "$GITHUB_WORKSPACE"/dist/mpvfx_*.deb
+          test -x /usr/bin/mpvfx && test -f /usr/share/applications/app.onetake.mpvfx.desktop
+          ls /usr/lib/mpvfx/
+          mv .binaries "$RUNNER_TEMP/binaries-hidden"   # the installed program must not reach the build's copies
+          home=$(mktemp -d)
+          env -i HOME="$home" PATH=/usr/bin:/bin MPVFX_HIDDEN_TEST_WINDOW=1 MPVFX_SMOKE_DELAY_MS=2500 \
+            MPVFX_SMOKE_SNAPSHOT="$GITHUB_WORKSPACE/dist/linux-smoke.png" \
+            xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- mpvfx
+          mv "$RUNNER_TEMP/binaries-hidden" .binaries
+          test -s "$GITHUB_WORKSPACE/dist/linux-smoke.png"
+          file "$GITHUB_WORKSPACE/dist/linux-smoke.png"
+          DEBIAN_FRONTEND=noninteractive apt-get remove -yq mpvfx
+          test ! -e /opt/mpvfx/MpVFX && test ! -e /usr/lib/mpvfx
+      - name: Save caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.build
+          key: linux-release-${{ github.ref_name }}-${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/linux-smoke.png
+          if-no-files-found: ignore
+
+  linux-test:
+    # One test shard (.github/ci/test-shards.py) per job, only those the plan job found no pass for.
+    needs: plan
+    if: needs.plan.outputs.linux_shards != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.linux_shards) }}
+    name: linux test (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    container: swift:6.3.3-noble
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - name: System packages
+        working-directory: /
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+            git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
+            xvfb xauth dbus-x11 python3 file libvulkan-dev mesa-vulkan-drivers
+      - uses: actions/checkout@v4
+      - name: Engine libraries (binaries.lock)
+        run: python3 -I -B scripts/fetch-binaries.py
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: linux-debug-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            linux-debug-${{ github.ref_name }}-
+            linux-debug-
+      - name: Build
+        run: swift --version && swift build --build-tests
+      - name: Test
+        env:
+          FILTER: ${{ matrix.filter }}
+          SKIP: ${{ matrix.skip }}
+        # In batches: the selected tests reach the XCTest runner as one argument, which has a length limit.
+        run: python3 -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+      - name: Test counts
+        if: always()
+        run: grep -E "^shard:|Test Suite 'All tests' (passed|failed)" -A1 "$RUNNER_TEMP/test.log" | grep -E "^shard:|Executed" || true
+      - name: Record the pass for these inputs
+        run: cp "$RUNNER_TEMP/test.log" .test-pass
+      - uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-${{ matrix.shard }}-${{ matrix.key }}
+      - name: Save caches
+        if: always() && matrix.shard == 'rest'
+        uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.build
+          key: linux-debug-${{ github.ref_name }}-${{ github.sha }}
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
+        with:
+          swift-version: swift-6.3.3-release
+          swift-build: 6.3.3-RELEASE
+      - name: Engine libraries (binaries.lock)
+        run: python -I -B scripts/fetch-binaries.py
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: windows-release-${{ github.sha }}
+          restore-keys: windows-release-
+      - name: Toolchain version
+        run: swift --version
+      - name: Release build
+        run: swift build -c release
+      - name: Package (portable zip)
+        shell: pwsh
+        run: |
+          $short = $env:GITHUB_SHA.Substring(0,7); $name = "mpvfx-windows-x64-$short"
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'; $out = Join-Path $dist $name
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $bin = (swift build -c release --show-bin-path).Trim()
+          Copy-Item (Join-Path $bin 'MpVFX.exe') $out
+          Get-ChildItem $bin -Directory -Filter '*.resources' | ForEach-Object { Copy-Item $_.FullName $out -Recurse }
+          # The engine DLLs (binaries.lock) go next to the exe, where Windows looks first.
+          Get-ChildItem '.binaries\*\bin\*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
+          $core = (where.exe swiftCore.dll | Select-Object -First 1); if (-not $core) { throw 'swiftCore.dll not on PATH' }
+          $rt = Split-Path $core; Write-Host "Swift runtime: $rt"
+          Get-ChildItem $rt -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
+          foreach ($d in 'vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll','msvcp140_1.dll','msvcp140_2.dll','concrt140.dll') {
+            $p = Join-Path $env:WINDIR "System32\$d"; if (Test-Path $p) { Copy-Item $p $out } else { throw "$d missing on the runner" }
+          }
+          @"
+          MpVFX for Windows x64 ($env:GITHUB_SHA)
+          Unzip anywhere and run MpVFX.exe. The Swift runtime, the MSVC runtime and the media and keyframe engine DLLs
+          (proprietary, see LICENSE in the source repository) are included; no installs needed. Windows 10 or 11, x64.
+          "@ -replace '(?m)^ +','' | Set-Content (Join-Path $out 'README.txt')
+          Compress-Archive -Path $out -DestinationPath (Join-Path $dist "$name.zip")
+          Get-ChildItem $out | Format-Table Name, Length
+      - name: Installer (setup.exe)
+        shell: pwsh
+        run: |
+          $short = $env:GITHUB_SHA.Substring(0,7); $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          pwsh packaging/windows/build-setup.ps1 -AppDir (Join-Path $dist "mpvfx-windows-x64-$short") -Dist $dist
+      - name: Install, launch smoke and uninstall (PATH without the Swift toolchain or the engine folders)
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          $setup = Get-ChildItem $dist -Filter 'MpVFX-*-setup.exe' | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList '/Q:A' -Wait -PassThru
+          Write-Host "setup exit code $($p.ExitCode)"
+          $home_ = Join-Path $env:LOCALAPPDATA 'Programs\MpVFX'; $exe = Join-Path $home_ 'MpVFX.exe'
+          if (-not (Test-Path $exe)) { throw "not installed: $exe" }
+          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'MpVFX.lnk'
+          if (-not (Test-Path $lnk)) { throw "no Start menu shortcut: $lnk" }
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\MpVFX'
+          Get-ItemProperty $key | Format-List DisplayName, DisplayVersion, InstallLocation, UninstallString
+          $png = Join-Path $dist 'windows-smoke.png'
+          $savedPath = $env:PATH
+          $env:PATH = "$env:WINDIR\System32;$env:WINDIR;$env:WINDIR\System32\WindowsPowerShell\v1.0"
+          Remove-Item Env:SDKROOT -ErrorAction SilentlyContinue
+          $env:MPVFX_HIDDEN_TEST_WINDOW = '1'; $env:MPVFX_SMOKE_DELAY_MS = '2500'; $env:MPVFX_SMOKE_SNAPSHOT = $png
+          $p = Start-Process -FilePath $exe -WorkingDirectory $home_ -NoNewWindow -Wait -PassThru
+          Write-Host "exit code $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "MpVFX.exe exited with $($p.ExitCode)" }
+          if (-not (Test-Path $png) -or (Get-Item $png).Length -eq 0) { throw 'no smoke snapshot written' }
+          Get-Item $png | Format-Table Name, Length
+          $env:PATH = $savedPath
+          $p = Start-Process powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $home_ 'uninstall.ps1'), '-Quiet' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "uninstall exited with $($p.ExitCode)" }
+          if ((Test-Path $home_) -or (Test-Path $lnk) -or (Test-Path $key)) { throw 'uninstall left files, the shortcut or the registry entry behind' }
+          Write-Host 'installed, launched and uninstalled'
+      - name: Save caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.build
+          key: windows-release-${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
+            dist/windows-smoke.png
+          if-no-files-found: ignore
+
+  windows-test:
+    needs: plan
+    if: needs.plan.outputs.windows_shards != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.windows_shards) }}
+    name: windows test (${{ matrix.shard }})
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
+        with:
+          swift-version: swift-6.3.3-release
+          swift-build: 6.3.3-RELEASE
+      - name: Engine libraries (binaries.lock), DLL folders on PATH for the test runner
+        run: |
+          python -I -B scripts/fetch-binaries.py
+          for d in .binaries/*/bin; do cygpath -w "$PWD/$d" >> "$GITHUB_PATH"; done
+      - name: Restore caches
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: windows-debug-${{ github.sha }}
+          restore-keys: windows-debug-
+      - name: Build
+        run: swift --version && swift build --build-tests
+      - name: Test
+        env:
+          FILTER: ${{ matrix.filter }}
+          SKIP: ${{ matrix.skip }}
+        run: python -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+      - name: Test counts
+        if: always()
+        run: grep -E "^shard:|Test Suite 'All tests' (passed|failed)" -A1 "$RUNNER_TEMP/test.log" | grep -E "^shard:|Executed" || true
+      - name: Record the pass for these inputs
+        run: cp "$RUNNER_TEMP/test.log" .test-pass
+      - uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.test-pass
+          key: windows-pass-${{ matrix.shard }}-${{ matrix.key }}
+          enableCrossOsArchive: true   # looked up by the plan job on Linux
+      - name: Save caches
+        if: always() && matrix.shard == 'rest'
+        uses: actions/cache/save@v4
+        with:
+          path: mpvfx-swift/.build
+          key: windows-debug-${{ github.sha }}
+
+  macos:
+    uses: ./.github/workflows/mpvfx-macos.yml
+    secrets: inherit   # only the optional Apple signing secrets; unset, the disk image is ad-hoc signed
+    with:
+      full_tests: ${{ github.event_name == 'schedule' || inputs.full_tests == true }}
+
+  ci-ok:
+    # The one required check: every job passed or was skipped on purpose.
+    needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) echo "::error::a required job ended $r"; exit 1 ;; esac
+          done
+
+  publish:
+    needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
+    if: >-
+      always() && github.event_name != 'pull_request' && needs.plan.result == 'success' && needs.checks.result == 'success'
+      && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
+      && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
+      && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/ci/publish.sh dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png

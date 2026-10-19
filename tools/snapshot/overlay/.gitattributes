@@ -1,0 +1,8 @@
+# Line endings are LF in every checkout, Windows included (a CRLF checkout changes fixture bytes and makes
+# source-scanning tests read "\r"). Files that must be CRLF say so in their own folder's .gitattributes.
+* text=auto eol=lf
+
+# Test inputs and reference outputs are compared byte for byte: never convert them.
+**/fixtures/** binary
+**/Fixtures/** binary
+mpvfx-swift/Tests/EngineFixtures/** binary

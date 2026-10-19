@@ -1,0 +1,53 @@
+# Prebuilt engine libraries the app links. The engines are proprietary and are not built from this repository: each
+# entry pins one release of marshiyar/mpvfx-media-binaries by version, download URL and SHA-256 per platform.
+# `python3 scripts/fetch-binaries.py` downloads the archive for this machine, checks the SHA-256 and unpacks it into
+# .binaries/<component>/. Never edit a sha256 by hand: `python3 scripts/fetch-binaries.py --update <component> <version>`
+# reads the release and rewrites the entry.
+#
+# Release archive contract (one .tar.gz per platform, file names below):
+#   include/<header>                  the C interface (MIT OR Apache-2.0 apps may include it; the library stays proprietary)
+#   lib/lib<library>.dylib            macOS, install name @rpath/lib<library>.dylib
+#   lib/lib<library>.so               Linux, SONAME lib<library>.so
+#   lib/<library>.lib + bin/<library>.dll   Windows x64 (import library + DLL)
+#   LICENSE                           the binary licence
+# Platforms: macos-arm64, macos-x86_64, linux-x86_64, linux-aarch64, windows-x86_64.
+
+[media]
+version = "0.1.0"
+tag = "media-v0.1.0"
+repo = "marshiyar/mpvfx-media-binaries"
+asset = "mpvfx-media-{version}-{platform}.tar.gz"
+library = "mpvfx_media"
+header = "mpvfx_media.h"
+
+[media.platforms.macos-arm64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-macos-arm64.tar.gz"
+sha256 = ""
+
+[media.platforms.linux-x86_64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-linux-x86_64.tar.gz"
+sha256 = ""
+
+[media.platforms.windows-x86_64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-windows-x86_64.tar.gz"
+sha256 = ""
+
+[keyframes]
+version = "1.0.0"
+tag = "keyframes-v1.0.0"
+repo = "marshiyar/mpvfx-media-binaries"
+asset = "keyframes-{version}-{platform}.tar.gz"
+library = "cvkf"
+header = "cvkf.h"
+
+[keyframes.platforms.macos-arm64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-macos-arm64.tar.gz"
+sha256 = ""
+
+[keyframes.platforms.linux-x86_64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-linux-x86_64.tar.gz"
+sha256 = ""
+
+[keyframes.platforms.windows-x86_64]
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/keyframes-v1.0.0/keyframes-1.0.0-windows-x86_64.tar.gz"
+sha256 = ""
