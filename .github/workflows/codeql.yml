@@ -1,7 +1,7 @@
 name: codeql
 
-# GitHub's code scanning on the three kinds of code this repository holds: the Swift app (built in the Linux CI
-# container with the pinned engine libraries, as mpvfx-ci does), the Python scripts behind CI and packaging, and the workflow
+# GitHub's code scanning on the three kinds of code this repository holds: the Swift app (built on the macOS runner
+# with the pinned engine libraries, as mpvfx-ci does), the Python scripts behind CI and packaging, and the workflow
 # files themselves (the `actions` language: injection, unpinned actions, token scope). Results land under Security >
 # Code scanning. Runs on pull requests, pushes to main and weekly; separate from mpvfx-ci and never a required check.
 
@@ -46,35 +46,42 @@ jobs:
           category: /language:${{ matrix.language }}
 
   swift:
-    # On Linux in the CI's own Swift 6.3.3 container: CodeQL supports Swift up to 6.3.3, and the macOS runners ship 6.4.
-    runs-on: ubuntu-24.04
-    container: swift:6.3.3-noble
+    # CodeQL's Swift extractor runs only on macOS (the action and the extractor both refuse Linux) and supports Swift up
+    # to 6.3.x. The xcode-27 image only has Xcode 27 (Swift 6.4), so this job uses the macos-26 image, whose Xcode 26.x
+    # carries Swift 6.3; the step below fails loudly if the selected Xcode is not on 6.3.
+    runs-on: macos-26
     timeout-minutes: 90
     permissions:
       contents: read
       security-events: write
+    env:
+      XCODE_VERSION: '26.6'
     defaults:
       run:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - name: System packages
-        working-directory: /
-        run: |
-          apt-get update -q
-          DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
-            git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
-            python3 libvulkan-dev
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Xcode ${{ env.XCODE_VERSION }} (Swift 6.3)
+        run: |
+          x=/Applications/Xcode_${XCODE_VERSION}.app
+          test -d "$x" || { echo "::error::$x is not on this runner"; ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$x/Contents/Developer"
+          xcodebuild -version && swift --version
+          swift --version 2>&1 | grep -q 'Swift version 6\.3' || { echo "::error::CodeQL supports Swift up to 6.3.x; Xcode $XCODE_VERSION is not on 6.3"; exit 1; }
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
+      - name: Metal toolchain
+        run: sh ../.github/ci/metal-toolchain.sh
       - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: swift
           build-mode: manual
           queries: security-and-quality
       - name: Build under the CodeQL tracer
-        run: swift build
+        # --disable-sandbox: under the tracer SwiftPM's sandbox-exec for the manifest fails with "Bad CPU type in
+        # executable" (job 118273895982); the sandbox only wraps the manifest and plugins, not what is analysed.
+        run: swift build --disable-sandbox
       - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           category: /language:swift
