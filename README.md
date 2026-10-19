@@ -86,8 +86,7 @@ not match its checksum. If `swift build` reports "Could not find Package.swift",
 if it cannot find `mpvfx_media.h` or `cvkf.h`, or the link step misses `mpvfx_media` or `cvkf`, run
 `python3 scripts/fetch-binaries.py` first. `MPVFX_PROJECT` takes a project folder or its `.studio/project.json`.
 
-**Status:** the media engine is pinned (0.1.0). The keyframe engine's first release is still pending: until it is
-published and pinned in `binaries.lock`, `fetch-binaries.py` reports it missing and the app does not build or link.
+**Status:** the media engine is pinned at 0.1.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`.
 
 Installers (macOS disk image, Windows setup.exe, Ubuntu/Debian .deb) are built by CI and published as releases; how
 to get, build and sign them: [`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md).
