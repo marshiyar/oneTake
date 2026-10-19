@@ -17,8 +17,8 @@ import XCTest
 
 /// Rendered-sample parity against references generated without Chrome:
 /// the worklet processors run from the shipped source in a Node shim, and the
-/// mix stages ran through the original's FFmpeg filters when the references were
-/// recorded (see Fixtures/generate-reference.mjs); the tests read only the recorded files.
+/// mix-stage references were recorded once from the original app's export path
+/// (see Fixtures/generate-reference.mjs); the tests read only the recorded files.
 final class RenderParityTests: XCTestCase {
     static let bar = -90.0
 

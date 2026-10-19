@@ -67,10 +67,9 @@ enum TestMedia {
         return try MediaWriter(path: path, config: cfg)
     }
 
-    /// A different picture every frame with the content grade and stylize tests need (the role FFmpeg's testsrc2
-    /// used to play): 75 % colour bars (top third), a smooth two-axis colour gradient with a sine ripple (middle), a
-    /// grey ramp with a fine 2-px checker (bottom, texture for edge and smoothing effects), and a white square that
-    /// moves two pixels per frame.
+    /// A different picture every frame with the content grade and stylize tests need: 75 % colour bars (top third),
+    /// a smooth two-axis colour gradient with a sine ripple (middle), a grey ramp with a fine 2-px checker (bottom,
+    /// texture for edge and smoothing effects), and a white square that moves two pixels per frame.
     struct PatternVideo {
         var width = 160, height = 90, fps = 30, seconds = 1.0
 
