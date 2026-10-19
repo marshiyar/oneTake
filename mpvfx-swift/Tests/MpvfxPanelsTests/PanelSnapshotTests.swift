@@ -130,7 +130,7 @@ final class PanelSnapshotTests: XCTestCase {
             assertPixel(t, 200, 140, scale: scale, "#191919")     // open body bg-panel-bg-inset from 135
             assertPixel(t, 100, 180, scale: scale, "#1d1d1d")     // Position X field (17,170.5 183.5×30) rounded bg-panel-bg
             assertPixel(t, 204, 180, scale: scale, "#191919")     // gap-2 between the X and Y fields
-            assertPixel(t, 100, 194, scale: scale, "#1a1a1d", tol: 8)   // value underline border-panel-border-input/50
+            assertPixel(t, 100, 194, scale: scale, "#272727", tol: 8)   // value underline border-panel-border-input/50
         }
         // FlatSegmentedRow: the active option sits on a 2px accent underline; KeyframeNavigation's active diamond.
         for scale in [1.0, 2.0] {
@@ -330,7 +330,7 @@ final class PanelSnapshotTests: XCTestCase {
                 case "done":
                     assertPixel(t, 100, 95, scale: scale, "#0e0e0e")     // Format select (13,81 187.5×28) bg-panel-input
                     assertPixel(t, 30, 180, scale: scale, "#ffffff")     // Export (13,176 383×32) bg-white
-                    assertPixel(t, 200, 240, scale: scale, "#161616", tol: 10)  // settings border-b straddling 240 (239.5…240.5)
+                    assertPixel(t, 200, 240, scale: scale, "#050505", tol: 10)  // settings border-b straddling 240 (239.5…240.5)
                     assertPixel(t, 20, 290, scale: scale, "#fafafa", tol: 12)   // the 16:9 poster frame fills the 80×45 well at (13,280)
                 case "mixed":
                     assertPixel(t, 30, 180, scale: scale, "#858585", tol: 10)   // Rendering… (white/50 over neutral-950)
@@ -359,7 +359,7 @@ final class PanelSnapshotTests: XCTestCase {
             r.inspector.tick(0.03)
             t = snapshot("inspector-enter-mid", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             let mid = t.pixel(Int(200 * scale), Int(140 * scale))
-            XCTAssertGreaterThan(Int(mid.r), 0x0c); XCTAssertLessThan(Int(mid.r), 0x12)
+            XCTAssertGreaterThan(Int(mid.r), 0x19); XCTAssertLessThan(Int(mid.r), 0x1d)   // between inset #191919 and panel-bg #1d1d1d
             r.inspector.tick(0.2)
             t = snapshot("inspector-enter-1", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             assertPixel(t, 200, 140, scale: scale, "#191919")            // settled: bg-panel-bg-inset

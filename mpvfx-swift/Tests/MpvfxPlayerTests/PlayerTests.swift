@@ -74,7 +74,7 @@ final class PlayerRenderTests: XCTestCase {
         v.draw(t.canvas, size: size)
         func rgb(_ x: Int, _ y: Int) -> [Int] { let p = t.pixel(x, y); return [Int(p.r), Int(p.g), Int(p.b)] }
         XCTAssertEqual(rgb(5, 590), [29, 29, 29], "transport row on the shell surface")
-        XCTAssertEqual(rgb(5, 20), [10, 10, 10], "tools bar bg-neutral-950")
+        XCTAssertEqual(rgb(5, 20), [20, 20, 20], "tools bar on the viewport surface")
         XCTAssertEqual(rgb(3, 300), [20, 20, 20], "viewport surface")
         XCTAssertEqual(rgb(8 + 100, 44 + 100), [255, 255, 255], "nw handle dot centre is white")
         let border = rgb(8 + 200, 44 + 101); XCTAssertGreaterThan(border[2], 150, "accent (blue) selection border")

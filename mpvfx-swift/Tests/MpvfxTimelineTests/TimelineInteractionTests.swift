@@ -303,7 +303,7 @@ final class TimelineChunk4Tests: XCTestCase {
             let t = CairoImageTarget(width: 900, height: 200); v.draw(t.canvas, size: CanvasSize(900, 200))
             let p = t.pixel(264 + 300, 190); return (p.r, p.g, p.b)
         }
-        XCTAssertEqual(px(.playhead).1, 230)
+        XCTAssertEqual(px(.playhead).1, 152)   // the accent line #5A98F0
         let edge = px(.clipEdge); XCTAssertGreaterThan(edge.0, 150); XCTAssertEqual(edge.0, edge.2)
         XCTAssertLessThan(px(.beat).0, 60, "no guide for beat snaps")
         #endif

@@ -283,7 +283,7 @@ final class AudioFxRackSnapshotTests: XCTestCase {
                 ("Tone body", x0 + 60, tone.maxY + 8, "#191919"),
                 ("Clean Voice edge", x0 + 0.5, run.midY, "#61bbef"),
                 ("Clean Voice wash", x0 + 4, run.midY, "#161e22"),
-                ("Echo edge, bypassed", x0 + 0.5, echo.midY, "#4e6b65"),
+                ("Echo edge, bypassed", x0 + 0.5, echo.midY, "#57736c"),
                 ("Presets border", presets.midX, presets.y + 0.5, "#fafafa"),
                 ("Presets inside", presets.midX - 60, presets.midY, "#191919"),
             ]
