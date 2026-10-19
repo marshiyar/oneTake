@@ -59,7 +59,7 @@ def elf(data):
     for i in range(shnum):
         name_off, kind, _, _ = section(i)
         name = names[name_off:names.index(b"\0", name_off)].decode("ascii", "replace")
-        if kind == 2 or name.startswith(".debug_"):
+        if kind == 2 or name.startswith((".debug_", ".zdebug_")):
             found.append(name)
     if found:
         return False, "sections " + ", ".join(found[:4]) + (f" (+{len(found) - 4})" if len(found) > 4 else "")

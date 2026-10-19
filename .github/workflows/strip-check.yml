@@ -52,7 +52,9 @@ jobs:
           tar -xzf dist/mpvfx-linux-x64-*.tar.gz -C unpacked/portable
           dpkg-deb -x dist/mpvfx_*.deb unpacked/deb
       - name: Every binary is stripped
-        run: python3 -I -B .github/ci/strip-check.py unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/strip-check.py unpacked | tee -a "$GITHUB_STEP_SUMMARY"
 
   windows:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
@@ -81,11 +83,13 @@ jobs:
           find unpacked -type f \( -name '*.exe' -o -name '*.dll' \) | sort
       - name: Every binary is stripped (the Swift and MSVC runtimes are reported, not judged)
         run: |
-          python3 -I -B .github/ci/strip-check.py \
+          # The outer setup.exe is Windows' own IExpress stub (not built here), so it is reported, not judged.
+          python -I -B .github/ci/strip-check.py \
+            --tolerate 'MpVFX-*-setup.exe' \
             --tolerate 'swift*.dll' --tolerate 'Foundation*.dll' --tolerate '_FoundationICU.dll' \
             --tolerate 'dispatch.dll' --tolerate 'BlocksRuntime.dll' \
             --tolerate 'vcruntime*.dll' --tolerate 'msvcp*.dll' --tolerate 'concrt140.dll' --tolerate 'vccorlib140.dll' \
-            unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+            unpacked dist/MpVFX-*-setup.exe | tee -a "$GITHUB_STEP_SUMMARY"
 
   macos:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
@@ -109,4 +113,6 @@ jobs:
           mkdir -p unpacked; cp -R "$mnt/MpVFX.app" unpacked/; hdiutil detach "$mnt"
           find unpacked/MpVFX.app/Contents/MacOS unpacked/MpVFX.app/Contents/Frameworks -type f | sort
       - name: Every binary is stripped
-        run: python3 -I -B .github/ci/strip-check.py unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/strip-check.py unpacked | tee -a "$GITHUB_STEP_SUMMARY"

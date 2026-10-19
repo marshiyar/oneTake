@@ -347,7 +347,7 @@ jobs:
       - name: Toolchain version
         run: swift --version
       - name: Release build, linked without debug data (strip-check.yml verifies the shipped exe)
-        run: swift build -c release -Xlinker /DEBUG:NONE
+        run: swift build -c release -Xlinker -debug:none
       - name: Package (portable zip)
         shell: pwsh
         run: |
