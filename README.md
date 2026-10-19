@@ -105,6 +105,12 @@ CI ([`.github/workflows/mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, 
 Windows and macOS with the engine libraries pinned in [`binaries.lock`](mpvfx-swift/binaries.lock); `ci-ok` is the
 required check. Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+Benchmarks ([`.github/workflows/bench.yml`](.github/workflows/bench.yml)) run from a release build on Linux, Windows and
+macOS after every green run on `main`, weekly, and by hand: startup to the first painted frame, the audio graph
+(`MpvfxAudioBench`), the colour grade on the CPU and the GPU (`MpvfxColorBench`) and preview playback
+(`MpvfxPreviewBench`), every sample with p50, p95, max and peak memory, as a table in the run summary and
+`bench-<os>.json` in the `bench-<os>` artifact ([`.github/ci/bench.py`](.github/ci/bench.py)).
+
 ## Repository layout
 
 | Path | What it holds |
