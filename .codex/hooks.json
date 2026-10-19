@@ -1,0 +1,16 @@
+{
+  "description": "MpVFX: render the private agent harness when it is checked out beside this repository (the same step as .claude/settings.json runs for Claude Code). Loads only when this project is trusted in Codex.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.claude/hooks/session-start.sh\"",
+            "statusMessage": "Rendering the agent harness"
+          }
+        ]
+      }
+    ]
+  }
+}

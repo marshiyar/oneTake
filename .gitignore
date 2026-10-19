@@ -1,9 +1,13 @@
 # Agent harness, rendered at session start from the private marshiyar/mpvfx-agents (scripts/setup-session.sh).
-# .claude/settings.json and .claude/hooks/ are the only tracked agent files.
+# .claude/settings.json, .claude/hooks/ and .codex/hooks.json (the same session start for Codex) are the only tracked
+# agent files; .agents/skills is the rendered skills root Codex reads.
 .claude/*
 !.claude/settings.json
 !.claude/hooks/
 .claude/hooks/__pycache__/
+.codex/*
+!.codex/hooks.json
+.agents/
 CLAUDE.md
 AGENTS.md
 
