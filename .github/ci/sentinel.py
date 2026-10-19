@@ -199,7 +199,7 @@ def scan_workflow(path, text, f):
             f.add(path, "workflow-secret-echo", f"line {i}", "a secret written to the log")
         if "ACTIONS_ALLOW_UNSECURE_COMMANDS" in line:
             f.add(path, "workflow-unsecure-commands", f"line {i}", "unsecure workflow commands switched on")
-    dangerous_trigger = re.search(r"^\s+(pull_request_target|workflow_run):", text, re.M)
+    dangerous_trigger = re.search(r"\b(pull_request_target|workflow_run)\b", text)
     if dangerous_trigger and re.search(r"ref:\s*\$\{\{\s*github\.event\.(pull_request|workflow_run)\.(head|pull_requests)", text):
         f.add(path, "workflow-pwn-request", "file",
               f"`{dangerous_trigger.group(1)}` workflow checks out the pull request's head with the repository's token")
