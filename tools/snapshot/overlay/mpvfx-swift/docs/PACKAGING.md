@@ -14,9 +14,9 @@ installers. The version is `packaging/VERSION`; the build number is the commit's
 
 ## The engine libraries
 
-The media engine (`mpvfx_media`) and the keyframe engine (`cvkf`) are proprietary and prebuilt. `binaries.lock` pins,
+The media engine (library `mpvfx_ffi`) and the keyframe engine (`cvkf`) are proprietary and prebuilt. `binaries.lock` pins,
 per component, a release of `marshiyar/mpvfx-media-binaries` (tags `media-v<version>`, `keyframes-v<version>`) and the
-download URL and SHA-256 of each platform's archive. `scripts/fetch-binaries.py` downloads the archives for the
+download URL and SHA-256 of each platform's archive (`.tar.gz`, or `.zip` on Windows). `scripts/fetch-binaries.py` downloads the archives for the
 machine it runs on, refuses any whose SHA-256 differs, and unpacks them into `.binaries/<component>/`:
 
 | Folder | Holds |
@@ -24,6 +24,7 @@ machine it runs on, refuses any whose SHA-256 differs, and unpacks them into `.b
 | `include/` | the C header the app's adapter compiles against (`mpvfx_media.h`, `cvkf.h`) |
 | `lib/` | `lib<name>.dylib` (macOS, install name `@rpath/lib<name>.dylib`), `lib<name>.so` (Linux), `<name>.lib` (Windows import library) |
 | `bin/` | `<name>.dll` (Windows only) |
+| `LICENSE`, `NOTICE` | the engine's licence and third-party notices; every installer ships them (macOS `Contents/Resources/EngineLicenses/`, Debian `/usr/share/doc/mpvfx/engines/`, the portable archives `licenses/`) |
 
 `Package.swift` links them through the C module maps in `Sources/CMediaEngine` and `Sources/CKeyframeEngine`, with an
 rpath to `.binaries/<component>/lib` so `swift run` and `swift test` work in place; the installers replace that rpath

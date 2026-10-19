@@ -13,12 +13,13 @@ MpVFX is "open core": the app in this repository is open source; the two engines
    contribution intentionally submitted for inclusion in it by you, as defined in the Apache-2.0 license, shall be
    dual licensed as above, without any additional terms or conditions.
 
-2. The engines are proprietary and are NOT covered by the licences above: the media engine (library mpvfx_media) and
+2. The engines are proprietary and are NOT covered by the licences above: the media engine (library mpvfx_ffi) and
    the keyframe engine (library cvkf). Their source code is not in this repository. The app downloads them as
    prebuilt binaries (the versions and SHA-256 checksums in mpvfx-swift/binaries.lock) from the public releases of
    https://github.com/marshiyar/mpvfx-media-binaries, and the installers ship them next to the app. Each binary
    release carries its own licence, which governs its use and redistribution; being able to download a binary
-   grants no other right. Their C headers are distributed with the binaries under the same terms.
+   grants no other right. Their C headers are distributed with the binaries under the same terms, and each binary's
+   NOTICE lists the third-party code inside it; the installers include both files.
 
    The app's own Swift adapters over those headers (mpvfx-swift/Sources/OneTakeMedia and OneTakeKeyframes) are part
    of the app and licensed as in 1.

@@ -201,6 +201,7 @@ jobs:
           # The engine libraries travel next to the program, which finds them through $ORIGIN.
           cp -L .binaries/*/lib/*.so* "$out/"
           patchelf --set-rpath '$ORIGIN' "$out/MpVFX"
+          for c in .binaries/*/; do c=$(basename "$c"); mkdir -p "$out/licenses/$c"; cp .binaries/"$c"/LICENSE .binaries/"$c"/NOTICE "$out/licenses/$c/" 2>/dev/null || true; done
           cat > "$out/README.txt" <<TXT
           MpVFX for Linux x86-64 ($GITHUB_SHA)
           Run: ./MpVFX
@@ -346,6 +347,10 @@ jobs:
           Get-ChildItem $bin -Directory -Filter '*.resources' | ForEach-Object { Copy-Item $_.FullName $out -Recurse }
           # The engine DLLs (binaries.lock) go next to the exe, where Windows looks first.
           Get-ChildItem '.binaries\*\bin\*.dll' | ForEach-Object { Copy-Item $_.FullName $out }
+          Get-ChildItem '.binaries' -Directory | ForEach-Object {
+            $l = Join-Path $out "licenses\$($_.Name)"; New-Item -ItemType Directory -Force $l | Out-Null
+            Get-ChildItem $_.FullName -File | Where-Object { $_.Name -in 'LICENSE', 'NOTICE' } | ForEach-Object { Copy-Item $_.FullName $l }
+          }
           $core = (where.exe swiftCore.dll | Select-Object -First 1); if (-not $core) { throw 'swiftCore.dll not on PATH' }
           $rt = Split-Path $core; Write-Host "Swift runtime: $rt"
           Get-ChildItem $rt -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName $out }

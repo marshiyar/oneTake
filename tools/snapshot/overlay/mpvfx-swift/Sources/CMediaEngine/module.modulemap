@@ -2,6 +2,6 @@
 // release pinned in binaries.lock (`python3 scripts/fetch-binaries.py` puts them in .binaries/media/).
 module CMediaEngine [system] {
     header "../../.binaries/media/include/mpvfx_media.h"
-    link "mpvfx_media"
+    link "mpvfx_ffi"
     export *
 }

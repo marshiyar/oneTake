@@ -9,8 +9,9 @@ empty. The script
   3. rewrites the app for prebuilt engines (Package.swift, imports, adapter type names, CI shard keys, installers),
   4. writes snapshot-report.txt into DEST's parent: what was copied, what was left out and why, every rewrite, and
      any line that still names an old path (engines/, video-keyframing, ...) for a person to look at.
---engine-fixtures=copy also copies the media files under the engine's fixtures folder that the app's tests read into
-mpvfx-swift/Tests/EngineFixtures (default omit: they live in the private engine repository).
+--engine-fixtures=copy (the default) copies the media files of the engine's fixtures folder that the app's tests read
+into mpvfx-swift/Tests/EngineFixtures, each only after its row in the fixtures README shows the project generated it;
+--engine-fixtures=omit leaves them out (those tests then fail).
 Exit 0 when every rewrite applied, 1 when one did not match (the old repository changed: update this script),
 2 on bad arguments.
 """
@@ -60,8 +61,8 @@ OVERLAY_BASE = {
 }
 
 # Text that should not survive into oneTake once the rewrites ran; each hit is listed for a person to edit.
-STALE = re.compile(r"engines/|video-keyframing|build-media\.sh|scripts/gate\.sh|\bVkfEngine\b|\bMpvfxEngine\b|"
-                   r"import MpvfxMedia\b|VFK_TOKEN|deps/video|crates/scripts|libmpvfx_ffi|mpvfx_ffi")
+STALE = re.compile(r"engines/(?:mpvfx-media|artcraft)|video-keyframing|build-media\.sh|scripts/gate\.sh|\bVkfEngine\b|\bMpvfxEngine\b|"
+                   r"import MpvfxMedia\b|VFK_TOKEN|deps/video|crates/scripts|ArtCraft|owner question")
 
 report = []
 failures = []
@@ -262,28 +263,133 @@ def fixture_paths(dest):
                                "mediaFixtures path"))
 
 
+OWN_LICENCE = re.compile(r"LicenseRef-MpVFX|^\s*generated", re.I)
+OUTSIDE = re.compile(r"extracted from|https?://|conformance|(?<!no )third-party|downloaded", re.I)
+
+
+def fixture_rows(root):
+    """[(patterns, row text, own)] from the fixtures README table: which files a row covers and whether the project
+    made them itself (its licence column names the project's own licence or says generated, and no outside source)."""
+    rows = []
+    for line in read(os.path.join(root, "README.md")).split("\n"):
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3 or not cells[0].startswith("`fixtures/"):
+            continue
+        tokens = re.findall(r"`([^`]+)`", cells[0])
+        folder = tokens[0].removeprefix("fixtures/").split("/")[0]
+        patterns = []
+        for t in tokens:
+            t = t.removeprefix("fixtures/")
+            t = t if "/" in t else f"{folder}/{t}"
+            t = re.sub(r"\d+\.\.\w*?\d+", "*", t)
+            patterns += [t, t + ".*"]
+        licence = cells[-1]
+        own = bool(OWN_LICENCE.search(licence)) and not OUTSIDE.search(licence)
+        rows.append((patterns, f"| {cells[0]} | {' | '.join(cells[1:-1])} |", own))
+    return rows
+
+
 def copy_fixtures(src, dest):
-    """Copies the engine fixtures the app's tests name (string literals that are paths under the fixtures folder)."""
+    """Copies the engine fixtures the app's tests read, after checking each one's origin in the fixtures README:
+    files the project generated itself are copied; anything else (or a file with no README row) is not, and fails
+    the snapshot so a person makes that test generate its input or skip with a reason."""
     root = os.path.join(src, FIXTURES)
-    literals = set()
+    literals, folders = set(), set()
     for dirpath, _, files in os.walk(os.path.join(dest, "mpvfx-swift/Tests")):
         for name in files:
             if name.endswith(".swift"):
-                literals.update(re.findall(r'"([A-Za-z0-9_./-]+)"', read(os.path.join(dirpath, name))))
-    picked = sorted(l for l in literals if l.strip("./") and os.path.exists(os.path.join(root, l)))
-    count = 0
-    for rel in picked + ["README.md"]:
-        source = os.path.join(root, rel)
+                text = read(os.path.join(dirpath, name))
+                literals.update(l for l in re.findall(r'"([A-Za-z0-9_.-][A-Za-z0-9_./-]*)"', text) if ".." not in l)
+                folders.update(re.findall(r'engineFixture\("([A-Za-z0-9_./-]+)"\)', text))
+    needed = {l for l in literals if os.path.isfile(os.path.join(root, l))}
+    needed |= {f"{d}/{l}" for d in folders if os.path.isdir(os.path.join(root, d))
+               for l in literals if "/" not in l and os.path.isfile(os.path.join(root, d, l))}
+    rows = fixture_rows(root)
+    copied, refused, notes = [], [], []
+    for rel in sorted(needed):
+        row = next((r for r in rows if any(fnmatch.fnmatch(rel, p) for p in r[0])), None)
+        if row is None or not row[2]:
+            refused.append((rel, "no provenance row" if row is None else "not made by the project"))
+            continue
         target = os.path.join(dest, APP_FIXTURES, rel)
-        if os.path.isdir(source):
-            shutil.copytree(source, target, dirs_exist_ok=True)
-            count += sum(len(f) for _, _, f in os.walk(source))
-        else:
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            shutil.copy2(source, target)
-            count += 1
-    note(f"  copied {count} engine test fixtures into {APP_FIXTURES} ({', '.join(picked)}) -- owner decision: they are")
-    note("    marked proprietary in the engine repository; publishing them here makes them public")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copy2(os.path.join(root, rel), target)
+        copied.append(rel)
+        if row[1] not in notes:
+            notes.append(row[1])
+    readme = ["# Engine test fixtures", "",
+              "Media files the app's tests decode, probe or import. Every file here was generated by the project's own",
+              "fixture scripts from synthetic signals (tools such as FFmpeg were used only to encode them); none comes",
+              "from an outside collection. They are distributed with the app's tests under the repository's LICENSE.",
+              "How each one was made:", "", "| Files | How generated |", "| --- | --- |"]
+    readme += notes
+    write(os.path.join(dest, APP_FIXTURES, "README.md"), "\n".join(readme) + "\n")
+    note(f"  engine test fixtures: copied {len(copied)} project-generated files into {APP_FIXTURES}:")
+    note("    " + ", ".join(copied))
+    note("    generated instead: none needed; skipped: " + (", ".join(f"{r} ({why})" for r, why in refused) or "none"))
+    for rel, why in refused:
+        failures.append(f"{APP_FIXTURES}/{rel}: {why}: make the test that reads it generate its input "
+                        f"(MediaTestSupport) or skip it in oneTake with a reason")
+
+
+# ---- Comments and docs that named the old engine sources ----------------------------------------------------------
+
+ENGINE = r"(?:\.\./)?engines/mpvfx-media-processing/crates"
+TEXT_FIXES = [
+    # App README: where the engine comes from, and its private documents.
+    (r"the project's own media engine, the\n\[`" + ENGINE + r"`\]\(" + ENGINE + r"\) package: hand-written Rust \(no third-party code\) and its Swift wrapper, consumed\nas a SwiftPM dependency and linked in as a static library\.",
+     "the project's own media engine, a\nproprietary prebuilt library (`binaries.lock`, `scripts/fetch-binaries.py`) that the app calls through its own Swift\nadapter, [`Sources/OneTakeMedia`](Sources/OneTakeMedia)."),
+    (r"go through the `MpvfxMedia` product of the engine package\n  \(\[`" + ENGINE + r"/swift/Sources/MpvfxMedia`\]\(" + ENGINE + r"/swift/Sources/MpvfxMedia\)\), the Swift wrapper of the\n  engine's C ABI\.",
+     "go through [`Sources/OneTakeMedia`](Sources/OneTakeMedia), the app's\n  Swift adapter over the engine's C interface."),
+    (r"The contract is \[`" + ENGINE + r"/target/formats\.md`\]\(" + ENGINE + r"/target/formats\.md\)\.\n",
+     "The media engine decides what each format supports; the app's list is `Sources/MpvfxRuntime/Media/ImportFormats.swift`.\n"),
+    (r"HEVC and MP2 decode through the owner's ArtCraft crates, which the engine builds\.",
+     "HEVC and MP2 decode inside the media engine."),
+    (r" \(owner\s+question Q2 in\s+\[`" + ENGINE + r"/target/open-questions\.md`\]\(" + ENGINE + r"/target/open-questions\.md\)\)",
+     " (not decided yet)"),
+    (r", pending owner question Q2 in `" + ENGINE + r"/target/open-questions\.md`", ", not decided yet"),
+    # The engine's private format table, named in comments and docs.
+    (r"`" + ENGINE + r"/target/formats\.md`", "the media engine's format table"),
+    (ENGINE + r"/target/formats\.md", "the media engine's format table"),
+    # Fixtures now live with the app's tests.
+    (r"`" + ENGINE + r"/fixtures/`", "`Tests/EngineFixtures/`"),
+    # The engine's location in the old repository.
+    (r"\(`" + ENGINE + r"`, linked in-process\)", "(a prebuilt library loaded in-process, `binaries.lock`)"),
+    # Keyframe engine names.
+    (r"the video-keyframing package \(Engine/VkfEngineKeyframeEngine\.swift\)",
+     "the keyframe engine adapter OneTakeKeyframes (Engine/KeyframeRuntimeKeyframeEngine.swift)"),
+    (r"the video-keyframing package \(product MpvfxEngine\)", "the keyframe engine adapter (module OneTakeKeyframes)"),
+    (r"kept in the video-keyframing history", "kept in the keyframe engine's history"),
+    (r"video-keyframing engine", "keyframe engine"),
+    (r"ArtCraft's decoder in the engine", "the engine's decoder"),
+    (r"the ArtCraft decoders the engine builds", "the engine's decoders"),
+    # Build steps.
+    (r"sh scripts/build-media\.sh && swift build", "python3 scripts/fetch-binaries.py && swift build"),
+    (r"Build the media engine first \(scripts/build-media\.sh\)\.", "Fetch the engine libraries first (python3 scripts/fetch-binaries.py)."),
+    (r"`scripts/gate\.sh` does", "`scripts/check.sh` does"),
+    (r"\(scripts/gate\.sh builds before testing\)", "(scripts/check.sh builds before testing)"),
+]
+
+
+def text_fixes(dest):
+    counts = [0] * len(TEXT_FIXES)
+    for dirpath, _, files in os.walk(os.path.join(dest, "mpvfx-swift")):
+        if APP_FIXTURES in dirpath.replace(os.sep, "/"):
+            continue
+        for name in files:
+            if not name.endswith((".swift", ".md", ".sh", ".py")):
+                continue
+            path = os.path.join(dirpath, name)
+            before = text = read(path)
+            for i, (pattern, repl) in enumerate(TEXT_FIXES):
+                text, n = re.subn(pattern, lambda m, r=repl: r, text)
+                counts[i] += n
+            if text != before:
+                write(path, text)
+    unused = [TEXT_FIXES[i][0][:70] for i, c in enumerate(counts) if c == 0]
+    note(f"  rewrote {sum(counts)} comments and doc lines that named the old engine sources or build steps")
+    if unused:
+        note("    (patterns that matched nothing, fine if the old text is gone: " + "; ".join(unused) + ")")
 
 
 # ---- Installers --------------------------------------------------------------------------------------------------------
@@ -299,6 +405,10 @@ def macos_package(text):
                     'for r in $(otool -l "$app/Contents/MacOS/MpVFX" | awk \'$1 == "path" {print $2}\' | grep "/\\.binaries/" || true); do\n'
                     '  install_name_tool -delete_rpath "$r" "$app/Contents/MacOS/MpVFX"\n'
                     'done\n\\1', text, 0, "rpath check")
+    text = sub_once(r'^(set_dir=)', 'for c in .binaries/*/; do   # each engine\'s licence and third-party notices travel with it\n'
+                    '  c=$(basename "$c"); mkdir -p "$app/Contents/Resources/EngineLicenses/$c"\n'
+                    '  cp .binaries/"$c"/LICENSE .binaries/"$c"/NOTICE "$app/Contents/Resources/EngineLicenses/$c/" 2>/dev/null || true\n'
+                    'done\n\\1', text, re.M, "iconset line")
     return text
 
 
@@ -307,7 +417,11 @@ def linux_deb(text):
                     '\\1# The engine libraries (binaries.lock) go to /usr/lib/mpvfx; the program looks for them there.\n'
                     'mkdir -p "$root/usr/lib/mpvfx"\n'
                     'cp -L .binaries/*/lib/*.so* "$root/usr/lib/mpvfx/"\n'
-                    'patchelf --set-rpath /usr/lib/mpvfx "$root/opt/mpvfx/MpVFX"\n',
+                    'patchelf --set-rpath /usr/lib/mpvfx "$root/opt/mpvfx/MpVFX"\n'
+                    'for c in .binaries/*/; do   # each engine\'s licence and third-party notices\n'
+                    '  c=$(basename "$c"); mkdir -p "$root/usr/share/doc/mpvfx/engines/$c"\n'
+                    '  cp .binaries/"$c"/LICENSE .binaries/"$c"/NOTICE "$root/usr/share/doc/mpvfx/engines/$c/" 2>/dev/null || true\n'
+                    'done\n',
                     text, 0, "strip line")
     text = sub_once(r'for lib in \$\(objdump -p "\$root/opt/mpvfx/MpVFX" \| awk \'/NEEDED/ \{print \$2\}\'\); do\n',
                     'for lib in $(objdump -p "$root/opt/mpvfx/MpVFX" "$root"/usr/lib/mpvfx/*.so* | awk \'/NEEDED/ {print $2}\' | sort -u); do\n'
@@ -396,7 +510,7 @@ def app_readme(text):
 # ---- main --------------------------------------------------------------------------------------------------------------
 
 def main(argv):
-    fixtures = "omit"
+    fixtures = "copy"
     if argv[1:2] and argv[1].startswith("--engine-fixtures="):
         fixtures = argv.pop(1).split("=", 1)[1]
     if len(argv) != 3 or fixtures not in ("omit", "copy"):
@@ -452,12 +566,12 @@ def main(argv):
     if fixtures == "copy":
         copy_fixtures(src, dest)
     else:
-        note(f"  engine test fixtures NOT copied (--engine-fixtures=omit): the tests that read {APP_FIXTURES} fail until")
-        note("    the owner either publishes those fixtures with the app (--engine-fixtures=copy) or provides them another way")
+        note(f"  engine test fixtures NOT copied (--engine-fixtures=omit): the tests that read {APP_FIXTURES} will fail")
     rewrite(dest, ".github/ci/test-shards.py", "shard keys from binaries.lock instead of engine sources", test_shards)
     rewrite(dest, "mpvfx-swift/packaging/macos/package.sh", "bundle the engine dylibs, drop build rpaths", macos_package)
     rewrite(dest, "mpvfx-swift/packaging/linux/build-deb.sh", "engine libraries under /usr/lib/mpvfx", linux_deb)
     rewrite(dest, "mpvfx-swift/README.md", "build section for prebuilt engines", app_readme)
+    text_fixes(dest)
     rewrite(dest, "mpvfx-swift/scripts/copyright.py", "only the app licence applies here", copyright_script)
     note()
 

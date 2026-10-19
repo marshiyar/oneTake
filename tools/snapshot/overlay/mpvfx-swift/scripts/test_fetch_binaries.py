@@ -12,7 +12,7 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for fetch-binaries.py against local archives (file:// URLs, no network): python3 scripts/test_fetch_binaries.py"""
-import contextlib, hashlib, importlib.util, io, os, pathlib, sys, tarfile, tempfile, unittest
+import contextlib, hashlib, importlib.util, io, os, pathlib, sys, tarfile, tempfile, unittest, zipfile
 
 spec = importlib.util.spec_from_file_location("fetch_binaries", pathlib.Path(__file__).with_name("fetch-binaries.py"))
 fb = importlib.util.module_from_spec(spec)
@@ -30,17 +30,24 @@ def make_archive(path, members):
     return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
 
 
-def write_lock(path, url, sha):
+def make_zip(path, members):
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in members.items():
+            z.writestr(name, data)
+    return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+
+
+def write_lock(path, url, sha, plat=PLAT):
     path.write_text(f'''# test lock
 [media]
 version = "0.1.0"
 tag = "media-v0.1.0"
 repo = "example/binaries"
-asset = "mpvfx-media-{{version}}-{{platform}}.tar.gz"
+asset = "mpvfx-media-{{version}}-{{platform}}"
 library = "mpvfx_media"
 header = "mpvfx_media.h"
 
-[media.platforms.{PLAT}]
+[media.platforms.{plat}]
 url = "{url}"
 sha256 = "{sha}"
 ''')
@@ -113,6 +120,54 @@ class FetchBinariesTests(unittest.TestCase):
         code, _, err = self.run_fetch("--platform", "windows-x86_64")
         self.assertEqual(code, 1)
         self.assertIn("no windows-x86_64 build", err)
+
+    def test_top_level_folder_is_dropped(self):
+        sha = make_archive(self.archive, {f"mpvfx-media-0.1.0-{PLAT}/{k}": v for k, v in self.good.items()})
+        write_lock(self.lock, self.archive.as_uri(), sha)
+        code, _, err = self.run_fetch()
+        self.assertEqual(code, 0, err)
+        self.assertTrue((self.dest / "media/lib/libmpvfx_media.so").exists())
+        self.assertTrue((self.dest / "media/LICENSE").exists())
+
+    def test_windows_zip_with_backslash_names_and_dll_lib(self):
+        archive = self.tmp / "media.zip"
+        top = "mpvfx-media-0.1.0-windows-x86_64\\"
+        sha = make_zip(archive, {top + "include\\mpvfx_media.h": b"x", top + "lib\\mpvfx_media.dll": b"MZ",
+                                 top + "lib\\mpvfx_media.dll.lib": b"!<arch>", top + "LICENSE": b"x"})
+        write_lock(self.lock, archive.as_uri(), sha, plat="windows-x86_64")
+        code, _, err = self.run_fetch("--platform", "windows-x86_64")
+        self.assertEqual(code, 0, err)
+        self.assertTrue((self.dest / "media/lib/mpvfx_media.lib").exists())
+        self.assertTrue((self.dest / "media/bin/mpvfx_media.dll").exists())
+        self.assertFalse((self.dest / "media/mpvfx-media-0.1.0-windows-x86_64").exists())
+
+    def test_zip_member_outside_the_folder_is_refused(self):
+        archive = self.tmp / "media.zip"
+        sha = make_zip(archive, {"..\\escape.txt": b"x"})
+        write_lock(self.lock, archive.as_uri(), sha, plat="windows-x86_64")
+        code, _, err = self.run_fetch("--platform", "windows-x86_64")
+        self.assertEqual(code, 1)
+        self.assertIn("outside", err)
+
+    def test_update_reads_the_release_checksum_file(self):
+        rel = self.tmp / "release"
+        rel.mkdir()
+        sha = make_archive(rel / f"mpvfx-media-0.2.0-{PLAT}.tar.gz", self.good)
+        (rel / "SHA256SUMS").write_text(f"{sha}  mpvfx-media-0.2.0-{PLAT}.tar.gz\n")
+        write_lock(self.lock, "https://example.invalid/a.tar.gz", "")
+        lock = fb.load_lock(self.lock)
+        lock["media"]["repo"] = "example/binaries"
+        original = fb.download
+        fb.download = lambda url, out, what: original(url.replace(
+            "https://github.com/example/binaries/releases/download/media-v0.2.0", rel.as_uri()), out, what)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                fb.update(lock, "media", "0.2.0")
+        finally:
+            fb.download = original
+        self.assertEqual(lock["media"]["version"], "0.2.0")
+        self.assertEqual(lock["media"]["tag"], "media-v0.2.0")
+        self.assertEqual(lock["media"]["platforms"][PLAT]["sha256"], sha)
 
     def test_lock_rewrite_keeps_the_header_comment(self):
         write_lock(self.lock, "https://example.invalid/a.tar.gz", "")

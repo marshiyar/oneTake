@@ -6,7 +6,7 @@
 #   --wait-for N,N,...      pull requests of the source that must be merged first (default 71,72,74,73,69,70,62);
 #                           checked with `gh api` or the GitHub API (GH_TOKEN once the source is private);
 #                           --wait-for none skips the check
-#   --engine-fixtures=MODE  omit (default) or copy: copy the engine's media test fixtures the app tests read
+#   --engine-fixtures=MODE  copy (default): the engine's project-generated media fixtures the app tests read; or omit
 #   --commit                git init DEST and make the one initial commit (author and committer: the owner)
 #
 # The source is cloned read-only into a temporary folder that is deleted at the end; nothing is pushed anywhere.
@@ -21,7 +21,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 source_url=https://github.com/marshiyar/mpvfx-swift-agentic.git
 ref=main
 wait_for=71,72,74,73,69,70,62
-fixtures=--engine-fixtures=omit
+fixtures=--engine-fixtures=copy
 commit=no
 while [ $# -gt 0 ]; do
   case "$1" in

@@ -33,16 +33,19 @@ Publishing is a separate, deliberate step once the report is clean: push the tre
 
 ## Release archive contract (for the binaries repository)
 
-One `.tar.gz` per platform (`macos-arm64`, `linux-x86_64`, `windows-x86_64`; `macos-x86_64` and `linux-aarch64` are
-accepted when listed in the lock), named as `asset` in `binaries.lock`:
+One archive per platform (`macos-arm64`, `linux-x86_64`, `windows-x86_64`; `macos-x86_64` and `linux-aarch64` are
+accepted when listed in the lock), named `<asset>.tar.gz` (or `.zip`) as `asset` in `binaries.lock`, plus a
+`SHA256SUMS` file in the release. One top-level folder inside the archive is allowed; zip names may use `\`.
+media-v0.1.0 follows it (library `mpvfx_ffi`):
 
 ```
 include/mpvfx_media.h | include/cvkf.h
-lib/libmpvfx_media.dylib | lib/libcvkf.dylib     macOS, install name @rpath/lib<name>.dylib
-lib/libmpvfx_media.so | lib/libcvkf.so           Linux, SONAME lib<name>.so
-lib/mpvfx_media.lib + bin/mpvfx_media.dll        Windows (same for cvkf)
-LICENSE                                          the binary licence
+lib/libmpvfx_ffi.dylib | lib/libcvkf.dylib     macOS, install name @rpath/lib<name>.dylib
+lib/libmpvfx_ffi.so | lib/libcvkf.so               Linux, SONAME lib<name>.so
+lib/mpvfx_ffi.lib (or .dll.lib) + bin/ or lib/mpvfx_ffi.dll   Windows (same for cvkf)
+LICENSE, NOTICE                                  the binary licence and third-party notices (shipped by every installer)
 ```
 
-Once a release is published: `cd mpvfx-swift && python3 scripts/fetch-binaries.py --update media <version>` (and
-`keyframes`) fills in the URLs and SHA-256 values.
+Once a release is published, `cd mpvfx-swift && python3 scripts/fetch-binaries.py --update <component> <version>`
+fills in the URLs and SHA-256 values (from the release's `SHA256SUMS`; no token needed). media is pinned to 0.1.0;
+keyframes is pending until `keyframes-v1.0.0` is published.
