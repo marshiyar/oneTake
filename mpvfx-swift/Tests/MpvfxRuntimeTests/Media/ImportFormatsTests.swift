@@ -100,7 +100,8 @@ final class ImportFormatsTests: XCTestCase {
     }
 
     /// Ogg Vorbis (.ogg, .oga) and Ogg Opus (.opus, also Opus in .ogg) import as audio; the probe reports the codec,
-    /// rate, channels and the duration from the last granule position (EngineFixtures/ogg, made by FFmpeg).
+    /// rate, channels and the duration from the last granule position. EngineFixtures/ogg: Vorbis 44100 Hz stereo
+    /// 0.251 s, Vorbis 22050 Hz stereo 0.253 s, Opus CELT 48 kHz stereo 0.25 s and Opus SILK 48 kHz mono 0.5 s.
     func testImportsOggVorbisAndOpus() throws {
         let copy = { (fixture: String, name: String) throws -> String in
             let path = self.root + "/" + name
