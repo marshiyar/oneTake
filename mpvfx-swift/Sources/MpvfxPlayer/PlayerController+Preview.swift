@@ -21,7 +21,7 @@ extension PlayerController {
     /// Work done at the start of each draw: sample the recording, commit a settled nudge, persist a settled zoom.
     func frameTick() {
         recordingTick()
-        // The crop tool and the selection chrome stand down while playing (shouldShowSelectedDomBounds).
+        // The crop tool and selection chrome stand down while playing.
         if view.playback.isPlaying, view.cropActive { cancelCrop() }
         if let store = preferences, view.playback.audioMuted != savedMuted {
             savedMuted = view.playback.audioMuted
@@ -241,7 +241,7 @@ extension PlayerController {
     // MARK: Preferences
 
     /// Restores snap, grid and zoom from `store` and saves every later change back to it.
-    public func usePreferences(_ store: PreviewPreferencesStore) {
+    public func attachPreferencesStore(_ store: PreviewPreferencesStore) {
         preferences = store
         let p = store.load()
         let tb = view.toolbar
