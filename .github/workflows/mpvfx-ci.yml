@@ -58,7 +58,8 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if [ "$EVENT" != pull_request ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename' > "$RUNNER_TEMP/files.txt"
+          # Both sides of a rename count: code renamed to a .md name is still a code change.
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
           n=$(wc -l < "$RUNNER_TEMP/files.txt")
           other=$(grep -vE '\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$' "$RUNNER_TEMP/files.txt" || true)
           if [ "$n" -gt 0 ] && [ "$n" -lt 3000 ] && [ -z "$other" ]; then
