@@ -304,6 +304,10 @@ def copy_fixtures(src, dest):
     needed = {l for l in literals if os.path.isfile(os.path.join(root, l))}
     needed |= {f"{d}/{l}" for d in folders if os.path.isdir(os.path.join(root, d))
                for l in literals if "/" not in l and os.path.isfile(os.path.join(root, d, l))}
+    # Companion files a test reads by appending to a fixture's name (`fixture + ".json"`, decode references).
+    needed |= {f"{rel}{os.path.splitext(n)[1]}" for rel in list(needed)
+               for n in os.listdir(os.path.join(root, os.path.dirname(rel)))
+               if n.startswith(os.path.basename(rel) + ".") and n.count(".") == os.path.basename(rel).count(".") + 1}
     rows = fixture_rows(root)
     copied, refused, notes = [], [], []
     for rel in sorted(needed):
@@ -386,6 +390,14 @@ def text_fixes(dest):
                 counts[i] += n
             if text != before:
                 write(path, text)
+    # The app's own message for a missing keyframe engine, as the parity fixture records it.
+    parity = os.path.join(dest, "mpvfx-swift/Tests/MpvfxSharedTests/Engine/Fixtures/engineParity.json")
+    if os.path.exists(parity):
+        text = read(parity)
+        fixed = text.replace("The video-keyframing engine is not loaded", "The keyframe engine is not loaded")
+        if fixed != text:
+            write(parity, fixed)
+            counts[TEXT_FIXES.index((r"video-keyframing engine", "keyframe engine"))] += 1
     unused = [TEXT_FIXES[i][0][:70] for i, c in enumerate(counts) if c == 0]
     note(f"  rewrote {sum(counts)} comments and doc lines that named the old engine sources or build steps")
     if unused:
@@ -595,7 +607,7 @@ def main(argv):
         for name in files:
             path = os.path.join(dirpath, name)
             rel = os.path.relpath(path, dest).replace(os.sep, "/")
-            if rel.startswith("tools/") or "/Fixtures/" in rel or "/fixtures/" in rel:
+            if rel.startswith("tools/") or rel.startswith(APP_FIXTURES):
                 continue
             try:
                 text = read(path)
