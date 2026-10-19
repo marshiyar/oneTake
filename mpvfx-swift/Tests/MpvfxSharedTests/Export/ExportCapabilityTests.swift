@@ -28,7 +28,7 @@ final class ExportCapabilityTests: XCTestCase {
     func testMp4IsH264FromOurEncoderWithFlacSound() {
         let cap = exportFormatCapability(.mp4)
         XCTAssertTrue(cap.supported); XCTAssertNil(cap.unsupportedMessage)
-        XCTAssertEqual(cap.video, .init(codec: "h264", encoder: "mpvfx-h264enc", pixelFormat: "yuv420p",
+        XCTAssertEqual(cap.video, .init(codec: "h264", encoder: "native-h264", pixelFormat: "yuv420p",
                                         rateControl: "quality-preset", qualityApplies: true))
         XCTAssertEqual(cap.audio, .init(codec: "flac", encoder: "mpvfx-flac", maxBitrateKbps: 1536, sampleRateHz: 48_000,
                                         channels: 2, bitDepth: 16, optional: true))

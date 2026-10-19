@@ -100,8 +100,8 @@ struct TrackShapeError: Error { let message: String }
 /// Everything the core can see (frame, value components, control points, curviness) is passed to the real engine,
 /// which produces its own message: non-numbers become NaN as in numberOrNaN. A bad frame is checked by the engine
 /// itself (one-key track) at the point the binding would check it, so the message is the engine's.
-func engineTrackFromRaw(_ rawValueType: NativeJSONValue?, _ rawKeys: [NativeJSONValue], engine: KeyframeEngine) throws -> VkfTrack {
-    func fail(_ code: VkfTrackErrorCode, _ m: String) -> KeyframeEngineError { KeyframeEngineError(code: code.rawValue, message: m) }
+func engineTrackFromRaw(_ rawValueType: NativeJSONValue?, _ rawKeys: [NativeJSONValue], engine: KeyframeEngine) throws -> KeyframeTrack {
+    func fail(_ code: KeyframeTrackErrorCode, _ m: String) -> KeyframeEngineError { KeyframeEngineError(code: code.rawValue, message: m) }
     func num(_ v: NativeJSONValue?) -> Double { if case .number(let n)? = v { return n }; return .nan }
     func str(_ v: NativeJSONValue?) -> String { v?.stringValue ?? "" }
     func isObject(_ v: NativeJSONValue?) -> Bool { switch v { case .object?, .array?: return true; default: return false } }
@@ -111,12 +111,12 @@ func engineTrackFromRaw(_ rawValueType: NativeJSONValue?, _ rawKeys: [NativeJSON
     }
     let typeName = str(rawValueType)
     guard let type = NativeValueType(rawValue: typeName) else { throw fail(.invalidValue, "Unknown track valueType \"\(typeName)\"") }
-    var keys: [VkfTrack.Key] = []
+    var keys: [KeyframeTrack.Key] = []
     for k in rawKeys {
         if !isObject(k) { throw fail(.invalidValue, "Keyframe must be an object") }
         let frame = num(k["frame"])
         if !frame.isFinite || frame.rounded(.down) != frame || abs(frame) > 9.0e15 {
-            try engine.validate(VkfTrack(valueType: .number, keyframes: [.init(frame: frame, value: .number(0), outgoing: .linear)]))
+            try engine.validate(KeyframeTrack(valueType: .number, keyframes: [.init(frame: frame, value: .number(0), outgoing: .linear)]))
             throw fail(.invalidKeyframeFrame, "Keyframe frame must be an integer project frame") // engine accepted: unreachable
         }
         let v = k["value"]; let value: NativeParameterValue
@@ -153,7 +153,7 @@ func engineTrackFromRaw(_ rawValueType: NativeJSONValue?, _ rawKeys: [NativeJSON
         }
         keys.append(.init(frame: frame, value: value, outgoing: outgoing, outgoingPath: path))
     }
-    return VkfTrack(valueType: type, keyframes: keys)
+    return KeyframeTrack(valueType: type, keyframes: keys)
 }
 private func jsTypeErrorRead(_ v: NativeJSONValue?, _ prop: String) -> String {
     "Cannot read properties of \(v == .null ? "null" : "undefined") (reading '\(prop)')"
@@ -181,7 +181,7 @@ private func decodeTrackInput(_ raw: NativeJSONValue, engine: KeyframeEngine?) -
         let kid = k["id"]!.stringValue!
         if !seen.insert(kid).inserted { return .failure(.init(message: "Parameter track \(id) has duplicate keyframe ID \(kid)")) }
     }
-    // Engine stage (vkfEngine().validate({ valueType, keyframes }) inside createNativeParameterTrack).
+    // Engine stage (keyframeEngine().validate({ valueType, keyframes }) inside createNativeParameterTrack).
     let e: KeyframeEngine
     do { e = try engine ?? keyframeEngine() } catch { return .failure(.init(message: "\(error)")) }
     func engineFailure(_ error: Error) -> TrackShapeError {
@@ -237,7 +237,7 @@ func validateParameterTracks(_ rawTracks: NativeJSONValue?, _ projectFrameRate: 
         case .success(let input):
             do { _ = try createNativeParameterTrack(input, engine: engine) } catch {
                 let message = (error as? NativeKeyframeValidationError)?.message ?? (error as? KeyframeEngineError)?.message
-                    ?? (error as? VkfEngineNotLoadedError)?.description ?? "Invalid parameter track"
+                    ?? (error as? KeyframeEngineNotLoadedError)?.description ?? "Invalid parameter track"
                 pushIssue(&issues, .invalidParameterTrack, trackPath, message)
             }
         }

@@ -88,7 +88,7 @@ func applyToVec2Position(_ d: NativeProjectDocument, _ loc: LocatedClip, _ track
         guard case .number(let v) = value else { return keyframeReject(d, .valueTypeMismatch, "\(a.parameterId) takes a number") }
         if let bad = invalidClipFrame(loc.clip, frame) { return keyframeReject(d, bad.code, bad.message) }
         let existing = keyAt(frame)
-        let current = try existing?.value ?? (engine ?? keyframeEngine()).evaluate(VkfTrack(track), frame: frame)
+        let current = try existing?.value ?? (engine ?? keyframeEngine()).evaluate(KeyframeTrack(track), frame: frame)
         let key = NativeKeyframe(id: existing?.id ?? nativeParameterKeyframeId(parameterTrackId: track.id, frame: frame), frame: frame,
                                  value: compose(current, v), outgoing: outgoing ?? existing?.outgoing ?? .linear, outgoingPath: existing?.outgoingPath)
         let result = try applyNativeKeyframeCommand(track, .upsert(key), engine: engine)
