@@ -75,7 +75,11 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
             git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
             xvfb xauth dbus-x11 python3 libvulkan-dev mesa-vulkan-drivers
+      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
+      # never a pull request head). Other events check out their own commit.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore the release build cache
@@ -116,7 +120,11 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
+      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
+      # never a pull request head). Other events check out their own commit.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
         with:
           swift-version: swift-6.3.3-release
@@ -160,7 +168,11 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
+      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
+      # never a pull request head). Other events check out their own commit.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app

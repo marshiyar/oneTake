@@ -32,7 +32,7 @@ cores, memory, GPU as the grade bench names it, class), the commit and the date;
 plus a Markdown table on stdout. A GitHub-hosted runner is a shared machine: compare runs of the same class only,
 and read trends, not single runs.
 """
-import argparse, datetime, json, os, platform, re, shlex, subprocess, time
+import argparse, datetime, json, math, os, platform, re, shlex, subprocess, tempfile, time
 
 HERE = os.getcwd()
 
@@ -76,14 +76,17 @@ def run(cmd, env=None, cwd=None, launcher=None):
     e = dict(os.environ); e.update(env or {})
     t = time.perf_counter()
     if hasattr(os, "wait4"):
-        p = subprocess.Popen(full, env=e, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        out = p.communicate()[0]
-        _, status, usage = os.wait4(p.pid, 0) if p.returncode is None else (0, p.returncode, None)
-        wall = time.perf_counter() - t
-        code = p.returncode if p.returncode is not None else os.waitstatus_to_exitcode(status)
-        peak = None
-        if usage is not None:
-            peak = usage.ru_maxrss / (1048576 if platform.system() == "Darwin" else 1024)
+        # Output goes to a file and the child is reaped with wait4 here, so its resource usage (peak RSS) is ours;
+        # communicate()/wait() would reap it first and discard the usage.
+        with tempfile.TemporaryFile() as log:
+            p = subprocess.Popen(full, env=e, cwd=cwd, stdout=log, stderr=subprocess.STDOUT)
+            _, status, usage = os.wait4(p.pid, 0)
+            wall = time.perf_counter() - t
+            code = os.waitstatus_to_exitcode(status)
+            p.returncode = code
+            log.seek(0)
+            out = log.read().decode("utf-8", errors="replace")
+        peak = usage.ru_maxrss / (1048576 if platform.system() == "Darwin" else 1024)
         return wall, peak, out, code
     p = subprocess.run(full, env=e, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     return time.perf_counter() - t, None, p.stdout, p.returncode
@@ -92,7 +95,7 @@ def run(cmd, env=None, cwd=None, launcher=None):
 def rank(samples, q):
     """Nearest-rank percentile of `samples` (q in 0..1)."""
     s = sorted(samples)
-    return s[min(len(s) - 1, max(0, int(round(q * len(s) + 0.5)) - 1))]
+    return s[min(len(s), max(1, math.ceil(q * len(s)))) - 1]
 
 
 class Results:
@@ -166,11 +169,13 @@ def bench_grade(bin_dir, runs, r, info):
 
 def bench_preview(bin_dir, runs, out_dir, r):
     exe = os.path.join(bin_dir, "MpvfxPreviewBench" + (".exe" if platform.system() == "Windows" else ""))
-    clips = os.path.join(out_dir, "clips"); os.makedirs(clips, exist_ok=True)
+    # MpvfxPreviewBench writes this path into JSON unescaped: forward slashes work on Windows too.
+    clips = os.path.join(out_dir, "clips").replace("\\", "/"); os.makedirs(clips, exist_ok=True)
     wall, _, out, code = run([exe, "--make-clips", clips])
     if code != 0:
         raise SystemExit(f"preview --make-clips: exit {code}\n{out[-3000:]}")
     results = os.path.join(out_dir, "preview.jsonl")
+    open(results, "w").close()  # the bench appends: start from an empty file so a reused --out holds only this run
     for i in range(runs):
         for scenario in ("1080p", "4k", "stacked", "graded", "scrub"):
             wall, peak, out, code = run([exe, scenario, clips, results])
@@ -183,7 +188,12 @@ def bench_preview(bin_dir, runs, out_dir, r):
         rec = json.loads(line)
         scenario = rec.get("scenario", "unknown")
         for key, value in rec.items():
-            if isinstance(value, (int, float)) and not isinstance(value, bool) and key != "frames":
+            # The bench writes every value as a JSON string ("fps":"29.9"); text such as "display" does not parse.
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(value) and key != "frames":
                 unit = "fps" if "fps" in key else "MiB" if "mib" in key.lower() or "rss" in key.lower() else "ms" if "ms" in key else ""
                 r.add(f"preview.{scenario}.{key}", unit, value)
 
@@ -222,7 +232,7 @@ def main():
     if "preview" in names:
         bench_preview(bin_dir, args.runs, args.out, r)
     metrics = r.finish()
-    commit = os.environ.get("GITHUB_SHA") or sh("git", "rev-parse", "HEAD")
+    commit = sh("git", "rev-parse", "HEAD") or os.environ.get("GITHUB_SHA", "unknown")
     report = {"schema": 1, "commit": commit, "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
               "machine": info, "runs": args.runs, "benchmarks": names, "elapsed_s": round(time.time() - started, 1), "metrics": metrics}
     tag = platform.system().lower()
