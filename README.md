@@ -44,8 +44,8 @@ what is planned.
 ## Media formats
 
 - **Import:** MP4/M4V/MOV with H.264 (8-bit 4:2:0) or HEVC (Main, Main 10) video and LPCM, FLAC, AAC (LC, HE, HE v2)
-  or MP2 sound; WAV, FLAC, M4A, ADTS `.aac`, MPEG audio Layer I/II (`.mp2`), Ogg Vorbis and Opus (`.ogg`, `.oga`,
-  `.opus`); PNG, JPEG and BMP images. Anything else is refused with a message that names the format.
+  or MP2 sound; WAV, FLAC, M4A, ADTS `.aac`, MPEG audio Layer I/II (`.mp2`), Ogg Vorbis and SILK-only Opus (`.ogg`, `.oga`,
+  `.opus`; CELT and hybrid Opus streams are refused); PNG, JPEG and BMP images. Anything else is refused with a message that names the format.
 - **MP3:** not yet. A video with MP3 sound imports without its sound; `.mp3` files are refused.
 - **Export:** MP4 (H.264 + FLAC, 48 kHz stereo) and MOV with alpha (PNG frames + 16-bit LPCM). An export never
   overwrites: if a file appears at the output path while rendering, the export stops and leaves it.
