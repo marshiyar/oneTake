@@ -272,7 +272,7 @@ final class TimelineRendererTests: XCTestCase {
     }
 
     /// A video with AAC sound (the 0.53 s sine of TestMedia.aacTrack) exports its picture and its sound: the sine
-    /// where the source has it (FFmpeg's `sine` source: amplitude 1/8, RMS 0.088), silence after it ends.
+    /// where the source has it (amplitude 1/8, RMS 0.088), silence after it ends.
     func testAVideoWithAACSoundExportsItsPictureAndSound() throws {
         let red = TestMedia.solid((255, 0, 0), width: 64, height: 32)
         try TestMedia.movie([TestMedia.pngTrack(Array(repeating: red, count: 20), width: 64, height: 32), TestMedia.aacTrack()])
