@@ -6,7 +6,7 @@ behaviour is fixed on purpose because saved data depends on it.
 ## Data formats kept stable on purpose
 
 - `.studio/project.json` is schema version 1 in canonical JSON (keys sorted by UTF-16 code unit, 2-space indent).
-  `mediaEngine` is written as `"native"`; `"ffmpeg"` (an older stored name) and a missing field are read as the
+  `mediaEngine` is written as `"native"`; `"ffmpeg"` (a legacy value written by older versions) and a missing field are read as the
   native timeline, so the first save after opening an older project migrates it and changes nothing else.
 - Element assets whose clips carry no `text` are layers from an earlier version of the editor that the renderer
   cannot draw. They stay in the document byte for byte, preview and export skip them
