@@ -14,17 +14,28 @@
 #===----------------------------------------------------------------------===#
 # Build MpVFX.app and the drag-to-Applications disk image from a release build.
 # Run from mpvfx-swift/ after `python3 scripts/fetch-binaries.py && swift build -c release`:
-#   sh packaging/macos/package.sh <dist-dir>
+#   sh packaging/macos/package.sh <dist-dir> developer-id|adhoc
 # Writes <dist-dir>/MpVFX-<version>-macos-<arch>.dmg (prints its path last).
 #
-# Signing, from the environment the workflow sets: a "Developer ID Application" identity in the keychain
-# (packaging/macos/import-cert.sh puts one there in CI); without one, an ad-hoc signature, which runs here but Gatekeeper
-# blocks elsewhere. With an identity and the notarization credentials, the image is notarized by Apple and the ticket
-# stapled to it.
+# The signing mode is required and there is no fallback between the two:
+#   developer-id  sign with the "Developer ID Application" identity in the keychain (packaging/macos/import-cert.sh puts
+#                 one there in CI), notarize with Apple and staple the ticket. The identity and the notarization
+#                 credentials come from the environment the workflow sets; any of them missing, or Apple not accepting
+#                 the image, fails the run.
+#   adhoc         an ad-hoc signature for testing on this machine (pull requests); Gatekeeper blocks it elsewhere.
 # MPVFX_BUILD (build number, default: git short sha) and MPVFX_VERSION (default: packaging/VERSION).
 set -eu
 
-dist=${1:?usage: package.sh <dist-dir>}
+dist=${1:?usage: package.sh <dist-dir> developer-id|adhoc}
+mode=${2:?usage: package.sh <dist-dir> developer-id|adhoc}
+case "$mode" in
+  developer-id)
+    [ -n "${MACOS_SIGN_IDENTITY:-}" ] || { echo "developer-id: no signing identity in the environment" >&2; exit 1; }
+    [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] \
+      || { echo "developer-id: notarization credentials missing from the environment" >&2; exit 1; } ;;
+  adhoc) ;;
+  *) echo "unknown signing mode: $mode (developer-id or adhoc)" >&2; exit 1 ;;
+esac
 mkdir -p "$dist"; dist=$(cd "$dist" && pwd)
 version=${MPVFX_VERSION:-$(cat packaging/VERSION)}
 build=${MPVFX_BUILD:-$(git rev-parse --short HEAD 2>/dev/null || echo 0)}
@@ -95,10 +106,10 @@ plutil -lint "$app/Contents/Info.plist"
 
 # Sign inside out: each dylib, then the app. Developer ID signing uses the hardened runtime and a secure
 # timestamp (both required for notarization).
-if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
+if [ "$mode" = developer-id ]; then
   set -- --force --sign "$MACOS_SIGN_IDENTITY" --options runtime --timestamp
 else
-  echo "no signing identity: ad-hoc signature (Gatekeeper will block this app on other Macs)"
+  echo "ad-hoc build: for testing only (Gatekeeper blocks it on other Macs)"
   set -- --force --sign -
 fi
 for f in "$app/Contents/Frameworks/"*; do if [ -e "$f" ]; then codesign "$@" "$f"; fi; done
@@ -115,22 +126,18 @@ for try in 1 2 3; do
   [ "$try" = 3 ] && exit 1; sleep 5
 done
 
-if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
+if [ "$mode" = developer-id ]; then
   codesign --force --sign "$MACOS_SIGN_IDENTITY" --timestamp "$dmg"
-  if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
-    xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
-      --team-id "$APPLE_TEAM_ID" --wait --timeout 30m --output-format json > "$work/notary.json"
-    cat "$work/notary.json"; echo
-    if ! grep -q '"status" *: *"Accepted"' "$work/notary.json"; then
-      id=$(sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' "$work/notary.json" | head -1)
-      [ -z "$id" ] || xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
-      echo "notarization was not accepted" >&2; exit 1
-    fi
-    xcrun stapler staple "$dmg"
-    xcrun stapler validate "$dmg"
-  else
-    echo "no notarization credentials: signed but not notarized"
+  xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
+    --team-id "$APPLE_TEAM_ID" --wait --timeout 30m --output-format json > "$work/notary.json"
+  cat "$work/notary.json"; echo
+  if ! grep -q '"status" *: *"Accepted"' "$work/notary.json"; then
+    id=$(sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' "$work/notary.json" | head -1)
+    [ -z "$id" ] || xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+    echo "notarization was not accepted" >&2; exit 1
   fi
+  xcrun stapler staple "$dmg"
+  xcrun stapler validate "$dmg"
 fi
 rm -rf "$work"
 echo "$dmg"

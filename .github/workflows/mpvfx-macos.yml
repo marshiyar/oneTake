@@ -9,9 +9,8 @@ name: mpvfx-macos
 # files change it is not run again. The nightly run and full_tests run every shard. Every job downloads the prebuilt
 # engine libraries pinned in binaries.lock; the disk image carries them in MpVFX.app/Contents/Frameworks.
 #
-# Secrets: none are needed. The optional signing and notarization secrets (used outside pull requests only) sign the
-# disk image with a Developer ID and notarize it; without them it is ad-hoc signed. A signing certificate that is set but
-# unusable fails the job instead of falling back to ad-hoc.
+# Secrets: pull requests use none and package an ad-hoc signed image for testing. Every other run signs the disk image
+# with the Developer ID and notarizes it, from the repository's signing secrets; without them that run fails.
 
 on:
   workflow_call:
@@ -211,33 +210,43 @@ jobs:
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Release build
         run: swift build -c release
-      - name: Signing certificate (Developer ID, when the optional secrets are set)
+      # Two separate paths, never a fallback from one to the other: pull requests get no secrets and package an ad-hoc
+      # signed image for testing; every other run (main, tags, nightly, by hand) signs with the Developer ID, notarizes
+      # and staples, and fails if any part of that is missing or refused.
+      - name: Signing certificate (Developer ID)
+        if: github.event_name != 'pull_request'
         id: cert
         env:
-          MACOS_CERT_P12_BASE64: ${{ github.event_name != 'pull_request' && secrets.MACOS_CERT_P12_BASE64 || '' }}
-          MACOS_CERT_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.MACOS_CERT_PASSWORD || '' }}
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
-          if [ -n "$MACOS_CERT_P12_BASE64" ]; then
-            identity=$(sh packaging/macos/import-cert.sh) || { echo "::error::the signing certificate is set but unusable (reason above)"; exit 1; }
-            echo "identity=$identity" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::no signing certificate: the disk image is ad-hoc signed and not notarized"
-          fi
-      - name: Package (disk image with the engine libraries in Contents/Frameworks)
+          [ -n "$MACOS_CERT_P12_BASE64" ] && [ -n "$MACOS_CERT_PASSWORD" ] || { echo "::error::the signing certificate secrets are not set"; exit 1; }
+          identity=$(sh packaging/macos/import-cert.sh)
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+      - name: Package, signed and notarized (disk image with the engine libraries in Contents/Frameworks)
+        if: github.event_name != 'pull_request'
         env:
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
-          APPLE_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_ID || '' }}
-          APPLE_APP_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.APPLE_APP_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MPVFX_BUILD: ${{ github.sha }}
         run: |
           export MPVFX_BUILD=${MPVFX_BUILD::7}
-          sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" | tee "$RUNNER_TEMP/package.log"
+          sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" developer-id | tee "$RUNNER_TEMP/package.log"
+          ls -l "$GITHUB_WORKSPACE/dist"
+      - name: Package, ad-hoc signed for testing (pull request)
+        if: github.event_name == 'pull_request'
+        env:
+          MPVFX_BUILD: ${{ github.sha }}
+        run: |
+          export MPVFX_BUILD=${MPVFX_BUILD::7}
+          sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" adhoc | tee "$RUNNER_TEMP/package.log"
           ls -l "$GITHUB_WORKSPACE/dist"
       - name: Launch smoke from the installed disk image
         timeout-minutes: 8
         env:
-          SIGNED: ${{ steps.cert.outputs.identity != '' }}
+          SIGNED: ${{ github.event_name != 'pull_request' }}
         run: |
           dmg=$(ls "$GITHUB_WORKSPACE"/dist/MpVFX-*.dmg)
           mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"

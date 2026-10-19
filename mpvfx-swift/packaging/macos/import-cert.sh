@@ -28,11 +28,9 @@ security create-keychain -p "$kc_pass" "$kc" >&2
 security set-keychain-settings -lut 21600 "$kc" >&2
 security unlock-keychain -p "$kc_pass" "$kc" >&2
 for ca in DeveloperIDG2CA DeveloperIDCA; do
-  if curl -fsSL --retry 3 -o "$dir/$ca.cer" "https://www.apple.com/certificateauthority/$ca.cer"; then
-    security import "$dir/$ca.cer" -k "$kc" >&2 || true
-  else
-    echo "could not download Apple's $ca intermediate" >&2
-  fi
+  curl -fsSL --retry 3 -o "$dir/$ca.cer" "https://www.apple.com/certificateauthority/$ca.cer" \
+    || { echo "could not download Apple's $ca intermediate" >&2; exit 1; }
+  security import "$dir/$ca.cer" -k "$kc" >&2
 done
 if ! security import "$dir/cert.p12" -k "$kc" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null 2>&1; then
   rm -f "$dir/cert.p12"
