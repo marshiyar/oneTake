@@ -41,7 +41,7 @@ final class EngineTrackShapeMessageTests: XCTestCase {
 
     func testUnknownValueTypeUsesBindingText() throws {
         let found = try issues(valueType: "colour", keyframes: #"[{"id":"k","frame":0,"value":1,"outgoing":{"type":"linear"}}]"#)
-        // vkf_node.cpp parseValueType: raise("invalid-value", "Unknown track valueType \"" + s + "\"")
+        // the engine's value-type parser raises("invalid-value", "Unknown track valueType \"" + s + "\"")
         XCTAssertEqual(found.map(\.message), [#"Parameter track t: Unknown track valueType "colour""#])
         XCTAssertEqual(found.map(\.path), ["sequence.tracks[0].clips[0].parameterTracks[0]"])
     }
@@ -51,7 +51,7 @@ final class EngineTrackShapeMessageTests: XCTestCase {
         let engine = try XCTUnwrap(engineMessage(KeyframeTrack(valueType: .number, keyframes: [.init(frame: 1.5, value: .number(1), outgoing: .linear)])))
         XCTAssertEqual(engine.code, "invalid-keyframe-frame")
         XCTAssertEqual(found.map(\.message), ["Parameter track t: \(engine.message)"])
-        XCTAssertEqual(engine.message, "Keyframe frame must be an integer project frame") // same text as vkf_node.cpp parseKey
+        XCTAssertEqual(engine.message, "Keyframe frame must be an integer project frame") // same text as the engine's key parser
     }
 
     func testMalformedValueUsesEngineMessage() throws {
@@ -64,7 +64,7 @@ final class EngineTrackShapeMessageTests: XCTestCase {
     }
 
     func testMalformedInterpolationUsesBindingAndEngineText() throws {
-        // Unknown type string: checked in the binding before the core (vkf_node.cpp parseKey).
+        // Unknown type string: checked in the binding before the core (the engine's key parser).
         XCTAssertEqual(try issues(valueType: "number", keyframes: #"[{"id":"k","frame":0,"value":1,"outgoing":{"type":"spline"}}]"#).map(\.message),
                        [#"Parameter track t: Unknown interpolation "spline""#])
         // Non-numeric control point: read as NaN and rejected by the core with its own message.

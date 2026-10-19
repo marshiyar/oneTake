@@ -75,7 +75,7 @@ public func bakeTrackSamples(_ engine: KeyframeEngine, _ track: KeyframeTrack, f
     guard jsIsInteger(count) else {
         // A non-integer (NaN or fractional) count goes to engine.sample, which compiles the track first
         // (rejecting it with its track error) and otherwise rejects the count. KeyframeEngine.sample takes Int,
-        // so reproduce that order here with the engine's own message (cvkf.cpp:195, vkf_node.cpp:293).
+        // so reproduce that order here with the engine's own message (the keyframe engine checks in the same order).
         try engine.validate(track)
         throw KeyframeEngineError(code: "invalid-argument", message: "sampleTrack(track, firstFrame, count) needs a finite frame and count")
     }
