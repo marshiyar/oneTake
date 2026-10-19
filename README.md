@@ -17,8 +17,8 @@ and talks to them through its own Swift adapters ([`OneTakeMedia`](mpvfx-swift/S
 ## Download
 
 Installers for each green build of `main` are on the [releases page](https://github.com/marshiyar/oneTake/releases/latest):
-macOS disk image, Windows setup.exe, Ubuntu/Debian `.deb`, and portable archives for Linux and Windows. The Windows
-and Linux builds carry everything they need; macOS 15 or newer, Windows 10 or 11 (x64), Ubuntu 24.04 or a Debian
+macOS disk image (Apple silicon), Windows setup.exe, Ubuntu/Debian `.deb`, and portable archives for Linux and Windows. The Windows
+and Linux builds carry everything they need; macOS 15 or newer on Apple silicon, Windows 10 or 11 (x64), Ubuntu 24.04 or a Debian
 with GTK 3, PulseAudio and SQLite 3.
 
 ## What it does
