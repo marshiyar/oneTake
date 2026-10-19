@@ -1,0 +1,81 @@
+name: codeql
+
+# GitHub's code scanning on the three kinds of code this repository holds: the Swift app (built on the macOS runner
+# with the pinned engine libraries, as mpvfx-ci does), the Python scripts behind CI and packaging, and the workflow
+# files themselves (the `actions` language: injection, unpinned actions, token scope). Results land under Security >
+# Code scanning. Runs on pull requests, pushes to main and weekly; separate from mpvfx-ci and never a required check.
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore: ['**/*.md', '**/docs/**']
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', '**/docs/**']
+  schedule:
+    - cron: '35 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_VERSION: '27.0'
+
+jobs:
+  scripts-and-workflows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, actions]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  swift:
+    runs-on: xcode-27
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      security-events: write
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode ${{ env.XCODE_VERSION }}
+        run: |
+          x=/Applications/Xcode_${XCODE_VERSION}.app
+          test -d "$x" || { echo "::error::$x is not on this runner"; ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$x/Contents/Developer"
+          swift --version
+      - name: Engine libraries (binaries.lock)
+        run: python3 -I -B scripts/fetch-binaries.py
+      - name: Metal toolchain
+        run: sh ../.github/ci/metal-toolchain.sh
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: swift
+          build-mode: manual
+          queries: security-and-quality
+      - name: Build under the CodeQL tracer
+        run: swift build
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:swift

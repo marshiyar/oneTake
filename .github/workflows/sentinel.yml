@@ -1,0 +1,133 @@
+name: sentinel
+
+# The in-house behaviour check (.github/ci/sentinel.py): what a video editor has no business doing, found in the
+# repository or in what it ships. `repo` runs on every pull request and push: sources, scripts, workflows, tracked
+# files and binaries.lock. `artifact` runs after each mpvfx-ci run that built installers (or by hand for a run id),
+# one job per OS: unpacks the installers as a user would and reads every binary's imports against the forbidden sets
+# and the recorded baseline (.github/sentinel-baseline/<binary>.imports); a new import since the last release is a
+# finding, and the run's sentinel-imports-<os> artifact holds the current lists to commit when the change is wanted.
+# Allow list with reasons: .github/sentinel.toml. Separate from mpvfx-ci; never a required check.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [mpvfx-ci]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: The mpvfx-ci run whose installer artifacts to check (empty = repository check only)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sentinel-${{ github.event.workflow_run.id || inputs.run_id || github.ref }}
+  cancel-in-progress: false
+
+env:
+  RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+
+jobs:
+  repo:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_id == '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: The scanner's own tests
+        run: python3 -I -B .github/ci/test_sentinel.py
+      - name: Sources, scripts, workflows, files and binaries.lock
+        run: python3 -I -B .github/ci/sentinel.py repo | tee -a "$GITHUB_STEP_SUMMARY"
+
+  linux:
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_id != '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: dist
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Unpack
+        run: |
+          mkdir -p unpacked/portable unpacked/deb
+          tar -xzf dist/mpvfx-linux-x64-*.tar.gz -C unpacked/portable
+          dpkg-deb -x dist/mpvfx_*.deb unpacked/deb
+      - name: Imports of every shipped binary
+        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sentinel-imports-linux
+          path: ${{ runner.temp }}/imports/*.imports
+          if-no-files-found: ignore
+
+  windows:
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_id != '')
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: dist
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Unpack
+        run: |
+          mkdir -p unpacked/portable unpacked/setup
+          unzip -q dist/mpvfx-windows-x64-*.zip -d unpacked/portable
+          7z x -y -ounpacked/setup dist/MpVFX-*-setup.exe >/dev/null || { echo "::error::7z could not unpack setup.exe"; exit 1; }
+      - name: Imports of every shipped binary (the Swift and MSVC runtimes are skipped)
+        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked/portable | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sentinel-imports-windows
+          path: ${{ runner.temp }}/imports/*.imports
+          if-no-files-found: ignore
+
+  macos:
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_id != '')
+    runs-on: xcode-27
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos
+          path: dist
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Mount the disk image and copy the app out
+        run: |
+          dmg=$(ls dist/MpVFX-*.dmg)
+          mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
+          mkdir -p unpacked; cp -R "$mnt/MpVFX.app" unpacked/; hdiutil detach "$mnt"
+      - name: Imports of every shipped binary
+        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sentinel-imports-macos
+          path: ${{ runner.temp }}/imports/*.imports
+          if-no-files-found: ignore
