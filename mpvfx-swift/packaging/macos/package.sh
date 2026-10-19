@@ -17,11 +17,10 @@
 #   sh packaging/macos/package.sh <dist-dir>
 # Writes <dist-dir>/MpVFX-<version>-macos-<arch>.dmg (prints its path last).
 #
-# Signing, from the environment:
-#   MACOS_SIGN_IDENTITY  a "Developer ID Application: ..." identity in the keychain (packaging/macos/import-cert.sh
-#                        puts one there in CI). Unset: ad-hoc signature, which runs here but Gatekeeper blocks elsewhere.
-#   APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID
-#                        with an identity, the image is notarized by Apple and the ticket stapled to it.
+# Signing, from the environment the workflow sets: a "Developer ID Application" identity in the keychain
+# (packaging/macos/import-cert.sh puts one there in CI); without one, an ad-hoc signature, which runs here but Gatekeeper
+# blocks elsewhere. With an identity and the notarization credentials, the image is notarized by Apple and the ticket
+# stapled to it.
 # MPVFX_BUILD (build number, default: git short sha) and MPVFX_VERSION (default: packaging/VERSION).
 set -eu
 
@@ -99,7 +98,7 @@ plutil -lint "$app/Contents/Info.plist"
 if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
   set -- --force --sign "$MACOS_SIGN_IDENTITY" --options runtime --timestamp
 else
-  echo "MACOS_SIGN_IDENTITY unset: ad-hoc signature (Gatekeeper will block this app on other Macs)"
+  echo "no signing identity: ad-hoc signature (Gatekeeper will block this app on other Macs)"
   set -- --force --sign -
 fi
 for f in "$app/Contents/Frameworks/"*; do if [ -e "$f" ]; then codesign "$@" "$f"; fi; done
@@ -130,7 +129,7 @@ if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
     xcrun stapler staple "$dmg"
     xcrun stapler validate "$dmg"
   else
-    echo "APPLE_ID / APPLE_APP_PASSWORD / APPLE_TEAM_ID unset: signed but not notarized"
+    echo "no notarization credentials: signed but not notarized"
   fi
 fi
 rm -rf "$work"

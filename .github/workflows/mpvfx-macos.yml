@@ -9,9 +9,9 @@ name: mpvfx-macos
 # files change it is not run again. The nightly run and full_tests run every shard. Every job downloads the prebuilt
 # engine libraries pinned in binaries.lock; the disk image carries them in MpVFX.app/Contents/Frameworks.
 #
-# Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
-# are optional (outside pull requests only): set, the disk image is signed with a Developer ID and notarized; unset, it
-# is ad-hoc signed.
+# Secrets: none are needed. The optional signing and notarization secrets (used outside pull requests only) sign the
+# disk image with a Developer ID and notarize it; without them it is ad-hoc signed. A signing certificate that is set but
+# unusable fails the job instead of falling back to ad-hoc.
 
 on:
   workflow_call:
@@ -218,9 +218,10 @@ jobs:
           MACOS_CERT_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.MACOS_CERT_PASSWORD || '' }}
         run: |
           if [ -n "$MACOS_CERT_P12_BASE64" ]; then
-            echo "identity=$(sh packaging/macos/import-cert.sh)" >> "$GITHUB_OUTPUT"
+            identity=$(sh packaging/macos/import-cert.sh) || { echo "::error::the signing certificate is set but unusable (reason above)"; exit 1; }
+            echo "identity=$identity" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::MACOS_CERT_P12_BASE64 is not set: the disk image is ad-hoc signed and not notarized"
+            echo "::notice::no signing certificate: the disk image is ad-hoc signed and not notarized"
           fi
       - name: Package (disk image with the engine libraries in Contents/Frameworks)
         env:
