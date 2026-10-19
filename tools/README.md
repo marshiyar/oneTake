@@ -9,7 +9,7 @@ sh tools/make-snapshot.sh --commit ../onetake-snapshot/tree   # after the listed
 
 | Step | Script | What it does |
 |---|---|---|
-| 1 | `make-snapshot.sh` | refuses to run until the old repository's pull requests #71, #72, #74, #73, #69, #70 and #62 are merged (`--wait-for`), clones the old repository read-only into a temporary folder |
+| 1 | `make-snapshot.sh` | refuses to run until the old repository's pull request #62 (the last app change) is merged (`--wait-for`), clones the old repository read-only into a temporary folder |
 | 2 | `snapshot/snapshot.py` | copies the public files only, lays `snapshot/overlay/` over them, rewrites the app for prebuilt engines, writes `snapshot-report.txt` next to the tree |
 | 3 | `snapshot/leak-scan.py` | scans the tree for maintainer-only text; what counts as private is read from the temporary clone at run time |
 | 4 | `make-snapshot.sh --commit` | `git init` and one commit authored and committed by the owner; nothing is pushed |

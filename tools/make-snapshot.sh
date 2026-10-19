@@ -3,7 +3,7 @@
 #
 #   --source URL            repository to snapshot (default https://github.com/marshiyar/mpvfx-swift-agentic.git)
 #   --ref REF               branch or tag to snapshot (default main)
-#   --wait-for N,N,...      pull requests of the source that must be merged first (default 71,72,74,73,69,70,62);
+#   --wait-for N,N,...      pull requests of the source that must be merged first (default 62);
 #                           checked with `gh api` or the GitHub API (GH_TOKEN once the source is private);
 #                           --wait-for none skips the check
 #   --engine-fixtures=MODE  copy (default): the engine's project-generated media fixtures the app tests read; or omit
@@ -20,7 +20,7 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 source_url=https://github.com/marshiyar/mpvfx-swift-agentic.git
 ref=main
-wait_for=71,72,74,73,69,70,62
+wait_for=62
 fixtures=--engine-fixtures=copy
 commit=no
 while [ $# -gt 0 ]; do
