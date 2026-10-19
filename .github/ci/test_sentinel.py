@@ -13,7 +13,7 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for sentinel.py: planted behaviour is found, legitimate code is not, the allow list applies."""
-import importlib.util, os, struct, tempfile, unittest
+import importlib.util, os, struct, subprocess, tempfile, unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("sentinel", os.path.join(HERE, "sentinel.py"))
@@ -93,8 +93,42 @@ class WorkflowRules(unittest.TestCase):
                 "      - env:\n          BODY: ${{ github.event.comment.body }}\n        run: echo \"$BODY\"\n")
         self.assertEqual(rules_of(self.scan(text)), [])
 
+    def test_run_and_with_values_are_not_env_entries(self):
+        head = "on: pull_request\npermissions:\n  contents: read\njobs:\n  a:\n    steps:\n"
+        for key in ("run", "script", "with"):
+            text = head + f"      - {key}: ${{{{ github.event.pull_request.title }}}}\n"
+            self.assertEqual(rules_of(self.scan(text)), ["workflow-injection"], key)
+        env_then_run = head + ("      - env:\n          T: ${{ github.event.pull_request.title }}\n"
+                               "        run: ${{ github.event.pull_request.body }}\n")
+        self.assertEqual(rules_of(self.scan(env_then_run)), ["workflow-injection"])
+
+    def test_pr_head_routed_through_env_into_checkout_is_found(self):
+        text = ("on: pull_request_target\npermissions:\n  contents: read\nenv:\n  PR_REF: ${{ github.event.pull_request.head.ref }}\n"
+                "jobs:\n  a:\n    steps:\n      - uses: actions/checkout@" + "c" * 40 + "\n        with:\n          ref: ${{ env.PR_REF }}\n")
+        self.assertEqual(rules_of(self.scan(text)), ["workflow-pwn-request"])
+        self.assertEqual(rules_of(self.scan(text.replace("pull_request_target", "pull_request"))), [])
+
+    def test_quoted_uses_are_normalised(self):
+        head = "on: pull_request\npermissions:\n  contents: read\njobs:\n  a:\n    steps:\n"
+        self.assertEqual(rules_of(self.scan(head + '      - uses: "vendor/action@' + "d" * 40 + '"\n')), [])
+        self.assertEqual(rules_of(self.scan(head + "      - uses: 'actions/checkout@v4'\n")), ["workflow-unpinned-action"])
+
 
 class FileRules(unittest.TestCase):
+    def test_file_checks_cover_files_on_the_text_skip_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(["git", "-C", d, "init", "-q"], check=True)
+            with open(os.path.join(d, "payload.png"), "wb") as fh:
+                fh.write(b"\x7fELF" + b"\0" * 60)
+            subprocess.run(["git", "-C", d, "add", "payload.png"], check=True)
+            f = sentinel.Findings({})
+            sentinel.scan_repo(d, {"skip": ["**/*.png"]}, f)
+            self.assertEqual(rules_of(f), ["file-code-in-data"])
+
+    def test_cpp_headers_are_source(self):
+        self.assertIn(".hpp", sentinel.SOURCE_EXT)
+        self.assertIn(".hpp", sentinel.CODE_EXT)
+
     def test_code_magic_in_a_data_file(self):
         self.assertEqual(sentinel.code_magic(b"\x7fELF" + b"\0" * 60), "ELF")
         self.assertEqual(sentinel.code_magic(b"\xcf\xfa\xed\xfe" + b"\0" * 60), "Mach-O")
@@ -104,6 +138,68 @@ class FileRules(unittest.TestCase):
         struct.pack_into("<I", pe, 0x3C, 0x40)
         pe += b"PE\0\0" + b"\0" * 20
         self.assertEqual(sentinel.code_magic(bytes(pe)), "PE")
+
+
+def elf64_without_sections(symbols):
+    """An ET_DYN ELF64 with program headers only (no section header table): PT_LOAD, PT_DYNAMIC, libc and `symbols`."""
+    strs = b"\0libc.so.6\0" + b"".join(n.encode() + b"\0" for n in symbols)
+    names, pos = {}, 1 + len(b"libc.so.6\0")
+    for n in symbols:
+        names[n] = pos; pos += len(n) + 1
+    symtab = b"\0" * 24 + b"".join(struct.pack("<IBBHQQ", names[n], 0x12, 0, 0, 0, 0) for n in symbols)
+    hdr = 64 + 2 * 56
+    dyn_size = 6 * 16
+    symtab_off, strtab_off = hdr, hdr + len(symtab)   # .dynstr follows .dynsym, as the linkers lay them out
+    dyn_off = strtab_off + len(strs)
+    dyn = b"".join(struct.pack("<qQ", t, v) for t, v in
+                   [(1, 1), (6, symtab_off), (5, strtab_off), (10, len(strs)), (11, 24), (0, 0)])
+    body = symtab + strs + dyn
+    total = hdr + len(body)
+    ident = b"\x7fELF" + bytes([2, 1, 1]) + b"\0" * 9
+    ehdr = ident + struct.pack("<HHIQQQIHHHHHH", 3, 62, 1, 0, 64, 0, 0, 64, 56, 2, 64, 0, 0)
+    load = struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0, total, total, 0x1000)
+    pdyn = struct.pack("<IIQQQQQQ", 2, 6, dyn_off, dyn_off, dyn_off, dyn_size, dyn_size, 8)
+    return ehdr + load + pdyn + body
+
+
+def pe_with_delay_import(dll, func):
+    """A PE32+ image whose only import is in the delay-import directory (data directory 13)."""
+    data = bytearray(0x1000)
+    data[0:2] = b"MZ"; struct.pack_into("<I", data, 0x3C, 0x40)
+    data[0x40:0x44] = b"PE\0\0"
+    optsize = 112 + 16 * 8
+    struct.pack_into("<HHIIIHH", data, 0x44, 0x8664, 1, 0, 0, 0, optsize, 0)
+    opt = 0x44 + 20
+    struct.pack_into("<H", data, opt, 0x20B)
+    struct.pack_into("<I", data, opt + 108, 16)
+    struct.pack_into("<II", data, opt + 112 + 13 * 8, 0x200, 64)
+    sec = opt + optsize
+    struct.pack_into("<IIII", data, sec + 8, 0x800, 0, 0x800, 0)   # one section: RVA 0 == file offset 0, covers the image
+    struct.pack_into("<IIIII", data, 0x200, 1, 0x300, 0, 0, 0x400)  # attrs, DllNameRVA, hmod, IAT, INT
+    data[0x300:0x300 + len(dll) + 1] = dll.encode() + b"\0"
+    struct.pack_into("<Q", data, 0x400, 0x500)
+    data[0x502:0x502 + len(func) + 1] = func.encode() + b"\0"
+    return bytes(data)
+
+
+class ImportParsers(unittest.TestCase):
+    def test_elf_without_section_headers_is_read_through_pt_dynamic(self):
+        libs, funcs = sentinel.elf_imports(elf64_without_sections(["socket", "read"]))
+        self.assertEqual((libs, funcs), (["libc.so.6"], {"socket", "read"}))
+
+    def test_elf_with_no_import_metadata_is_a_finding_not_an_empty_set(self):
+        bare = bytearray(elf64_without_sections([]))
+        struct.pack_into("<I", bare, 64 + 56, 0)   # the PT_DYNAMIC entry becomes PT_NULL
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "bare"), "wb") as fh:
+                fh.write(bytes(bare))
+            f = sentinel.Findings({})
+            sentinel.scan_artifacts([d], {}, f)
+            self.assertEqual(rules_of(f), ["import-unreadable"])
+
+    def test_pe_delay_imports_are_read(self):
+        libs, funcs = sentinel.pe_imports(pe_with_delay_import("WINHTTP.dll", "WinHttpOpen"))
+        self.assertEqual((libs, funcs), (["WINHTTP.dll"], {"WinHttpOpen"}))
 
 
 class ArtifactBaseline(unittest.TestCase):

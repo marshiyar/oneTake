@@ -44,11 +44,11 @@ import argparse, fnmatch, math, os, re, struct, subprocess, sys, tomllib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(HERE, "..", "sentinel.toml")
-SOURCE_EXT = {".swift", ".c", ".cpp", ".h", ".m", ".mm", ".metal", ".hlsl", ".glsl", ".comp", ".py", ".sh", ".ps1",
+SOURCE_EXT = {".swift", ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".hxx", ".m", ".mm", ".metal", ".hlsl", ".glsl", ".comp", ".py", ".sh", ".ps1",
               ".cmd", ".bat", ".js", ".mjs", ".ts", ".rb", ".pl", ".yml", ".yaml", ".toml", ".json", ".md", ".txt",
               ".plist", ".inc", ".modulemap", ".iss", ".nsi", ".desktop"}
 SCRIPT_EXT = {".py", ".sh", ".ps1", ".cmd", ".bat", ".js", ".mjs", ".ts", ".rb", ".pl"}
-CODE_EXT = {".swift", ".c", ".cpp", ".h", ".m", ".mm"}
+CODE_EXT = {".swift", ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".hxx", ".m", ".mm"}
 SIZE_LIMIT = 8 * 1024 * 1024
 RELEASE_HOST = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/"
 
@@ -92,6 +92,7 @@ WORKFLOW_EVENT = re.compile(r"\$\{\{[^}]*github\.(event\.(issue|comment|pull_req
                             r"commits|head_commit|workflow_run|inputs)(\.[A-Za-z_]+|\[[^\]]*\])*\.(title|body|message|name|"
                             r"email|ref|head_ref|head_branch|branch|default_branch|login|description|path)\b|head_ref)")
 ENV_LINE = re.compile(r"^\s*[A-Za-z_][A-Za-z0-9_]*:\s*\$\{\{")
+ENV_VALUE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*):")
 USES = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)")
 NETWORK_IMPORTS = {"connect", "socket", "getaddrinfo", "gethostbyname", "gethostbyname2", "getnameinfo", "sendto",
                    "recvfrom", "bind", "listen", "accept", "accept4", "inet_pton", "inet_addr", "WSAStartup", "WSASocketW",
@@ -176,15 +177,35 @@ def scan_text(path, text, f):
                 f.add(path, "obfuscation", f"line {line}", f"{len(lit)}-character literal with entropy {entropy(lit):.1f} bits/char")
 
 
+EVENT_HEAD = re.compile(r"\$\{\{[^}]*github\.(event\.(pull_request|workflow_run)\.(head|pull_requests)|head_ref)")
+ENV_BLOCK = re.compile(r"^(\s*(?:-\s+)?)env:\s*(#.*)?$")
+
+
 def scan_workflow(path, text, f):
     if not re.search(r"^permissions:", text, re.M):
         f.add(path, "workflow-permissions", "file", "no top-level `permissions:`: the token gets the default write set")
     if re.search(r"^permissions:\s*write-all", text, re.M) or re.search(r"^\s+permissions:\s*write-all", text, re.M):
         f.add(path, "workflow-permissions", "file", "`permissions: write-all`")
-    for i, line in enumerate(text.splitlines(), 1):
+    env_indent = None   # column of the `env:` key whose mapping the current line sits in; only there is `KEY: ${{ }}` safe
+    event_vars = set()  # env variables that carry the pull request's head (repository, ref, branch)
+    lines = text.splitlines()
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            indent = len(line) - len(line.lstrip())
+            if env_indent is not None and indent <= env_indent:
+                env_indent = None
+            e = ENV_BLOCK.match(line)
+            if e:
+                env_indent = len(e.group(1))
+        in_env = env_indent is not None and not ENV_BLOCK.match(line)
+        if in_env:
+            m = ENV_VALUE.match(line)
+            if m and EVENT_HEAD.search(line):
+                event_vars.add(m.group(1))
         m = USES.match(line)
         if m:
-            action = m.group(1)
+            action = m.group(1).strip("'\"")
             if action.startswith("./") or action.startswith("docker://"):
                 continue
             ref = action.split("@", 1)[1] if "@" in action else ""
@@ -193,16 +214,20 @@ def scan_workflow(path, text, f):
                 f.add(path, "workflow-unpinned-action", f"line {i}", f"action not pinned to a commit: `{action}`")
             if not ref:
                 f.add(path, "workflow-unpinned-action", f"line {i}", f"action without a version: `{action}`")
-        if WORKFLOW_EVENT.search(line) and not ENV_LINE.match(line):
+        if WORKFLOW_EVENT.search(line) and not (in_env and ENV_LINE.match(line)):
             f.add(path, "workflow-injection", f"line {i}", "GitHub-event text used outside an `env:` assignment")
         if re.search(r"\becho\b[^\n]*\$\{\{\s*secrets\.", line):
             f.add(path, "workflow-secret-echo", f"line {i}", "a secret written to the log")
         if "ACTIONS_ALLOW_UNSECURE_COMMANDS" in line:
             f.add(path, "workflow-unsecure-commands", f"line {i}", "unsecure workflow commands switched on")
     dangerous_trigger = re.search(r"\b(pull_request_target|workflow_run)\b", text)
-    if dangerous_trigger and re.search(r"ref:\s*\$\{\{\s*github\.event\.(pull_request|workflow_run)\.(head|pull_requests)", text):
-        f.add(path, "workflow-pwn-request", "file",
-              f"`{dangerous_trigger.group(1)}` workflow checks out the pull request's head with the repository's token")
+    if dangerous_trigger:
+        direct = re.search(r"\b(?:ref|repository):\s*['\"]?\$\{\{\s*github\.(event\.(pull_request|workflow_run)\.(head|pull_requests)|head_ref)", text)
+        routed = event_vars and re.search(
+            r"^\s*-?\s*(?:ref|repository):\s*['\"]?\$\{\{\s*env\.(" + "|".join(map(re.escape, sorted(event_vars))) + r")\b", text, re.M)
+        if direct or routed:
+            f.add(path, "workflow-pwn-request", "file",
+                  f"`{dangerous_trigger.group(1)}` workflow checks out the pull request's head with the repository's token")
 
 
 def code_magic(data):
@@ -274,11 +299,74 @@ def scan_repo(root, config, f):
             scan_text(rel, text, f)
             if rel.startswith(".github/workflows/") and ext in (".yml", ".yaml"):
                 scan_workflow(rel, text, f)
-    scan_files(root, [p for p in paths if not skipped(p, config)], config, f)
+    scan_files(root, paths, config, f)   # the skip list is for the text rules; magic, archive, mode and size cover every file
     scan_lock(root, f)
 
 
 # --- artifact ----------------------------------------------------------------------------------------------------------
+
+class NoImportData(Exception):
+    """A binary whose import metadata could not be read: reported as a finding, never as an empty import set."""
+
+
+def elf_dynamic_imports(data, cls, endian):
+    """Imports through the program headers (PT_DYNAMIC), for an executable that has no section header table."""
+    if cls == 2:
+        phoff, = struct.unpack_from(endian + "Q", data, 0x20); phentsize, phnum = struct.unpack_from(endian + "HH", data, 0x36)
+    else:
+        phoff, = struct.unpack_from(endian + "I", data, 0x1C); phentsize, phnum = struct.unpack_from(endian + "HH", data, 0x2A)
+    loads, dyn = [], None
+    for i in range(phnum):
+        base = phoff + i * phentsize
+        kind, = struct.unpack_from(endian + "I", data, base)
+        if cls == 2:
+            off, vaddr, _, filesz = struct.unpack_from(endian + "QQQQ", data, base + 8)
+        else:
+            off, vaddr, _, filesz = struct.unpack_from(endian + "IIII", data, base + 4)
+        if kind == 1:
+            loads.append((vaddr, filesz, off))
+        elif kind == 2:
+            dyn = (off, filesz)
+    if dyn is None:
+        raise NoImportData("ELF with neither section headers nor a PT_DYNAMIC segment: its imports cannot be read")
+
+    def fo(vaddr):
+        for va, size, off in loads:
+            if va <= vaddr < va + size:
+                return off + vaddr - va
+        raise NoImportData("ELF dynamic table points outside its loadable segments")
+
+    step = 16 if cls == 2 else 8
+    needed, tags = [], {}
+    for j in range(dyn[1] // step):
+        tag, val = struct.unpack_from(endian + ("qQ" if cls == 2 else "iI"), data, dyn[0] + j * step)
+        if tag == 0:
+            break
+        if tag == 1:
+            needed.append(val)
+        else:
+            tags[tag] = val
+    libs, funcs = [], set()
+    if 5 not in tags:   # DT_STRTAB
+        if needed:
+            raise NoImportData("ELF dynamic table has DT_NEEDED but no string table")
+        return libs, funcs
+    strtab = fo(tags[5])
+    for val in needed:
+        libs.append(data[strtab + val:data.index(b"\0", strtab + val)].decode("ascii", "replace"))
+    if 6 in tags:   # DT_SYMTAB: the symbols run up to the string table, which the linker places right after them
+        symtab, entsize = fo(tags[6]), tags.get(11, 24 if cls == 2 else 16)
+        count = (strtab - symtab) // entsize if strtab > symtab else 0
+        for j in range(count):
+            e = symtab + j * entsize
+            if cls == 2:
+                st_name, st_info, _, st_shndx = struct.unpack_from(endian + "IBBH", data, e)
+            else:
+                st_name, = struct.unpack_from(endian + "I", data, e); st_shndx, = struct.unpack_from(endian + "H", data, e + 14)
+            if st_shndx == 0 and st_name:
+                funcs.add(data[strtab + st_name:data.index(b"\0", strtab + st_name)].decode("ascii", "replace"))
+    return libs, funcs
+
 
 def elf_imports(data):
     cls, endian = data[4], ("<" if data[5] == 1 else ">")
@@ -286,6 +374,8 @@ def elf_imports(data):
         shoff, = struct.unpack_from(endian + "Q", data, 0x28); shentsize, shnum = struct.unpack_from(endian + "HH", data, 0x3A)
     else:
         shoff, = struct.unpack_from(endian + "I", data, 0x20); shentsize, shnum = struct.unpack_from(endian + "HH", data, 0x2E)
+    if not shoff or not shnum:
+        return elf_dynamic_imports(data, cls, endian)
     sections = []
     for i in range(shnum):
         base = shoff + i * shentsize
@@ -347,24 +437,32 @@ def pe_imports(data):
         return data[o:data.index(b"\0", o)].decode("ascii", "replace") if o is not None else "?"
 
     libs, funcs = [], set()
-    imp_rva, imp_size = struct.unpack_from("<II", data, dirs + 1 * 8)
-    base = fo(imp_rva) if imp_rva else None
-    while base is not None:
-        oft, _, _, name_rva, ft = struct.unpack_from("<IIIII", data, base)
-        if not name_rva:
-            break
-        lib = cstr(name_rva)
-        libs.append(lib)
-        thunk = fo(oft or ft)
-        step = 8 if plus else 4
-        while thunk is not None:
-            val, = struct.unpack_from("<Q" if plus else "<I", data, thunk)
-            if not val:
+
+    def walk(rva, stride, name_at, thunk_at, first_at):
+        base = fo(rva) if rva else None
+        while base is not None:
+            fields = struct.unpack_from("<%dI" % (stride // 4), data, base)
+            name_rva = fields[name_at]
+            if not name_rva:
                 break
-            if not (val >> (63 if plus else 31)):
-                funcs.add(cstr((val & 0x7FFFFFFF) + 2))
-            thunk += step
-        base += 20
+            libs.append(cstr(name_rva))
+            thunk = fo(fields[thunk_at] or fields[first_at])
+            step = 8 if plus else 4
+            while thunk is not None:
+                val, = struct.unpack_from("<Q" if plus else "<I", data, thunk)
+                if not val:
+                    break
+                if not (val >> (63 if plus else 31)):
+                    funcs.add(cstr((val & 0x7FFFFFFF) + 2))
+                thunk += step
+            base += stride
+
+    ndirs, = struct.unpack_from("<I", data, dirs - 4)
+    imp_rva, _ = struct.unpack_from("<II", data, dirs + 1 * 8)
+    walk(imp_rva, 20, 3, 0, 4)                 # IMAGE_IMPORT_DESCRIPTOR: OriginalFirstThunk, Name, FirstThunk
+    if ndirs > 13:                              # delay-load imports: IMAGE_DELAYLOAD_DESCRIPTOR, name at +4, INT at +16
+        delay_rva, _ = struct.unpack_from("<II", data, dirs + 13 * 8)
+        walk(delay_rva, 32, 1, 4, 3)
     return libs, funcs
 
 
@@ -453,7 +551,15 @@ def scan_artifacts(roots, config, f, baseline=None, out_dir=None):
         for path in files:
             if os.path.islink(path) or not os.path.isfile(path):
                 continue
-            result = imports(path)
+            try:
+                result = imports(path)
+            except (NoImportData, struct.error, ValueError, IndexError) as e:
+                if any(fnmatch.fnmatch(os.path.basename(path), g) for g in config.get("skip", [])):
+                    continue
+                seen += 1
+                f.add(os.path.relpath(path, root if os.path.isdir(root) else os.path.dirname(root)),
+                      "import-unreadable", "file", f"imports could not be read: {e}")
+                continue
             if not result:
                 continue
             if any(fnmatch.fnmatch(os.path.basename(path), g) for g in config.get("skip", [])):

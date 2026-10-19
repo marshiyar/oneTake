@@ -11,7 +11,7 @@ skip = [
     "mpvfx-swift/Tests/EngineFixtures/**",
     "mpvfx-swift/Tests/MpvfxAudioGraphTests/Fixtures/**",
     "**/*.png", "**/*.ico", "**/*.mp4", "**/*.mov", "**/*.mkv", "**/*.webp", "**/*.flac", "**/*.f32", "**/*.fnv",
-    "**/*.mxf", "**/*.ts",
+    "**/*.mxf",
 ]
 
 [[repo.allow]]

@@ -6,7 +6,8 @@ name: sentinel
 # one job per OS: unpacks the installers as a user would and reads every binary's imports against the forbidden sets
 # and the recorded baseline (.github/sentinel-baseline/<binary>.imports); a new import since the last release is a
 # finding, and the run's sentinel-imports-<os> artifact holds the current lists to commit when the change is wanted.
-# Allow list with reasons: .github/sentinel.toml. Separate from mpvfx-ci; never a required check.
+# The artifact jobs run from the default branch, so they read main's baseline files: a pull request that changes an
+# import is judged against the old list until it is merged. Allow list with reasons: .github/sentinel.toml. Separate from mpvfx-ci; never a required check.
 
 on:
   pull_request:
@@ -92,11 +93,12 @@ jobs:
           github-token: ${{ github.token }}
       - name: Unpack
         run: |
-          mkdir -p unpacked/portable unpacked/setup
+          mkdir -p unpacked/portable unpacked/setup unpacked/installer
           unzip -q dist/mpvfx-windows-x64-*.zip -d unpacked/portable
+          cp dist/MpVFX-*-setup.exe unpacked/installer/MpVFX-setup.exe
           7z x -y -ounpacked/setup dist/MpVFX-*-setup.exe >/dev/null || { echo "::error::7z could not unpack setup.exe"; exit 1; }
       - name: Imports of every shipped binary (the Swift and MSVC runtimes are skipped)
-        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked/portable | tee -a "$GITHUB_STEP_SUMMARY"
+        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
