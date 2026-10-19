@@ -22,15 +22,19 @@ import OneTakeMedia
 import MpvfxShared
 
 public enum ImportFormats {
-    /// v1 formats beyond the base import list (MediaImportPolicy): FLAC and MPEG audio Layer I/II files, BMP stills,
-    /// CUR cursors and the video containers the engine demuxes besides MP4/MOV/WebM (formats.md "Container" rows).
+    /// v1 formats beyond the base import list (MediaImportPolicy): FLAC, MPEG audio Layer I/II files, Opus and `.oga`
+    /// Ogg audio, BMP stills, CUR cursors and the video containers the engine demuxes besides MP4/MOV/WebM
+    /// (formats.md "Container" rows). (`.ogg` is already on that list; Ogg files are decided by the probe: Vorbis and
+    /// Opus import.)
     static let engineOnlyKinds: [String: MediaImportKind] = [
-        "flac": .audio, "mp2": .audio, "mp1": .audio, "mpa": .audio, "bmp": .image, "cur": .image,
+        "flac": .audio, "mp2": .audio, "mp1": .audio, "mpa": .audio, "opus": .audio, "oga": .audio, "bmp": .image,
+        "cur": .image,
         "mkv": .video, "avi": .video, "ts": .video, "mts": .video, "m2ts": .video, "mxf": .video,
     ]
-    /// formats.md "Ogg Vorbis, Opus": extension to the codec the refusal names. (.mp3 is decided by the probe: Layer II
-    /// files named .mp3 import, Layer III is refused with "This audio format is not supported yet: mp3.")
-    static let laterAudio: [String: String] = ["ogg": "ogg vorbis", "oga": "ogg vorbis", "opus": "opus"]
+    /// formats.md "later" audio: extension to the codec the refusal names. None is left: .mp3 is decided by the probe
+    /// (Layer II files named .mp3 import, Layer III is refused with "This audio format is not supported yet: mp3."),
+    /// and Ogg Vorbis and Opus import.
+    static let laterAudio: [String: String] = [:]
     static let laterImages: Set<String> = ["avif", "svg"]
     /// Image containers whose files may hold an animation; the probe reports those as video (not still), and they
     /// import as images (GIF, WebP: formats.md v1).
@@ -41,8 +45,8 @@ public enum ImportFormats {
     /// Lowercase extension without the dot ("" when none).
     static func fileExtension(_ name: String) -> String { String(PosixPath.extname(name).lowercased().dropFirst()) }
 
-    /// The import kind of a file name: the base list's kinds, plus FLAC, MPEG audio, BMP, CUR and the engine's other
-    /// video containers.
+    /// The import kind of a file name: the base list's kinds, plus FLAC, MPEG audio, Opus, `.oga`, BMP, CUR and the
+    /// engine's other video containers.
     public static func kind(of name: String) -> MediaImportKind? {
         let ext = fileExtension(name)
         if let kind = engineOnlyKinds[ext] { return kind }
