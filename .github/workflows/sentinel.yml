@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: The scanner's own tests
         run: python3 -I -B .github/ci/test_sentinel.py
       - name: Sources, scripts, workflows, files and binaries.lock
@@ -50,10 +50,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: .github
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: linux
           path: dist
@@ -66,7 +66,7 @@ jobs:
           dpkg-deb -x dist/mpvfx_*.deb unpacked/deb
       - name: Imports of every shipped binary
         run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: sentinel-imports-linux
@@ -81,10 +81,10 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: .github
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows
           path: dist
@@ -97,7 +97,7 @@ jobs:
           7z x -y -ounpacked/setup dist/MpVFX-*-setup.exe >/dev/null || { echo "::error::7z could not unpack setup.exe"; exit 1; }
       - name: Imports of every shipped binary (the Swift and MSVC runtimes are skipped)
         run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked/portable | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: sentinel-imports-windows
@@ -109,10 +109,10 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: .github
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: macos
           path: dist
@@ -125,7 +125,7 @@ jobs:
           mkdir -p unpacked; cp -R "$mnt/MpVFX.app" unpacked/; hdiutil detach "$mnt"
       - name: Imports of every shipped binary
         run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: sentinel-imports-macos

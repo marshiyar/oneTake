@@ -189,8 +189,8 @@ def scan_workflow(path, text, f):
                 continue
             ref = action.split("@", 1)[1] if "@" in action else ""
             owner = action.split("/", 1)[0]
-            if not re.fullmatch(r"[0-9a-f]{40}", ref) and owner not in ("actions", "github"):
-                f.add(path, "workflow-unpinned-action", f"line {i}", f"third-party action not pinned to a commit: `{action}`")
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                f.add(path, "workflow-unpinned-action", f"line {i}", f"action not pinned to a commit: `{action}`")
             if not ref:
                 f.add(path, "workflow-unpinned-action", f"line {i}", f"action without a version: `{action}`")
         if WORKFLOW_EVENT.search(line) and not ENV_LINE.match(line):

@@ -89,7 +89,7 @@ class WorkflowRules(unittest.TestCase):
 
     def test_a_safe_workflow_has_no_findings(self):
         text = ("on: pull_request\npermissions:\n  contents: read\njobs:\n  a:\n    steps:\n"
-                "      - uses: actions/checkout@v4\n      - uses: compnerd/gha-setup-swift@" + "a" * 40 + "\n"
+                "      - uses: actions/checkout@" + "b" * 40 + " # v4.4.0\n      - uses: compnerd/gha-setup-swift@" + "a" * 40 + "\n"
                 "      - env:\n          BODY: ${{ github.event.comment.body }}\n        run: echo \"$BODY\"\n")
         self.assertEqual(rules_of(self.scan(text)), [])
 
