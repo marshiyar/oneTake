@@ -458,6 +458,8 @@ def copyright_script(text):
     text = sub_once(r'^PRIVATE = \(.*?\)\n', 'PRIVATE = ()   # every file in this repository is under the app licence\n',
                     text, re.M | re.S, "PRIVATE tuple")
     text = sub_once(r'^SKIP = \(.*?\)\n', 'SKIP = ()\n', text, re.M | re.S, "SKIP tuple")
+    text = sub_once(r'"/fixtures/" in path', '"/fixtures/" in path or "/EngineFixtures/" in path', text, 0,
+                    "fixtures test in covered()")
     return text
 
 
