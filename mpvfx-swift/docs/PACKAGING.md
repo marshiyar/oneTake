@@ -33,8 +33,8 @@ with the app's own folder. To move to a newer engine: `python3 scripts/fetch-bin
 
 ## Where they are built
 
-GitHub Actions in this repository (`.github/workflows/`), on every pull request into `main`, every push to `main`
-and every night: `mpvfx-ci.yml` (Linux, Windows) and `mpvfx-macos.yml` (macOS). Either can also be run by hand on any
+GitHub Actions in this repository (`.github/workflows/`), on every pull request into `main`, every push to `main`,
+every night and every push of a `v*` tag: `mpvfx-ci.yml` (Linux, Windows) and `mpvfx-macos.yml` (macOS). Either can also be run by hand on any
 branch (Actions > workflow > Run workflow; "full tests" ignores recorded passes, and for macOS "Skip the test suite"
 gives a packaging-only run). Each OS has one build, package and install-smoke job and runs its tests beside it as 4
 shards (`linux test (…)`, `windows test (…)`, `macos / test (…)`), the same shard list on every OS
@@ -44,7 +44,24 @@ nightly run ignores every recorded pass and runs all of it. `ci-ok` passes when 
 recorded pass. Pull requests build and test but never publish. The macOS jobs run on GitHub's `xcode-27` runner with
 Xcode pinned (`XCODE_VERSION` in `mpvfx-macos.yml`). Each job installs its installer on the runner, launches the
 installed app with a hidden window (the `*-smoke.png` snapshot) with the build tree and the fetched libraries moved
-away, and, on Windows and Linux, uninstalls it again. A green run on `main` publishes everything as the latest release.
+away, and, on Windows and Linux, uninstalls it again.
+
+## Releases: nightly and official
+
+When every platform is green, one publish job (`.github/ci/publish.sh`) uploads all installers to a single GitHub
+release:
+
+- **Nightly builds** are pre-releases named `nightly-<commit>` (the commit's first 7 hex digits), titled
+  `oneTake nightly <date> (<commit>)`, made by every green run of `main` (a push, the nightly run or a manual run).
+  A rerun on the same commit uploads into the same release. They are untested development builds, never marked
+  latest; only the newest 7 are kept.
+- **Official releases** come from pushing a `v*` tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`. The tag's
+  version (without the `v`) must equal `packaging/VERSION`, or the publish job fails before uploading anything. The
+  release is titled `oneTake <version>`, is the repository's "latest" release (`releases/latest`), and is never
+  deleted.
+
+Pull requests and other branches build and test but never publish. Older `build-main-*` releases from before this
+scheme are left as they are.
 
 ## Symbols: stripped before packaging, verified after
 

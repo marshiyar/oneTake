@@ -88,8 +88,9 @@ if it cannot find `mpvfx_media.h` or `cvkf.h`, or the link step misses `mpvfx_me
 
 **Status:** the media engine is pinned at 0.2.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`.
 
-Installers (macOS disk image, Windows setup.exe, Ubuntu/Debian .deb) are built by CI and published as releases; how
-to get, build and sign them: [`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md).
+Installers (macOS disk image, Windows setup.exe, Ubuntu/Debian .deb) are built by CI and published as releases:
+official releases come from `v*` tags and are the "latest" release; nightly builds of `main` are pre-releases named
+`nightly-<commit>`. How to get, build and sign them: [`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md).
 
 ## Test and check
 
