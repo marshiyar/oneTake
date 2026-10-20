@@ -180,6 +180,7 @@ let package = Package(
         ]),
         .testTarget(name: "MpvfxSharedTests", dependencies: ["MpvfxShared"],
                     exclude: ["Engine/Fixtures", "Export/Fixtures", "Library/Fixtures", "Media/Fixtures", "Project/Fixtures"]),
+        .testTarget(name: "OneTakeMediaTests", dependencies: [mediaEngine]),
         .testTarget(name: "MpvfxThemeTests", dependencies: ["MpvfxTheme"]),
         // Launches the built MpVFX binary (Linux, under Xvfb) and compares window snapshots; OneTakeMedia decodes the PNGs.
         .testTarget(name: "MpvfxAppSmokeTests", dependencies: [mediaEngine]),

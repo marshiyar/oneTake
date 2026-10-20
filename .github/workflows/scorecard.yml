@@ -1,0 +1,42 @@
+name: scorecard
+
+# OpenSSF Scorecard: an outside measure of this repository's security practices (branch protection, pinned actions,
+# token permissions, dangerous workflow patterns, SAST, signed releases, binary artifacts in the tree) against the
+# public rubric, published to the OpenSSF API so the score is visible and compared over time. Weekly and on every push
+# to main; separate from mpvfx-ci and never a required check.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '50 5 * * 2'
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      security-events: write   # results also land under Security > Code scanning
+      id-token: write          # publish_results signs the upload with the workflow's OIDC token
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scorecard
+          path: results.sarif
+          retention-days: 7
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: results.sarif

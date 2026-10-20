@@ -1,0 +1,18 @@
+# Dependabot: the only third-party code this repository takes in is the GitHub Actions its workflows run (the Swift
+# package has no package dependencies; the engines are pinned by checksum in mpvfx-swift/binaries.lock and move by
+# pull request). One grouped pull request a week for action updates; CI runs on it like on any other.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+    labels: [dependencies]
+    open-pull-requests-limit: 3
