@@ -30,7 +30,7 @@ public struct NativeTimelineAssetInsertion: Equatable {
         self.sourceDurationSeconds = sourceDurationSeconds; self.requestedTrack = requestedTrack
     }
 }
-public enum NativeTimelineAssetInsertPlanFailureCode: String {
+public enum NativeTimelineAssetInsertPlanFailureCode: String, Sendable {
     case emptyInsertionSet = "empty-insertion-set", unsupportedKind = "unsupported-kind", invalidAssetPath = "invalid-asset-path"
     case invalidSourceFile = "invalid-source-file", invalidTime = "invalid-time", invalidDuration = "invalid-duration"
     case sourceOutOfBounds = "source-out-of-bounds", invalidTrack = "invalid-track", incompatibleLane = "incompatible-lane"

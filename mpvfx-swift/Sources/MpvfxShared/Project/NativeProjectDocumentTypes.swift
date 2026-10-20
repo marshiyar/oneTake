@@ -19,13 +19,13 @@ import Foundation
 public let NATIVE_PROJECT_DOCUMENT_SCHEMA_VERSION = 1
 public let NATIVE_PROJECT_DOCUMENT_PATH = ".studio/project.json"
 
-public enum NativeProjectAssetKind: String, Codable { case video, audio, image, element }
+public enum NativeProjectAssetKind: String, Codable, Sendable { case video, audio, image, element }
 
 public func nativeAssetConsumesSourceFrames(_ kind: NativeProjectAssetKind) -> Bool { kind == .video || kind == .audio }
 
-public enum NativeProjectTrackKind: String, Codable { case video, audio, mixed }
+public enum NativeProjectTrackKind: String, Codable, Sendable { case video, audio, mixed }
 
-public struct NativeCanvas: Codable, Equatable {
+public struct NativeCanvas: Codable, Equatable, Sendable {
     public var width: Double; public var height: Double; public var background: String
     /// Input key order and unknown keys (`{ ...document.canvas }`).
     public var spread = NativeSpreadKeys()
@@ -46,7 +46,7 @@ public struct NativeCanvas: Codable, Equatable {
 }
 
 /// Records copied whole (`...asset`, `...effect`, `...segment.reference`) keep unknown keys; these helpers do that.
-public struct NativeProjectAsset: Codable, Equatable {
+public struct NativeProjectAsset: Codable, Equatable, Sendable {
     public var id: String; public var kind: NativeProjectAssetKind; public var name: String
     public var source: String?; public var durationFrames: Double
     /// Input key order and unknown keys (`{ ...asset }`).
@@ -69,7 +69,7 @@ public struct NativeProjectAsset: Codable, Equatable {
     }
 }
 
-public struct NativeClipEffect: Codable, Equatable {
+public struct NativeClipEffect: Codable, Equatable, Sendable {
     public var id: String; public var effectId: String; public var enabled: Bool
     public var parameters: NativeJSONObject?
     /// Input key order and unknown keys (`{ ...effect }`).
@@ -94,7 +94,7 @@ public struct NativeClipEffect: Codable, Equatable {
 
 /// Also used for sourceInFraction, which is copied whole (`{ ...clip.sourceInFraction }`); playbackRate is rebuilt,
 /// so parse strips its unknown keys before decoding.
-public struct NativePlaybackRate: Codable, Equatable, Hashable {
+public struct NativePlaybackRate: Codable, Equatable, Hashable, Sendable {
     public var numerator: Double; public var denominator: Double
     public var spread = NativeSpreadKeys()
     static let known = ["numerator", "denominator"]
@@ -112,13 +112,13 @@ public struct NativePlaybackRate: Codable, Equatable, Hashable {
 }
 public let DEFAULT_NATIVE_PLAYBACK_RATE = NativePlaybackRate(numerator: 1, denominator: 1)
 
-public struct NativeClipDomBinding: Codable, Equatable {
+public struct NativeClipDomBinding: Codable, Equatable, Sendable {
     public var sourceFile: String; public var domId: String?; public var hfId: String?
     public var selector: String?; public var selectorIndex: Double?
 }
 
-public struct NativeCropPivotSegment: Codable, Equatable {
-    public struct Reference: Codable, Equatable {
+public struct NativeCropPivotSegment: Codable, Equatable, Sendable {
+    public struct Reference: Codable, Equatable, Sendable {
         public var frameOffset: Double; public var durationFrames: Double
         public var startRotationKeyId: String; public var endRotationKeyId: String
         public var parameterTracks: [NativeParameterTrack]
@@ -154,7 +154,7 @@ public struct NativeCropPivotSegment: Codable, Equatable {
     public var reference: Reference?
 }
 
-public struct NativeProjectClip: Codable, Equatable {
+public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var id: String; public var assetId: String
     public var audioGroupId: String?; public var audioFxChain: String?; public var audioAutomation: String?
     public var audioDetachedFrom: String?
@@ -179,7 +179,7 @@ public struct NativeProjectClip: Codable, Equatable {
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
-public struct NativeClipCrop: Codable, Equatable, Hashable {
+public struct NativeClipCrop: Codable, Equatable, Hashable, Sendable {
     public var top: Double; public var right: Double; public var bottom: Double; public var left: Double
     public init(top: Double = 0, right: Double = 0, bottom: Double = 0, left: Double = 0) {
         self.top = top; self.right = right; self.bottom = bottom; self.left = left
@@ -187,7 +187,7 @@ public struct NativeClipCrop: Codable, Equatable, Hashable {
     public var isZero: Bool { top <= 0 && right <= 0 && bottom <= 0 && left <= 0 }
 }
 
-public struct NativeProjectTrackLane: Codable, Equatable {
+public struct NativeProjectTrackLane: Codable, Equatable, Sendable {
     public var authoredTrack: Double; public var displayTrack: Double
     /// Input key order and unknown keys (`{ ...(track.lane ?? defaultTrackLane(i)) }`).
     public var spread = NativeSpreadKeys()
@@ -205,7 +205,7 @@ public struct NativeProjectTrackLane: Codable, Equatable {
     }
 }
 
-public struct NativeProjectTrack: Codable, Equatable {
+public struct NativeProjectTrack: Codable, Equatable, Sendable {
     public var id: String; public var kind: NativeProjectTrackKind
     public var lane: NativeProjectTrackLane?; public var clips: [NativeProjectClip]
     /// Track visibility: a hidden track is meant to be left out of preview and export. Absent means shown.
@@ -218,7 +218,7 @@ public struct NativeProjectTrack: Codable, Equatable {
     }
 }
 
-public struct NativeAudioGroup: Codable, Equatable {
+public struct NativeAudioGroup: Codable, Equatable, Sendable {
     public var id: String; public var label: String?; public var volume: Double?; public var muted: Bool?
     public var fxChain: String?; public var automation: String?
 }
@@ -230,7 +230,7 @@ public extension NativeAudioGroup {
     }
 }
 
-public struct NativeProjectSequence: Codable, Equatable {
+public struct NativeProjectSequence: Codable, Equatable, Sendable {
     public var id: String; public var name: String; public var durationFrames: Double?
     public var audioGroups: [NativeAudioGroup]?; public var tracks: [NativeProjectTrack]
 }
@@ -239,13 +239,13 @@ public struct NativeProjectSequence: Codable, Equatable {
 /// renderer: parsing accepts `"native"`, `"ffmpeg"` (a legacy value written by older versions) and a missing
 /// field, and writes `"native"` back, so the first save after opening an older project migrates it (nothing else
 /// in the document changes).
-public enum NativeMediaEngine: String, Codable {
+public enum NativeMediaEngine: String, Codable, Sendable {
     case native
     /// Every stored spelling of the native timeline; parseNativeProjectDocument rewrites them to `native`.
     public static let acceptedStoredValues: Set<String> = ["native", "ffmpeg"]
 }
 
-public struct NativeProjectDocument: Codable, Equatable {
+public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var schemaVersion: Int
     public var mediaEngine: NativeMediaEngine?
     public var id: String; public var revision: Double
@@ -276,7 +276,7 @@ public extension NativeProjectDocument {
     }
 }
 
-public enum NativeProjectDocumentValidationCode: String, Codable {
+public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidRoot = "invalid-root", unsupportedSchemaVersion = "unsupported-schema-version", invalidId = "invalid-id"
     case duplicateId = "duplicate-id", invalidRevision = "invalid-revision", invalidFrameRate = "invalid-frame-rate"
     case invalidCanvas = "invalid-canvas", invalidAsset = "invalid-asset", invalidTrack = "invalid-track", invalidClip = "invalid-clip"
@@ -285,7 +285,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable {
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
 }
 
-public struct NativeProjectDocumentValidationIssue: Codable, Equatable {
+public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {
     public var code: NativeProjectDocumentValidationCode; public var path: String; public var message: String
 }
 
