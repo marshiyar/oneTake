@@ -25,13 +25,10 @@ public enum AssetDropOutline {
         CanvasRect(x: r.x, y: r.y + TimelineToolbar.height, width: r.width, height: max(0, r.height - TimelineToolbar.height))
     }
 
-    /// A 1 px accent line just inside the tracks area's edge, clipped by the timeline card's rounded corners.
-    public static func draw(_ c: CanvasContext, timeline: CanvasRect, card: CanvasRect) {
+    /// A 1 px accent line just inside the tracks area's edge.
+    public static func draw(_ c: CanvasContext, timeline: CanvasRect) {
         let area = tracksArea(timeline: timeline)
         guard area.width > 2, area.height > 2 else { return }
-        c.save()
-        c.clip(.roundedRect(card, radius: PanelTheme.radiusLg - 1))
         c.stroke(.rect(area.insetBy(0.5)), color, StrokeStyle(width: 1))
-        c.restore()
     }
 }

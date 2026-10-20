@@ -110,35 +110,6 @@ public enum PanelDraw {
         c.fillRect(CanvasRect(x: x, y: y0, width: 1, height: y1 - y0), color)
     }
 
-    /// `rounded-lg border bg-neutral-950` card used by both sidebars.
-    public static func card(_ c: CanvasContext, _ r: CanvasRect, border: CanvasColor, fill: CanvasColor = PanelTheme.neutral950) {
-        c.fillRoundedRect(r, radius: PanelTheme.radiusLg, fill)
-        c.strokeRoundedRect(r.insetBy(0.5), radius: PanelTheme.radiusLg - 0.5, border, width: 1)
-    }
-
-    /// The 32px hide/show-sidebar icon button (`h-8 w-8 rounded-md border-transparent text-neutral-500`,
-    /// hover: `border-neutral-800 bg-neutral-900 text-neutral-300`).
-    public static func iconButton(_ c: CanvasContext, _ r: CanvasRect, icon: PanelIcon, hovered: Bool, iconSize: Double = 14) {
-        if hovered {
-            c.fillRoundedRect(r, radius: PanelTheme.radiusMd, PanelTheme.neutral900)
-            c.strokeRoundedRect(r.insetBy(0.5), radius: PanelTheme.radiusMd - 0.5, PanelTheme.neutral800, width: 1)
-        }
-        let ir = CanvasRect(x: r.x + (r.width - iconSize) / 2, y: r.y + (r.height - iconSize) / 2, width: iconSize, height: iconSize)
-        icon.draw(c, in: ir, color: hovered ? PanelTheme.neutral300 : PanelTheme.neutral500)
-    }
-
-    /// `PanelTabButton`: h-8 rounded-xl px-3 text-[11px] font-medium; active `bg-neutral-800 text-white`,
-    /// idle `text-neutral-500`, hover `bg-neutral-800/70 text-neutral-200`.
-    public static func tabButtonWidth(_ c: CanvasContext, _ label: String) -> Double {
-        c.measureText(label, font: PanelTheme.font(11, .medium)).width + 24
-    }
-    public static func tabButton(_ c: CanvasContext, _ r: CanvasRect, label: String, active: Bool, hovered: Bool) {
-        if active { c.fillRoundedRect(r, radius: PanelTheme.radiusXl, PanelTheme.neutral800) }
-        else if hovered { c.fillRoundedRect(r, radius: PanelTheme.radiusXl, PanelTheme.neutral800.withAlpha(0.7)) }
-        let color = active ? PanelTheme.white : (hovered ? PanelTheme.neutral200 : PanelTheme.neutral500)
-        text(c, label, in: r, font: PanelTheme.font(11, .medium), color: color, align: .center)
-    }
-
     /// The studio's keyboard focus ring (`focus-visible:outline-2 outline-studio-accent`): 2px accent drawn just
     /// outside `r`, following its corner radius.
     public static func focusRing(_ c: CanvasContext, _ r: CanvasRect, radius: Double = PanelTheme.radius) {

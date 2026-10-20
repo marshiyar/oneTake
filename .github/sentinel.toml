@@ -89,3 +89,15 @@ rule = "import-anti-debug"
 path = "*.dll"
 match = "IsDebuggerPresent"
 reason = "MSVC runtime start-up code (__scrt) in every image built with the Microsoft toolchain"
+
+[[artifact.allow]]
+rule = "import-spawn"
+path = "*MpVFX-setup.exe"
+match = "CreateProcessA"
+reason = "Windows' own IExpress stub (wextract, not built here): starts the unpacked installer"
+
+[[artifact.allow]]
+rule = "import-persistence"
+path = "*MpVFX-setup.exe"
+match = "AdjustTokenPrivileges"
+reason = "Windows' own IExpress stub (wextract, not built here): takes the shutdown privilege to offer the reboot an install may need"
