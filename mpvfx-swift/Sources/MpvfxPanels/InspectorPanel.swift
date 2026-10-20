@@ -835,4 +835,3 @@ extension InspectorPanel {
         else if r.maxY > bodyRect.maxY { bodyScroll = min(bodyMaxScroll, bodyScroll + (r.maxY - bodyRect.maxY) + 8) }
     }
 }
-
