@@ -77,6 +77,7 @@ final class SessionPanels {
         refreshRenders()
         startLibraryPolling()
         refreshLibraries()
+        refreshRecents()
     }
 
     // MARK: Left sidebar
@@ -282,6 +283,20 @@ final class SessionPanels {
         redraw()
     }
 
+    /// Re-reads the navigator's "Recent" list (first paint, a project switch, File > Open Recent > Clear Menu).
+    func refreshRecents() {
+        guard let backend else { return }
+        let post = uiPost, open = session.project?.directory
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let recent = EditorSession.recents(backend, excluding: open).map { LibraryNavModel.RecentProject(path: $0.directory, name: $0.title) }
+            post {
+                guard let self, recent != self.left.library.recentProjects else { return }
+                self.left.library.recentProjects = recent
+                self.redraw()
+            }
+        }
+    }
+
     func startLibraryPolling() {
         guard libraryTimerCancel == nil, let schedule = session.schedule, backend?.libraries != nil else { return }
         libraryTimerCancel = schedule(3) { [weak self] in self?.libraryTimerCancel = nil; self?.refreshLibraries(); self?.startLibraryPolling() }
@@ -294,6 +309,8 @@ final class SessionPanels {
         switch cmd {
         case .switchProject(let id): switchToLibraryProject(id); return
         case .openStandalone: switchToStandalone(); return
+        case .openProject: session.requestOpenProject(); return
+        case .openRecentProject(let dir): session.openProject(path: dir); return
         default: break
         }
         guard let service = backend.libraries, !left.library.busy else {
@@ -318,7 +335,7 @@ final class SessionPanels {
         case .relink(let l, let a): command = ["type": .string("relink"), "libraryId": .string(l), "assetId": .string(a)]
         case .saveOutput(let l, let j): command = ["type": .string("saveOutput"), "libraryId": .string(l), "jobId": .string(j)]
         case .reveal(let l): command = ["type": .string("reveal"), "libraryId": .string(l)]
-        case .switchProject, .openStandalone: return
+        case .switchProject, .openStandalone, .openProject, .openRecentProject: return
         }
         left.library.busy = true; left.library.error = nil; redraw()
         let dialogs = self.dialogs, post = uiPost, origin = projectId
@@ -374,7 +391,7 @@ final class SessionPanels {
         media = []; probedDurations = [:]; probing = []; session.mediaThumbnails.reset()
         renders.reset()
         syncItems()
-        refreshMedia(); refreshLibraries(); refreshRenders()
+        refreshMedia(); refreshLibraries(); refreshRenders(); refreshRecents()
         redraw()
     }
 
@@ -561,7 +578,7 @@ extension EditorSession {
         p.syncItems()
     }
 
-    /// Opens another project in this window (library project picker / "Open existing standalone project"):
+    /// Opens another project in this window (library project picker, "Open existing standalone project", File > Open):
     /// saves the current one, swaps the document, history and watcher, and re-reads the panels.
     func switchProject(_ open: (DesktopBackend) throws -> DesktopProject) {
         guard let backend else { return }

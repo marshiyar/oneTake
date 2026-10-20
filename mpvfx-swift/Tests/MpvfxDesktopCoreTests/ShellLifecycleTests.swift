@@ -130,7 +130,10 @@ final class ShellLifecycleTests: XCTestCase {
         let quit = mac[0].items[5]
         XCTAssertEqual(quit.key, "q"); XCTAssertEqual(quit.modifiers, [.command]); XCTAssertTrue(quit.separatorBefore)
         XCTAssertEqual(mac[0].items[3].modifiers, [.command, .option])
-        XCTAssertEqual(mac[1].items.map(\.command), [.closeWindow])
+        XCTAssertEqual(mac[1].items.map(\.command), [.openProject, .openRecent, .closeWindow])
+        XCTAssertEqual(mac[1].items.map(\.label), ["Open…", "Open Recent", "Close Window"])
+        XCTAssertEqual(mac[1].items[0].key, "o"); XCTAssertEqual(mac[1].items[0].modifiers, [.command])
+        XCTAssertTrue(mac[1].items[2].separatorBefore)
         XCTAssertEqual(mac[2].items.map(\.command), [.undo, .redo, .cut, .copy, .paste, .pasteAndMatchStyle, .delete, .selectAll])
         XCTAssertEqual(mac[2].items[1].key, "z"); XCTAssertEqual(mac[2].items[1].modifiers, [.command, .shift])
         XCTAssertEqual(mac[3].items.map(\.command), [.toggleFullScreen, .appearanceSystem, .appearanceLight, .appearanceDark])
