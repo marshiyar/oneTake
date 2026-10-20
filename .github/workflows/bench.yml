@@ -29,8 +29,6 @@ on:
       - 'mpvfx-swift/Sources/OneTakeMedia/**'
       - 'mpvfx-swift/Sources/MpvfxDesktop/main.swift'
       - 'mpvfx-swift/binaries.lock'
-      - 'mpvfx-swift/Sources/MpvfxAudioBench/**'
-      - 'mpvfx-swift/Sources/MpvfxColorBench/**'
       - 'mpvfx-swift/tools/MpvfxPreviewBench/**'
       - '.github/ci/bench.py'
       - '.github/workflows/bench.yml'
@@ -61,11 +59,8 @@ env:
 
 jobs:
   linux:
-    # After CI, only a green push to this repository's main is benchmarked: a pull request from a fork can be named
-    # main too, and its code must never run here with access to main's caches.
-    if: >-
-      github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success'
-      && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+    # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
     timeout-minutes: 90
@@ -83,11 +78,13 @@ jobs:
             xvfb xauth dbus-x11 python3 libvulkan-dev mesa-vulkan-drivers
       # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
       # never a pull request head). Other events check out their own commit.
-      - uses: actions/checkout@v4   # main's head: after CI on main this is the commit just tested, or a newer one
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore the release build cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
           key: linux-release-${{ github.ref_name }}-${{ github.sha }}
@@ -104,7 +101,7 @@ jobs:
             --launcher "xvfb-run -a -s '-screen 0 1440x900x24' dbus-run-session --" 2>&1 | tee "$RUNNER_TEMP/bench.log"
           test ${PIPESTATUS[0]} -eq 0
           cat "$RUNNER_TEMP/bench.log" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: bench-linux
@@ -116,11 +113,8 @@ jobs:
           retention-days: 90
 
   windows:
-    # After CI, only a green push to this repository's main is benchmarked: a pull request from a fork can be named
-    # main too, and its code must never run here with access to main's caches.
-    if: >-
-      github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success'
-      && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+    # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: windows-2022
     timeout-minutes: 90
     defaults:
@@ -130,7 +124,9 @@ jobs:
     steps:
       # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
       # never a pull request head). Other events check out their own commit.
-      - uses: actions/checkout@v4   # main's head: after CI on main this is the commit just tested, or a newer one
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
         with:
           swift-version: swift-6.3.3-release
@@ -140,7 +136,7 @@ jobs:
           python -I -B scripts/fetch-binaries.py
           for d in .binaries/*/bin; do cygpath -w "$PWD/$d" >> "$GITHUB_PATH"; done
       - name: Restore the release build cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
           key: windows-release-${{ github.sha }}
@@ -154,7 +150,7 @@ jobs:
           python -I -B -u ../.github/ci/bench.py --out "$RUNNER_TEMP/bench" --runs "$RUNS" ${ONLY:+--only "$ONLY"} 2>&1 | tee "$RUNNER_TEMP/bench.log"
           test ${PIPESTATUS[0]} -eq 0
           cat "$RUNNER_TEMP/bench.log" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: bench-windows
@@ -166,11 +162,8 @@ jobs:
           retention-days: 90
 
   macos:
-    # After CI, only a green push to this repository's main is benchmarked: a pull request from a fork can be named
-    # main too, and its code must never run here with access to main's caches.
-    if: >-
-      github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success'
-      && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+    # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: xcode-27
     timeout-minutes: 90
     defaults:
@@ -180,7 +173,9 @@ jobs:
     steps:
       # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
       # never a pull request head). Other events check out their own commit.
-      - uses: actions/checkout@v4   # main's head: after CI on main this is the commit just tested, or a newer one
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app
@@ -190,7 +185,7 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore the release build cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
           key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
@@ -210,7 +205,7 @@ jobs:
           python3 -I -B -u ../.github/ci/bench.py --out "$RUNNER_TEMP/bench" --runs "$RUNS" ${ONLY:+--only "$ONLY"} 2>&1 | tee "$RUNNER_TEMP/bench.log"
           test ${PIPESTATUS[0]} -eq 0
           cat "$RUNNER_TEMP/bench.log" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: bench-macos

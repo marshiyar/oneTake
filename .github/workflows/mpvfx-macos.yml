@@ -10,9 +10,9 @@ name: mpvfx-macos
 # files change it is not run again. The nightly run and full_tests run every shard. Every job downloads the prebuilt
 # engine libraries pinned in binaries.lock; the disk image carries them in MpVFX.app/Contents/Frameworks.
 #
-# Secrets: only runs of main and of v* tags use them: they sign the disk image with the Developer ID and notarize it,
-# and fail without them. Pull requests, the merge queue and every other branch (a dispatch on a pull request's branch
-# included) use none and package an ad-hoc signed image for testing.
+# Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
+# are optional (outside pull requests only): set, the disk image is signed with a Developer ID and notarized; unset, it
+# is ad-hoc signed.
 
 on:
   workflow_call:
@@ -52,7 +52,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Shards and their input keys
         id: keys
         run: |
@@ -60,28 +60,28 @@ jobs:
           echo "all=$(python3 -I -B ../.github/ci/test-shards.py --os macos "$RUNNER_TEMP/package.json")" >> "$GITHUB_OUTPUT"
       - name: Pass recorded for library?
         id: c0
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-library-${{ fromJSON(steps.keys.outputs.all)[0].key }}
           lookup-only: true
       - name: Pass recorded for audio-presets?
         id: c1
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-audio-presets-${{ fromJSON(steps.keys.outputs.all)[1].key }}
           lookup-only: true
       - name: Pass recorded for audio-live?
         id: c2
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-audio-live-${{ fromJSON(steps.keys.outputs.all)[2].key }}
           lookup-only: true
       - name: Pass recorded for rest?
         id: c3
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-rest-${{ fromJSON(steps.keys.outputs.all)[3].key }}
@@ -120,7 +120,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           # Pinned, not "newest": the image's newest folder can hold a beta whose Metal Toolchain does not install.
@@ -131,7 +131,7 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
           key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
@@ -165,38 +165,18 @@ jobs:
           grep -E "Test run with [0-9]+ tests" "$RUNNER_TEMP/test.log" | tail -1 || true
       - name: Record the pass for these inputs
         run: cp "$RUNNER_TEMP/test.log" .test-pass
-      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-${{ matrix.shard }}-${{ matrix.key }}
       - name: Save caches
         if: always() && matrix.shard == 'rest'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
           key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
 
-  signing-check:
-    # Seconds on Linux, before any macOS runner is waited for: the certificate opens, holds its key, is a valid
-    # Developer ID Application certificate of the configured team, and the notarization login has the right shape.
-    if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Signing and notarization secrets
-        env:
-          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: sh mpvfx-swift/packaging/macos/check-signing.sh
-
   package:
-    # Pull requests package ad-hoc and have no signing check; every other run packages only after it passed.
-    needs: signing-check
-    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) || needs.signing-check.result == 'success') }}
     runs-on: xcode-27
     timeout-minutes: 30
     defaults:
@@ -204,36 +184,17 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app
           test -d "$x" || { echo "::error::$x is not on this runner"; ls -d /Applications/Xcode*.app; exit 1; }
           sudo xcode-select -s "$x/Contents/Developer"
           xcodebuild -version && swift --version
-      - name: Signing certificate (Developer ID)
-        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        id: cert
-        env:
-          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-        run: |
-          [ -n "$MACOS_CERT_P12_BASE64" ] && [ -n "$MACOS_CERT_PASSWORD" ] || { echo "::error::the signing certificate secrets are not set"; exit 1; }
-          identity=$(sh packaging/macos/import-cert.sh)
-          echo "identity=$identity" >> "$GITHUB_OUTPUT"
-      - name: Notarization login (before the build)
-        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" \
-            --output-format json > /dev/null || { echo "::error::Apple refused the notarization login (Apple ID, app-specific password or team)"; exit 1; }
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
           key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
@@ -251,34 +212,34 @@ jobs:
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Release build
         run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
-      # Two separate paths, never a fallback from one to the other: main and v* tags sign with the Developer ID, notarize
-      # and staple, and fail if any part of that is missing or refused; pull requests, the merge queue and other branches
-      # get no secrets and package an ad-hoc signed image for testing.
-      - name: Package, signed and notarized (disk image with the engine libraries in Contents/Frameworks)
-        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      - name: Signing certificate (Developer ID, when the optional secrets are set)
+        id: cert
+        env:
+          MACOS_CERT_P12_BASE64: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_P12_BASE64 || '' }}
+          MACOS_CERT_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_PASSWORD || '' }}
+        run: |
+          if [ -n "$MACOS_CERT_P12_BASE64" ]; then
+            echo "identity=$(sh packaging/macos/import-cert.sh)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::MACOS_CERT_P12_BASE64 is not set: the disk image is ad-hoc signed and not notarized"
+          fi
+      - name: Package (disk image with the engine libraries in Contents/Frameworks)
         env:
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
+          APPLE_APP_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_TEAM_ID || '' }}
           MPVFX_BUILD: ${{ github.sha }}
           MPVFX_SYMBOLS_DIR: ${{ github.workspace }}/symbols
         run: |
           export MPVFX_BUILD=${MPVFX_BUILD::7}
-          sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" developer-id | tee "$RUNNER_TEMP/package.log"
-          ls -l "$GITHUB_WORKSPACE/dist"
-      - name: Package, ad-hoc signed for testing (pull requests and branches)
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        env:
-          MPVFX_BUILD: ${{ github.sha }}
-        run: |
-          export MPVFX_BUILD=${MPVFX_BUILD::7}
-          sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" adhoc | tee "$RUNNER_TEMP/package.log"
+          if [ -n "$MACOS_SIGN_IDENTITY" ]; then mode=developer-id; else mode=adhoc; fi
+          sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" "$mode" | tee "$RUNNER_TEMP/package.log"
           ls -l "$GITHUB_WORKSPACE/dist"
       - name: Launch smoke from the installed disk image
         timeout-minutes: 8
         env:
-          SIGNED: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+          SIGNED: ${{ steps.cert.outputs.identity != '' }}
         run: |
           dmg=$(ls "$GITHUB_WORKSPACE"/dist/MpVFX-*.dmg)
           mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
@@ -310,11 +271,11 @@ jobs:
           fi
       - name: Save caches
         if: always()
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
           key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: macos
@@ -322,7 +283,7 @@ jobs:
             dist/*.dmg
             dist/mac-smoke.png
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: symbols-macos

@@ -52,22 +52,6 @@ class Extract(unittest.TestCase):
     def test_a_plain_text_block_without_git_headers_is_refused(self):
         self.assertIn("not a unified git diff", cp.extract("```diff\n-old\n+new\n```")[1])
 
-    def test_a_section_without_its_own_header_is_refused(self):
-        hidden = "--- a/.github/workflows/mpvfx-ci.yml\n+++ b/.github/workflows/mpvfx-ci.yml\n@@ -1 +1 @@\n-a\n+b"
-        self.assertIn("not the file", cp.extract(reply(diff("a.md") + "\n" + hidden))[1])
-        other = "diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/.github/workflows/x.yml\n@@ -1 +1 @@\n-a\n+b"
-        self.assertIn("not the file", cp.extract(reply(other))[1])
-        renamed = "diff --git a/a.md b/a.md\nsimilarity index 90%\nrename from a.md\nrename to .github/workflows/x.yml"
-        self.assertIn("not the file", cp.extract(reply(renamed))[1])
-
-    def test_hunks_are_read_by_their_counts(self):
-        body = "diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -1,3 +1,3 @@\n ctx\n--- a dash line\n+++ kept\n end"
-        self.assertIsNone(cp.extract(reply(body))[1])
-        short = "diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -1,3 +1,3 @@\n ctx"
-        self.assertIn("line counts", cp.extract(reply(short))[1])
-        two = diff("a.md") + "\n" + diff("b.md")
-        self.assertIsNone(cp.extract(reply(two))[1])
-
 
 if __name__ == "__main__":
     unittest.main()

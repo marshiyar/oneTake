@@ -48,23 +48,6 @@ Xcode pinned (`XCODE_VERSION` in `mpvfx-macos.yml`). Each job installs its insta
 installed app with a hidden window (the `*-smoke.png` snapshot) with the build tree and the fetched libraries moved
 away, and, on Windows and Linux, uninstalls it again.
 
-## Releases: nightly and official
-
-When every platform is green, one publish job (`.github/ci/publish.sh`) uploads all installers to a single GitHub
-release:
-
-- **Nightly builds** are pre-releases named `nightly-<commit>` (the commit's first 7 hex digits), titled
-  `oneTake nightly <date> (<commit>)`, made by every green run of `main` (a push, the nightly run or a manual run).
-  A rerun on the same commit uploads into the same release. They are untested development builds, never marked
-  latest; only the newest 7 are kept.
-- **Official releases** come from pushing a `v*` tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`. The tag's
-  version (without the `v`) must equal `packaging/VERSION`, or the publish job fails before uploading anything. The
-  release is titled `oneTake <version>`, is the repository's "latest" release (`releases/latest`), and is never
-  deleted.
-
-Pull requests and other branches build and test but never publish. Older `build-main-*` releases from before this
-scheme are left as they are.
-
 ## Symbols: stripped before packaging, verified after
 
 No installer or portable archive carries symbols. The Linux portable binary and the Debian package's are stripped
@@ -82,16 +65,30 @@ stab or local symbol. The engine libraries pinned in `binaries.lock` are held to
 runtime DLLs the Windows build redistributes are reported, not judged. The table of every binary is in the run's
 summary. The check is not required for merging: it reports on what was published.
 
-No repository secret is needed to build and test. The optional secrets below sign the macOS disk image and approve
-pull requests.
+## Releases: nightly and official
 
-## Approvals: the review App
+When every platform is green, one publish job (`.github/ci/publish.sh`) uploads all installers to a single GitHub
+release:
 
-`main` requires `ci-ok` and one approving review. Approvals can come from the project's review GitHub App (installed
-on this repository only; Pull requests read and write, Contents read, Checks read, no webhook), whose App ID and
-private key are the repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`. After reviewing, the owner comments
-`/agent-approve <full head sha>` on the pull request; `.github/workflows/agent-approve.yml` posts the App's approval
-only when the comment comes from the owner's account, names the current head, and `ci-ok` passed on that commit.
+- **Nightly builds** are pre-releases named `nightly-<commit>` (the commit's first 7 hex digits), titled
+  `oneTake nightly <date> (<commit>)`, made by every green run of `main` (a push, the nightly run or a manual run).
+  A rerun on the same commit uploads into the same release. They are untested development builds, never marked
+  latest; only the newest 7 are kept.
+- **Official releases** come from pushing a `v*` tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`. The tag's
+  version (without the `v`) must equal `packaging/VERSION`, or the publish job fails before uploading anything. The
+  release is titled `oneTake <version>`, is the repository's "latest" release (`releases/latest`), and is never
+  deleted.
+
+Pull requests and other branches build and test but never publish. Older `build-main-*` releases from before this
+scheme are left as they are.
+
+## Releases: nightly and official
+
+## Merging
+
+`main` requires `ci-ok` and nothing else: a pull request merges, or auto-merges, once it passes. The project's GitHub
+App (installed on this repository only; repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`) only writes the
+merge train's comments and labels and turns on auto-merge (`.github/workflows/merge-train.yml`); it approves nothing.
 
 ## macOS signing: one-time setup (owner)
 
@@ -121,8 +118,10 @@ Without them the image is still built, ad-hoc signed and not notarized.
 From `mpvfx-swift/`, after `python3 scripts/fetch-binaries.py`:
 
 ```sh
-# macOS (MACOS_SIGN_IDENTITY / APPLE_* from the table above to sign and notarize)
+# macOS, ad-hoc signed for this machine:
 swift build -c release && sh packaging/macos/package.sh dist adhoc
+# macOS, Developer ID signed and notarized (MACOS_SIGN_IDENTITY and APPLE_* from the table above set):
+swift build -c release && sh packaging/macos/package.sh dist developer-id
 # Linux (Debian/Ubuntu; needs patchelf)
 swift build -c release --static-swift-stdlib
 sh packaging/linux/build-deb.sh dist "$(swift build -c release --static-swift-stdlib --show-bin-path)"
