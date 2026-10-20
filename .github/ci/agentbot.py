@@ -388,11 +388,16 @@ def artifact_files(run_id, name, suffix):
         return {}
 
 
-def latest_main_run(workflow, artifact, accept=None, event="push"):
-    """The newest green main run of `event` with `artifact` (and, when given, for which accept(run id) is true); event
-    None takes runs of any event."""
-    query = "branch=main&per_page=20" + (f"&event={event}" if event else "")
-    for r in api("GET", f"actions/workflows/{workflow}/runs?{query}")["workflow_runs"]:
+def latest_main_run(workflow, artifact, accept=None, events=("push",)):
+    """The newest green run of this repository's main, started by one of `events`, with `artifact` (and, when given,
+    for which accept(run id) is true). Never a pull request's run: `branch=main` also matches a fork's pull request
+    from its own branch called main, so the event and the head repository are both checked."""
+    runs = []
+    for event in events:
+        runs += api("GET", f"actions/workflows/{workflow}/runs?branch=main&event={event}&per_page=20")["workflow_runs"]
+    for r in sorted(runs, key=lambda r: r.get("created_at", ""), reverse=True):
+        if r.get("event") not in events or (r.get("head_repository") or {}).get("full_name") != REPO:
+            continue
         if r.get("conclusion") == "success" and api("GET", f"actions/runs/{r['id']}/artifacts?name={artifact}")["artifacts"]:
             if accept is None or accept(r["id"]):
                 return r
@@ -488,8 +493,9 @@ def bench(run_id):
             return loaded[rid].get("machine", {}).get("class") == klass
 
         # The newest main run measured on the same class of machine, not just the newest one.
-        # bench.yml has no push trigger: main is benchmarked by workflow_run (after green CI) and on schedule.
-        base = latest_main_run("bench.yml", art, same_class, event=None) if mine else None
+        # bench.yml has no push trigger: main is benchmarked by workflow_run (after green CI), on schedule and by hand.
+        base = (latest_main_run("bench.yml", art, same_class, events=("workflow_run", "schedule", "workflow_dispatch"))
+                if mine else None)
         if not mine or not base:
             parts.append(f"\n**{os_name}**: {'no result on this run' if not mine else 'no main run of the same machine class to compare against yet'}\n")
             continue
