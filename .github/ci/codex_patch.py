@@ -57,7 +57,8 @@ def main(argv):
     if len(argv) != 3:
         print(__doc__.split("\n")[0], file=sys.stderr)
         return 2
-    patch, reason = extract(open(argv[1], encoding="utf-8").read())
+    with open(argv[1], encoding="utf-8") as f:
+        patch, reason = extract(f.read())
     if reason:
         print(reason)
         return 1

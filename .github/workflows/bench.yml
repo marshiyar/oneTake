@@ -59,7 +59,11 @@ env:
 
 jobs:
   linux:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # After CI, only a green push to this repository's main is benchmarked: a pull request from a fork can be named
+    # main too, and its code must never run here with access to main's caches.
+    if: >-
+      github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
     timeout-minutes: 90
@@ -112,7 +116,11 @@ jobs:
           retention-days: 90
 
   windows:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # After CI, only a green push to this repository's main is benchmarked: a pull request from a fork can be named
+    # main too, and its code must never run here with access to main's caches.
+    if: >-
+      github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: windows-2022
     timeout-minutes: 90
     defaults:
@@ -160,7 +168,11 @@ jobs:
           retention-days: 90
 
   macos:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # After CI, only a green push to this repository's main is benchmarked: a pull request from a fork can be named
+    # main too, and its code must never run here with access to main's caches.
+    if: >-
+      github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: xcode-27
     timeout-minutes: 90
     defaults:
