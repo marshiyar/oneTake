@@ -89,14 +89,9 @@ public enum PanelTheme {
     public static let stageInk = CanvasColor(T.stageInk)
     public static let stageScrim = CanvasColor(T.stageScrim)
 
-    // MARK: Derived surfaces used by the shell markup
-    /// `border-neutral-800/50` (left sidebar card, rails).
-    /// Light mode uses a firmer edge (neutral-300) so the cards still separate from the lighter shell.
-    public static var cardBorderSoft: CanvasColor { Theme.mode == .light ? CanvasColor(T.neutralPairs[300]!.dark) : neutral800.withAlpha(0.5) }
-    /// Resize seam hairline: `bg-white/12`, hover `/18`, active `/24`.
-    public static var seam: CanvasColor { white.withAlpha(0.12) }
+    // MARK: Derived surfaces used by the shell
+    /// A resize seam under the pointer (`white/18`); at rest the seam is the black shell, while dragging the accent.
     public static var seamHover: CanvasColor { white.withAlpha(0.18) }
-    public static var seamActive: CanvasColor { white.withAlpha(0.24) }
 
     // MARK: Type
     /// The studio body font stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`. macOS and Windows get
@@ -120,13 +115,11 @@ public enum PanelTheme {
     public static func sp(_ n: Double) -> Double { n * 4 }
 
     // MARK: Shell metrics (fitPanels, left sidebar, right panel)
-    /// Visible seam between columns (`w-[3px]`) and its pointer zone (`w-[13px]`, offset 2px into the left
-    /// card for the left seam, 8px into the preview gutter for the right seam).
-    public static let seamWidth = 3.0, seamHitWidth = 13.0, seamHairlineHeight = 52.0
-    /// Collapsed rail box (`w-10`) plus its 2px margin.
-    public static let railBox = 40.0, railMargin = 2.0
-    /// 32px icon button (`h-8 w-8 rounded-md`) used for hide/show sidebar.
-    public static let iconButton = 32.0
+    /// The seam between two panels: 1px where the black shell (`studioBg`) shows through. Its pointer zone is 13px
+    /// wide, centred on it.
+    public static let seamWidth = 1.0, seamHitWidth = 13.0
+    /// Collapsed rail width (`w-10`); a seam follows a rail as it follows a panel.
+    public static let railBox = 40.0
 }
 
 /// Value coloring of a property row (value tier).

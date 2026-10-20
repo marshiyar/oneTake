@@ -31,8 +31,8 @@ final class PanelAppearanceTests: XCTestCase {
         XCTAssertEqual(PanelTheme.text0, CanvasColor(ThemeTokens.textPairs[0].light))
         XCTAssertEqual(PanelStyle.popoverBackground, CanvasColor(ThemeTokens.popoverPair.light))
         XCTAssertEqual(TimelineTheme.default.rowBackground, CanvasColor(ThemeTokens.timelineRowPair.light))   // a stored theme follows too
-        XCTAssertEqual(PanelTheme.seam.a, 0.12, accuracy: 1e-9)
-        XCTAssertLessThan(PanelTheme.seam.r, 0.1)                                  // white/12 becomes ink/12
+        XCTAssertEqual(PanelTheme.seamHover.a, 0.18, accuracy: 1e-9)
+        XCTAssertLessThan(PanelTheme.seamHover.r, 0.1)                             // white/18 becomes ink/18
         XCTAssertEqual(PanelTheme.onAccent, CanvasColor(r: 1, g: 1, b: 1))        // fixed in both modes
         Theme.setMode(.dark)
         XCTAssertEqual(PanelTheme.panelBg, CanvasColor(hex: "#1D1D1D")!)

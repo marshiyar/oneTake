@@ -97,6 +97,12 @@ protocol ComputeGradeDevice: AnyObject {
     func releaseBuffers()
 }
 
+/// Both native create functions write a NUL-terminated UTF-8 diagnostic into a fixed buffer.
+/// Ignore padding after the first NUL and repair invalid UTF-8, as String(cString:) does.
+func computeErrorMessage(_ buffer: [CChar]) -> String {
+    String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+}
+
 #if canImport(CMpvfxVulkan)
 /// The grade as Vulkan compute (Linux).
 public final class VulkanColorRenderer: ComputeColorRenderer, @unchecked Sendable {
@@ -124,7 +130,7 @@ public final class VulkanColorRenderer: ComputeColorRenderer, @unchecked Sendabl
             if let dir = spirvDirectory { return dir.withCString { mpvfx_vk_create(allowSoftware ? MPVFX_VK_ALLOW_SOFTWARE : 0, $0, e.baseAddress, Int32(e.count)) } }
             return mpvfx_vk_create(allowSoftware ? MPVFX_VK_ALLOW_SOFTWARE : 0, nil, e.baseAddress, Int32(e.count))
         }
-        guard let handle = made else { throw Unavailable(description: String(cString: err)) }
+        guard let handle = made else { throw Unavailable(description: computeErrorMessage(err)) }
         super.init(device: Device(handle), deviceName: String(cString: mpvfx_vk_device_name(handle)),
                    isSoftware: mpvfx_vk_device_is_software(handle) != 0, pressure: pressure)
     }
@@ -156,7 +162,7 @@ public final class D3D11ColorRenderer: ComputeColorRenderer, @unchecked Sendable
         let made: OpaquePointer? = err.withUnsafeMutableBufferPointer { e in
             mpvfx_d3d11_grade_create(warp ? MPVFX_D3D11_WARP : 0, e.baseAddress, Int32(e.count))
         }
-        guard let handle = made else { throw Unavailable(description: String(cString: err)) }
+        guard let handle = made else { throw Unavailable(description: computeErrorMessage(err)) }
         super.init(device: Device(handle), deviceName: String(cString: mpvfx_d3d11_grade_device_name(handle)),
                    isSoftware: warp || mpvfx_d3d11_grade_device_is_software(handle) != 0, pressure: pressure)
     }

@@ -16,67 +16,70 @@ import MpvfxCanvas
 import MpvfxPanels
 import MpvfxTimeline
 
-/// The editor window's regions (shell body, preview pane, timeline pane with its resize divider, and the
-/// editing context):
+/// The editor window's regions. Panels sit edge to edge; the 1px seams between them are the black shell
+/// (`studioBg`) showing through (docs/DESIGN.md, principle 1):
 ///
-///     shell (bg #18181B)
-///     ├─ top row (px-px pt-px):  [left sidebar | 3px seam | preview card | 3px seam | right panel]
-///     │    preview card (rounded-lg, border-neutral-800/50, bg-neutral-950):
-///     │      top bar (36px, `top-9`) / player stage + transport row
-///     ├─ 3px timeline resize divider (10px hit band)
-///     └─ timeline section (height timelineH, px-px pb-px): timeline card (rounded-lg …) = toolbar + timeline
+///     top row:      [left sidebar | seam | preview: top bar (36px) / player | seam | right panel]
+///     seam          the timeline resize divider (10px hit band)
+///     timeline      height timelineH: toolbar + tracks
+///     seam
+///     status line   22px: the hint for what is under the pointer
 ///
 /// Column widths come from `PanelFit`/`PanelLayoutState`; the timeline height is
-/// `PanelFit.fitTimelineHeight`, with a default of 360 points.
+/// `PanelFit.fitTimelineHeight` of the space above the status line, with a default of 360 points.
 struct EditorShellFrames: Equatable {
     var size: CanvasSize
     var left: CanvasRect
+    var leftSeam: CanvasRect?
     var leftSeamHit: CanvasRect?
-    var preview: CanvasRect          // the preview card (border included)
-    var previewTopBar: CanvasRect    // inside the card border
-    var player: CanvasRect           // inside the card border, below the top bar
+    var preview: CanvasRect
+    var previewTopBar: CanvasRect
+    var player: CanvasRect           // below the top bar
+    var rightSeam: CanvasRect?
     var rightSeamHit: CanvasRect?
     var right: CanvasRect
     var leftRail: Bool, rightRail: Bool
-    var timelineDivider: CanvasRect  // the visible 3px seam
+    var timelineDivider: CanvasRect  // the seam above the timeline
     var timelineDividerHit: CanvasRect
-    var timeline: CanvasRect         // the timeline card (border included)
-    var timelineContent: CanvasRect  // inside the card border
+    var timeline: CanvasRect
+    var statusLine: CanvasRect
 
     static let previewTopBarHeight = 36.0     // `top-9`
-    static let timelineDividerHeight = 3.0    // `h-[3px]`
     static let defaultTimelineHeight = 360.0
+
+    /// The height the top row, the divider and the timeline share: the window less the status line and its seam.
+    static func timelineContainerHeight(_ windowHeight: Double) -> Double {
+        max(0, windowHeight - ShellStatusLine.height - PanelTheme.seamWidth)
+    }
 
     static func compute(size: CanvasSize, layout: PanelLayoutState, timelineHeight: Double, fullscreen: Bool) -> EditorShellFrames {
         let zero = CanvasRect(x: 0, y: 0, width: 0, height: 0)
         if fullscreen {
             // The preview drops its chrome in fullscreen and fills the screen; the stage starts at the top.
             let all = CanvasRect(x: 0, y: 0, width: size.width, height: size.height)
-            return EditorShellFrames(size: size, left: zero, leftSeamHit: nil, preview: all,
+            return EditorShellFrames(size: size, left: zero, leftSeam: nil, leftSeamHit: nil, preview: all,
                                      previewTopBar: CanvasRect(x: 0, y: 0, width: size.width, height: 0), player: all,
-                                     rightSeamHit: nil, right: zero, leftRail: false, rightRail: false,
-                                     timelineDivider: zero, timelineDividerHit: zero, timeline: zero, timelineContent: zero)
+                                     rightSeam: nil, rightSeamHit: nil, right: zero, leftRail: false, rightRail: false,
+                                     timelineDivider: zero, timelineDividerHit: zero, timeline: zero, statusLine: zero)
         }
-        let th = PanelFit.fitTimelineHeight(size.height, timelineHeight)
-        let topH = max(0, size.height - timelineDividerHeight - th)
-        // Top row: px-px pt-px.
-        let rowSize = CanvasSize(max(0, size.width - 2), max(0, topH - 1))
-        let r = ShellRegions.compute(size: rowSize, layout: layout)
-        func off(_ q: CanvasRect) -> CanvasRect { CanvasRect(x: q.x + 1, y: q.y + 1, width: q.width, height: q.height) }
-        let preview = off(r.preview)
-        let inner = preview.insetBy(1)
-        let barH = min(previewTopBarHeight, max(0, inner.height))
-        let topBar = CanvasRect(x: inner.x, y: inner.y, width: inner.width, height: barH)
-        let player = CanvasRect(x: inner.x, y: inner.y + barH, width: inner.width, height: max(0, inner.height - barH))
-        let divider = CanvasRect(x: 0, y: topH, width: size.width, height: timelineDividerHeight)
-        // Hit band: 4px above the seam to 3px below it (`-top-[4px] h-[10px]`).
+        let seam = PanelTheme.seamWidth
+        let container = timelineContainerHeight(size.height)
+        let th = PanelFit.fitTimelineHeight(container, timelineHeight)
+        let topH = max(0, container - seam - th)
+        let r = ShellRegions.compute(size: CanvasSize(size.width, topH), layout: layout)
+        let barH = min(previewTopBarHeight, r.preview.height)
+        let topBar = CanvasRect(x: r.preview.x, y: 0, width: r.preview.width, height: barH)
+        let player = CanvasRect(x: r.preview.x, y: barH, width: r.preview.width, height: max(0, r.preview.height - barH))
+        let divider = CanvasRect(x: 0, y: topH, width: size.width, height: seam)
+        // Hit band: 4px above the seam to 5px below it.
         let dividerHit = CanvasRect(x: 0, y: topH - 4, width: size.width, height: 10)
-        // Timeline section: px-px pb-px.
-        let timeline = CanvasRect(x: 1, y: topH + timelineDividerHeight, width: max(0, size.width - 2), height: max(0, th - 1))
-        return EditorShellFrames(size: size, left: off(r.left), leftSeamHit: r.leftSeamHit.map(off), preview: preview,
-                                 previewTopBar: topBar, player: player, rightSeamHit: r.rightSeamHit.map(off), right: off(r.right),
+        let timeline = CanvasRect(x: 0, y: topH + seam, width: size.width, height: max(0, container - topH - seam))
+        let statusY = container + seam
+        let statusLine = CanvasRect(x: 0, y: statusY, width: size.width, height: max(0, size.height - statusY))
+        return EditorShellFrames(size: size, left: r.left, leftSeam: r.leftSeam, leftSeamHit: r.leftSeamHit, preview: r.preview,
+                                 previewTopBar: topBar, player: player, rightSeam: r.rightSeam, rightSeamHit: r.rightSeamHit, right: r.right,
                                  leftRail: r.leftRail, rightRail: r.rightRail, timelineDivider: divider, timelineDividerHit: dividerHit,
-                                 timeline: timeline, timelineContent: timeline.insetBy(1))
+                                 timeline: timeline, statusLine: statusLine)
     }
 }
 
@@ -85,6 +88,8 @@ struct EditorShellFrames: Equatable {
 final class ShellPane {
     var paint: (CanvasContext, CanvasSize) -> Void
     weak var input: CanvasInput?
+    /// The status line's text for what is under the pointer in this pane (nil: the region's own hint).
+    var hint: () -> String? = { nil }
     var lastSize = CanvasSize(-1, -1)
     init(input: CanvasInput? = nil, paint: @escaping (CanvasContext, CanvasSize) -> Void) { self.paint = paint; self.input = input }
 }
@@ -105,7 +110,8 @@ protocol CrossPaneDrag: AnyObject {
 ///
 /// Panes are plugged in by whoever owns the content: `player` and `timeline` are the editor's; `left`, `right`,
 /// `previewTopBar` and `timelineToolbar` are filled by the side-panel / toolbar ports. A region without a pane
-/// is drawn as its empty card so the proportions are right before its content lands.
+/// is drawn as its empty panel so the proportions are right before its content lands. The router draws the
+/// status line itself.
 final class EditorShellRouter: CanvasInput {
     enum Region: Hashable, CaseIterable { case left, previewTopBar, player, right, timeline }
     weak var crossPaneDrag: CrossPaneDrag?
@@ -146,7 +152,7 @@ final class EditorShellRouter: CanvasInput {
         case .previewTopBar: return f.previewTopBar
         case .player: return f.player
         case .right: return f.right
-        case .timeline: return f.timelineContent
+        case .timeline: return f.timeline
         }
     }
 
@@ -155,13 +161,15 @@ final class EditorShellRouter: CanvasInput {
     func draw(_ c: CanvasContext, size: CanvasSize) {
         if size != self.size { self.size = size }
         let f = relayout()
-        c.fillRect(CanvasRect(x: 0, y: 0, width: size.width, height: size.height), PanelTheme.panelSurface)   // bg-[#18181B]
+        // The shell is black; it shows only through the seams between the panels.
+        c.fillRect(CanvasRect(x: 0, y: 0, width: size.width, height: size.height), PanelTheme.studioBg)
         let fullscreen = isFullscreen()
         if !fullscreen {
-            drawCard(c, f.preview)
-            drawCard(c, f.timeline)
-            if panes[.left] == nil, f.left.width > 0 { drawCard(c, f.left) }
-            if panes[.right] == nil, f.right.width > 0 { drawCard(c, f.right) }
+            for region in Region.allCases {
+                let r = rect(region, f)
+                if r.width > 0, r.height > 0 { c.fillRect(r, PanelTheme.panelBg) }
+            }
+            ShellStatusLine.draw(c, f.statusLine, hint: statusHint)
         } else {
             c.fillRect(f.preview, PanelTheme.neutral950)
         }
@@ -172,8 +180,7 @@ final class EditorShellRouter: CanvasInput {
             if local != pane.lastSize { pane.lastSize = local; pane.input?.resized(local) }
             c.save()
             c.translate(r.x, r.y)
-            let inCard = region == .player || region == .previewTopBar || region == .timeline
-            if inCard && !fullscreen { c.clip(cardClip(region, r)) } else { c.clip(CanvasRect(x: 0, y: 0, width: r.width, height: r.height)) }
+            c.clip(CanvasRect(x: 0, y: 0, width: r.width, height: r.height))
             pane.paint(c, local)
             c.restore()
         }
@@ -181,37 +188,38 @@ final class EditorShellRouter: CanvasInput {
         crossPaneDrag?.drawDrag(c)
     }
 
-    /// Content inside a rounded card is clipped to the card's inner rounded rect (local coordinates).
-    private func cardClip(_ region: Region, _ r: CanvasRect) -> CanvasPath {
-        guard let f = frames else { return .rect(CanvasRect(x: 0, y: 0, width: r.width, height: r.height)) }
-        let card = (region == .timeline ? f.timeline : f.preview).insetBy(1)
-        let local = CanvasRect(x: card.x - r.x, y: card.y - r.y, width: card.width, height: card.height)
-        return .roundedRect(local, radius: PanelTheme.radiusLg - 1)
-    }
-
-    private func drawCard(_ c: CanvasContext, _ r: CanvasRect) {
-        guard r.width > 0, r.height > 0 else { return }
-        c.fillRoundedRect(r, radius: PanelTheme.radiusLg, PanelTheme.neutral950)
-        c.strokeRoundedRect(r.insetBy(0.5), radius: PanelTheme.radiusLg - 0.5, PanelTheme.cardBorderSoft, width: 1)
-    }
-
-    /// Column seams: a 52px hairline centred in the 3px gap (bg-white/12, hover /18, active /24). The timeline
-    /// divider is invisible at rest and gets a full-width wash on hover/drag (bg-white/12, active /18).
+    /// At rest the seams are the shell. The one under the pointer lights (`seamHover`) and the one being dragged
+    /// is the accent; the timeline divider does the same across the window.
     private func drawHandles(_ c: CanvasContext, _ f: EditorShellFrames) {
-        func seamColor(_ h: Drag) -> CanvasColor {
-            if drag == h { return PanelTheme.seamActive }
-            return hoveredHandle == h ? PanelTheme.seamHover : PanelTheme.seam
+        func paint(_ r: CanvasRect?, dragging: Bool, hovered: Bool) {
+            guard let r else { return }
+            if dragging { c.fillRect(r, PanelTheme.accent) } else if hovered { c.fillRect(r, PanelTheme.seamHover) }
         }
-        if !f.leftRail, let hit = f.leftSeamHit {
-            let x = hit.x + 2, mid = hit.y + hit.height / 2
-            c.fillRect(CanvasRect(x: x, y: mid - PanelTheme.seamHairlineHeight / 2, width: PanelTheme.seamWidth, height: PanelTheme.seamHairlineHeight), seamColor(.leftSeam))
+        paint(f.leftSeam, dragging: drag == .leftSeam, hovered: hoveredHandle == .leftSeam)
+        paint(f.rightSeam, dragging: drag == .rightSeam, hovered: hoveredHandle == .rightSeam)
+        func isDivider(_ d: Drag?) -> Bool { if case .timelineDivider? = d { return true }; return false }
+        paint(f.timelineDivider, dragging: isDivider(drag), hovered: isDivider(hoveredHandle))
+    }
+
+    // MARK: Status line
+
+    static let seamHint = "Drag to resize the panels"
+    static let dividerHint = "Drag to resize the timeline"
+    /// Hints for a region whose pane has nothing to say about the point under the pointer.
+    static let regionHints: [Region: String] = [
+        .timeline: "Space play / pause · S split at the playhead · I / O set the in and out points",
+        .player: "Drag to move the selected element · ⇧ drag for a uniform resize · F fullscreen",
+    ]
+
+    /// What the status line says: the seam or divider under the pointer (or being dragged), else the hovered pane's
+    /// own hint, else its region's.
+    var statusHint: String? {
+        if let h = drag ?? hoveredHandle {
+            if case .timelineDivider = h { return Self.dividerHint }
+            return Self.seamHint
         }
-        if !f.rightRail, let hit = f.rightSeamHit {
-            let x = hit.x + 8, mid = hit.y + hit.height / 2
-            c.fillRect(CanvasRect(x: x, y: mid - PanelTheme.seamHairlineHeight / 2, width: PanelTheme.seamWidth, height: PanelTheme.seamHairlineHeight), seamColor(.rightSeam))
-        }
-        if case .timelineDivider = drag { c.fillRect(f.timelineDivider, PanelTheme.white.withAlpha(0.18)) }
-        else if case .timelineDivider = hoveredHandle { c.fillRect(f.timelineDivider, PanelTheme.white.withAlpha(0.12)) }
+        guard let region = hovered else { return nil }
+        return panes[region]?.hint() ?? Self.regionHints[region]
     }
 
     // MARK: Hit testing
@@ -265,7 +273,8 @@ final class EditorShellRouter: CanvasInput {
             case .leftSeam: layout.beginResize(.left, x: x); drag = .leftSeam
             case .rightSeam: layout.beginResize(.right, x: x); drag = .rightSeam
             case .timelineDivider:
-                drag = .timelineDivider(startY: y, startH: PanelFit.fitTimelineHeight(size.height, timelineHeight))
+                let container = EditorShellFrames.timelineContainerHeight(size.height)
+                drag = .timelineDivider(startY: y, startH: PanelFit.fitTimelineHeight(container, timelineHeight))
             }
             needsDisplay(); return
         }
@@ -281,7 +290,8 @@ final class EditorShellRouter: CanvasInput {
             case .leftSeam, .rightSeam: layout.moveResize(x: x)
             case .timelineDivider:
                 // TimelineResizeDivider: height = container height - pointer y, through fitTimelineHeight.
-                timelineHeight = PanelFit.fitTimelineHeight(size.height, size.height - y)
+                let container = EditorShellFrames.timelineContainerHeight(size.height)
+                timelineHeight = PanelFit.fitTimelineHeight(container, container - y)
             }
             needsDisplay(); return
         }
@@ -299,6 +309,7 @@ final class EditorShellRouter: CanvasInput {
             return
         }
         let region = h == nil ? region(at: x, y) : nil
+        if region != hovered { needsDisplay() }   // the status line follows the pointer
         if let prev = hovered, prev != region {
             // Leaving a pane: one move outside its bounds clears its hover state.
             let (lx, ly) = local(prev, x, y)
