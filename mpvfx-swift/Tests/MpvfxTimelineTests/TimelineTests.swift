@@ -48,6 +48,44 @@ final class TimelineGeometryTests: XCTestCase {
         XCTAssertEqual(TimelineRuler.label(3725, duration: 4000, major: 60), "1:02:05")
         XCTAssertEqual(TimelineRuler.label(.nan, duration: 1, major: 1), "00:00")
     }
+    func testTimecode() {
+        XCTAssertEqual(TimelineRuler.timecode(0, frameRate: 30), "00:00:00")
+        XCTAssertEqual(TimelineRuler.timecode(6.5, frameRate: 30), "00:06:15")
+        XCTAssertEqual(TimelineRuler.timecode(65.48, frameRate: 25), "01:05:12")
+        XCTAssertEqual(TimelineRuler.timecode(0.6 / 30, frameRate: 30), "00:00:01", "rounds to the nearest frame")
+        XCTAssertEqual(TimelineRuler.timecode(1, frameRate: 29.97), "00:01:00", "frames count at the nominal 30")
+        XCTAssertEqual(TimelineRuler.timecode(3725, frameRate: 30), "01:02:05:00", "hours appear from an hour on")
+        XCTAssertEqual(TimelineRuler.timecode(5, frameRate: 30, hours: true), "00:00:05:00")
+        XCTAssertEqual(TimelineRuler.timecode(-2, frameRate: 30), "00:00:00")
+        XCTAssertEqual(TimelineRuler.timecode(.nan, frameRate: 30), "00:00:00")
+        XCTAssertEqual(TimelineRuler.timecode(1, frameRate: 0, hours: true), "00:00:00:00")
+    }
+}
+
+/// Clip durations and the ruler read as timecode (docs/DESIGN.md Principle 5).
+final class TimelineTimecodeTextTests: XCTestCase {
+    func texts(trackHeight: Double) -> [String] {
+        let v = TimelineView(tracks: [TimelineTrackModel(name: "Video 1", clips: [TimelineClipModel(name: "a.mp4", start: 0.5, duration: 2.5)])],
+                             duration: 4, pixelsPerSecond: 100)
+        v.trackHeight = trackHeight
+        let r = RecordingCanvas()
+        v.draw(r, size: CanvasSize(1200, 200))
+        return r.texts
+    }
+
+    func testClipDurationAndRulerLabelsAreTimecode() {
+        let t = texts(trackHeight: TimelineLayout.defaultTrackHeight)
+        XCTAssertTrue(t.contains("a.mp4"))
+        XCTAssertTrue(t.contains("00:02:15"), "2.5 s clip at 30 fps: \(t)")
+        XCTAssertEqual(t.filter { $0.hasPrefix("00:0") && $0 != "00:02:15" }, ["00:00:00", "00:01:00", "00:02:00", "00:03:00", "00:04:00"],
+                       "ruler ticks every second")
+    }
+
+    func testShortRowsLeaveTheTimecodeOut() {
+        let t = texts(trackHeight: TimelineLayout.minTrackHeight)
+        XCTAssertTrue(t.contains("a.mp4"), "the name stays in the header")
+        XCTAssertFalse(t.contains("00:02:15"), "no room below the header: \(t)")
+    }
 }
 
 #if os(Linux)
