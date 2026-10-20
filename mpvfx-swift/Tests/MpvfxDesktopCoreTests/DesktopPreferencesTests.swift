@@ -37,16 +37,21 @@ final class DesktopPreferencesTests: XCTestCase {
 
     /// Issue #32: the Settings window's values persist in `<userData>/preferences.json` beside the other keys.
     func testSettingsWindowValuesSurviveRelaunch() throws {
+        #if os(Windows)
+        let exports = #"C:\Users\me\Exports"#   // only an absolute path is kept: a drive or UNC path on Windows
+        #else
+        let exports = "/home/me/Exports"
+        #endif
         let prefs = DesktopPreferences(userData: dir)
         XCTAssertNil(prefs.audioOutputDevice); XCTAssertNil(prefs.previewCacheMB); XCTAssertNil(prefs.defaultExportFolder)
         prefs.renderSettings = .object(["format": .string("mp4")])
         prefs.audioOutputDevice = "alsa_output.usb-Headset.analog-stereo"
         prefs.previewCacheMB = 2048
-        prefs.defaultExportFolder = "/home/me/Exports"
+        prefs.defaultExportFolder = exports
         let again = DesktopPreferences(userData: dir)
         XCTAssertEqual(again.audioOutputDevice, "alsa_output.usb-Headset.analog-stereo")
         XCTAssertEqual(again.previewCacheMB, 2048)
-        XCTAssertEqual(again.defaultExportFolder, "/home/me/Exports")
+        XCTAssertEqual(again.defaultExportFolder, exports)
         XCTAssertEqual(again.renderSettings, .object(["format": .string("mp4")]), "other keys are kept")
         let text = try String(contentsOfFile: dir + "/preferences.json", encoding: .utf8)
         XCTAssertTrue(text.contains("\"mpvfx-preview-cache-mb\":2048"), text)
