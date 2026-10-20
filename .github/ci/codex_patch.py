@@ -16,14 +16,20 @@
 
 Exit 0 with the patch written when the reply holds exactly one ```diff block that is a text-only unified diff of at
 most MAX_BYTES, touches at most MAX_FILES files, and changes nothing under the refused paths (workflows, the scripts
-that run with repository tokens, the security policy files, the engine lock): those stay changes a person reviews.
+that run with repository tokens or signing credentials, the security policy files, the engine lock): those stay
+changes a person reviews.
 Exit 1 with the reason on stdout otherwise (nothing to apply). Exit 2 on bad arguments.
 """
 import re, sys
 
 MAX_BYTES = 200_000
 MAX_FILES = 40
+# Also every script a job with credentials runs: publish.sh (contents: write), and in the macOS signing job the
+# signing checks and packaging, the Metal toolchain set-up and the engine fetch (they run with the imported signing
+# identity and the notarization secrets).
 REFUSED = re.compile(r"^(\.github/workflows/|\.github/ci/(agentbot|codex_patch|sentinel|strip-check)\.py$|"
+                     r"\.github/ci/(publish|metal-toolchain)\.sh$|mpvfx-swift/packaging/macos/|"
+                     r"mpvfx-swift/scripts/fetch-binaries\.py$|"
                      r"\.github/sentinel|\.github/dependabot\.yml$|\.github/CODEOWNERS$|\.codex/|\.claude/|"
                      r"mpvfx-swift/binaries\.lock$)")
 BLOCK = re.compile(r"```diff[ \t]*\n(.*?)\n```", re.S)
