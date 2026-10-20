@@ -97,8 +97,16 @@ public final class CoreAudioOutput: AudioOutput, AudioDeviceSelecting {
         var status = AudioComponentInstanceNew(component, &instance)
         guard status == noErr, let u = instance else { throw AudioOutputError.unavailable("AudioComponentInstanceNew failed (\(status))") }
         if let uid {
-            status = AudioUnitSetProperty(u, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
-                                          &deviceID, UInt32(MemoryLayout<AudioDeviceID>.size))
+            // A HAL output unit: output on bus 0, no input on bus 1 (TN2091's defaults, set so they do not depend on
+            // them), then the device.
+            var on: UInt32 = 1, off: UInt32 = 0
+            let flag = UInt32(MemoryLayout<UInt32>.size)
+            status = AudioUnitSetProperty(u, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &on, flag)
+            if status == noErr { status = AudioUnitSetProperty(u, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &off, flag) }
+            if status == noErr {
+                status = AudioUnitSetProperty(u, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                              &deviceID, UInt32(MemoryLayout<AudioDeviceID>.size))
+            }
             guard status == noErr else {
                 AudioComponentInstanceDispose(u)
                 throw AudioOutputError.unavailable("audio output \(uid) could not be selected (\(status))")

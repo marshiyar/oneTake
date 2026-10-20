@@ -14,6 +14,8 @@
 #if os(Linux)
 import Foundation
 import XCTest
+import MpvfxAudio
+import MpvfxAudioGraph
 import MpvfxBackend
 import MpvfxCanvas
 import MpvfxDesktopCore
@@ -34,6 +36,20 @@ final class SettingsWindowTests: XCTestCase {
         func openPath(_ path: String) async {}
     }
 
+    /// A device-selecting sink over the test sink: counts starts and remembers the device each start used.
+    final class SelectingOutput: AudioOutput, AudioDeviceSelecting {
+        let sink = NullAudioOutput()
+        var device: String?
+        private(set) var startedOn: [String?] = []
+        var format: AudioFormat { sink.format }
+        var framesPlayed: Int { sink.framesPlayed }
+        init() { sink.capacityFrames = 4096; sink.keepSamples = false }
+        func start() throws { startedOn.append(device); try sink.start() }
+        func write(_ samples: [Float]) throws { try sink.write(samples) }
+        func stop() { sink.stop() }
+        func flush() { sink.flush() }
+    }
+
     var dirs: [String] = []
     override func setUp() { Theme.setMode(.dark) }
     override func tearDown() { for d in dirs { try? FileManager.default.removeItem(atPath: d) }; Theme.setMode(.dark) }
@@ -49,6 +65,47 @@ final class SettingsWindowTests: XCTestCase {
         let deadline = Date().addingTimeInterval(10)
         while !done() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
         XCTAssertTrue(done(), what)
+    }
+
+    /// Choosing a device while playing restarts the sound on it at the same position; playback keeps going.
+    func testChoosingADeviceMovesPlayingAudioToIt() throws {
+        let session = try EditorSession(projectPath: nil, demo: true)
+        session.audio?.stop()
+        session.graphUpdater?.waitUntilIdle()
+        session.graphUpdater = nil
+        let graph = GraphAudioSource(project: AudioGraphProject(duration: 3, sampleRate: 48000, tracks: []))
+        let output = SelectingOutput()
+        session.graph = graph
+        session.audio = AudioPlayback(output: output, source: graph)
+        defer { session.audio?.stop() }
+        session.playback.externalClock = { [weak session] in session?.audio.flatMap { $0.isPlaying ? $0.currentTime : nil } }
+        session.playback.duration = 3
+        session.playback.seek(1.5)
+        session.playback.play()
+        session.syncAudio()
+        XCTAssertEqual(output.startedOn, [nil])
+
+        session.applyAudioDevice("sink.b")
+        XCTAssertEqual(output.device, "sink.b")
+        XCTAssertEqual(output.startedOn, [nil, "sink.b"], "restarted once, on the chosen device")
+        XCTAssertTrue(session.playback.isPlaying)
+        XCTAssertEqual(try XCTUnwrap(session.audio).currentTime, 1.5, accuracy: 0.05, "at the same position")
+        session.applyAudioDevice("sink.b")
+        XCTAssertEqual(output.startedOn.count, 2, "the same device again changes nothing")
+    }
+
+    /// MPVFX_PREVIEW_CACHE_MB (tests, low-memory runs) wins over the Settings value.
+    func testPreviewCacheEnvironmentOverrideWins() throws {
+        let session = try EditorSession(projectPath: nil, demo: true)
+        defer { session.audio?.stop() }
+        let before = session.compositor.cache.budgetBytes
+        setenv("MPVFX_PREVIEW_CACHE_MB", "64", 1)
+        defer { unsetenv("MPVFX_PREVIEW_CACHE_MB") }
+        session.applyPreviewCache(1024)
+        XCTAssertEqual(session.compositor.cache.budgetBytes, before)
+        unsetenv("MPVFX_PREVIEW_CACHE_MB")
+        session.applyPreviewCache(1024)
+        XCTAssertEqual(session.compositor.cache.budgetBytes, 1024 << 20)
     }
 
     func testCtrlCommaOpensSettingsAndChangesPersist() throws {
