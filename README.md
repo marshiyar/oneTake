@@ -68,8 +68,16 @@ MPVFX_DEMO=1 swift run MpVFX        # the built-in demo timeline
 MPVFX_PROJECT=/path/to/project swift run MpVFX
 ```
 
-If the build cannot find `mpvfx_media.h` or `cvkf.h`, run `python3 scripts/fetch-binaries.py` first. The engines are
-pinned at media 0.2.0 and keyframes 1.0.0 in `mpvfx-swift/binaries.lock`.
+`fetch-binaries.py` stops with a clear message when the pinned engine release is not published yet or a download does
+not match its checksum. If `swift build` reports "Could not find Package.swift", the shell is not in `mpvfx-swift/`;
+if it cannot find `mpvfx_media.h` or `cvkf.h`, or the link step misses `mpvfx_media` or `cvkf`, run
+`python3 scripts/fetch-binaries.py` first. `MPVFX_PROJECT` takes a project folder or its `.studio/project.json`.
+
+**Status:** the media engine is pinned at 0.1.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`.
+
+Installers (macOS disk image, Windows setup.exe, Ubuntu/Debian .deb) are built by CI and published as releases:
+official releases come from `v*` tags and are the "latest" release; nightly builds of `main` are pre-releases named
+`nightly-<commit>`. How to get, build and sign them: [`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md).
 
 ## Test and check
 

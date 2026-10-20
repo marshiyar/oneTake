@@ -1,8 +1,10 @@
 name: mpvfx-ci
 
 # The app on Linux and Windows (a build, package and install + launch job per OS beside its test shards) and on macOS
-# through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main and every night; when
-# every platform is green, one publish job releases all installers together as the latest release.
+# through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main, every night and every
+# push of a v* tag; when every platform is green, one publish job releases all installers together
+# (.github/ci/publish.sh): a run of main as the prerelease nightly-<commit>, a v* tag as the official release of that
+# tag, marked latest. Pull requests and other branches never publish.
 #
 # The media and keyframe engines are not built here: every job downloads the prebuilt libraries pinned in
 # mpvfx-swift/binaries.lock (scripts/fetch-binaries.py checks each SHA-256) from public releases. No repository secret
@@ -19,6 +21,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+    # An official release: the tag's version must equal mpvfx-swift/packaging/VERSION. Path filters do not apply to tag
+    # pushes, so every v* tag runs the full build.
+    tags: ['v*']
     paths-ignore: ['**/*.md', '**/docs/**', '.gitignore']
   schedule:
     - cron: '17 6 * * *'   # nightly, 06:17 UTC: catches runner image and toolchain drift on an unchanged main
@@ -34,6 +39,8 @@ on:
         default: true
 
 concurrency:
+  # By full ref (refs/heads/main, refs/tags/v0.2.0, refs/pull/N/merge): a newer push cancels an older run of the same
+  # ref only, never a tag build.
   group: mpvfx-ci-${{ github.ref }}
   cancel-in-progress: true
 
@@ -536,9 +543,12 @@ jobs:
           done
 
   publish:
-    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos]
+    needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
+    # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
     if: >-
-      always() && github.event_name != 'pull_request' && inputs.publish != false && needs.plan.result == 'success' && needs.checks.result == 'success'
+      always() && github.event_name != 'pull_request'
+      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && needs.plan.result == 'success' && needs.checks.result == 'success'
       && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
       && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
       && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
@@ -549,12 +559,15 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          sparse-checkout: .github
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+          # publish.sh, VERSION (checked against a v* tag) and the root files (CHANGELOG.md, when there is one).
+          sparse-checkout: |
+            .github
+            mpvfx-swift/packaging
+      - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
-      - name: Prerelease
+      - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

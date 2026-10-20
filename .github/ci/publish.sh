@@ -12,23 +12,82 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 #
 #===----------------------------------------------------------------------===#
-# publish.sh <files...>: upload to the release build-<branch>-<shortsha> (created if missing; latest on main, prerelease
-# elsewhere); keep the newest 3 per branch.
+# publish.sh <files...>: upload a green CI run's installers to a GitHub release, chosen by the ref the run is for:
+#   branch main: the prerelease nightly-<shortsha> (one per commit; a rerun on the same commit uploads into it again),
+#                never marked latest; only the newest 7 nightly-* releases are kept.
+#   tag v<version>: the full release <tag>, marked latest; <version> must equal mpvfx-swift/packaging/VERSION. Never
+#                pruned.
+#   anything else: nothing is published.
+# Sourced (`. publish.sh`), it only defines its functions, so the ref decision can be checked without GitHub.
 set -euo pipefail
-branch=${GITHUB_REF_NAME//\//-}; short=${GITHUB_SHA::7}; tag="build-$branch-$short"
-files=(); for f in "$@"; do [ -f "$f" ] && files+=("$f"); done
-[ ${#files[@]} -gt 0 ] || { echo "::error::nothing to publish"; exit 1; }
-# The Linux/Windows and macOS workflows publish into the same release and can finish together: if the create
-# loses that race, the release exists and the upload goes on.
-# main: a full release marked latest, so releases/latest always holds the newest green installers; other branches:
-# prereleases.
-kind=--prerelease; [ "$branch" = main ] && kind=--latest
-gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" $kind --target "$GITHUB_SHA" \
-  --title "MpVFX $(date -u +%Y-%m-%d) ($branch $short)" \
-  --notes "MpVFX installers built from $branch at $GITHUB_SHA: macOS .dmg, Windows setup.exe, Ubuntu/Debian .deb, plus portable archives. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-  || { sleep 5; gh release view "$tag" >/dev/null; }
-gh release upload "$tag" "${files[@]}" --clobber
-gh release view "$tag" --json assets --jq '.assets[] | "\(.name) \(.url)"'
-gh release list --limit 200 --json tagName,createdAt \
-  --jq "[.[] | select(.tagName | startswith(\"build-$branch-\"))] | sort_by(.createdAt) | reverse | .[3:][] | .tagName" |
-  while read -r old; do [ -n "$old" ] && gh release delete "$old" --cleanup-tag --yes; done
+
+version_file=mpvfx-swift/packaging/VERSION
+nightly_keep=7
+
+# decide: from GITHUB_REF_TYPE, GITHUB_REF_NAME and GITHUB_SHA, set mode (nightly, official or none), and for a
+# publishing mode tag, title and flags (the gh release create options). Fails when a v* tag does not match VERSION.
+decide() {
+  local ref_type=${GITHUB_REF_TYPE:-} ref=${GITHUB_REF_NAME:-} short=${GITHUB_SHA:0:7} version want
+  mode=none tag='' title='' flags=()
+  if [ "$ref_type" = tag ]; then
+    case "$ref" in
+      v?*) ;;
+      *) echo "::notice::tag $ref is not a v* release tag; nothing is published"; return 0 ;;
+    esac
+    version=${ref#v}
+    [ -f "$version_file" ] || { echo "::error::$version_file is missing; cannot check tag $ref against it"; return 1; }
+    want=$(tr -d '[:space:]' < "$version_file")
+    if [ "$version" != "$want" ]; then
+      echo "::error::tag $ref is version $version but $version_file says ${want:-<empty>}; bump VERSION or retag"
+      return 1
+    fi
+    mode=official tag=$ref title="oneTake $version" flags=(--verify-tag --latest)
+  elif [ "$ref_type" = branch ] && [ "$ref" = main ]; then
+    mode=nightly tag="nightly-$short" title="oneTake nightly $(date -u +%Y-%m-%d) ($short)"
+    flags=(--prerelease --latest=false --target "$GITHUB_SHA")
+  else
+    echo "::notice::$ref_type $ref is neither main nor a v* tag; nothing is published"
+  fi
+}
+
+# notes: the release notes for the decided mode.
+notes() {
+  local server=${GITHUB_SERVER_URL:-https://github.com} repo=${GITHUB_REPOSITORY:-} run commit
+  run="$server/$repo/actions/runs/${GITHUB_RUN_ID:-}"
+  commit="$server/$repo/commit/$GITHUB_SHA"
+  if [ "$mode" = nightly ]; then
+    printf '%s\n\n%s\n%s\n' \
+      "Untested development build from main: installers from every green CI run of main, not an official release." \
+      "Commit: $commit" "Run: $run"
+  elif [ -f CHANGELOG.md ]; then
+    printf 'Release notes: see CHANGELOG (%s).\n' "$server/$repo/blob/$tag/CHANGELOG.md"
+  else
+    printf 'oneTake %s, built from %s.\n' "${tag#v}" "$commit"
+  fi
+}
+
+# prune_nightlies: delete every nightly-* release but the newest $nightly_keep (never touches any other release).
+prune_nightlies() {
+  gh release list --limit 200 --json tagName,createdAt \
+    --jq "[.[] | select(.tagName | startswith(\"nightly-\"))] | sort_by(.createdAt) | reverse | .[$nightly_keep:][] | .tagName" |
+    while read -r old; do
+      case "$old" in nightly-?*) gh release delete "$old" --cleanup-tag --yes ;; esac
+    done
+}
+
+main() {
+  decide
+  [ "$mode" != none ] || return 0
+  local files=() f
+  for f in "$@"; do [ -f "$f" ] && files+=("$f"); done
+  [ ${#files[@]} -gt 0 ] || { echo "::error::nothing to publish"; return 1; }
+  echo "publishing $mode release $tag: $title"
+  # A rerun on the same commit or tag finds the release already there and uploads into it.
+  gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" "${flags[@]}" --title "$title" --notes "$(notes)" \
+    || { sleep 5; gh release view "$tag" >/dev/null; }
+  gh release upload "$tag" "${files[@]}" --clobber
+  gh release view "$tag" --json assets --jq '.assets[] | "\(.name) \(.url)"'
+  [ "$mode" != nightly ] || prune_nightlies
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi
