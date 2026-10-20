@@ -28,7 +28,7 @@ A failed train of several pull requests splits: the first half goes next, the se
 one takes that pull request out of the queue (label train-failed). The pending halves live in the train pull
 request's body (and its labels), never in files.
 
-`verify` is the check before the App approves a green train (agent-approve.yml): the train's tree must be exactly
+`verify` checks a green train: its tree must be exactly
 main plus the queued commits named in its body, each queued by the owner.
 
 Standard library only; GitHub is reached through the `gh` CLI and git through `git`, both via `Runner`, which tests
@@ -534,7 +534,7 @@ def note_skip(gh, q, reason, in_batch, main, log):
     if reason == "workflows":
         gh.remove_label(q.number, QUEUE)
         gh.comment(q.number, f"Not in this batch: it changes files under `{WORKFLOWS}`, which the merge train's token "
-                             "may not push. Land it on its own (review, then `/agent-approve <head sha>`).")
+                             "may not push. Land it on its own (merge it once ci-ok passes).")
         log.append(f"#{q.number}: changes workflows; out of the queue")
         return
     marker = f"<!-- merge-train:skipped {q.sha} {main} {','.join(map(str, in_batch))} -->"
