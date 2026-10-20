@@ -112,7 +112,9 @@ final class ProjectAccessSerialisationTests: XCTestCase {
         let p = try b.createProject(name: "Import", directory: root + "/Import")
         let started = expectation(description: "the import holds the project")
         let release = DispatchSemaphore(value: 0)
-        let importing = Task { try await b.withProject(p.id) { started.fulfill(); release.wait() } }
+        // Blocks the import's thread from a sync closure: DispatchSemaphore.wait is unavailable in async code.
+        let holdUntilReleased: @Sendable () -> Void = { release.wait() }
+        let importing = Task { try await b.withProject(p.id) { started.fulfill(); holdUntilReleased() } }
         await fulfillment(of: [started], timeout: 5)
         let queuedBefore = b.projectAccess.submittedCount
         let mine = try document(p.content, durationFrames: 240, clip: "clip.png")

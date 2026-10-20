@@ -54,7 +54,7 @@ final class ExportNoReplaceTests: XCTestCase {
     func testAFileCreatedAtTheOutputDuringTheRenderIsKeptAndTheExportFailsWithATypedError() throws {
         let output = "\(root)/raced.mov"
         let users = Data("the user's own file".utf8)
-        let firstFrame = OnFirstFrame { FileManager.default.createFile(atPath: output, contents: users) }
+        let firstFrame = OnFirstFrame { _ = FileManager.default.createFile(atPath: output, contents: users) }
         let job = try startExport(project: try project(), projectDir: root, outputPath: output, settings: ExportSettings(format: .mov),
                                   keyframeEngine: engine, progress: firstFrame.callAsFunction)
         let outcome = job.wait(timeout: 120)
@@ -81,8 +81,8 @@ final class ExportNoReplaceTests: XCTestCase {
         let users = Data("keep me".utf8)
         let holder = JobHolder()
         let firstFrame = OnFirstFrame {
-            FileManager.default.createFile(atPath: output, contents: users)
-            FileManager.default.createFile(atPath: meta, contents: users)
+            _ = FileManager.default.createFile(atPath: output, contents: users)
+            _ = FileManager.default.createFile(atPath: meta, contents: users)
             holder.waitForJob().cancel()
         }
         holder.set(try startExport(project: try project(), projectDir: root, outputPath: output, settings: ExportSettings(format: .mov),

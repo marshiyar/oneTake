@@ -91,9 +91,9 @@ final class PanelSnapshotTests: XCTestCase {
             // Positions from the recorded reference layout at 370×1040 (left sidebar, library navigator, media bin).
             assertPixel(t, 150, 1000, scale: scale, "#0a0a0a")       // card body: bg-neutral-950
             assertPixel(t, 100, 50, scale: scale, "#171717")         // library select (13,37 344×28): bg-neutral-900
-            assertPixel(t, 220, 258, scale: scale, "#161618")        // Import media (211.8,253 105×32): bg-panel-input
+            assertPixel(t, 220, 258, scale: scale, "#0e0e0e")        // Import media (211.8,253 105×32): bg-panel-input
             assertPixel(t, 100, 297.5, scale: scale, "#181818")      // header border-b at y 297: neutral-800/50 on neutral-950
-            assertPixel(t, 300, 320, scale: scale, "#161618")        // search (17,308 336×26.5): bg-panel-input
+            assertPixel(t, 300, 320, scale: scale, "#0e0e0e")        // search (17,308 336×26.5): bg-panel-input
             assertPixel(t, 19, 397.5, scale: scale, "#3a3a3a", tol: 10)  // "Added" badge (17,395.5): neutral-950/80 over the frame
             assertPixel(t, 60, 440, scale: scale, "#fafafa", tol: 10)    // first tile (13,391.5 166×93.4) shows the frame
         }
@@ -114,7 +114,7 @@ final class PanelSnapshotTests: XCTestCase {
             let r = try Self.rightFixture(open: nil, h: 1040)
             let t = snapshot("inspector-layout", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             assertPixel(t, 55, 15, scale: scale, "#262626")          // active "Design" tab (49,9 58×32): bg-neutral-800
-            assertPixel(t, 200, 70, scale: scale, "#0c0c0e")         // flat panel bg-panel-bg under the header
+            assertPixel(t, 200, 70, scale: scale, "#1d1d1d")         // flat panel bg-panel-bg under the header
         }
     }
 
@@ -124,13 +124,13 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let r = try Self.rightFixture(open: "layout", h: 1040)
             let t = snapshot("inspector-layout", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 94, scale: scale, "#1a1a1c")      // header border-b: 44.5px laid out, painted at 94
-            assertPixel(t, 200, 96, scale: scale, "#0c0c0e")      // open Transform header (95…135)
+            assertPixel(t, 200, 94, scale: scale, "#141414")      // header border-b: 44.5px laid out, painted at 94
+            assertPixel(t, 200, 96, scale: scale, "#1d1d1d")      // open Transform header (95…135)
             assertPixel(t, 386, 114, scale: scale, "#71717a")     // open caret M2 4l4 4 4-4z at (380,108.5), text-3
-            assertPixel(t, 200, 140, scale: scale, "#121214")     // open body bg-panel-bg-inset from 135
-            assertPixel(t, 100, 180, scale: scale, "#0c0c0e")     // Position X field (17,170.5 183.5×30) rounded bg-panel-bg
-            assertPixel(t, 204, 180, scale: scale, "#121214")     // gap-2 between the X and Y fields
-            assertPixel(t, 100, 194, scale: scale, "#1a1a1d", tol: 8)   // value underline border-panel-border-input/50
+            assertPixel(t, 200, 140, scale: scale, "#191919")     // open body bg-panel-bg-inset from 135
+            assertPixel(t, 100, 180, scale: scale, "#1d1d1d")     // Position X field (17,170.5 183.5×30) rounded bg-panel-bg
+            assertPixel(t, 204, 180, scale: scale, "#191919")     // gap-2 between the X and Y fields
+            assertPixel(t, 100, 194, scale: scale, "#272727", tol: 8)   // value underline border-panel-border-input/50
         }
         // FlatSegmentedRow: the active option sits on a 2px accent underline; KeyframeNavigation's active diamond.
         for scale in [1.0, 2.0] {
@@ -145,9 +145,9 @@ final class PanelSnapshotTests: XCTestCase {
             let easeW = t.canvas.measureText("Ease", font: PanelTheme.font(11)).width + 12
             let linearW = t.canvas.measureText("Linear", font: PanelTheme.font(11)).width + 12
             let underlineY = 28.3   // 16 + 26.5/2 - 2 … 29.25
-            assertPixel(t, 240 - easeW - 2 - linearW / 2, underlineY, scale: scale, "#2d7fff", tol: 10)
-            assertPixel(t, 240 - easeW / 2, underlineY, scale: scale, "#121214")
-            assertPixel(t, 240 - 41 + 14 + 6.5, 48 + 0.5, scale: scale, "#3ce6ac", tol: 12)   // 9px diamond centre
+            assertPixel(t, 240 - easeW - 2 - linearW / 2, underlineY, scale: scale, "#4c8df0", tol: 10)
+            assertPixel(t, 240 - easeW / 2, underlineY, scale: scale, "#191919")
+            assertPixel(t, 240 - 41 + 14 + 6.5, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)   // 9px diamond centre
         }
     }
 
@@ -157,7 +157,7 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let r = try Self.rightFixture(open: "grade", h: 1900)
             let t = snapshot("inspector-grade-tall", w: 409, h: 1900, scale: scale) { r.draw($0, size: CanvasSize(409, 1900)) }
-            assertPixel(t, 200, 70, scale: scale, "#0c0c0e")      // flat panel bg-panel-bg under the tab bar
+            assertPixel(t, 200, 70, scale: scale, "#1d1d1d")      // flat panel bg-panel-bg under the tab bar
         }
     }
 
@@ -202,7 +202,7 @@ final class PanelSnapshotTests: XCTestCase {
             let frameH = (tile0.width - 2) * 9 / 16
             assertPixel(t, tile0.midX, tile0.y + 1 + frameH / 2, scale: scale, "#e61414", tol: 6)   // neutral: the host's frame
             assertPixel(t, tile2.midX, tile2.y + 1 + frameH / 2, scale: scale, "#1414e6", tol: 6)   // another preset, its own frame
-            assertPixel(t, tile1.midX, tile1.y + 1 + frameH / 2, scale: scale, "#0c0c0e", tol: 8)   // still rendering: empty frame
+            assertPixel(t, tile1.midX, tile1.y + 1 + frameH / 2, scale: scale, "#141414", tol: 8)   // still rendering: empty frame
             XCTAssertEqual(Set(asked.map(\.presetId)).count, ColorGrading.gradePresets.count, "every tile asks for its preset")
             let req = try XCTUnwrap(asked.first)
             XCTAssertEqual(req.clipId, "clip:a")
@@ -283,8 +283,8 @@ final class PanelSnapshotTests: XCTestCase {
             let r = try Self.rightFixture(open: "effects", h: 1040)
             let t = snapshot("inspector-effects", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             let tabs = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("fx:tabs", 1) })
-            assertPixel(t, tabs.midX, tabs.y + 2, scale: scale, "#0c0c0e")              // tab bg-panel-bg
-            assertPixel(t, tabs.x - 0.5, tabs.midY, scale: scale, "#1a1a1c", tol: 8)    // gap-px hairline between tabs
+            assertPixel(t, tabs.midX, tabs.y + 2, scale: scale, "#1d1d1d")              // tab bg-panel-bg
+            assertPixel(t, tabs.x - 0.5, tabs.midY, scale: scale, "#141414", tol: 8)    // gap-px hairline between tabs
         }
         let r = try Self.rightFixture(open: "effects", h: 1040)
         let c = PanelMeasureCanvas()
@@ -328,15 +328,15 @@ final class PanelSnapshotTests: XCTestCase {
                 let t = snapshot("renders-\(v)", w: 409, h: 600, scale: scale) { r.draw($0, size: CanvasSize(409, 600)) }
                 switch v {
                 case "done":
-                    assertPixel(t, 100, 95, scale: scale, "#161618")     // Format select (13,81 187.5×28) bg-panel-input
+                    assertPixel(t, 100, 95, scale: scale, "#0e0e0e")     // Format select (13,81 187.5×28) bg-panel-input
                     assertPixel(t, 30, 180, scale: scale, "#ffffff")     // Export (13,176 383×32) bg-white
-                    assertPixel(t, 200, 240, scale: scale, "#161616", tol: 10)  // settings border-b straddling 240 (239.5…240.5)
+                    assertPixel(t, 200, 240, scale: scale, "#050505", tol: 10)  // settings border-b straddling 240 (239.5…240.5)
                     assertPixel(t, 20, 290, scale: scale, "#fafafa", tol: 12)   // the 16:9 poster frame fills the 80×45 well at (13,280)
                 case "mixed":
                     assertPixel(t, 30, 180, scale: scale, "#858585", tol: 10)   // Rendering… (white/50 over neutral-950)
                     assertPixel(t, 53, 353, scale: scale, "#f87171", tol: 20)   // failed status dot at (49,349)
-                    assertPixel(t, 140, 519.5, scale: scale, "#2d7fff", tol: 12) // progress fill (103,517.5 83.9×4)
-                    assertPixel(t, 250, 519.5, scale: scale, "#1e1e1e", tol: 8)  // progress track
+                    assertPixel(t, 140, 519.5, scale: scale, "#4c8df0", tol: 12) // progress fill (103,517.5 83.9×4)
+                    assertPixel(t, 250, 519.5, scale: scale, "#000000", tol: 8)  // progress track
                 case "error":
                     assertPixel(t, 30, 180, scale: scale, "#ffffff")             // Export enabled (13,176 383×32) bg-white
                     assertPixel(t, 300, 256, scale: scale, "#1d0e0e", tol: 10)   // error strip bg-red-500/10
@@ -355,19 +355,19 @@ final class PanelSnapshotTests: XCTestCase {
             r.inspector.onAnimate = {}
             r.inspector.toggleGroup("layout"); r.inspector.toggleGroup("layout")
             var t = snapshot("inspector-enter-0", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 140, scale: scale, "#0c0c0e", tol: 2)    // body at opacity 0: bg-panel-bg
+            assertPixel(t, 200, 140, scale: scale, "#1d1d1d", tol: 2)    // body at opacity 0: bg-panel-bg
             r.inspector.tick(0.03)
             t = snapshot("inspector-enter-mid", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             let mid = t.pixel(Int(200 * scale), Int(140 * scale))
-            XCTAssertGreaterThan(Int(mid.r), 0x0c); XCTAssertLessThan(Int(mid.r), 0x12)
+            XCTAssertGreaterThan(Int(mid.r), 0x19); XCTAssertLessThan(Int(mid.r), 0x1d)   // between inset #191919 and panel-bg #1d1d1d
             r.inspector.tick(0.2)
             t = snapshot("inspector-enter-1", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 140, scale: scale, "#121214")            // settled: bg-panel-bg-inset
+            assertPixel(t, 200, 140, scale: scale, "#191919")            // settled: bg-panel-bg-inset
             // Focus ring on the Transform header (95…135): 2px accent just outside it, clipped to the scrolling body
             // (so its top edge under the clip header is hidden, as the overflow-y-auto body clips the outline).
             r.inspector.focus.current = .group("layout"); r.inspector.focus.visible = true
             t = snapshot("inspector-focus", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 136, scale: scale, "#2d7fff", tol: 30)
+            assertPixel(t, 200, 136, scale: scale, "#4c8df0", tol: 30)
         }
     }
 }

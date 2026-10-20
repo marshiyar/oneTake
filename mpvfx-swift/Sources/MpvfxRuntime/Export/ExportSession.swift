@@ -191,7 +191,11 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
     Thread.detachNewThread {
         func cleanUp() {
             try? FileManager.default.removeItem(atPath: staging.directory)
+            #if os(Windows)
+            _ = Foundation._rmdir(PosixPath.dirname(staging.directory))  // only when no other export is staging there
+            #else
             _ = Foundation.rmdir(PosixPath.dirname(staging.directory))   // only when no other export is staging there
+            #endif
         }
         let cancellation = job.mediaCancellation
         do {

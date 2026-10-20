@@ -1,8 +1,9 @@
 name: mpvfx-macos
 
-# macOS build, tests and disk image. Called by mpvfx-ci.yml on every pull request into main, every push to main and
-# every night, so one publish job there releases all platforms together; also run by hand on any branch (Run
-# workflow), where "skip_tests" gives a packaging-only run (artifact only, never published).
+# macOS build, tests and disk image. Called by mpvfx-ci.yml on every pull request into main, every push to main, every
+# night and every v* tag push, so one publish job there releases all platforms together (this workflow never publishes
+# itself); also run by hand on any branch (Run workflow), where "skip_tests" gives a packaging-only run (artifact
+# only, never published).
 #
 # The suite runs as 4 test shards beside the package job (.github/ci/test-shards.py, the same shards as Linux and
 # Windows). A shard that passed is recorded under the hash of every file its tests are built from; while none of those
@@ -51,7 +52,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Shards and their input keys
         id: keys
         run: |
@@ -59,28 +60,28 @@ jobs:
           echo "all=$(python3 -I -B ../.github/ci/test-shards.py --os macos "$RUNNER_TEMP/package.json")" >> "$GITHUB_OUTPUT"
       - name: Pass recorded for library?
         id: c0
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-library-${{ fromJSON(steps.keys.outputs.all)[0].key }}
           lookup-only: true
       - name: Pass recorded for audio-presets?
         id: c1
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-audio-presets-${{ fromJSON(steps.keys.outputs.all)[1].key }}
           lookup-only: true
       - name: Pass recorded for audio-live?
         id: c2
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-audio-live-${{ fromJSON(steps.keys.outputs.all)[2].key }}
           lookup-only: true
       - name: Pass recorded for rest?
         id: c3
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-rest-${{ fromJSON(steps.keys.outputs.all)[3].key }}
@@ -119,7 +120,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           # Pinned, not "newest": the image's newest folder can hold a beta whose Metal Toolchain does not install.
@@ -130,7 +131,7 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
@@ -147,7 +148,7 @@ jobs:
           xcrun -sdk macosx metal -c Sources/MpvfxMetal/Shaders/MpvfxColor.metal -o "$RUNNER_TEMP/MpvfxColor.air"
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Build
-        run: swift build --build-tests
+        run: swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           NSUnbufferedIO: "YES"
@@ -164,13 +165,13 @@ jobs:
           grep -E "Test run with [0-9]+ tests" "$RUNNER_TEMP/test.log" | tail -1 || true
       - name: Record the pass for these inputs
         run: cp "$RUNNER_TEMP/test.log" .test-pass
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-${{ matrix.shard }}-${{ matrix.key }}
       - name: Save caches
         if: always() && matrix.shard == 'rest'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
@@ -183,7 +184,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app
@@ -193,7 +194,7 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
@@ -210,7 +211,7 @@ jobs:
           xcrun -sdk macosx metal -c Sources/MpvfxMetal/Shaders/MpvfxColor.metal -o "$RUNNER_TEMP/MpvfxColor.air"
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Release build
-        run: swift build -c release
+        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Signing certificate (Developer ID, when the optional secrets are set)
         id: cert
         env:
@@ -269,11 +270,11 @@ jobs:
           fi
       - name: Save caches
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: macos

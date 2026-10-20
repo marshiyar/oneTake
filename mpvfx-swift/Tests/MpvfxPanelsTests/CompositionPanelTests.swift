@@ -98,7 +98,7 @@ final class CompositionPanelTests: XCTestCase {
         r.dropdown.pick("square")
         XCTAssertFalse(r.dropdown.isOpen)
         XCTAssertEqual(editor.document.canvas.width, 1080); XCTAssertEqual(editor.document.canvas.height, 1080)
-        r.pointerDown(CanvasPoint(field.midX, field.midY))
+        _ = r.pointerDown(CanvasPoint(field.midX, field.midY))
         XCTAssertEqual(r.dropdown.selected, "square")
     }
 

@@ -275,7 +275,6 @@ public enum PreviewPainter {
     static func draw(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
         guard layer.isVisible else { return }
         let box = toView(layer.box, frame: frame, scale: s)
-        let visible = toView(layer.visibleBox, frame: frame, scale: s)
         let cx = box.x + box.width / 2, cy = box.y + box.height / 2
         let t3 = layer.transform3D
         guard t3.isIdentity else {

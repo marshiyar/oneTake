@@ -1,8 +1,10 @@
 name: mpvfx-ci
 
 # The app on Linux and Windows (a build, package and install + launch job per OS beside its test shards) and on macOS
-# through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main and every night; when
-# every platform is green, one publish job releases all installers together as the latest release.
+# through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main, every night and every
+# push of a v* tag; when every platform is green, one publish job releases all installers together
+# (.github/ci/publish.sh): a run of main as the prerelease nightly-<commit>, a v* tag as the official release of that
+# tag, marked latest. Pull requests and other branches never publish.
 #
 # The media and keyframe engines are not built here: every job downloads the prebuilt libraries pinned in
 # mpvfx-swift/binaries.lock (scripts/fetch-binaries.py checks each SHA-256) from public releases. No repository secret
@@ -19,6 +21,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+    # An official release: the tag's version must equal mpvfx-swift/packaging/VERSION. Path filters do not apply to tag
+    # pushes, so every v* tag runs the full build.
+    tags: ['v*']
     paths-ignore: ['**/*.md', '**/docs/**', '.gitignore']
   schedule:
     - cron: '17 6 * * *'   # nightly, 06:17 UTC: catches runner image and toolchain drift on an unchanged main
@@ -28,8 +33,14 @@ on:
         description: Run every test shard, ignoring passes recorded for unchanged inputs
         type: boolean
         default: false
+      publish:
+        description: Publish the installers when every job passes (codex-apply starts its runs with false)
+        type: boolean
+        default: true
 
 concurrency:
+  # By full ref (refs/heads/main, refs/tags/v0.2.0, refs/pull/N/merge): a newer push cancels an older run of the same
+  # ref only, never a tag build.
   group: mpvfx-ci-${{ github.ref }}
   cancel-in-progress: true
 
@@ -37,8 +48,41 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    # A pull request that changes only documentation (Markdown anywhere, mpvfx-swift/docs/, the licence files) needs no
+    # build or test: every job below is skipped on purpose and ci-ok passes in about a minute. No test or build step
+    # reads those files (checked 2026-10-19). Any other event, or any other file, runs everything.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - name: Changed files
+        id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # Both sides of a rename count: code renamed to a .md name is still a code change.
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
+          n=$(wc -l < "$RUNNER_TEMP/files.txt")
+          other=$(grep -vE '\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$' "$RUNNER_TEMP/files.txt" || true)
+          if [ "$n" -gt 0 ] && [ "$n" -lt 3000 ] && [ -z "$other" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"; echo "documentation only ($n files): build and tests skipped"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"; printf 'code changes:\n%s\n' "$other" | head -20
+          fi
+
   plan:
     # Which Linux and Windows test shards this run needs: those with no pass recorded for their inputs.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -49,7 +93,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Test shard keys
         id: keys
         run: |
@@ -58,35 +102,35 @@ jobs:
           echo "windows=$(python3 -I -B ../.github/ci/test-shards.py --os windows "$RUNNER_TEMP/package.json")" >> "$GITHUB_OUTPUT"
       - name: Pass recorded for linux library?
         id: l0
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: linux-pass-library-${{ fromJSON(steps.keys.outputs.linux)[0].key }}
           lookup-only: true
       - name: Pass recorded for linux audio-presets?
         id: l1
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: linux-pass-audio-presets-${{ fromJSON(steps.keys.outputs.linux)[1].key }}
           lookup-only: true
       - name: Pass recorded for linux audio-live?
         id: l2
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: linux-pass-audio-live-${{ fromJSON(steps.keys.outputs.linux)[2].key }}
           lookup-only: true
       - name: Pass recorded for linux rest?
         id: l3
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: linux-pass-rest-${{ fromJSON(steps.keys.outputs.linux)[3].key }}
           lookup-only: true
       - name: Pass recorded for windows library?
         id: w0
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: windows-pass-library-${{ fromJSON(steps.keys.outputs.windows)[0].key }}
@@ -94,7 +138,7 @@ jobs:
           enableCrossOsArchive: true
       - name: Pass recorded for windows audio-presets?
         id: w1
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: windows-pass-audio-presets-${{ fromJSON(steps.keys.outputs.windows)[1].key }}
@@ -102,7 +146,7 @@ jobs:
           enableCrossOsArchive: true
       - name: Pass recorded for windows audio-live?
         id: w2
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: windows-pass-audio-live-${{ fromJSON(steps.keys.outputs.windows)[2].key }}
@@ -110,7 +154,7 @@ jobs:
           enableCrossOsArchive: true
       - name: Pass recorded for windows rest?
         id: w3
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: windows-pass-rest-${{ fromJSON(steps.keys.outputs.windows)[3].key }}
@@ -143,6 +187,8 @@ jobs:
 
   checks:
     # Fast checks that need no Swift build: the fetch script's tests and copyright blocks.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     defaults:
@@ -150,7 +196,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: fetch-binaries tests
         run: python3 -I -B scripts/test_fetch_binaries.py
       - name: Copyright blocks
@@ -159,6 +205,8 @@ jobs:
 
   linux:
     # Build, package and install smoke; the tests run in linux-test beside it.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
     timeout-minutes: 30
@@ -174,13 +222,13 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
             git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
             xvfb xauth dbus-x11 python3 file patchelf libvulkan-dev mesa-vulkan-drivers glslang-tools spirv-tools
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Generated GPU shaders are current
         run: python3 -I scripts/gpu/gen-compute-shaders.py --check
       - name: Restore caches
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: linux-release-${{ github.ref_name }}-${{ github.sha }}
@@ -190,7 +238,7 @@ jobs:
       - name: Toolchain version
         run: swift --version
       - name: Release build (static Swift runtime)
-        run: swift build -c release --static-swift-stdlib
+        run: swift build -c release --static-swift-stdlib -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Package
         run: |
           short=${GITHUB_SHA::7}; name=mpvfx-linux-x64-$short; out="$GITHUB_WORKSPACE/dist/$name"
@@ -243,11 +291,11 @@ jobs:
           test ! -e /opt/mpvfx/MpVFX && test ! -e /usr/lib/mpvfx
       - name: Save caches
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: linux-release-${{ github.ref_name }}-${{ github.sha }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: linux
@@ -288,11 +336,11 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
             git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
             xvfb xauth dbus-x11 python3 file libvulkan-dev mesa-vulkan-drivers
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: linux-debug-${{ github.ref_name }}-${{ github.sha }}
@@ -300,7 +348,7 @@ jobs:
             linux-debug-${{ github.ref_name }}-
             linux-debug-
       - name: Build
-        run: swift --version && swift build --build-tests
+        run: swift --version && swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           FILTER: ${{ matrix.filter }}
@@ -312,18 +360,20 @@ jobs:
         run: grep -E "^shard:|Test Suite 'All tests' (passed|failed)" -A1 "$RUNNER_TEMP/test.log" | grep -E "^shard:|Executed" || true
       - name: Record the pass for these inputs
         run: cp "$RUNNER_TEMP/test.log" .test-pass
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: linux-pass-${{ matrix.shard }}-${{ matrix.key }}
       - name: Save caches
         if: always() && matrix.shard == 'rest'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: linux-debug-${{ github.ref_name }}-${{ github.sha }}
 
   windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-2022
     timeout-minutes: 30
     defaults:
@@ -331,7 +381,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
         with:
           swift-version: swift-6.3.3-release
@@ -339,7 +389,7 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python -I -B scripts/fetch-binaries.py
       - name: Restore caches
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: windows-release-${{ github.sha }}
@@ -348,6 +398,8 @@ jobs:
         run: swift --version
       - name: Release build, linked without debug data (strip-check.yml verifies the shipped exe)
         run: swift build -c release -Xlinker -debug:none
+      - name: Release build
+        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Package (portable zip)
         shell: pwsh
         run: |
@@ -412,11 +464,11 @@ jobs:
           Write-Host 'installed, launched and uninstalled'
       - name: Save caches
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: windows-release-${{ github.sha }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: windows
@@ -441,7 +493,7 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
         with:
           swift-version: swift-6.3.3-release
@@ -451,13 +503,13 @@ jobs:
           python -I -B scripts/fetch-binaries.py
           for d in .binaries/*/bin; do cygpath -w "$PWD/$d" >> "$GITHUB_PATH"; done
       - name: Restore caches
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: windows-debug-${{ github.sha }}
           restore-keys: windows-debug-
       - name: Build
-        run: swift --version && swift build --build-tests
+        run: swift --version && swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           FILTER: ${{ matrix.filter }}
@@ -468,19 +520,21 @@ jobs:
         run: grep -E "^shard:|Test Suite 'All tests' (passed|failed)" -A1 "$RUNNER_TEMP/test.log" | grep -E "^shard:|Executed" || true
       - name: Record the pass for these inputs
         run: cp "$RUNNER_TEMP/test.log" .test-pass
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.test-pass
           key: windows-pass-${{ matrix.shard }}-${{ matrix.key }}
           enableCrossOsArchive: true   # looked up by the plan job on Linux
       - name: Save caches
         if: always() && matrix.shard == 'rest'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: mpvfx-swift/.build
           key: windows-debug-${{ github.sha }}
 
   macos:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/mpvfx-macos.yml
     secrets: inherit   # only the optional Apple signing secrets; unset, the disk image is ad-hoc signed
     with:
@@ -488,7 +542,7 @@ jobs:
 
   ci-ok:
     # The one required check: every job passed or was skipped on purpose.
-    needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
+    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -504,8 +558,11 @@ jobs:
 
   publish:
     needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
+    # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
     if: >-
-      always() && github.event_name != 'pull_request' && needs.plan.result == 'success' && needs.checks.result == 'success'
+      always() && github.event_name != 'pull_request'
+      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && needs.plan.result == 'success' && needs.checks.result == 'success'
       && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
       && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
       && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
@@ -514,15 +571,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          sparse-checkout: .github
+          # publish.sh, VERSION (checked against a v* tag) and the root files (CHANGELOG.md, when there is one).
+          sparse-checkout: |
+            .github
+            mpvfx-swift/packaging
       - uses: actions/download-artifact@v4
         with:
           path: dist
           pattern: '{linux,windows,macos}'   # the installers; the symbols-* artifacts stay in CI
           merge-multiple: true
-      - name: Prerelease
+      - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

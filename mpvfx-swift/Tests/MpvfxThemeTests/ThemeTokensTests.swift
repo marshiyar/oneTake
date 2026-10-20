@@ -19,8 +19,8 @@ final class ThemeTokensTests: XCTestCase {
     override func tearDown() { Theme.setMode(.dark) }
 
     func testAppearanceSettingResolves() {
-        XCTAssertEqual(ThemeAppearance(preference: nil), .system)            // default
-        XCTAssertEqual(ThemeAppearance(preference: "bogus"), .system)
+        XCTAssertEqual(ThemeAppearance(preference: nil), .dark)              // default: the dark editor
+        XCTAssertEqual(ThemeAppearance(preference: "bogus"), .dark)
         XCTAssertEqual(ThemeAppearance(preference: "light"), .light)
         XCTAssertEqual(ThemeAppearance.allCases.map(\.label), ["System", "Light", "Dark"])
         XCTAssertEqual(ThemeAppearance.system.resolve(systemPrefersDark: true), .dark)
@@ -31,8 +31,8 @@ final class ThemeTokensTests: XCTestCase {
 
     func testModeSwitchNotifiesAndTokensFollow() {
         XCTAssertEqual(Theme.mode, .dark)
-        XCTAssertEqual(ThemeTokens.timelineSurface, ThemeColor(0x0A0A0B))   // dark = the recorded palette
-        XCTAssertEqual(ThemeTokens.mint, ThemeColor(0x3CE6AC))
+        XCTAssertEqual(ThemeTokens.timelineSurface, ThemeColor(0x1D1D1D))   // dark = docs/DESIGN.md
+        XCTAssertEqual(ThemeTokens.mint, ThemeColor(0x5A98F0))
         var seen: [ThemeMode] = []
         let id = Theme.addObserver { seen.append($0) }
         defer { Theme.removeObserver(id) }
@@ -78,7 +78,7 @@ final class ThemeTokensTests: XCTestCase {
         }
         XCTAssertGreaterThan(T.whitePair.dark.relativeLuminance, 0.99); XCTAssertLessThan(T.whitePair.light.relativeLuminance, 0.01)
         for n in [100, 200, 300, 600, 700, 800, 900] { XCTAssertEqual(T.neutralPairs[n]!.light, T.neutralPairs[1000 - n]!.dark, "neutral\(n)") }
-        XCTAssertGreaterThan(T.mintPair.light.g, T.mintPair.light.r)   // still green
+        XCTAssertGreaterThan(T.mintPair.light.b, T.mintPair.light.r)   // still the accent blue
         XCTAssertGreaterThan(T.studioAccentPair.light.b, T.studioAccentPair.light.r)   // still blue
     }
 

@@ -21,6 +21,33 @@ import MpvfxAudioGraph
 /// uses (`DocumentAudioGraph.project` + `AudioGraphRenderer.renderAll`, the path `renderExportAudioMix` takes).
 /// Every FX type, on the clip rack (the clip's chain) and on the group bus rack (the audio group's chain).
 final class AudioFxLiveEditTests: XCTestCase {
+    private final class WatchdogState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var beat = DispatchTime.now().uptimeNanoseconds
+        private var maxGap: UInt64 = 0
+        private var done = false
+        private var worst = ""
+        private var phase = "start"
+
+        func sample() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            if done { return false }
+            let gap = DispatchTime.now().uptimeNanoseconds - beat
+            if gap > maxGap { maxGap = gap; worst = phase }
+            return true
+        }
+
+        func heartbeat(_ nextPhase: String) {
+            lock.lock(); beat = DispatchTime.now().uptimeNanoseconds; phase = nextPhase; lock.unlock()
+        }
+
+        func finish() -> (gap: UInt64, phase: String) {
+            lock.lock(); defer { lock.unlock() }
+            done = true
+            return (maxGap, worst)
+        }
+    }
+
     static let seconds = 1.0
     static let rate = 48000
 
@@ -225,21 +252,15 @@ final class AudioFxLiveEditTests: XCTestCase {
         let idleMedianMs = Double(laps[laps.count / 2]) / 1e6, idleMaxMs = Double(laps.last!) / 1e6
         let gapLimitMs = max(250, idleMedianMs * 40, idleMaxMs * 4)
 
-        let lock = NSLock()
-        var beat = DispatchTime.now().uptimeNanoseconds, maxGap: UInt64 = 0, done = false, worst = ""
-        var phase = "start"
+        let watchdogState = WatchdogState()
         let watchdog = Thread {
             while true {
                 usleep(2000)
-                lock.lock()
-                if done { lock.unlock(); return }
-                let gap = DispatchTime.now().uptimeNanoseconds - beat
-                if gap > maxGap { maxGap = gap; worst = phase }
-                lock.unlock()
+                if !watchdogState.sample() { return }
             }
         }
         watchdog.start()
-        func heartbeat(_ p: String) { lock.lock(); beat = DispatchTime.now().uptimeNanoseconds; phase = p; lock.unlock() }
+        func heartbeat(_ p: String) { watchdogState.heartbeat(p) }
         heartbeat("start")
         try playback.play(from: 0)
         heartbeat("play")
@@ -314,7 +335,8 @@ final class AudioFxLiveEditTests: XCTestCase {
         heartbeat("landed")
         try playback.play(from: 0); heartbeat("final replay")
         for _ in 0..<30 { usleep(10_000); heartbeat("final play") }
-        lock.lock(); done = true; let gapMs = Double(maxGap) / 1e6, worstPhase = worst; lock.unlock()
+        let watchdogResult = watchdogState.finish()
+        let gapMs = Double(watchdogResult.gap) / 1e6, worstPhase = watchdogResult.phase
         let written = output.framesWritten - framesBefore
         print(String(format: "AUDIOFX-STRESS steps=%d transport=%d editSecs=%.2f waits=%d maxMainGapMs=%.1f(%@) gapLimitMs=%.0f idleMedianMs=%.2f idleMaxMs=%.1f maxSubmitMs=%.3f maxTransportMs=%.3f builds=%d framesWritten=%d lastReplace=%@",
                      steps, replays, editSeconds, waitsDuringStress, gapMs, worstPhase, gapLimitMs, idleMedianMs, idleMaxMs, Double(maxSubmit) / 1e6, Double(maxTransport) / 1e6, updater.builds, written,
