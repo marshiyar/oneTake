@@ -51,11 +51,11 @@ public struct RenderSettingsModel: Equatable, Codable {
 
 public enum RenderAction: Equatable { case start(RenderSettingsModel), cancel(String), delete(String), reveal(String), retry(String), hideFinished, publish(String) }
 
-/// The right panel: header (hide · Design · Renders (n)), the Design tab (the flat inspector)
-/// and the Renders tab. Collapsed: the 40px rail with the show button.
+/// The right panel: the tab strip (Design · Renders (n), then hide and the panel menu), the Design tab (the flat
+/// inspector) and the Renders tab. Collapsed: the 40px rail with the show button.
 public final class RightPanel {
     public enum Hit: Equatable {
-        case hide, show, design, renders, showRenders
+        case hide, show, design, renders, showRenders, panelMenu
         case format, resolution, fps, quality, customW, customH, export, formatInfo
         case job(String), cancel(String), delete(String), reveal(String), retry(String), hideFinished, dismissError
         case confirmDelete(String), keep(String), thumb(String), listScrollbar
@@ -117,38 +117,48 @@ public final class RightPanel {
     public var isRendering: Bool { jobs.contains { $0.status == .rendering || $0.status == .queued } }
     public var rendersLabel: String { jobs.isEmpty ? "Renders" : "Renders (\(jobs.count))" }
 
+    /// What the status line says for the control under the pointer.
+    public var hint: String? {
+        switch hovered {
+        case .hide?: "Hide the panel"
+        case .show?: "Show the panel"
+        case .panelMenu?: "Panel menu"
+        case .design?: "Properties of the selection, or of the composition"
+        case .renders?, .showRenders?: "Export settings and past renders"
+        case .export?: "Render the composition with these settings"
+        default: nil
+        }
+    }
+
+    /// The dropdown key of the panel menu.
+    static let menuKey = "panel-menu"
+
     // MARK: Draw
 
     public func draw(_ c: CanvasContext, size: CanvasSize) {
         self.size = size
         hits.reset()
         let r = CanvasRect(x: 0, y: 0, width: size.width, height: size.height)
-        if layout.effectiveRightCollapsed {   // StudioRightSidebarRail
-            PanelDraw.card(c, r, border: PanelTheme.cardBorderSoft)
-            let b = CanvasRect(x: (r.width - 32) / 2, y: 4, width: 32, height: 32)
-            PanelDraw.iconButton(c, b, icon: .sidebarHideLeft, hovered: hovered == .show)
-            hits.add(b, .show)
+        if layout.effectiveRightCollapsed {   // the rail
+            hits.add(PanelTabStrip.drawRail(c, r, icon: .sidebarHideLeft, hovered: hovered == .show), .show)
             return
         }
-        PanelDraw.card(c, r, border: PanelTheme.neutral800)
+        c.fillRect(r, PanelTheme.panelBg)
         c.withState {
-            c.clip(.roundedRect(r.insetBy(1), radius: PanelTheme.radiusLg - 1))
-            // StudioRightPanelTabs: border-b px-3 py-2 gap-1.
-            let hy = 1 + 8.0
-            let hide = CanvasRect(x: 1 + 12, y: hy, width: 32, height: 32)
-            PanelDraw.iconButton(c, hide, icon: .sidebarShowLeft, hovered: hovered == .hide)
+            c.clip(r)
+            let strip = CanvasRect(x: 0, y: 0, width: r.width, height: PanelTabStrip.height)
+            PanelTabStrip.drawBackground(c, strip)
+            let tabs: [(RightPanelTab, String, Hit)] = [(.design, "Design", .design), (.renders, rendersLabel, .renders)]
+            for (rect, (tab, label, hit)) in zip(PanelTabStrip.tabRects(c, strip, labels: tabs.map(\.1)), tabs) {
+                PanelTabStrip.tab(c, rect, label: label, active: layout.rightPanelTab == tab, hovered: hovered == hit)
+                hits.add(rect, hit)
+            }
+            let hide = PanelTabStrip.buttonRect(strip, index: 1), menu = PanelTabStrip.buttonRect(strip, index: 0)
+            PanelTabStrip.iconButton(c, hide, icon: .sidebarShowLeft, hovered: hovered == .hide)
             hits.add(hide, .hide)
-            var x = hide.maxX + 4
-            let design = CanvasRect(x: x, y: hy, width: PanelDraw.tabButtonWidth(c, "Design"), height: 32)
-            PanelDraw.tabButton(c, design, label: "Design", active: layout.rightPanelTab == .design, hovered: hovered == .design)
-            hits.add(design, .design)
-            x = design.maxX + 4
-            let rl = rendersLabel
-            let renders = CanvasRect(x: x, y: hy, width: PanelDraw.tabButtonWidth(c, rl), height: 32)
-            PanelDraw.tabButton(c, renders, label: rl, active: layout.rightPanelTab == .renders, hovered: hovered == .renders)
-            hits.add(renders, .renders)
-            PanelDraw.hline(c, x0: 1, x1: r.maxX - 1, y: hy + 32 + 8, PanelTheme.neutral800)
-            contentRect = CanvasRect(x: 1, y: hy + 41, width: r.width - 2, height: max(0, r.height - hy - 42))
+            PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == Self.menuKey)
+            hits.add(menu, .panelMenu)
+            contentRect = CanvasRect(x: 0, y: strip.maxY, width: r.width, height: max(0, r.height - strip.maxY))
             if layout.rightPanelTab == .design {
                 inspector.draw(c, in: contentRect)
             } else {
@@ -226,7 +236,7 @@ public final class RightPanel {
     /// The Renders tab: the settings block (`px-3 py-3 border-b`, FormatExportButton `flex-col gap-3`), the action
     /// error strip, then the job list (`flex-1 overflow-y-auto`) with its "N renders · Hide finished" header.
     func drawRenders(_ c: CanvasContext, _ r: CanvasRect) {
-        c.fillRect(r, PanelTheme.neutral950)
+        c.fillRect(r, PanelTheme.panelBg)
         var y = r.y + 12
         let x = r.x + 12, w = r.width - 24
         let gap = 8.0, colW = (w - gap) / 2
@@ -528,6 +538,7 @@ public final class RightPanel {
         switch hit {
         case .hide: layout.setRightCollapsed(true)
         case .show: layout.setRightCollapsed(false)
+        case .panelMenu: openPanelMenu()
         case .design: layout.setRightTab(.design)
         case .renders, .showRenders: layout.setRightTab(.renders)
         case .format: open("format", Self.formats, settings.format) { [weak self] v in self?.settings.format = v }
@@ -555,6 +566,19 @@ public final class RightPanel {
         }
         onChange?()
         return true
+    }
+
+    /// The panel menu: hide the finished renders (when there are any) and hide the panel.
+    func openPanelMenu() {
+        guard let a = hits.rect(where: { $0 == .panelMenu }) else { return }
+        var options: [PanelDropdown.Option] = []
+        if jobs.contains(where: { $0.status != .rendering && $0.status != .queued }) { options.append(.init(value: "hideFinished", label: "Hide finished renders")) }
+        options.append(.init(value: "hide", label: "Hide panel"))
+        dropdown.open(key: Self.menuKey, options: options, selected: nil, anchor: a, bounds: CanvasRect(x: 0, y: 0, width: size.width, height: size.height)) { [weak self] v in
+            guard let self else { return }
+            if v == "hide" { self.layout.setRightCollapsed(true) } else { self.onRender?(.hideFinished) }
+            self.onChange?()
+        }
     }
 
     public func pointerMove(_ p: CanvasPoint) -> Bool {

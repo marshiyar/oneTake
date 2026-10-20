@@ -19,11 +19,11 @@ import MpvfxCanvas
 public enum PanelFit {
     public static let minPreviewWidth = 360.0, minPreviewHeight = 200.0
     public static let minLeft = 200.0, minRight = 280.0
-    /// Rail footprint: the w-10 box plus its 2px margin.
-    public static let railWidth = 42.0
+    /// Rail footprint: the w-10 rail plus its 1px seam.
+    public static let railWidth = 41.0
     public static let minTimelineHeight = 100.0
-    /// The two 3px seams between the three top-row columns.
-    public static let seamsWidth = 6.0
+    /// The two 1px seams between the three top-row columns.
+    public static let seamsWidth = 2.0
     public static let maxRatio = 0.4
     public static let railLeftBelow = 860.0, railRightBelow = 700.0
 
@@ -214,29 +214,24 @@ public struct ShellRegions: Equatable, Sendable {
     public static func compute(size: CanvasSize, layout: PanelLayoutState) -> ShellRegions {
         layout.viewportWidth = size.width
         let f = layout.fitted
-        let h = size.height
-        var x = 0.0
+        let h = size.height, seam = PanelTheme.seamWidth
         let leftRail = layout.effectiveLeftCollapsed
         let rightRail = layout.effectiveRightCollapsed
         let lw = leftRail ? PanelTheme.railBox : f.left
-        let left = CanvasRect(x: x, y: 0, width: lw, height: h)
-        x += lw + (leftRail ? PanelTheme.railMargin : 0)
-        var leftSeam: CanvasRect?
-        if !leftRail { leftSeam = CanvasRect(x: x, y: 0, width: PanelTheme.seamWidth, height: h); x += PanelTheme.seamWidth }
         let rw = rightRail ? PanelTheme.railBox : f.right
-        let rightBlock = rw + (rightRail ? PanelTheme.railMargin : PanelTheme.seamWidth)
-        let previewW = max(0, size.width - x - rightBlock)
-        let preview = CanvasRect(x: x, y: 0, width: previewW, height: h)
-        x += previewW
-        var rightSeam: CanvasRect?
-        if !rightRail { rightSeam = CanvasRect(x: x, y: 0, width: PanelTheme.seamWidth, height: h); x += PanelTheme.seamWidth }
-        else { x += PanelTheme.railMargin }
-        let right = CanvasRect(x: x, y: 0, width: max(0, size.width - x), height: h)
+        let left = CanvasRect(x: 0, y: 0, width: lw, height: h)
+        let preview = CanvasRect(x: lw + seam, y: 0, width: max(0, size.width - lw - rw - 2 * seam), height: h)
+        let right = CanvasRect(x: preview.maxX + seam, y: 0, width: max(0, size.width - preview.maxX - seam), height: h)
+        // A rail's seam is drawn like any other but does not resize, so only an open panel's seam is a handle.
+        let leftSeam = leftRail ? nil : CanvasRect(x: left.maxX, y: 0, width: seam, height: h)
+        let rightSeam = rightRail ? nil : CanvasRect(x: preview.maxX, y: 0, width: seam, height: h)
         return ShellRegions(left: left, leftSeam: leftSeam, preview: preview, rightSeam: rightSeam, right: right, leftRail: leftRail, rightRail: rightRail)
     }
 
-    /// Seam pointer zones: left reaches 2px into the sidebar card and 8px into the preview gutter; right is
-    /// mirrored (8px into the preview gutter, 2px into the card).
-    public var leftSeamHit: CanvasRect? { leftSeam.map { CanvasRect(x: $0.x - 2, y: $0.y, width: PanelTheme.seamHitWidth, height: $0.height) } }
-    public var rightSeamHit: CanvasRect? { rightSeam.map { CanvasRect(x: $0.x - 8, y: $0.y, width: PanelTheme.seamHitWidth, height: $0.height) } }
+    /// Seam pointer zones, centred on the seam.
+    public var leftSeamHit: CanvasRect? { leftSeam.map(Self.hitZone) }
+    public var rightSeamHit: CanvasRect? { rightSeam.map(Self.hitZone) }
+    static func hitZone(_ seam: CanvasRect) -> CanvasRect {
+        CanvasRect(x: seam.x - (PanelTheme.seamHitWidth - seam.width) / 2, y: seam.y, width: PanelTheme.seamHitWidth, height: seam.height)
+    }
 }

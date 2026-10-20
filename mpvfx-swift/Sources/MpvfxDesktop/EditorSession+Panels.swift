@@ -551,6 +551,8 @@ extension EditorSession {
         shellInputs += [li, ri]
         router.panes[.left] = ShellPane(input: li) { [weak p] c, size in p?.startIfNeeded(); p?.left.draw(c, size: size) }
         router.panes[.right] = ShellPane(input: ri) { [weak p] c, size in p?.startIfNeeded(); p?.syncBeforePaint(); p?.right.draw(c, size: size) }
+        router.panes[.left]?.hint = { [weak p] in p?.left.hint }
+        router.panes[.right]?.hint = { [weak p] in p?.right.hint }
         let previous = editor.onChange
         editor.onChange = { [weak p] in previous?(); p?.syncItems() }
         p.syncItems()
