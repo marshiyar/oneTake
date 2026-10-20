@@ -186,6 +186,9 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["hidden"] != nil && clip["hidden"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).hidden", "Hidden must be a boolean")
             }
+            if clip["preservesPitch"] != nil && clip["preservesPitch"]?.boolValue == nil {
+                pushIssue(&issues, .invalidClip, "\(clipPath).preservesPitch", "Preserves pitch must be a boolean")
+            }
             if clip["muted"] != nil && clip["muted"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).muted", "Muted must be a boolean")
             }

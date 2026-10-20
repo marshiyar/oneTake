@@ -27,6 +27,21 @@ extension InspectorPanel {
     public static let defaultCubic = CubicBezierControlPoints(x1: 0.33, y1: 0, x2: 0.67, y2: 1)
     public static let cubicYRange: ClosedRange<Double> = -1...2
 
+    /// The keyframe menu's "Edit Easing…": selects the clip, makes `refs` the keys the easing rows edit and opens the
+    /// group holding them, scrolled to its easing rows. False when no key has an easing editor (the panel is unchanged).
+    @discardableResult
+    public func showKeyframeEasing(clipId: String, refs: Set<TimelineKeyframeRef>) -> Bool {
+        let keys = refs.filter { $0.clipId == clipId }
+        guard let group = keys.sorted(by: { ($0.frame, $0.parameterId) < ($1.frame, $1.parameterId) })
+            .lazy.compactMap({ TimelineEditor.keyframeEasingGroup($0.parameterId) }).first else { return false }
+        audioGroupId = nil
+        selection = [clipId]
+        selectedKeyframes = keys
+        openGroupId = group
+        revealEasingRows = true   // also when the group is already open: its easing rows sit at its end
+        return true
+    }
+
     /// Presets in the picker's order; `value` nil is Custom.
     static let easePresets: [(key: String, label: String, value: NativeInterpolation?)] = [
         ("linear", "Linear", .linear),

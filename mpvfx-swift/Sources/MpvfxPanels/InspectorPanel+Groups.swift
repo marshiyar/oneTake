@@ -84,9 +84,34 @@ extension InspectorPanel {
         return InspectorRow.Keyframe(
             state: on ? .onKey : (animated ? .animated : .none),
             toggle: { [weak self] in self?.edited(editor.toggleKeyframe(clipId: s.id, pid, time: t, fallback: fallback)) },
+            stopwatch: { [weak self] in self?.edited(editor.setAnimated(clipId: s.id, [(pid, fallback)], !animated, time: t)) },
             // KeyframeNavigation: a stepper is live only when there is a keyframe that way.
             prev: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: false) : nil).map { v in { [weak self] in self?.onSeek?(v) } },
             next: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: true) : nil).map { v in { [weak self] in self?.onSeek?(v) } })
+    }
+
+    /// Position's controls cover the vec2 track and the scalar x/y tracks (older and recorded projects), which preview
+    /// and export prefer: any of them keyed reads as animated, ‹ › step through all their keys, ◆ on a key removes the
+    /// keys there, and the stopwatch off drops all of them. Starting animation keys the vec2 track.
+    func positionKeyframe(_ editor: TimelineEditor, _ s: Selected, x: Double, y: Double) -> InspectorRow.Keyframe {
+        let pos = TimelineEditor.positionId
+        let base = keyframe(editor, s, pos, fallback: .vec2(Vec2Value(x: x, y: y)))
+        let scalar: [(id: String, fallback: NativeParameterValue)] = [(POSITION_X_PARAMETER_ID, .number(x)), (POSITION_Y_PARAMETER_ID, .number(y))]
+            .filter { editor.isAnimated(clipId: s.id, $0.id) }
+        guard !scalar.isEmpty else { return base }
+        let t = time
+        let keyed = (editor.isAnimated(clipId: s.id, pos) ? [(id: pos, fallback: NativeParameterValue.vec2(Vec2Value(x: x, y: y)))] : []) + scalar
+        let here = keyed.filter { editor.hasKeyframe(clipId: s.id, $0.id, time: t) }
+        let prev = keyed.compactMap { editor.adjacentKeyframeTime(clipId: s.id, $0.id, time: t, forward: false) }.max()
+        let next = keyed.compactMap { editor.adjacentKeyframeTime(clipId: s.id, $0.id, time: t, forward: true) }.min()
+        return InspectorRow.Keyframe(
+            state: here.isEmpty ? .animated : .onKey,
+            toggle: here.isEmpty ? base.toggle : { [weak self] in
+                self?.edited(here.reduce(false) { editor.toggleKeyframe(clipId: s.id, $1.id, time: t, fallback: $1.fallback) || $0 }, label: "Edit transform")
+            },
+            stopwatch: { [weak self] in self?.edited(editor.setAnimated(clipId: s.id, keyed, false, time: t)) },
+            prev: prev.map { v in { [weak self] in self?.onSeek?(v) } },
+            next: next.map { v in { [weak self] in self?.onSeek?(v) } })
     }
 
     func tier(_ editor: TimelineEditor, _ s: Selected, _ pid: String, isDefault: Bool) -> PropertyValueTier {
@@ -120,7 +145,7 @@ extension InspectorPanel {
         else if case .number(let v)? = editor.parameterValue(clipId: s.id, parameterId: TimelineEditor.scaleId, time: t) { scale = v }
         let pos = TimelineEditor.positionId
         let posTier = tier(editor, s, pos, isDefault: x == 0 && y == 0)
-        let posKf = keyframe(editor, s, pos, fallback: .vec2(Vec2Value(x: x, y: y)))
+        let posKf = positionKeyframe(editor, s, x: x, y: y)
         let px = numberRow(key: "x", label: "X", value: x, decimals: 0, suffix: "px", tier: posTier, step: 1,
                            apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(x: $0, y: y)) },
                            reset: { editor.clearStaticParameter(clipId: s.id, pos) }, keyframe: posKf)
@@ -141,6 +166,11 @@ extension InspectorPanel {
                     }
                     return ok
                 }(), label: "Edit transform")
+            },
+            stopwatch: { [weak self] in
+                let on = wk.state == .none && hk.state == .none
+                self?.edited(editor.setAnimated(clipId: s.id, [(TimelineEditor.widthId, .number(w)), (TimelineEditor.heightId, .number(h))],
+                                                on, time: t), label: "Edit transform")
             },
             prev: wk.prev ?? hk.prev, next: wk.next ?? hk.next)
         let pw = numberRow(key: "w", label: "W", value: w, decimals: 0, suffix: "px", tier: sizeTier(TimelineEditor.widthId, w == fit.width), step: 1,
@@ -166,8 +196,7 @@ extension InspectorPanel {
         ]
         rows += transform3DRows(editor, s)
         // Keyframe easing (NativeInterpolationEditor) for the eased channels: the selected keys, else the playhead's.
-        let channels = ([pos, TimelineEditor.widthId, TimelineEditor.heightId, TimelineEditor.rotationId, TimelineEditor.scaleId,
-                        TimelineEditor.opacityId] + NativeTransform3D.parameterIds).filter { editor.isAnimated(clipId: s.id, $0) }
+        let channels = TimelineEditor.transformEasedParameterIds.filter { editor.isAnimated(clipId: s.id, $0) }
         if !channels.isEmpty { rows += easingRows(editor, s, channels: channels) }
         rows += arcMotionRows(editor, s)
         return InspectorGroup(id: "layout", title: "Transform",
@@ -271,6 +300,7 @@ extension InspectorPanel {
                 },
                 reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.volumeId)) },
                 keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol))))))
+            if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
         }
         if s.kind == .video || s.kind == .audio {
             let rate = editor.playbackRate(clipId: s.id)
@@ -279,6 +309,13 @@ extension InspectorPanel {
                 format: { "\(PanelFormat.number($0 / 100))x" }, tier: rate == 1 ? .default : .explicitCustom,
                 commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, (p).rounded() / 100)) },
                 reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }))))
+            // A detached video plays no sound (its linked audio clip does, with its own pitch option), like the clip menu.
+            let detached = s.kind == .video && editor.document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == s.id } }
+            if !detached {
+                let keeps = editor.preservesPitch(clipId: s.id)
+                rows.append(.init(.toggle(.init(key: "keepPitch", label: "Keep audio pitch", on: keeps, tier: keeps ? .default : .explicitCustom,
+                                                set: { [weak self] v in self?.edited(editor.setPreservesPitch(clipId: s.id, v)) }))))
+            }
             let fps = editor.fps
             rows.append(.init(.number(.init(key: "mediaStart", label: "Media start", text: String(format: "%.2fs", s.clip.sourceInFrame / fps),
                                             tier: s.clip.sourceInFrame == 0 ? .default : .explicitCustom, commit: { _ in }, disabled: true))))

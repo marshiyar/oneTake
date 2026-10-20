@@ -20,7 +20,7 @@ import MpvfxTimeline
 /// are summary rows above and below it. Rows edit the open document through TimelineEditor (undoable).
 public final class InspectorPanel {
     public enum Hit: Equatable {
-        case group(String), field(String), scrub(String), keyframe(String), kfPrev(String), kfNext(String), reset(String)
+        case group(String), field(String), scrub(String), keyframe(String), kfPrev(String), kfNext(String), stopwatch(String), reset(String)
         case slider(String), toggle(String), segment(String, String), button(String), fxToggle(String), fxRemove(String)
         case headerClear, headerReset, body, groupReset(String), scrollbar
         case custom(String, Int)
@@ -61,6 +61,8 @@ public final class InspectorPanel {
     /// Set when a group opens: the next layout scrolls the body so the open group's header sits at its top
     /// (`toggleOpen` → scroll the open group's header to the top), clamped to the end.
     var scrollOpenGroupToStart = false
+    /// Set by showKeyframeEasing: the next layout scrolls the open group's "Keyframe easing" rows into view.
+    var revealEasingRows = false
     var cropActive: String?
     var cropBefore: NativeClipCrop?
     var cropLinkAll = false
@@ -212,6 +214,16 @@ public final class InspectorPanel {
         if scrollOpenGroupToStart, let i = groups.firstIndex(where: { $0.id == openGroupId }) {
             bodyScroll = Double(i) * headerRowH
             scrollOpenGroupToStart = false
+        }
+        if revealEasingRows, let i = groups.firstIndex(where: { $0.id == openGroupId }) {
+            revealEasingRows = false
+            let g = groups[i]
+            if let r = g.rows.firstIndex(where: { if case .heading("Keyframe easing", _) = $0.kind { return true }; return false }) {
+                // Content y of the heading: the headers above, the open header, the body's 12 top padding, the rows above.
+                let top = Double(i + 1) * headerRowH + 12 + g.rows[..<r].reduce(0) { $0 + $1.height + g.spacing }
+                let bottom = top + g.rows[r...].reduce(0) { $0 + $1.height + g.spacing }
+                if top < bodyScroll || bottom > bodyScroll + body.height { bodyScroll = min(bodyMaxScroll, max(0, min(top - 8, bottom - body.height + 12))) }
+            }
         }
         bodyScroller.clamp(max: bodyMaxScroll)
         bodyRect = body; bodyContentHeight = total
@@ -422,7 +434,7 @@ public final class InspectorPanel {
     /// fills the field.
     func drawNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, compact: Bool) {
         let isHover = hovered == .field(n.key) || hovered == .scrub(n.key) || hovered == .reset(n.key)
-            || hovered == .keyframe(n.key) || hovered == .kfPrev(n.key) || hovered == .kfNext(n.key)
+            || hovered == .keyframe(n.key) || hovered == .kfPrev(n.key) || hovered == .kfNext(n.key) || hovered == .stopwatch(n.key)
         let font = PanelTheme.mono(11)
         if compact { c.fillRoundedRect(r.snapped, radius: PanelTheme.radius, PanelTheme.panelBg) }
         let pad = compact ? 6.0 : 0.0
@@ -459,7 +471,9 @@ public final class InspectorPanel {
         if !n.disabled { hits.add(CanvasRect(x: field.x, y: r.y, width: field.width, height: r.height), .field(n.key)) }
     }
 
-    /// Keyframe navigation (`flex h-5 items-center gap-0.5`, 41 wide): 12×20 stepper with the 6×10 arrow
+    /// Keyframe controls on the property's row (docs/DESIGN.md Rollout 5): the 12px stopwatch (Phosphor Timer, the
+    /// accent while the property is animated, else #a3a3a3 at .6; hover full opacity) 4px before the keyframe
+    /// navigation (`flex h-5 items-center gap-0.5`, 41 wide): 12×20 stepper with the 6×10 arrow
     /// (`M5 1L1 5L5 9`, #a3a3a3, 1.4 round, opacity .25 when there is nowhere to go), the 9px KeyframeDiamond
     /// (`p-0.5`; ghost .25 / inactive .6 #a3a3a3 outline, active #3CE6AC filled; hover full opacity), the next
     /// stepper. Returns the gutter's left edge.
@@ -468,6 +482,11 @@ public final class InspectorPanel {
         let bg = PanelTheme.panelBgInset
         let x0 = right - 41
         let arrow = PanelTheme.neutral400
+        let watch = CanvasRect(x: x0 - 16, y: midY - 6, width: 12, height: 12)
+        let watchColor = kf.state == .none ? arrow.over(bg, opacity: hovered == .stopwatch(key) ? 1 : 0.6)
+            : (hovered == .stopwatch(key) ? PanelTheme.text0 : PanelTheme.accent)
+        PanelIcon.phosphor(.timer).draw(c, in: watch, color: watchColor)
+        hits.add(watch.insetBy(-2), .stopwatch(key))
         let prevBtn = CanvasRect(x: x0, y: midY - 10, width: 12, height: 20)
         let hasPrev = kf.prev != nil, hasNext = kf.next != nil
         c.strokeSVG(["M5 1L1 5L5 9"], viewBox: 10, in: CanvasRect(x: prevBtn.x + 3, y: midY - 5, width: 10, height: 10),
@@ -487,7 +506,7 @@ public final class InspectorPanel {
         c.strokeSVG(["M1 1L5 5L1 9"], viewBox: 10, in: CanvasRect(x: nextBtn.x + 3, y: midY - 5, width: 10, height: 10),
                     arrow.over(bg, opacity: hasNext ? 1 : 0.25), width: 1.4)
         if hasNext { hits.add(nextBtn.insetBy(-2), .kfNext(key)) }
-        return x0
+        return watch.x
     }
 
     /// KeyframeDiamond's `<rect x=5 y=0.7 width=6 height=6 rx=1 transform="rotate(45 5 0.7)">` in a 10-unit
@@ -696,6 +715,7 @@ public final class InspectorPanel {
         case .keyframe(let k): if let st = slider(k)?.settings { st.toggle() } else { keyframe(k)?.toggle() }
         case .kfPrev(let k): keyframe(k)?.prev?()
         case .kfNext(let k): keyframe(k)?.next?()
+        case .stopwatch(let k): keyframe(k)?.stopwatch()
         case .reset(let k): reset(k)?()
         case .slider(let k):
             if let s = slider(k), let tr = hits.rect(where: { $0 == .slider(k) }) {
@@ -835,4 +855,3 @@ extension InspectorPanel {
         else if r.maxY > bodyRect.maxY { bodyScroll = min(bodyMaxScroll, bodyScroll + (r.maxY - bodyRect.maxY) + 8) }
     }
 }
-

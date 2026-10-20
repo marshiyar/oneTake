@@ -584,4 +584,3 @@ public final class LibraryService: @unchecked Sendable {
         state.withLock { libraries.removeAll() }
     }
 }
-
