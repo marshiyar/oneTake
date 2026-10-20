@@ -80,34 +80,140 @@ public extension TimelineEditor {
         return withHistory("Close all gaps") { shift(TimelineGaps.compaction(t.clips)) }
     }
 
-    /// Clipboard payload: the clips (with their track) as they were when copied.
-    struct ClipboardItem: Equatable { public var trackId: String; public var clip: NativeProjectClip }
-
-    func copyClips(_ ids: Set<String>) -> [ClipboardItem] {
-        document.sequence.tracks.flatMap { t in t.clips.filter { ids.contains($0.id) }.map { ClipboardItem(trackId: t.id, clip: $0) } }
+    /// Copies the clips `ids` (effects, keyframes, audio FX and all) with the assets they play. Nil when none exist.
+    func copyClips(_ ids: Set<String>) -> TimelineClipboard? {
+        let order = displayTrackIds
+        var items: [TimelineClipboard.Item] = []
+        for t in document.sequence.tracks {
+            for c in t.clips where ids.contains(c.id) {
+                items.append(.init(trackId: t.id, trackKind: t.kind, trackRow: order.firstIndex(of: t.id) ?? 0, clip: c))
+            }
+        }
+        if items.isEmpty { return nil }
+        let used = Set(items.map(\.clip.assetId))
+        let assets = document.assets.filter { used.contains($0.id) }.map { a -> NativeProjectAsset in
+            var a = a; a.source = a.source.map { TimelineClipboard.absolute($0, in: projectDirectory) }; return a
+        }
+        return TimelineClipboard(projectId: document.id, frameRate: document.frameRate, items: items, assets: assets)
     }
 
-    /// Paste at `time` (earliest copied clip lands there, relative offsets kept) on each clip's source track.
-    /// Fresh ids; one undo step (restoreDocument). Returns the new clip ids.
+    /// Pastes at `time` (the earliest copied clip lands there, relative offsets kept); one undo step ("Paste").
+    ///
+    /// Tracks: with `onto` nil and the clips copied from this project, each clip goes back to the track it came from.
+    /// Otherwise the topmost copied track lands on `onto` (nil: the first track of its kind) and the others keep their
+    /// row distance from it; a row of the wrong kind or past the last track moves the clips to the next track of their
+    /// kind below it, and a new track at the bottom when there is none. A locked destination refuses the paste.
+    ///
+    /// Media: an asset of this project playing the same file is reused, otherwise the copied asset is added (its
+    /// source as an absolute path). Clips get fresh ids and no preview binding; an audio group this project lacks is
+    /// dropped, and a detached-audio link follows its video only when the video is pasted with it. Clips copied at
+    /// another frame rate are refused. Returns the new clip ids (empty on refusal, with `lastFailure` set).
     @discardableResult
-    func paste(_ items: [ClipboardItem], at time: Double) -> [String] {
-        guard let first = items.map(\.clip.startFrame).min() else { return [] }
-        var doc = document
-        let base = (time * fps).rounded()
-        var newIds: [String] = []
-        let existing = Set(doc.sequence.tracks.flatMap(\.clips).map(\.id))
-        for item in items {
-            guard let ti = doc.sequence.tracks.firstIndex(where: { $0.id == item.trackId }), doc.sequence.tracks[ti].locked != true else { continue }
-            var c = item.clip
-            var n = 1; var id = "\(c.id)-copy"
-            while existing.contains(id) || newIds.contains(id) { n += 1; id = "\(item.clip.id)-copy\(n)" }
-            c.id = id
-            c.startFrame = base + (item.clip.startFrame - first)
-            doc.sequence.tracks[ti].clips.append(c)
-            doc.sequence.tracks[ti].clips.sort { $0.startFrame < $1.startFrame }
-            newIds.append(id)
+    func paste(_ board: TimelineClipboard, at time: Double, onto anchor: String? = nil) -> [String] {
+        func refuse(_ message: String) -> [String] { lastFailure = .init(code: .documentMismatch, message: message); return [] }
+        guard let first = board.items.map(\.clip.startFrame).min() else { return [] }
+        guard board.frameRate == document.frameRate else {
+            return refuse("These clips were copied from a project at another frame rate and cannot be pasted here")
         }
-        guard !newIds.isEmpty, withHistory("Paste", { apply(.restoreDocument(doc)) }) else { return [] }
-        return newIds
+        var d = document
+        var order = displayTrackIds
+        let sameProject = board.projectId == d.id
+
+        // Assets: the copied id when it is this project's asset, else one playing the same file, else a new asset.
+        var assetIds: [String: String] = [:]
+        for a in board.assets {
+            if sameProject, d.assets.contains(where: { $0.id == a.id }) { assetIds[a.id] = a.id; continue }
+            if let src = a.source, let same = d.assets.first(where: { $0.kind == a.kind && $0.source.map { TimelineClipboard.absolute($0, in: projectDirectory) } == src }) {
+                assetIds[a.id] = same.id; continue
+            }
+            var added = a
+            added.id = TimelineClipboard.freshId(a.id, taken: Set(d.assets.map(\.id)))
+            d.assets.append(added)
+            assetIds[a.id] = added.id
+        }
+
+        // Tracks: source track id -> destination track id.
+        let sourceRows = Dictionary(board.items.map { ($0.trackId, ($0.trackRow, $0.trackKind)) }, uniquingKeysWith: { a, _ in a })
+        let sourceTracks = sourceRows.sorted { $0.value.0 < $1.value.0 }
+        var destination: [String: String] = [:]
+        if anchor == nil && sameProject && sourceTracks.allSatisfy({ s in d.sequence.tracks.contains { $0.id == s.key && $0.kind == s.value.1 } }) {
+            for s in sourceTracks { destination[s.key] = s.key }
+        } else {
+            let top = sourceTracks[0]
+            let kindOf = { (id: String) in d.sequence.tracks.first { $0.id == id }?.kind }
+            let anchorRow: Int
+            if let anchor {
+                guard let row = order.firstIndex(of: anchor) else { return refuse("Track \(anchor) was not found") }
+                anchorRow = row
+            } else {
+                anchorRow = order.firstIndex { kindOf($0) == top.value.1 } ?? order.count
+            }
+            var used = Set<String>()
+            for s in sourceTracks {
+                let want = s.value.1
+                let row = anchorRow + (s.value.0 - top.value.0)
+                if let id = order.indices.filter({ $0 >= row }).map({ order[$0] }).first(where: { kindOf($0) == want && !used.contains($0) }) {
+                    destination[s.key] = id
+                } else {
+                    destination[s.key] = Self.appendTrack(&d, kind: want, order: &order, at: nil)
+                }
+                used.insert(destination[s.key]!)
+            }
+        }
+        if destination.values.contains(where: { id in d.sequence.tracks.contains { $0.id == id && $0.locked == true } }) {
+            return refuse("Track is locked")
+        }
+
+        // Clips: fresh ids first, so detached-audio links can follow their pasted video.
+        let base = (time * fps).rounded()
+        var taken = Set(d.sequence.tracks.flatMap(\.clips).map(\.id))
+        var newIds: [String: String] = [:]
+        for item in board.items {
+            let id = TimelineClipboard.freshId(item.clip.id, taken: taken)
+            taken.insert(id); newIds[item.clip.id] = id
+        }
+        let groups = Set((d.sequence.audioGroups ?? []).map(\.id))
+        for item in board.items {
+            guard let ti = d.sequence.tracks.firstIndex(where: { $0.id == destination[item.trackId] }) else { continue }
+            var c = item.clip
+            c.id = newIds[item.clip.id]!
+            c.startFrame = base + (item.clip.startFrame - first)
+            c.assetId = assetIds[item.clip.assetId] ?? item.clip.assetId
+            c.binding = nil
+            if let g = c.audioGroupId, !groups.contains(g) { c.audioGroupId = nil }
+            c.audioDetachedFrom = c.audioDetachedFrom.flatMap { newIds[$0] }
+            d.sequence.tracks[ti].clips.append(c)
+            d.sequence.tracks[ti].clips.sort { $0.startFrame < $1.startFrame }
+        }
+        guard withHistory("Paste", { apply(.restoreDocument(d)) }) else { return [] }
+        return board.items.compactMap { newIds[$0.clip.id] }
+    }
+}
+
+/// What ⌘C / ⌘X keep: the clips as they were when copied, with their tracks' kinds and rows and the assets they play
+/// (sources made absolute), so a paste works on other tracks and in another project.
+public struct TimelineClipboard: Equatable {
+    public struct Item: Equatable {
+        public var trackId: String, trackKind: NativeProjectTrackKind
+        /// The track's display row in the copied-from project.
+        public var trackRow: Int
+        public var clip: NativeProjectClip
+    }
+    public var projectId: String
+    public var frameRate: RationalFrameRate
+    public var items: [Item]
+    public var assets: [NativeProjectAsset]
+
+    /// `source` as an absolute path: relative sources resolve against `dir`; without one they stay as written.
+    static func absolute(_ source: String, in dir: URL?) -> String {
+        guard let dir, !HostPath.isAbsolute(source) else { return source }
+        return dir.appendingPathComponent(source).path
+    }
+
+    /// `<id>-copy`, then `<id>-copy2`, ... until it is not in `taken`.
+    static func freshId(_ id: String, taken: Set<String>) -> String {
+        var n = 1, out = "\(id)-copy"
+        while taken.contains(out) { n += 1; out = "\(id)-copy\(n)" }
+        return out
     }
 }

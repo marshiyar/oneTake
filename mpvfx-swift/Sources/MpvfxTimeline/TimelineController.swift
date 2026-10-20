@@ -40,7 +40,8 @@ public final class TimelineController {
     public var tool: Tool = .select { didSet { if tool != .razor { view.razorGuideX = nil }; needsDisplay?() } }
     public static let marqueeThresholdPx = 4.0
     public static let splitEpsilon = 1e-3
-    public internal(set) var clipboard: [TimelineEditor.ClipboardItem] = []
+    /// The last ⌘C / ⌘X. It outlives a project switch in the window, so clips paste into the other project.
+    public internal(set) var clipboard: TimelineClipboard?
     /// Timeline snapping (clip edges, playhead, beats) for moves and trims; N toggles it.
     public var snapEnabled = true { didSet { if snapEnabled != oldValue { onSnapChange?(snapEnabled) } } }
     /// Magnet toggled (N / toolbar); hosts persist it (studioUiPreferences timelineSnapEnabled).
@@ -461,12 +462,16 @@ public final class TimelineController {
 
     // MARK: Clipboard (⌘C / ⌘X / ⌘V)
     @discardableResult public func copySelection() -> Bool {
-        guard let editor, !view.selection.isEmpty else { return false }
-        clipboard = editor.copyClips(view.selection); return !clipboard.isEmpty
+        guard let editor, !view.selection.isEmpty, let board = editor.copyClips(view.selection) else { return false }
+        clipboard = board; return true
     }
-    @discardableResult public func pasteClipboard() -> Bool {
-        guard let editor, !clipboard.isEmpty else { return false }
-        let ids = editor.paste(clipboard, at: playback.currentTime)
+
+    /// Pastes at the playhead onto `trackId`; nil = onto the track of the topmost selected clip, or with nothing
+    /// selected back onto the tracks the clips came from (TimelineEditor.paste).
+    @discardableResult public func pasteClipboard(onto trackId: String? = nil) -> Bool {
+        guard let editor, let clipboard else { return false }
+        let target = trackId ?? view.tracks.first { t in t.clips.contains { view.selection.contains($0.id) } }?.id
+        let ids = editor.paste(clipboard, at: playback.currentTime, onto: target)
         if !ids.isEmpty { view.selection = Set(ids) }
         needsDisplay?(); return !ids.isEmpty
     }

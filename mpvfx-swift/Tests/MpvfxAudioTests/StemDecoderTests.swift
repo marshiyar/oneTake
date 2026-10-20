@@ -23,8 +23,8 @@ final class StemDecoderTests: XCTestCase {
     override func setUpWithError() throws { dir = try WavFixtures.tempDir() }
     override func tearDownWithError() throws { try FileManager.default.removeItem(at: dir) }
 
-    func key(_ path: String, from sourceIn: Double = 0, seconds: Double, rate: Double = 1) -> DocumentAudioGraph.StemKey {
-        .init(path: path, sourceIn: sourceIn, duration: seconds, rate: rate)
+    func key(_ path: String, from sourceIn: Double = 0, seconds: Double, rate: Double = 1, preservesPitch: Bool = true) -> DocumentAudioGraph.StemKey {
+        .init(path: path, sourceIn: sourceIn, duration: seconds, rate: rate, preservesPitch: preservesPitch)
     }
 
     func testStereoWavDecodesSampleExactAtTheGraphRate() throws {
@@ -70,6 +70,33 @@ final class StemDecoderTests: XCTestCase {
         let slow = try DocumentAudioGraph.decodeStem(key(path, seconds: 6, rate: 0.5), sampleRate: 48_000)
         XCTAssertEqual(slow[0].count, 192_000, "2 s of source at 0.5x lasts 4 s")
         XCTAssertEqual(crossingsPerSecond(Array(slow[0][9600..<182_400]), sampleRate: 48_000), 880, accuracy: 20)
+    }
+
+    func testPitchFollowsTheSpeedWhenTheClipDoesNotKeepIt() throws {
+        let tone = WavFixtures.sine(440, seconds: 2, amp: 0.3, sampleRate: 48_000)
+        let path = try WavFixtures.write("vari.wav", in: dir, tone, sampleRate: 48_000)
+        let fast = try DocumentAudioGraph.decodeStem(key(path, seconds: 2, rate: 2, preservesPitch: false), sampleRate: 48_000)
+        XCTAssertEqual(Double(fast[0].count), 48_000, accuracy: 2, "2 s of source at 2x lasts 1 s")
+        XCTAssertEqual(crossingsPerSecond(Array(fast[0][4800..<43_200]), sampleRate: 48_000), 1760, accuracy: 20, "an octave up: 880 Hz")
+        XCTAssertEqual(rmsOf(fast[0][4800..<43_200]), 0.3 / 2.0.squareRoot(), accuracy: 0.03)
+        let slow = try DocumentAudioGraph.decodeStem(key(path, seconds: 6, rate: 0.5, preservesPitch: false), sampleRate: 48_000)
+        XCTAssertEqual(Double(slow[0].count), 192_000, accuracy: 4, "2 s of source at 0.5x lasts 4 s")
+        XCTAssertEqual(crossingsPerSecond(Array(slow[0][9600..<182_400]), sampleRate: 48_000), 440, accuracy: 10, "an octave down: 220 Hz")
+        XCTAssertEqual(StemDecoder.resampledRate(48_000, 1.5), 32_000)
+    }
+
+    func testDocumentInputsCarryThePitchOption() throws {
+        func clip(_ id: String, _ extra: String) -> String {
+            #"{"id":"\#(id)","assetId":"asset:m","startFrame":0,"durationFrames":60,"sourceInFrame":0,"playbackRate":{"numerator":2,"denominator":1},"#
+                + extra + #""muted":false,"effects":[],"parameterTracks":[]}"#
+        }
+        let json = #"{"schemaVersion":1,"id":"project:p","revision":1,"frameRate":{"numerator":30,"denominator":1},"canvas":{"width":640,"height":360,"background":"#000000"},"assets":[{"id":"asset:m","kind":"audio","name":"m.wav","source":"m.wav","durationFrames":300}],"sequence":{"id":"s","name":"S","tracks":[{"id":"a1","kind":"audio","clips":["#
+            + clip("keeps", "") + "," + clip("follows", #""preservesPitch":false,"#) + "]}]}}"
+        let doc = try parseNativeProjectDocument(try NativeJSONValue.parse(json))
+        let inputs = DocumentAudioGraph.inputs(doc, duration: 2, projectDir: URL(fileURLWithPath: "/p"), fileExists: { _ in true })
+        XCTAssertEqual(inputs.tracks.map(\.stem.preservesPitch), [true, false])
+        XCTAssertEqual(inputs.tracks.map(\.stem.rate), [2, 2])
+        XCTAssertNotEqual(inputs.tracks[0].stem, inputs.tracks[1].stem, "a pitch change re-decodes the stem")
     }
 
     func testSeekWithTempoMapsSourceTime() throws {

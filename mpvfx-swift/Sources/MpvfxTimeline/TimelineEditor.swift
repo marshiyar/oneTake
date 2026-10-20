@@ -47,6 +47,9 @@ public final class TimelineEditor {
     /// A media file's natural pixel size (default: the size cached on the asset); sizes untouched clips
     /// (nativeClipNaturalLayout). Hosts add sizes they probed for assets that have none cached.
     public var naturalSize: (NativeProjectAsset) -> NativeMediaNaturalSize? = { $0.naturalSize }
+    /// The folder relative asset sources resolve against (the open project's); copied clips carry their media as
+    /// absolute paths from it, so they paste into another project.
+    public var projectDirectory: URL?
 
     public init(document: NativeProjectDocument, engine: KeyframeEngine? = nil) { self.document = document; self.engine = engine }
 

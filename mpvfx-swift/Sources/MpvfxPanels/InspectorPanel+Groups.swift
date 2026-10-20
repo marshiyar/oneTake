@@ -279,6 +279,9 @@ extension InspectorPanel {
                 format: { "\(PanelFormat.number($0 / 100))x" }, tier: rate == 1 ? .default : .explicitCustom,
                 commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, (p).rounded() / 100)) },
                 reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }))))
+            let keeps = editor.preservesPitch(clipId: s.id)
+            rows.append(.init(.toggle(.init(key: "keepPitch", label: "Keep audio pitch", on: keeps, tier: keeps ? .default : .explicitCustom,
+                                            set: { [weak self] v in self?.edited(editor.setPreservesPitch(clipId: s.id, v)) }))))
             let fps = editor.fps
             rows.append(.init(.number(.init(key: "mediaStart", label: "Media start", text: String(format: "%.2fs", s.clip.sourceInFrame / fps),
                                             tier: s.clip.sourceInFrame == 0 ? .default : .explicitCustom, commit: { _ in }, disabled: true))))

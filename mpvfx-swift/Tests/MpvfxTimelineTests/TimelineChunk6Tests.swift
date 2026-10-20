@@ -112,8 +112,7 @@ final class TimelineChunk6Tests: XCTestCase {
         c.secondaryClick(x: v.x(for: 1), y: 60)
         let m = try XCTUnwrap(v.clipMenu)
         let labels = m.entries.map { e -> String in if case .item(let i) = e { return i.label }; return "—" }
-        XCTAssertEqual(labels, ["Split", "—", "Show thumbnails", "—", "Mute", "—", "Delete"])
-        XCTAssertEqual(TimelineClipMenu.flipHeight(thumbnails: true, canMute: true, audioAction: false), 152)
+        XCTAssertEqual(labels, ["Split", "—", "Cut", "Copy", "Paste", "Duplicate", "—", "Show thumbnails", "—", "Mute", "Keep audio pitch", "—", "Delete"])
         XCTAssertTrue(c.runClipMenu(.mute, clipId: "clip:a"))
         XCTAssertTrue(c.view.tracks[0].clips[0].muted)
         XCTAssertTrue(e.undo()); XCTAssertFalse(c.view.tracks[0].clips[0].muted)

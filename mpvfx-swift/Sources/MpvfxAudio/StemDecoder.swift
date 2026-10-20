@@ -28,15 +28,23 @@ public enum StemDecoder {
     public static let chunkFrames = 1 << 15
 
     /// The clip's audio from `key.sourceIn`, at `sampleRate`, stereo, `key.duration` timeline seconds long (shorter
-    /// when the source ends first). `key.rate` is the clip speed, applied as pitch-preserving tempo (0.25 ... 4).
+    /// when the source ends first). `key.rate` is the clip speed: with `key.preservesPitch` it is applied as
+    /// pitch-preserving tempo (0.25 ... 4); without, the source is resampled to `sampleRate / rate` and played at
+    /// `sampleRate`, so the pitch rises and falls with the speed.
     /// A file without an audio track decodes to an empty stem: the clip adds silence, like a muted one.
     public static func decode(_ key: DocumentAudioGraph.StemKey, sampleRate: Int) throws -> [[Float]] {
         let probe = try MediaProbe.probe(path: key.path)
         guard let audio = probe.audio else { return [[], []] }
         guard audio.decodable else { throw StemDecodeError(audio.reason ?? "This file's audio cannot be decoded.") }
-        let reader = try AudioSampleReader(path: key.path, sampleRate: sampleRate, channels: 2)
-        // Tempo before seek: the engine converts the frames it drops after a seek at the tempo in force.
-        if abs(key.rate - 1) > 1e-9 { try reader.setTempo(key.rate) }
+        let sped = abs(key.rate - 1) > 1e-9
+        let reader: AudioSampleReader
+        if sped && !key.preservesPitch {
+            reader = try AudioSampleReader(path: key.path, sampleRate: resampledRate(sampleRate, key.rate), channels: 2)
+        } else {
+            reader = try AudioSampleReader(path: key.path, sampleRate: sampleRate, channels: 2)
+            // Tempo before seek: the engine converts the frames it drops after a seek at the tempo in force.
+            if sped { try reader.setTempo(key.rate) }
+        }
         try reader.seek(to: max(0, key.sourceIn))
         let want = max(0, Int((key.duration * Double(sampleRate)).rounded(.up)))
         var left = [Float](), right = [Float]()
@@ -49,5 +57,11 @@ public enum StemDecoder {
             }
         }
         return [left, right]
+    }
+
+    /// The rate a clip at speed `rate` is decoded at when its pitch follows the speed: `sampleRate / rate` samples per
+    /// source second, played back at `sampleRate`.
+    public static func resampledRate(_ sampleRate: Int, _ rate: Double) -> Int {
+        max(1, Int((Double(sampleRate) / rate).rounded()))
     }
 }
