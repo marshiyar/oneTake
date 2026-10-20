@@ -197,6 +197,11 @@ jobs:
           mkdir -p "$out"
           bin=$(swift build -c release --static-swift-stdlib --show-bin-path)
           cp "$bin/MpVFX" "$out/"
+          # Shipped binaries carry no symbols (strip-check.yml verifies every installer); the debug symbols stay in
+          # CI as the symbols-linux artifact for symbolicating crash reports from this build.
+          mkdir -p "$GITHUB_WORKSPACE/symbols"
+          objcopy --only-keep-debug "$out/MpVFX" "$GITHUB_WORKSPACE/symbols/MpVFX-linux-x64-$short.debug"
+          strip --strip-unneeded "$out/MpVFX"
           for b in "$bin"/*.resources; do [ -e "$b" ] && cp -R "$b" "$out/"; done
           # The engine libraries travel next to the program, which finds them through $ORIGIN.
           cp -L .binaries/*/lib/*.so* "$out/"
@@ -251,6 +256,13 @@ jobs:
             dist/*.deb
             dist/linux-smoke.png
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: symbols-linux
+          path: symbols/*.debug
+          if-no-files-found: ignore
+          retention-days: 90
 
   linux-test:
     # One test shard (.github/ci/test-shards.py) per job, only those the plan job found no pass for.
@@ -334,8 +346,8 @@ jobs:
           restore-keys: windows-release-
       - name: Toolchain version
         run: swift --version
-      - name: Release build
-        run: swift build -c release
+      - name: Release build, linked without debug data (strip-check.yml verifies the shipped exe)
+        run: swift build -c release -Xlinker -debug:none
       - name: Package (portable zip)
         shell: pwsh
         run: |
@@ -508,6 +520,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: '{linux,windows,macos}'   # the installers; the symbols-* artifacts stay in CI
           merge-multiple: true
       - name: Prerelease
         env:
