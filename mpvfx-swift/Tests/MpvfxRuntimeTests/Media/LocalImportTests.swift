@@ -41,7 +41,7 @@ final class LocalImportTests: XCTestCase {
         var header = [UInt8](TestMedia.wav([], rate: 48_000, channels: 1))
         header.replaceSubrange(4..<8, with: TestMedia.le32(UInt32(size - 8)))
         header.replaceSubrange(40..<44, with: TestMedia.le32(UInt32(size - 44)))
-        FileManager.default.createFile(atPath: source, contents: Data(header))
+        _ = FileManager.default.createFile(atPath: source, contents: Data(header))
         let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: source))
         try handle.truncate(atOffset: size)
         try handle.seek(toOffset: size - 3); try handle.write(contentsOf: Data("end".utf8)); try handle.close()
@@ -58,7 +58,7 @@ final class LocalImportTests: XCTestCase {
         let (root, projectRoot) = try fixture()
         let name = "Khé¿ (demo).png", source = root + "/" + name
         try writePNG(source, (0, 255, 0))
-        FileManager.default.createFile(atPath: root + "/empty.png", contents: Data())
+        _ = FileManager.default.createFile(atPath: root + "/empty.png", contents: Data())
         try FileManager.default.createDirectory(atPath: projectRoot + "/assets", withIntermediateDirectories: false)
         try "existing".write(toFile: projectRoot + "/assets/" + name, atomically: false, encoding: .utf8)
         let result = try run(projectRoot, [source, root + "/missing.mov", root + "/empty.png", source], directory: "assets")

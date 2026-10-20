@@ -67,11 +67,11 @@ final class MetadataTests: XCTestCase {
 
     func testRejectsPathsOutsideTheProjectAndUnreadableFiles() throws {
         XCTAssertThrowsError(try readProjectMediaMetadata(dir, ""))
-        FileManager.default.createFile(atPath: dir + "/a.mp4", contents: Data("x".utf8))
+        _ = FileManager.default.createFile(atPath: dir + "/a.mp4", contents: Data("x".utf8))
         XCTAssertThrowsError(try readProjectMediaMetadata(dir + "/sub-missing", "../a.mp4"))
         // A real file outside the project (not /etc/hostname, which macOS does not have).
         let outside = dir + "-outside.mp4"
-        FileManager.default.createFile(atPath: outside, contents: Data("x".utf8))
+        _ = FileManager.default.createFile(atPath: outside, contents: Data("x".utf8))
         defer { try? FileManager.default.removeItem(atPath: outside) }
         XCTAssertThrowsError(try readProjectMediaMetadata(dir, outside)) {
             XCTAssertEqual(($0 as? MediaToolError)?.message, "Media must be a file inside this project")

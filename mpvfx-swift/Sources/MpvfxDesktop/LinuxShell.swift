@@ -60,7 +60,7 @@ final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
     func run() -> Int32 {
         precondition(SingleInstance.isValidApplicationId(paths.appId), "invalid application id \(paths.appId)")
         // GApplication uniqueness = requestSingleInstanceLock; a second launch re-activates this one.
-        app = gtk_application_new(paths.appId, G_APPLICATION_FLAGS_NONE)
+        app = gtk_application_new(paths.appId, G_APPLICATION_DEFAULT_FLAGS)
         g_set_application_name("MpVFX")
         connect(raw(app), "activate", unsafeBitCast({ (_: UnsafeMutableRawPointer?, _: UnsafeMutableRawPointer?) in
             LinuxShell.current.lifecycle.activate()

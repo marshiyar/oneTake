@@ -34,7 +34,7 @@ final class MediaTimelineTests: XCTestCase {
     }
 
     func testRejectsIncompleteNativeMediaDocumentsInsteadOfGuessingASource() throws {
-        var document = try project()
+        let document = try project()
         XCTAssertThrowsError(try mediaTimelineForExport(document)) { XCTAssertTrue("\($0)".contains("Media path is missing"), "\($0)") }
     }
 

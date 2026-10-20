@@ -253,7 +253,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         session.onImportRequested = { [weak session] in
             Task {
                 let files = await dialogs.showOpen(.init(title: "Import Media", directory: false, multiple: true))
-                DispatchQueue.main.async { session?.importMedia(paths: files) }
+                session?.postToUI { session?.importMedia(paths: files) }
             }
         }
         return host

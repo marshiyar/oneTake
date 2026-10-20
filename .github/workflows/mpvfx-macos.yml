@@ -147,7 +147,7 @@ jobs:
           xcrun -sdk macosx metal -c Sources/MpvfxMetal/Shaders/MpvfxColor.metal -o "$RUNNER_TEMP/MpvfxColor.air"
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Build
-        run: swift build --build-tests
+        run: swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           NSUnbufferedIO: "YES"
@@ -210,7 +210,7 @@ jobs:
           xcrun -sdk macosx metal -c Sources/MpvfxMetal/Shaders/MpvfxColor.metal -o "$RUNNER_TEMP/MpvfxColor.air"
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Release build
-        run: swift build -c release
+        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Signing certificate (Developer ID, when the optional secrets are set)
         id: cert
         env:

@@ -73,7 +73,7 @@ final class AppearanceSwitchSmokeTests: XCTestCase {
         env["MPVFX_SMOKE_SET_APPEARANCE"] = switchTo
         p.environment = env
         let log = dir.appendingPathComponent("app.log")
-        FileManager.default.createFile(atPath: log.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: log.path, contents: nil)
         let out = try FileHandle(forWritingTo: log)
         p.standardOutput = out; p.standardError = out
         let done = DispatchSemaphore(value: 0)

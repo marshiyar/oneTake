@@ -167,8 +167,8 @@ final class MediaThumbnails {
         guard !stripPending.contains(key) else { return }
         stripPending.insert(key)
         let post = self.post, queue = self.queue
-        let finish: (Strip?) -> Void = { strip in
-            post { [weak self] in
+        let finish: (Strip?) -> Void = { [weak self] strip in
+            post {
                 guard let self else { return }
                 self.stripPending.remove(key)
                 if let strip {
