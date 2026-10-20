@@ -80,7 +80,7 @@ release:
 Pull requests and other branches build and test but never publish. Older `build-main-*` releases from before this
 scheme are left as they are.
 
-No repository secret is needed to build and test. The optional secrets below sign the macOS disk image.
+## Releases: nightly and official
 
 ## Merging
 
