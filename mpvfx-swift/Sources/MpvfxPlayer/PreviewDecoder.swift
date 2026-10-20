@@ -166,9 +166,21 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         return true
     }
 
+    /// Capacity for this lane's frame size, including a slightly larger stream or cached frame we can reuse.
+    /// Keep the wanted frame recent: speculative frames must not evict the picture the display needs now.
+    func frameCapacity(want: Int, size: PreviewDecodeSize) -> Int {
+        var bytes = size.width * size.height * 4
+        if let s = streamSize, s.serves(size) { bytes = max(bytes, s.width * s.height * 4) }
+        if let image = cache.frame(lane: key, frame: want) { bytes = max(bytes, image.width * image.height * 4) }
+        // The cache keeps at least the most recently stored frame, even when one frame exceeds its budget.
+        return max(1, cache.budgetBytes / max(1, bytes))
+    }
+
     /// Decodes at most one frame toward the request. Returns false when the request is satisfied (or impossible).
     func stepVideo(want w: Int, ahead a: Int, size boxSize: PreviewDecodeSize) -> Bool {
         let sz = mediaAspect.map { boxSize.containing(aspect: $0) } ?? boxSize
+        // A window that cannot fit would evict its own start and be decoded again forever.
+        let a = min(a, frameCapacity(want: w, size: sz) - 1)
         let last = min(layer.endFrame - 1, w + a)
         // The first frame in [w, w+a] the cache lacks (for the current size).
         var target: Int?
@@ -229,6 +241,9 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     /// playhead are kept (they are what reverse playback shows next). Returns false when nothing is missing.
     func stepReverse(want w: Int, behind b: Int, size boxSize: PreviewDecodeSize) -> Bool {
         let sz = mediaAspect.map { boxSize.containing(aspect: $0) } ?? boxSize
+        // Reverse fills up to two chunks, and a reused stream may start one frame before a chunk.
+        let b = min(b, (frameCapacity(want: w, size: sz) - 1) / 2)
+        guard b > 0 else { return stepVideo(want: w, ahead: 0, size: boxSize) }
         let low = max(layer.startFrame, w - b)
         var top: Int?
         var f = min(w, deadFrom - 1)
