@@ -117,6 +117,14 @@ typedef struct MpvfxWasapi MpvfxWasapi;
 /// (the engine converts to the mix format), with a device buffer of about `buffer_ms` milliseconds.
 /// Not started. Fails with the HRESULT when no endpoint exists (E_NOTFOUND on a machine without audio).
 mpvfx_hresult mpvfx_wasapi_open(uint32_t sample_rate, uint32_t channels, uint32_t buffer_ms, MpvfxWasapi **out);
+/// The same on the active render endpoint whose id (IMMDevice::GetId, UTF-16, NUL-terminated) is `device_id`; NULL
+/// opens the default endpoint. Fails with the HRESULT when that endpoint is gone (E_NOTFOUND, or not active).
+mpvfx_hresult mpvfx_wasapi_open_device(const uint16_t *device_id, uint32_t sample_rate, uint32_t channels,
+                                       uint32_t buffer_ms, MpvfxWasapi **out);
+/// Called once per active render endpoint with its id and friendly name (UTF-16, valid during the call only).
+typedef void (*mpvfx_audio_device_callback)(void *context, const uint16_t *id, const uint16_t *name);
+/// Lists the active render endpoints in the system's order (Settings > Audio output).
+mpvfx_hresult mpvfx_wasapi_devices(mpvfx_audio_device_callback cb, void *context);
 mpvfx_hresult mpvfx_wasapi_start(MpvfxWasapi *w);
 mpvfx_hresult mpvfx_wasapi_stop(MpvfxWasapi *w);
 /// Stops, drops everything queued and resets the clock to 0 (IAudioClient::Reset); restarts when it was running.

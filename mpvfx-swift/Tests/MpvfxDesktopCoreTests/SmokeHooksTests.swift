@@ -55,13 +55,14 @@ final class SmokeHooksTests: XCTestCase {
     func testPanelAndStressHooks() {
         let h = SmokeHooks(env: ["MPVFX_SMOKE_FILE_DROP": "100,200", "MPVFX_SMOKE_DROP_PATHS": "/a.wav:/b.png",
                                  "MPVFX_SMOKE_INSPECTOR": "opacity=0.5;bad;volume=2=3", "MPVFX_SMOKE_RIGHT_TAB": "renders",
-                                 "MPVFX_SMOKE_EXPORT": "1", "MPVFX_SMOKE_POPOVER": "speed", "MPVFX_SMOKE_ADD_MEDIA": "/c.mov",
+                                 "MPVFX_SMOKE_SETTINGS": "1", "MPVFX_SMOKE_EXPORT": "1", "MPVFX_SMOKE_POPOVER": "speed", "MPVFX_SMOKE_ADD_MEDIA": "/c.mov",
                                  "MPVFX_SMOKE_AUDIOFX_STRESS": "3", "MPVFX_SMOKE_AUDIOFX_SEEK": "1.25",
                                  "MPVFX_SMOKE_MEMORY": "4", "MPVFX_SMOKE_MEMORY_LIMIT_MB": "64",
                                  "MPVFX_SMOKE_MEMORY_MEDIA": "/x.mov:/y.mov", "MPVFX_SMOKE_MEMORY_VERBOSE": "1"])
         XCTAssertEqual(h.fileDrop, SmokeFileDrop(at: SmokePoint(100, 200), paths: ["/a.wav", "/b.png"]))
         XCTAssertEqual(h.inspector, [SmokeInspectorRow(key: "opacity", value: "0.5"), SmokeInspectorRow(key: "volume", value: "2=3")])
         XCTAssertTrue(h.rightTabRenders)
+        XCTAssertTrue(h.settings)
         XCTAssertTrue(h.export)
         XCTAssertEqual(h.popover, .speed)
         XCTAssertEqual(h.addMedia, "/c.mov")
@@ -79,7 +80,7 @@ final class SmokeHooksTests: XCTestCase {
     static let sample: [SmokeHookName: String] = [
         .snapshot: "/s.png", .delayMS: "900", .seek: "1", .select: "clip:a", .setAppearance: "dark", .marquee: "1,2,3,4",
         .gapMenu: "1,2", .drag: "1,2,3,4", .click: "1,2", .popover: "volume", .razor: "1,2", .addMedia: "/m.mov",
-        .binDrag: "1,2,3,4", .fileDrop: "1,2", .dropPaths: "/d.png", .inspector: "a=b", .rightTab: "renders", .export: "1",
+        .binDrag: "1,2,3,4", .fileDrop: "1,2", .dropPaths: "/d.png", .inspector: "a=b", .rightTab: "renders", .settings: "1", .export: "1",
         .audioFxStress: "1", .audioFxSeek: "2", .audioFxVerbose: "1", .audioFxStacks: "1", .memory: "2",
         .memoryLimitMB: "10", .memoryMedia: "/m.mov", .memoryVerbose: "1",
     ]

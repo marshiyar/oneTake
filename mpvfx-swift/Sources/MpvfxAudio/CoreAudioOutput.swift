@@ -11,13 +11,14 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-// macOS sink: the default output AudioUnit pulls interleaved float32 from a small ring buffer that
-// AudioPlayback's feeder thread fills with blocking writes (the same contract as PulseAudioOutput).
+// macOS sink: the default output AudioUnit (or, with a device chosen in Settings, a HAL output unit on that device)
+// pulls interleaved float32 from a small ring buffer that AudioPlayback's feeder thread fills with blocking writes
+// (the same contract as PulseAudioOutput).
 #if os(macOS)
 import AudioToolbox
 import Foundation
 
-public final class CoreAudioOutput: AudioOutput {
+public final class CoreAudioOutput: AudioOutput, AudioDeviceSelecting {
     public let format: AudioFormat
     let capacity: Int                      // ring size in frames
     let ring: UnsafeMutablePointer<Float>
@@ -26,6 +27,16 @@ public final class CoreAudioOutput: AudioOutput {
     var consumed = 0                       // frames handed to the device since the last flush
     var running = false
     var unit: AudioUnit?
+    var deviceUID: String?
+    /// The device `unit` plays through (nil: the system default output).
+    var unitDevice: String?
+
+    /// The output device's UID (`kAudioDevicePropertyDeviceUID`, stable across reboots); nil follows the system default.
+    /// A change rebuilds the unit at the next start (AudioPlayback stops the output before it starts it again).
+    public var device: String? {
+        get { lock.lock(); defer { lock.unlock() }; return deviceUID }
+        set { lock.lock(); deviceUID = newValue; lock.unlock() }
+    }
 
     /// `bufferFrames` bounds how far writes run ahead of the device (4096 frames = 85 ms at 48 kHz).
     public init(format: AudioFormat = .standard, bufferFrames: Int = 4096) {
@@ -44,7 +55,21 @@ public final class CoreAudioOutput: AudioOutput {
     public var framesPlayed: Int { lock.lock(); defer { lock.unlock() }; return consumed }
 
     public func start() throws {
-        if unit == nil { unit = try makeUnit() }
+        let wanted = device
+        if let u = unit, unitDevice != wanted {
+            lock.lock(); let wasRunning = running; running = false; lock.unlock()
+            if wasRunning { AudioOutputUnitStop(u) }   // synchronous: no render callback runs after it returns
+            AudioUnitUninitialize(u); AudioComponentInstanceDispose(u)
+            unit = nil
+        }
+        if unit == nil {
+            // A chosen device that is gone (unplugged) plays on the default output; unitDevice stays nil, so the next
+            // start asks for the chosen device again and uses it once it is back.
+            if let wanted {
+                do { unit = try makeUnit(device: wanted); unitDevice = wanted } catch { unit = nil }
+            }
+            if unit == nil { unit = try makeUnit(device: nil); unitDevice = nil }
+        }
         lock.lock()
         if running { lock.unlock(); return }
         running = true
@@ -56,8 +81,14 @@ public final class CoreAudioOutput: AudioOutput {
         }
     }
 
-    func makeUnit() throws -> AudioUnit {
-        var desc = AudioComponentDescription(componentType: kAudioUnitType_Output, componentSubType: kAudioUnitSubType_DefaultOutput,
+    func makeUnit(device uid: String?) throws -> AudioUnit {
+        var deviceID = AudioDeviceID(0)
+        if let uid {
+            guard let id = Self.deviceID(uid: uid) else { throw AudioOutputError.unavailable("audio output \(uid) is not connected") }
+            deviceID = id
+        }
+        let subType = uid == nil ? kAudioUnitSubType_DefaultOutput : kAudioUnitSubType_HALOutput
+        var desc = AudioComponentDescription(componentType: kAudioUnitType_Output, componentSubType: subType,
                                              componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0)
         guard let component = AudioComponentFindNext(nil, &desc) else {
             throw AudioOutputError.unavailable("no default audio output")
@@ -65,6 +96,14 @@ public final class CoreAudioOutput: AudioOutput {
         var instance: AudioUnit?
         var status = AudioComponentInstanceNew(component, &instance)
         guard status == noErr, let u = instance else { throw AudioOutputError.unavailable("AudioComponentInstanceNew failed (\(status))") }
+        if let uid {
+            status = AudioUnitSetProperty(u, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                          &deviceID, UInt32(MemoryLayout<AudioDeviceID>.size))
+            guard status == noErr else {
+                AudioComponentInstanceDispose(u)
+                throw AudioOutputError.unavailable("audio output \(uid) could not be selected (\(status))")
+            }
+        }
         let bytesPerFrame = UInt32(MemoryLayout<Float>.size * format.channels)
         var asbd = AudioStreamBasicDescription(mSampleRate: Float64(format.sampleRate), mFormatID: kAudioFormatLinearPCM,
                                                mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
@@ -83,6 +122,57 @@ public final class CoreAudioOutput: AudioOutput {
             throw AudioOutputError.unavailable("default output setup failed (\(status))")
         }
         return u
+    }
+
+    // MARK: Devices (Settings > Audio output)
+
+    /// The devices with output channels, in the system's order: UID and name.
+    public static func devices() -> [AudioOutputDevice] {
+        allDeviceIDs().compactMap { id in
+            guard outputChannels(id) > 0, let uid = stringProperty(id, kAudioDevicePropertyDeviceUID) else { return nil }
+            return AudioOutputDevice(id: uid, name: stringProperty(id, kAudioObjectPropertyName) ?? uid)
+        }
+    }
+
+    static func deviceID(uid: String) -> AudioDeviceID? {
+        allDeviceIDs().first { outputChannels($0) > 0 && stringProperty($0, kAudioDevicePropertyDeviceUID) == uid }
+    }
+
+    static func allDeviceIDs() -> [AudioDeviceID] {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr, size > 0 else { return [] }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        let status = ids.withUnsafeMutableBytes { bytes -> OSStatus in
+            guard let base = bytes.baseAddress else { return OSStatus(kAudioHardwareUnspecifiedError) }
+            return AudioObjectGetPropertyData(system, &address, 0, nil, &size, base)
+        }
+        guard status == noErr else { return [] }
+        return Array(ids.prefix(Int(size) / MemoryLayout<AudioDeviceID>.size))
+    }
+
+    static func outputChannels(_ id: AudioDeviceID) -> Int {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration, mScope: kAudioObjectPropertyScopeOutput,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr, size >= UInt32(MemoryLayout<AudioBufferList>.size) else { return 0 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, raw) == noErr else { return 0 }
+        let buffers = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+        return buffers.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+
+    static func stringProperty(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var size = UInt32(MemoryLayout<CFString?>.size)
+        var value: Unmanaged<CFString>?
+        let status = withUnsafeMutablePointer(to: &value) { AudioObjectGetPropertyData(id, &address, 0, nil, &size, $0) }
+        guard status == noErr, let value else { return nil }
+        return value.takeRetainedValue() as String
     }
 
     /// Render thread: copy what is queued, pad an underrun with silence (silence is not counted as played).
