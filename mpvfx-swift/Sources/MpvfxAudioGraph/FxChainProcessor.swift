@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 
-/// One built effect: a sub-graph processing one render quantum at a time.
+/// One built effect: a sub-graph processing one DSP block at a time.
 /// The Swift form of an FX node handle.
 protocol FxUnit: AnyObject {
     /// `frame` is the context frame of the quantum's first sample.
@@ -28,17 +28,17 @@ private func mixTargets(_ wet: ParamTimeline, _ dry: ParamTimeline) -> [ParamTar
 }
 
 final class GainUnit: FxUnit {
-    let g: GainNode
-    init(_ p: FxParams, _ sr: Double) { g = GainNode(pow(10, n(p, "gain") / 20), sampleRate: sr) }
+    let g: GainStage
+    init(_ p: FxParams, _ sr: Double) { g = GainStage(pow(10, n(p, "gain") / 20), sampleRate: sr) }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] { g.process(x, frame: frame) }
     var automation: [String: [ParamTarget]] { ["gain": [ParamTarget(param: g.gain, map: dbToLinearMap)]] }
 }
 
 final class BiquadUnit: FxUnit {
-    let f: BiquadNode
+    let f: BiquadFilter
     let usesQ: Bool, usesGain: Bool
     init(_ type: BiquadType, _ p: FxParams, _ sr: Double) {
-        f = BiquadNode(type, sampleRate: sr)
+        f = BiquadFilter(type, sampleRate: sr)
         usesQ = [.peaking, .highpass, .lowpass].contains(type)
         usesGain = [.peaking, .lowshelf, .highshelf].contains(type)
         f.frequency.value = Float(n(p, "frequency"))
@@ -55,20 +55,20 @@ final class BiquadUnit: FxUnit {
 }
 
 final class OnePoleUnit: FxUnit {
-    let iir: IIRNode
+    let iir: IIRFilter
     init(highpass: Bool, _ p: FxParams, _ sr: Double) {
         let k = tan((Double.pi * n(p, "frequency")) / sr)
         iir = highpass
-            ? IIRNode(feedforward: [1 / (1 + k), -1 / (1 + k)], feedback: [1, (k - 1) / (k + 1)])
-            : IIRNode(feedforward: [k / (1 + k), k / (1 + k)], feedback: [1, (k - 1) / (k + 1)])
+            ? IIRFilter(feedforward: [1 / (1 + k), -1 / (1 + k)], feedback: [1, (k - 1) / (k + 1)])
+            : IIRFilter(feedforward: [k / (1 + k), k / (1 + k)], feedback: [1, (k - 1) / (k + 1)])
     }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] { iir.process(x) }
     var automation: [String: [ParamTarget]] { [:] }
 }
 
-final class WorkletUnit: FxUnit {
-    let proc: WorkletProcessor
-    init(_ proc: WorkletProcessor) { self.proc = proc }
+final class ProcessorUnit: FxUnit {
+    let proc: BlockProcessor
+    init(_ proc: BlockProcessor) { self.proc = proc }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         var out = x.map { [Float](repeating: 0, count: $0.count) }
         proc.process(x, &out)
@@ -91,8 +91,8 @@ private let curves: [String: (Double) -> Double] = [
 func jsSign(_ x: Double) -> Double { x > 0 ? 1 : x < 0 ? -1 : x }
 
 final class WaveShaperUnit: FxUnit {
-    let ws = WaveShaperNode()
-    let post: GainNode
+    let ws = WaveShaper()
+    let post: GainStage
     init(_ p: FxParams, _ sr: Double) {
         let shape = curves[p["type"]?.string ?? ""] ?? { tanh($0) }
         let threshold = pow(10, n(p, "threshold") / 20)
@@ -103,7 +103,7 @@ final class WaveShaperUnit: FxUnit {
         }
         let o = n(p, "oversample")
         ws.oversample = o >= 4 ? 4 : o >= 2 ? 2 : 1
-        post = GainNode(pow(10, n(p, "output") / 20), sampleRate: sr)
+        post = GainStage(pow(10, n(p, "output") / 20), sampleRate: sr)
     }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] { post.process(ws.process(x), frame: frame) }
     var automation: [String: [ParamTarget]] { ["output": [ParamTarget(param: post.gain, map: dbToLinearMap)]] }
@@ -112,18 +112,18 @@ final class WaveShaperUnit: FxUnit {
 final class FeedbackDelayUnit: FxUnit {
     let dl: DelayLine
     let time: ParamTimeline
-    let fb: GainNode, wet: GainNode, dry: GainNode
+    let fb: GainStage, wet: GainStage, dry: GainStage
     var recirculation: [[Float]] = [] // fb output of the previous quantum (cycle break)
-    private var tBuf = [Float](repeating: 0, count: renderQuantum)
+    private var tBuf = [Float](repeating: 0, count: dspBlockSize)
     var lines: [DelayLine] = []
     let sr: Double
     init(_ p: FxParams, _ sr: Double) {
         self.sr = sr
         dl = DelayLine(maxDelay: 5, sampleRate: sr)
         time = ParamTimeline(Float(min(5, n(p, "time") / 1000)), sampleRate: sr)
-        fb = GainNode(n(p, "feedback"), sampleRate: sr)
-        wet = GainNode(n(p, "mix"), sampleRate: sr)
-        dry = GainNode(1 - n(p, "mix"), sampleRate: sr)
+        fb = GainStage(n(p, "feedback"), sampleRate: sr)
+        wet = GainStage(n(p, "mix"), sampleRate: sr)
+        dry = GainStage(1 - n(p, "mix"), sampleRate: sr)
     }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         let count = x.first?.count ?? 0
@@ -145,17 +145,17 @@ final class FeedbackDelayUnit: FxUnit {
 final class ChorusUnit: FxUnit {
     var lines: [DelayLine] = []
     let delay: ParamTimeline
-    let depth: GainNode, wet: GainNode, dry: GainNode
+    let depth: GainStage, wet: GainStage, dry: GainStage
     let lfo: LoopingBufferSource
     let sr: Double
-    private var dBuf = [Float](repeating: 0, count: renderQuantum)
+    private var dBuf = [Float](repeating: 0, count: dspBlockSize)
     init(_ p: FxParams, _ sr: Double, elapsed: Double) {
         self.sr = sr
         delay = ParamTimeline(Float(n(p, "delay") / 1000), sampleRate: sr)
-        depth = GainNode(n(p, "depth") / 1000, sampleRate: sr)
+        depth = GainStage(n(p, "depth") / 1000, sampleRate: sr)
         lfo = LoopingBufferSource.lfo(wave: "sine", speed: n(p, "speed"), elapsed: elapsed, sampleRate: sr)
-        wet = GainNode(n(p, "mix"), sampleRate: sr)
-        dry = GainNode(1 - n(p, "mix"), sampleRate: sr)
+        wet = GainStage(n(p, "mix"), sampleRate: sr)
+        dry = GainStage(1 - n(p, "mix"), sampleRate: sr)
     }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         let count = x.first?.count ?? 0
@@ -175,19 +175,19 @@ final class ChorusUnit: FxUnit {
 }
 
 final class PhaserUnit: FxUnit {
-    let inTrim: GainNode, outTrim: GainNode, depth: GainNode
+    let inTrim: GainStage, outTrim: GainStage, depth: GainStage
     let lfo: LoopingBufferSource
-    let stages: [BiquadNode]
+    let stages: [BiquadFilter]
     init(_ p: FxParams, _ sr: Double, elapsed: Double) {
         lfo = LoopingBufferSource.lfo(wave: p["type"]?.string == "1" ? "sine" : "triangle", speed: n(p, "speed"), elapsed: elapsed, sampleRate: sr)
         let centre = 1000 / jsMax(0.1, n(p, "delay"))
         stages = (0..<6).map { _ in
-            let ap = BiquadNode(.allpass, sampleRate: sr, frequency: centre, q: 0.7071)
+            let ap = BiquadFilter(.allpass, sampleRate: sr, frequency: centre, q: 0.7071)
             return ap
         }
-        depth = GainNode(centre * n(p, "decay"), sampleRate: sr)
-        inTrim = GainNode(n(p, "in_gain"), sampleRate: sr)
-        outTrim = GainNode(n(p, "out_gain"), sampleRate: sr)
+        depth = GainStage(centre * n(p, "decay"), sampleRate: sr)
+        inTrim = GainStage(n(p, "in_gain"), sampleRate: sr)
+        outTrim = GainStage(n(p, "out_gain"), sampleRate: sr)
     }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         let count = x.first?.count ?? 0
@@ -205,46 +205,46 @@ final class PhaserUnit: FxUnit {
 }
 
 final class ReverbUnit: FxUnit {
-    let conv: ConvolverNode
-    let wet: GainNode, dry: GainNode
+    let conv: FFTConvolver
+    let wet: GainStage, dry: GainStage
     init(_ p: FxParams, _ sr: Double) {
-        conv = ConvolverNode(impulse: synthesizeReverbImpulse(sampleRate: sr, size: n(p, "size"), damping: n(p, "damping")))
-        wet = GainNode(n(p, "wet"), sampleRate: sr)
-        dry = GainNode(n(p, "dry"), sampleRate: sr)
+        conv = FFTConvolver(impulse: synthesizeReverbImpulse(sampleRate: sr, size: n(p, "size"), damping: n(p, "damping")))
+        wet = GainStage(n(p, "wet"), sampleRate: sr)
+        dry = GainStage(n(p, "dry"), sampleRate: sr)
     }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] { sum(wet.process(conv.process(x), frame: frame), dry.process(x, frame: frame)) }
     var automation: [String: [ParamTarget]] { ["wet": [ParamTarget(param: wet.gain, map: nil)], "dry": [ParamTarget(param: dry.gain, map: nil)]] }
 }
 
-/// `buildFxNode`.
+/// `buildFxUnit`.
 func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, elapsed: Double = 0) -> FxUnit {
     guard let def = AudioFx.definition(type) else { fatalError("Unknown effect type: \(type)") }
     let p = AudioFx.normalize(type, params)
     if (type == "highpass" || type == "lowpass") && p["poles"]?.string == "1" { return OnePoleUnit(highpass: type == "highpass", p, sr) }
-    switch def.web {
-    case "gain-node": return GainUnit(p, sr)
+    switch def.implementation {
+    case "gain": return GainUnit(p, sr)
     case "biquad-peaking": return BiquadUnit(.peaking, p, sr)
     case "biquad-lowshelf": return BiquadUnit(.lowshelf, p, sr)
     case "biquad-highshelf": return BiquadUnit(.highshelf, p, sr)
     case "biquad-highpass": return BiquadUnit(.highpass, p, sr)
     case "biquad-lowpass": return BiquadUnit(.lowpass, p, sr)
-    case "worklet-compressor": return WorkletUnit(HfCompressor(p, sampleRate: sr))
-    case "worklet-limiter": return WorkletUnit(HfLimiter(p, sampleRate: sr))
-    case "worklet-gate": return WorkletUnit(HfGate(p, sampleRate: sr))
-    case "worklet-bitcrush": return WorkletUnit(HfBitcrush(p))
-    case "worklet-pitchshift": return WorkletUnit(HfPitchshift(p, sampleRate: sr))
+    case "compressor": return ProcessorUnit(CompressorProcessor(p, sampleRate: sr))
+    case "limiter": return ProcessorUnit(LimiterProcessor(p, sampleRate: sr))
+    case "gate": return ProcessorUnit(GateProcessor(p, sampleRate: sr))
+    case "bitcrusher": return ProcessorUnit(BitcrusherProcessor(p))
+    case "pitch-shift": return ProcessorUnit(PitchShiftProcessor(p, sampleRate: sr))
     case "waveshaper": return WaveShaperUnit(p, sr)
     case "delay-feedback": return FeedbackDelayUnit(p, sr)
     case "chorus-lfo": return ChorusUnit(p, sr, elapsed: elapsed)
     case "allpass-phaser": return PhaserUnit(p, sr, elapsed: elapsed)
     case "convolver": return ReverbUnit(p, sr)
-    default: fatalError("No builder for \(def.web)")
+    default: fatalError("No builder for \(def.implementation)")
     }
 }
 
-/// `buildFxChain` plus `scheduleChainAutomation`: a whole chain as a quantum processor.
+/// `buildFxChain` plus `scheduleChainAutomation`: a whole chain as a block processor.
 public final class FxChainProcessor {
-    struct Run { var presetId: String?; var units: [FxUnit]; var wet: GainNode?; var dry: GainNode? }
+    struct Run { var presetId: String?; var units: [FxUnit]; var wet: GainStage?; var dry: GainStage? }
     var runs: [Run] = []
     var byId: [String: FxUnit] = [:]
     /// Every built unit, in `chain.enabledNodes` order (in-place parameter edits address units by position).
@@ -270,8 +270,8 @@ public final class FxChainProcessor {
             let amount = min(1, max(0, node.presetAmount ?? 1))
             var run = Run(presetId: preset, units: [])
             if let preset {
-                run.wet = GainNode(amount, sampleRate: sampleRate)
-                run.dry = GainNode(1 - amount, sampleRate: sampleRate)
+                run.wet = GainStage(amount, sampleRate: sampleRate)
+                run.dry = GainStage(1 - amount, sampleRate: sampleRate)
                 presetTargets[preset, default: []].append(contentsOf: mixTargets(run.wet!.gain, run.dry!.gain))
             }
             let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate)
@@ -298,7 +298,7 @@ public final class FxChainProcessor {
     /// or gain slider must not restart the graph). Returns the setters to run, or nil when `next` differs from
     /// the built chain in anything but an un-automated biquad frequency/Q/gain or gain-node gain; then the
     /// caller rebuilds. The setters write exactly what the unit initialisers write, so a unit edited before
-    /// its first quantum renders bit-identically to one built from `next`.
+    /// its first DSP block renders bit-identically to one built from `next`.
     func parameterEdits(to next: FxChain) -> [() -> Void]? {
         let a = chain.enabledNodes, b = next.enabledNodes
         guard a.count == b.count, a.count == units.count else { return nil }
@@ -334,7 +334,7 @@ public final class FxChainProcessor {
         return edits
     }
 
-    /// Process one quantum (≤128 frames) whose first frame is context frame `frame`.
+    /// Process one DSP block (≤128 frames) whose first frame is context frame `frame`.
     public func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         var tail = x
         for run in runs {
