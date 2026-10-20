@@ -400,9 +400,8 @@ jobs:
       - name: Toolchain version
         run: swift --version
       - name: Release build, linked without debug data (strip-check.yml verifies the shipped exe)
-        run: swift build -c release -Xlinker -debug:none
-      - name: Release build
-        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
+        # One build: a second release build without -debug:none would relink MpVFX.exe with debug data.
+        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror -Xlinker -debug:none
       - name: Package (portable zip)
         shell: pwsh
         run: |
