@@ -159,7 +159,8 @@ public enum ThemeTokens {
     public static var black: ThemeColor { blackPair.now }
 
     // MARK: panel.* (studio theme)
-    public static let studioBgPair = ThemePair(0x000000, 0xE7E7EA)
+    /// Light shell: as dark as the light-palette rule allows (luminance above 0.7), so the seams between white panels show.
+    public static let studioBgPair = ThemePair(0x000000, 0xDADADE)
     public static let studioSurfacePair = ThemePair(0x4A4A4A, 0xC9C9CE)
     public static let studioBorderPair = ThemePair(0x262626, 0xD4D4D8)
     public static let studioTextPair = ThemePair(0xE5E5E5, 0x27272A)
@@ -167,11 +168,11 @@ public enum ThemeTokens {
     public static let panelBgPair = ThemePair(0x1D1D1D, 0xFAFAFA)
     public static let panelBgInsetPair = ThemePair(0x191919, 0xF4F4F5)
     public static let panelInputPair = ThemePair(0x0E0E0E, 0xFFFFFF)
-    public static let panelSurfacePair = ThemePair(0x232323, 0xE9E9EC)
-    public static let panelHoverPair = ThemePair(0x2C2C2C, 0xE4E4E7)
-    public static let panelBorderPair = ThemePair(0x000000, 0xE1E1E4)
-    public static let panelBorderInputPair = ThemePair(0x333333, 0xD4D4D8)
-    public static let panelHairlinePair = ThemePair(0x141414, 0xEAEAEC)
+    public static let panelSurfacePair = ThemePair(0x232323, 0xE5E5E9)
+    public static let panelHoverPair = ThemePair(0x2C2C2C, 0xD5D5DB)
+    public static let panelBorderPair = ThemePair(0x000000, 0xC8C8CE)
+    public static let panelBorderInputPair = ThemePair(0x333333, 0xB4B4BC)
+    public static let panelHairlinePair = ThemePair(0x141414, 0xDCDCE0)
     /// Panel text ramp (text0 strongest). Light values keep each step at or above its dark contrast.
     public static let textPairs: [ThemePair] = [
         ThemePair(0xFAFAFA, 0x09090B), ThemePair(0xE4E4E7, 0x27272A), ThemePair(0xA1A1AA, 0x4A4A52),
@@ -184,10 +185,11 @@ public enum ThemeTokens {
     public static let popoverPair = ThemePair(0x252525, 0xFFFFFF)
     /// Timeline lanes (rowBackground) and track headers (gutterBackground).
     public static let timelineRowPair = ThemePair(0x1D1D1D, 0xFFFFFF)
-    public static let timelineGutterPair = ThemePair(0x212121, 0xF7F7F8)
-    /// Timeline clip fill by media kind (docs/DESIGN.md), at rest and under the pointer.
-    public static let clipVideoPair = ThemePair(0x1D4A64, 0xCFE3F0), clipVideoHoverPair = ThemePair(0x245A79, 0xBCD7EA)
-    public static let clipAudioPair = ThemePair(0x2F4A17, 0xDCEACB), clipAudioHoverPair = ThemePair(0x3A5A1D, 0xCFE2B8)
+    public static let timelineGutterPair = ThemePair(0x212121, 0xEFEFF2)
+    /// Timeline clip fill by media kind (docs/DESIGN.md), at rest and under the pointer. Light fills are mid tones that
+    /// stand out from the white lanes and still carry dark ink at 4.5:1.
+    public static let clipVideoPair = ThemePair(0x1D4A64, 0x8FBDE2), clipVideoHoverPair = ThemePair(0x245A79, 0x7BB0DA)
+    public static let clipAudioPair = ThemePair(0x2F4A17, 0xA8D187), clipAudioHoverPair = ThemePair(0x3A5A1D, 0x93C46C)
     /// Opacity of the `white` ink for a clip's name and timecode on its fill (the name reaches 4.5:1, the timecode 3:1).
     public static let clipNameAlpha = 0.92, clipTimecodeAlpha = 0.72
     /// Height of the kind-coloured strip that keeps the name readable over thumbnails.
@@ -196,7 +198,7 @@ public enum ThemeTokens {
     public static let clipDragAudioPair = ThemePair(ThemeColor(0x3C3454, alpha: 0.96), ThemeColor(0xE4DDFB, alpha: 0.96))
     public static let clipDragPair = ThemePair(ThemeColor(0x262A34, alpha: 0.96), ThemeColor(0xDDE1EA, alpha: 0.96))
     /// Audio waveform bars.
-    public static let waveformPair = ThemePair(0x79C0F9, 0x2B7DB0)
+    public static let waveformPair = ThemePair(0x79C0F9, 0x1E5F8E)
     /// Native range control (Grade level slider): the darker edge of the accent fill.
     public static let accentEdgePair = ThemePair(0x2F6BDF, 0x1A52AB)
     /// Curve editor point outline.

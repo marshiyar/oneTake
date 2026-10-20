@@ -24,7 +24,7 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
 5. **Time is timecode.** Times read `HH:MM:SS:FF` (or `MM:SS:FF` under an hour) in tabular figures, in the accent
    colour where the user can scrub them.
 6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; muted text at least 3:1.
-   Light mode mirrors the dark palette and keeps the same contrast.
+   Light mode keeps the same contrast; its structure is tuned separately (see "Light mode").
 
 ## Colour tokens (dark mode)
 
@@ -55,6 +55,20 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
 
 `mint` keeps its name for now because many views use it; it is the accent blue, a step lighter so a 1 px line stays
 visible. Light mode uses `#1A5FCC` for both.
+
+## Light mode
+
+Light is not the dark palette inverted. The neutral text ramp mirrors dark (`light(n) = dark(1000 − n)`), but the
+surfaces are tuned so the same structure reads on white: panels are near-white and sit edge to edge, the seams
+between them are a visible grey, fields are white with a clear outline, and clips are mid tones rather than pastels.
+The light-palette rules in `ThemeTokensTests` still hold: every surface and the shell have a luminance above 0.7, and
+text reaches 4.5:1 on every light surface. That caps how dark the shell can go (`#DADADE`).
+
+- Shell and seams: `studioBg` `#DADADE`, `panelBorder` `#C8C8CE`, `panelHairline` `#DCDCE0`.
+- Panels: `panelBg` `#FAFAFA`, `panelBgInset` `#F4F4F5` (the effect rack and grade curves are tuned against it), `panelInput` `#FFFFFF`.
+- Controls: `panelSurface` `#E5E5E9`, `panelHover` `#D5D5DB`, field outline `panelBorderInput` `#B4B4BC`.
+- Timeline: lanes `#FFFFFF`, track headers `#EFEFF2`. Clips: video `#8FBDE2` (hover `#7BB0DA`), audio `#A8D187`
+  (hover `#93C46C`), waveform `#1E5F8E`; the clip name and timecode keep their dark ink at 4.5:1 and 3:1.
 
 ## Rollout
 

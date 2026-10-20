@@ -71,8 +71,16 @@ MPVFX_DEMO=1 swift run MpVFX        # the built-in demo timeline
 MPVFX_PROJECT=/path/to/project swift run MpVFX
 ```
 
-If the build cannot find `mpvfx_media.h` or `cvkf.h`, run `python3 scripts/fetch-binaries.py` first. The engines are
-pinned at media 0.2.0 and keyframes 1.0.0 in `mpvfx-swift/binaries.lock`.
+`fetch-binaries.py` stops with a clear message when the pinned engine release is not published yet or a download does
+not match its checksum. If `swift build` reports "Could not find Package.swift", the shell is not in `mpvfx-swift/`;
+if it cannot find `mpvfx_media.h` or `cvkf.h`, or the link step misses `mpvfx_media` or `cvkf`, run
+`python3 scripts/fetch-binaries.py` first. `MPVFX_PROJECT` takes a project folder or its `.studio/project.json`.
+
+**Status:** the media engine is pinned at 0.1.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`.
+
+Installers (macOS disk image, Windows setup.exe, Ubuntu/Debian .deb) are built by CI and published as releases:
+official releases come from `v*` tags and are the "latest" release; nightly builds of `main` are pre-releases named
+`nightly-<commit>`. How to get, build and sign them: [`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md).
 
 ## Test and check
 
@@ -93,6 +101,16 @@ report on each build: [`strip-check.yml`](.github/workflows/strip-check.yml) ver
 stripped, and [`bench.yml`](.github/workflows/bench.yml) benchmarks startup, the audio graph, the colour grade (CPU vs
 GPU) and preview playback on all three platforms. How the installers are built and signed:
 [`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+CI ([`.github/workflows/mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests and packages the app on Linux,
+Windows and macOS with the engine libraries pinned in [`binaries.lock`](mpvfx-swift/binaries.lock); `ci-ok` is the
+required check. [`strip-check.yml`](.github/workflows/strip-check.yml) then verifies that every published binary is stripped
+([`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), "Symbols"). Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
+Benchmarks ([`.github/workflows/bench.yml`](.github/workflows/bench.yml)) run from a release build on Linux, Windows and
+macOS after every green run on `main`, weekly, and by hand: startup to the first painted frame, the audio graph
+(`MpvfxAudioBench`), the colour grade on the CPU and the GPU (`MpvfxColorBench`) and preview playback
+(`MpvfxPreviewBench`), every sample with p50, p95, max and peak memory, as a table in the run summary and
+`bench-<os>.json` in the `bench-<os>` artifact ([`.github/ci/bench.py`](.github/ci/bench.py)).
 
 ## Repository layout
 
