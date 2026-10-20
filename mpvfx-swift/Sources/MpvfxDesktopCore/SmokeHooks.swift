@@ -36,6 +36,7 @@ public enum SmokeHookName: String, CaseIterable, Sendable {
     case dropPaths = "MPVFX_SMOKE_DROP_PATHS"
     case inspector = "MPVFX_SMOKE_INSPECTOR"
     case rightTab = "MPVFX_SMOKE_RIGHT_TAB"
+    case settings = "MPVFX_SMOKE_SETTINGS"
     case export = "MPVFX_SMOKE_EXPORT"
     case audioFxStress = "MPVFX_SMOKE_AUDIOFX_STRESS"
     case audioFxSeek = "MPVFX_SMOKE_AUDIOFX_SEEK"
@@ -112,6 +113,8 @@ public struct SmokeHooks: Equatable, Sendable {
     public var inspector: [SmokeInspectorRow] = []
     /// MPVFX_SMOKE_RIGHT_TAB=renders: the right panel shows the Renders tab.
     public var rightTabRenders = false
+    /// MPVFX_SMOKE_SETTINGS=1: the Settings card is open (issue #32).
+    public var settings = false
     /// MPVFX_SMOKE_EXPORT=1: Export is pressed on the Renders tab.
     public var export = false
     /// MPVFX_SMOKE_AUDIOFX_STRESS=<rounds> (+ _SEEK seconds, _VERBOSE=1, _STACKS=1 on Linux).
@@ -145,6 +148,7 @@ public struct SmokeHooks: Equatable, Sendable {
         }
         inspector = list(.inspector, ";").compactMap(SmokeInspectorRow.init)
         rightTabRenders = value(.rightTab) == "renders"
+        settings = flag(.settings)
         export = flag(.export)
         audioFxStress = value(.audioFxStress).flatMap(Int.init)
         if let s = value(.audioFxSeek).flatMap(Double.init) { audioFxSeek = s }

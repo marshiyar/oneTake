@@ -245,6 +245,22 @@ final class PreviewCompositorTests: XCTestCase {
         XCTAssertEqual(cache.bytes, 64 + 16)
     }
 
+    /// Settings > Preview cache: lowering the budget evicts the least recently used frames at once.
+    func testLoweringTheBudgetEvictsAtOnce() {
+        let cache = PreviewFrameCache(budgetBytes: 4 * 64, pressure: nil)   // four 4×4 frames
+        cache.store(Self.solid(0, 0, 0), lane: "L", frame: 0)
+        cache.store(Self.solid(1, 0, 0), lane: "L", frame: 1)
+        cache.store(Self.solid(2, 0, 0), lane: "L", frame: 2)
+        cache.store(Self.solid(3, 0, 0), lane: "L", frame: 3)
+        _ = cache.frame(lane: "L", frame: 0)   // touch 0: frames 1 and 2 are now the oldest
+        cache.budgetBytes = 2 * 64
+        XCTAssertEqual(cache.budgetBytes, 2 * 64)
+        XCTAssertEqual(cache.cachedFrames(lane: "L", from: 0, to: 9), [0, 3])
+        XCTAssertEqual(cache.bytes, 2 * 64)
+        cache.budgetBytes = 0
+        XCTAssertEqual(cache.budgetBytes, 1, "a budget never drops below one byte")
+    }
+
     func testDecodeSizeFollowsScreenPixelsAndBackingScale() {
         let layer = PreviewLayer(clipId: "x", source: "/x", kind: .video, start: 0, end: 1, sourceIn: 0,
                                  box: CanvasRect(x: 0, y: 0, width: 1920, height: 1080), scaleX: 0.5, scaleY: 0.5)

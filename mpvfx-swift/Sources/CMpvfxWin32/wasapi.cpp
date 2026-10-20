@@ -6,6 +6,7 @@
 
 #include <audioclient.h>
 #include <mmdeviceapi.h>
+#include <propidl.h>
 #include <mmreg.h>
 #include <ksmedia.h>
 
@@ -29,19 +30,70 @@ struct MpvfxWasapi {
     std::mutex lock;
 };
 
+namespace {
+// PKEY_Device_FriendlyName ({a45c254e-df1c-4efd-8020-67d146a850e0}, 14), spelled out so no INITGUID translation unit
+// is needed to define it.
+const PROPERTYKEY kDeviceFriendlyName = {{0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 14};
+
+HRESULT makeEnumerator(Com<IMMDeviceEnumerator> &enumerator) {
+    HRESULT hr = mpvfx::ensureCom();
+    if (FAILED(hr)) return hr;
+    return CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
+                            enumerator.putVoid());
+}
+
+/// The endpoint `id`, only while it is an active render endpoint (an unplugged one fails instead of opening).
+HRESULT activeRenderDevice(IMMDeviceEnumerator *enumerator, const uint16_t *id, Com<IMMDevice> &device) {
+    HRESULT hr = enumerator->GetDevice(reinterpret_cast<LPCWSTR>(id), device.put());
+    if (FAILED(hr)) return hr;
+    DWORD state = 0;
+    hr = device->GetState(&state);
+    if (FAILED(hr)) return hr;
+    return state == DEVICE_STATE_ACTIVE ? S_OK : E_NOTFOUND;
+}
+}  // namespace
+
 extern "C" {
 
+mpvfx_hresult mpvfx_wasapi_devices(mpvfx_audio_device_callback cb, void *context) {
+    Com<IMMDeviceEnumerator> enumerator;
+    HRESULT hr = makeEnumerator(enumerator);
+    Com<IMMDeviceCollection> collection;
+    if (SUCCEEDED(hr)) hr = enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, collection.put());
+    UINT count = 0;
+    if (SUCCEEDED(hr)) hr = collection->GetCount(&count);
+    if (FAILED(hr)) return hr;
+    for (UINT i = 0; i < count; ++i) {
+        Com<IMMDevice> device;
+        LPWSTR id = nullptr;
+        if (FAILED(collection->Item(i, device.put())) || FAILED(device->GetId(&id))) continue;
+        Com<IPropertyStore> props;
+        PROPVARIANT name;
+        PropVariantInit(&name);
+        const bool named = SUCCEEDED(device->OpenPropertyStore(STGM_READ, props.put())) &&
+                           SUCCEEDED(props->GetValue(kDeviceFriendlyName, &name)) && name.vt == VT_LPWSTR && name.pwszVal;
+        cb(context, reinterpret_cast<const uint16_t *>(id), reinterpret_cast<const uint16_t *>(named ? name.pwszVal : id));
+        PropVariantClear(&name);
+        CoTaskMemFree(id);
+    }
+    return S_OK;
+}
+
 mpvfx_hresult mpvfx_wasapi_open(uint32_t sample_rate, uint32_t channels, uint32_t buffer_ms, MpvfxWasapi **out) {
+    return mpvfx_wasapi_open_device(nullptr, sample_rate, channels, buffer_ms, out);
+}
+
+mpvfx_hresult mpvfx_wasapi_open_device(const uint16_t *device_id, uint32_t sample_rate, uint32_t channels,
+                                       uint32_t buffer_ms, MpvfxWasapi **out) {
     *out = nullptr;
-    HRESULT hr = mpvfx::ensureCom();
+    Com<IMMDeviceEnumerator> enumerator;
+    HRESULT hr = makeEnumerator(enumerator);
     if (FAILED(hr)) return hr;
     auto *w = new MpvfxWasapi();
     w->sampleRate = sample_rate;
     w->channels = channels;
-    Com<IMMDeviceEnumerator> enumerator;
-    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
-                          enumerator.putVoid());
-    if (SUCCEEDED(hr)) hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, w->device.put());
+    hr = device_id ? activeRenderDevice(enumerator.get(), device_id, w->device)
+                   : enumerator->GetDefaultAudioEndpoint(eRender, eConsole, w->device.put());
     if (SUCCEEDED(hr)) hr = w->device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, w->client.putVoid());
     if (SUCCEEDED(hr)) {
         WAVEFORMATEXTENSIBLE fmt = {};

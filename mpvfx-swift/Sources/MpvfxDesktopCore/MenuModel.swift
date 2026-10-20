@@ -21,6 +21,8 @@
 public struct MenuItem: Equatable, Sendable {
     public enum Command: String, Sendable {
         case about, services, hide, hideOthers, showAll, quit
+        /// MpVFX > Settings… (Cmd+,): the editor's Settings card (Ctrl+, on Linux and Windows).
+        case settings
         case closeWindow
         case undo, redo, cut, copy, paste, pasteAndMatchStyle, delete, selectAll
         case toggleFullScreen
@@ -51,6 +53,7 @@ public enum MenuModel {
             return [
                 Menu(label: appName, items: [
                     MenuItem(label: "About \(appName)", command: .about),
+                    MenuItem(label: "Settings…", command: .settings, key: ",", modifiers: [.command], separatorBefore: true),
                     MenuItem(label: "Services", command: .services, separatorBefore: true),
                     MenuItem(label: "Hide \(appName)", command: .hide, key: "h", modifiers: [.command], separatorBefore: true),
                     MenuItem(label: "Hide Others", command: .hideOthers, key: "h", modifiers: [.command, .option]),

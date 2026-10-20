@@ -70,6 +70,13 @@ public enum ProjectRenders {
         }.sorted { $0.createdAt != $1.createdAt ? $0.createdAt > $1.createdAt : $0.id < $1.id }
     }
 
+    /// Whether `id` is an app render's job id: renders are written as `render-<uuid>.<format>` (RenderRequest.jobId,
+    /// the Renders tab), so a folder shared with other videos lists only these. A user's own `render-final.mp4` is not
+    /// one: the part after `render-` must be a UUID.
+    public static func isRenderId(_ id: String) -> Bool {
+        id.hasPrefix("render-") && UUID(uuidString: String(id.dropFirst("render-".count))) != nil
+    }
+
     /// Removes the render's file(s) and sidecar. Returns whether anything was removed.
     @discardableResult
     public static func delete(_ rendersDir: String, id: String) throws -> Bool {

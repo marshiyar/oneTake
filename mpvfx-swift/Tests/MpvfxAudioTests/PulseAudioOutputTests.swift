@@ -33,5 +33,27 @@ final class PulseAudioOutputTests: XCTestCase {
         out.flush(); XCTAssertEqual(out.framesPlayed, 0)
         out.stop()
     }
+
+    /// Settings > Audio output: the sinks, or nothing (no server), within the timeout.
+    func testDevicesAnswerWithinTheTimeoutAndAMissingSinkPlaysOnTheDefault() throws {
+        let start = Date()
+        let devices = PulseAudioOutput.devices(timeout: 1)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+        XCTAssertEqual(Set(devices.map(\.id)).count, devices.count, "ids are unique")
+        XCTAssertFalse(devices.contains { $0.id.isEmpty || $0.name.isEmpty })
+        XCTAssertEqual(AudioOutputDevices.list().map(\.id), PulseAudioOutput.devices().map(\.id))
+
+        // A chosen sink that is gone plays on the default one, as the system would: start succeeds or fails exactly
+        // as it does with no choice (no audio hardware on a CI runner).
+        func starts(_ out: PulseAudioOutput) -> Bool {
+            defer { out.stop() }
+            do { try out.start(); return true } catch AudioOutputError.unavailable { return false } catch { XCTFail("\(error)"); return false }
+        }
+        let out = PulseAudioOutput(appName: "MpVFX-tests")
+        out.device = "mpvfx-no-such-sink"
+        XCTAssertEqual(out.device, "mpvfx-no-such-sink")
+        XCTAssertEqual(starts(out), starts(PulseAudioOutput(appName: "MpVFX-tests")))
+        XCTAssertEqual(out.device, "mpvfx-no-such-sink", "the choice is kept for when it is back")
+    }
 }
 #endif
