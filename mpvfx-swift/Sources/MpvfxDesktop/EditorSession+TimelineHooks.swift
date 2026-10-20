@@ -27,6 +27,7 @@ extension EditorSession {
         timeline.onOpenGroupFxRack = { [weak self] groupId in self?.openAudioGroupRack(groupId) }
         timelineRegion?.toolbar.onRemoveSilence = { [weak self] clipId in self?.removeSilence(clipId: clipId) }
         timeline.onNativeAudioAction = { [weak self] clipId, action in self?.nativeAudioAction(clipId: clipId, action) }
+        timeline.importForPaste = { [weak self] paths, done in self?.importForPaste(paths, done) }
         timeline.onAddText = { [weak self] time in self?.addText(at: time) }
         timeline.onEditKeyframeEasing = { [weak self] clipId, refs in self?.openKeyframeEasing(clipId: clipId, refs: refs) }
         // onAddBeat stays unset: the toolbar's own addBeat(at:) is used, and the button is enabled only once a music clip
@@ -71,6 +72,35 @@ extension EditorSession {
 
     /// useNativeAudioActions handleNativeAudioAction: detach probes the video's file for an audio stream first
     /// ("This video has no audio stream"); either edit is one undo step and its refusal is shown as an error toast.
+    /// Clips pasted from another project: their media and LUTs are copied into this one first (one file per call, so
+    /// each copy's name is known), since export reads only media inside the project. Any failure cancels the paste.
+    func importForPaste(_ paths: [String], _ done: @escaping ([String: String]?) -> Void) {
+        guard let backend, let projectId = project?.id else {
+            player.view.showToast("Open a project to paste clips from another one", isError: true); redraw(); done(nil); return
+        }
+        Task { [weak self] in
+            var copies: [String: String] = [:]
+            var failure: String?
+            for p in paths {
+                do {
+                    let r = try await backend.importFiles(projectId: projectId, paths: [p], directory: nil)
+                    if case .array(let files)? = r["files"], case .string(let rel)? = files.first { copies[p] = rel; continue }
+                    if case .array(let bad)? = r["invalid"], case .object(let o)? = bad.first, case .string(let why)? = o["reason"] {
+                        failure = "\((p as NSString).lastPathComponent): \(why)"
+                    } else { failure = (p as NSString).lastPathComponent }
+                } catch { failure = "\((p as NSString).lastPathComponent): \(error)" }
+                break
+            }
+            let copied = copies, failed = failure
+            self?.postToUI {
+                guard let self else { return }
+                if let failure = failed { self.onError("Clips not pasted", "Could not copy their media into this project (\(failure))"); done(nil); return }
+                done(copied)
+                self.panels?.refreshMedia(); self.playback.duration = self.editor.duration; self.syncStage(); self.redraw()
+            }
+        }
+    }
+
     func nativeAudioAction(clipId: String, _ action: TimelineController.NativeAudioAction) {
         let toast: (String, Bool) -> Void = { [weak self] m, e in self?.player.view.showToast(m, isError: e); self?.redraw() }
         let finish: (Bool) -> Void = { [weak self] ok in

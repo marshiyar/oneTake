@@ -109,6 +109,10 @@ protocol CrossPaneDrag: AnyObject {
 final class EditorShellRouter: CanvasInput {
     enum Region: Hashable, CaseIterable { case left, previewTopBar, player, right, timeline }
     weak var crossPaneDrag: CrossPaneDrag?
+    /// The Settings card: while open it is drawn above every pane and takes presses, moves, the wheel and keys
+    /// (window coordinates) before any pane.
+    var modal: SettingsPanel?
+    private var modalOpen: Bool { modal?.isOpen == true }
     enum Drag: Equatable { case leftSeam, rightSeam, timelineDivider(startY: Double, startH: Double) }
 
     let layout: PanelLayoutState
@@ -179,6 +183,7 @@ final class EditorShellRouter: CanvasInput {
         }
         if !fullscreen { drawHandles(c, f) }
         crossPaneDrag?.drawDrag(c)
+        if let modal, modal.isOpen { modal.draw(c, size: size) }
     }
 
     /// Content inside a rounded card is clipped to the card's inner rounded rect (local coordinates).
@@ -259,6 +264,10 @@ final class EditorShellRouter: CanvasInput {
     func pointerUp(x: Double, y: Double) { pointerUp(x: x, y: y, button: PointerButton.primary) }
 
     func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
+        if modalOpen, drag == nil, captured == nil {
+            if button == PointerButton.primary { _ = modal?.pointerDown(CanvasPoint(x, y)) }
+            needsDisplay(); return
+        }
         // Seams and the divider take the primary button only; other buttons go to the pane under the pointer.
         if button == PointerButton.primary, let h = handle(at: x, y) {
             switch h {
@@ -276,6 +285,10 @@ final class EditorShellRouter: CanvasInput {
     }
 
     func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
+        if modalOpen, drag == nil, captured == nil {
+            if modal?.pointerMove(CanvasPoint(x, y)) == true { needsDisplay() }
+            return
+        }
         if let d = drag {
             switch d {
             case .leftSeam, .rightSeam: layout.moveResize(x: x)
@@ -334,6 +347,7 @@ final class EditorShellRouter: CanvasInput {
     }
 
     func secondaryClick(x: Double, y: Double) {
+        if modalOpen { return }
         guard let region = region(at: x, y) else { return }
         focused = region
         let (lx, ly) = local(region, x, y)
@@ -344,6 +358,7 @@ final class EditorShellRouter: CanvasInput {
         scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false)
     }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {
+        if modalOpen { if modal?.scroll(dy: dy) == true { needsDisplay() }; return }
         // Wheel goes to the pane under the pointer; `y` is tracked from the last move.
         guard let region = hovered ?? captured else { return }
         let (lx, _) = local(region, x, 0)
@@ -351,6 +366,7 @@ final class EditorShellRouter: CanvasInput {
     }
 
     func keyDown(_ k: EditorKey) -> Bool {
+        if modalOpen, modal?.keyDown(k) == true { needsDisplay(); return true }
         if let input = panes[focused]?.input, input.keyDown(k) { return true }
         // Global shortcuts work from any focus: fall back to the timeline (which falls through to playback).
         if focused != .timeline, let t = panes[.timeline]?.input { return t.keyDown(k) }
@@ -387,6 +403,7 @@ extension EditorSession {
         router.panes[.timeline] = ShellPane(input: ti) { c, size in region.draw(c, size: size) }
         router.needsDisplay = { [weak self] in self?.redraw() }
         installPanels(router, userData: userData)
+        installSettings(router, userData: userData)
         installTimelineHooks()
         shell = router
         return router
