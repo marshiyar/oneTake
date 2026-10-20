@@ -23,9 +23,9 @@ final class PanelAppearanceTests: XCTestCase {
     override func tearDown() { Theme.setMode(.dark) }
 
     func testPanelTokensFollowTheMode() {
-        XCTAssertEqual(PanelTheme.panelBg, CanvasColor(hex: "#0C0C0E")!)         // dark = the recorded palette
-        XCTAssertEqual(PanelStyle.popoverBackground, CanvasColor(hex: "#161618")!)
-        XCTAssertEqual(TimelineTheme.default.rowBackground, CanvasColor(hex: "#101014")!)
+        XCTAssertEqual(PanelTheme.panelBg, CanvasColor(hex: "#1D1D1D")!)         // dark = docs/DESIGN.md
+        XCTAssertEqual(PanelStyle.popoverBackground, CanvasColor(hex: "#252525")!)
+        XCTAssertEqual(TimelineTheme.default.rowBackground, CanvasColor(hex: "#1D1D1D")!)
         Theme.setMode(.light)
         XCTAssertEqual(PanelTheme.panelBg, CanvasColor(ThemeTokens.panelBgPair.light))
         XCTAssertEqual(PanelTheme.text0, CanvasColor(ThemeTokens.textPairs[0].light))
@@ -35,7 +35,7 @@ final class PanelAppearanceTests: XCTestCase {
         XCTAssertLessThan(PanelTheme.seam.r, 0.1)                                  // white/12 becomes ink/12
         XCTAssertEqual(PanelTheme.onAccent, CanvasColor(r: 1, g: 1, b: 1))        // fixed in both modes
         Theme.setMode(.dark)
-        XCTAssertEqual(PanelTheme.panelBg, CanvasColor(hex: "#0C0C0E")!)
+        XCTAssertEqual(PanelTheme.panelBg, CanvasColor(hex: "#1D1D1D")!)
     }
 
     /// Grade curve lines (CurveGraph's per-tab colours): dark keeps the recorded hexes exactly; light draws every
