@@ -125,11 +125,12 @@ final class ShellLifecycleTests: XCTestCase {
         // The standard macOS application menu, without web-only items.
         let mac = MenuModel.bar(for: .macOS)
         XCTAssertEqual(mac.map(\.label), ["MpVFX", "File", "Edit", "View", "Window"])
-        XCTAssertEqual(mac[0].items.map(\.command), [.about, .services, .hide, .hideOthers, .showAll, .quit])
-        XCTAssertEqual(mac[0].items.map(\.label), ["About MpVFX", "Services", "Hide MpVFX", "Hide Others", "Show All", "Quit MpVFX"])
-        let quit = mac[0].items[5]
+        XCTAssertEqual(mac[0].items.map(\.command), [.about, .settings, .services, .hide, .hideOthers, .showAll, .quit])
+        XCTAssertEqual(mac[0].items.map(\.label), ["About MpVFX", "Settings…", "Services", "Hide MpVFX", "Hide Others", "Show All", "Quit MpVFX"])
+        let quit = mac[0].items[6]
         XCTAssertEqual(quit.key, "q"); XCTAssertEqual(quit.modifiers, [.command]); XCTAssertTrue(quit.separatorBefore)
-        XCTAssertEqual(mac[0].items[3].modifiers, [.command, .option])
+        XCTAssertEqual(mac[0].items[1].key, ","); XCTAssertEqual(mac[0].items[1].modifiers, [.command])
+        XCTAssertEqual(mac[0].items[4].modifiers, [.command, .option])
         XCTAssertEqual(mac[1].items.map(\.command), [.closeWindow])
         XCTAssertEqual(mac[2].items.map(\.command), [.undo, .redo, .cut, .copy, .paste, .pasteAndMatchStyle, .delete, .selectAll])
         XCTAssertEqual(mac[2].items[1].key, "z"); XCTAssertEqual(mac[2].items[1].modifiers, [.command, .shift])

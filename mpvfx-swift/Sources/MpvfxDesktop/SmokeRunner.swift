@@ -157,6 +157,7 @@ final class SmokeRunner {
             print("[MpVFX] smoke: no inspector row \(row.key)")
         }
         if hooks.rightTabRenders { session.panels?.right.layout.setRightTab(.renders) }
+        if hooks.settings { session.showSettings() }
     }
 
     /// Press, drag and (unless told not to) release through the shell router (bin → timeline/stage); without the
