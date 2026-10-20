@@ -166,7 +166,7 @@ final class TimelineEditingOpsTests: XCTestCase {
         XCTAssertFalse(e.rippleDelete(["clip:a"])); XCTAssertFalse(e.rippleTrim(clipId: "clip:a", edge: .end, toFrame: 90))
         XCTAssertFalse(e.setMuted(clipId: "clip:a", true)); XCTAssertFalse(e.setTrackMuted("track:v1", true))
         XCTAssertFalse(e.removeTrack("track:v1"))
-        XCTAssertTrue(e.paste(e.copyClips(["clip:a"]), at: 20).isEmpty)
+        XCTAssertTrue(e.paste(try XCTUnwrap(e.copyClips(["clip:a"])), at: 20).isEmpty)
         let y1 = TimelineLayout.rowTop(1) + 20
         c.pointerDown(x: 264 + 100, y: y1); c.pointerMove(x: 264 + 300, y: y1); c.pointerUp(x: 264 + 300, y: y1)
         XCTAssertEqual(c.view.selection, ["clip:a"], "still selectable"); XCTAssertNil(c.view.drag)

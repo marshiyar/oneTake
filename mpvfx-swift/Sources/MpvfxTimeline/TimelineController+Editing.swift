@@ -61,7 +61,8 @@ public extension TimelineController {
     /// alone (useClipboard handleDuplicate). More than one selected clip is refused.
     @discardableResult func duplicateSelection() -> Bool {
         guard let editor, view.selection.count == 1, let id = view.selection.first, let (_, c) = clip(id) else { return false }
-        let ids = editor.paste(editor.copyClips([id]), at: c.end)
+        guard let board = editor.copyClips([id]) else { return false }
+        let ids = editor.paste(board, at: c.end)
         guard !ids.isEmpty else { return false }
         view.selection = Set(ids); needsDisplay?(); return true
     }

@@ -18,8 +18,6 @@ import MpvfxTimeline
 /// Document edits behind the inspector and the media bin. Each is one undo step on the shared TimelineEditor
 /// history (the same history the timeline, canvas and Cmd+Z use); none keeps state of its own.
 public extension TimelineEditor {
-    static let scaleId = "transform.scale", opacityId = "visual.opacity", volumeId = "audio.volume"
-
     func isAnimated(clipId: String, _ parameterId: String) -> Bool {
         clip(clipId)?.clip.parameterTracks.contains { $0.parameterId == parameterId && !$0.keyframes.isEmpty } ?? false
     }
@@ -99,6 +97,41 @@ public extension TimelineEditor {
         switch v { case .number: type = .number; case .vec2: type = .vec2; case .rgba: type = .rgba }
         return applyProperty(.atomic(.keyframe(.upsert(address: a, valueType: type, frame: f, value: v,
                                                         baselineValue: c.staticParameters?[parameterId] ?? v))))
+    }
+
+    /// Stopwatch: `on` starts animating each listed parameter that has no keys with a keyframe holding its current
+    /// value at the playhead (its `fallback` when it has none); off drops every keyframe of the parameters and keeps
+    /// the value at the playhead as their static value. One undo step; false when nothing changes.
+    @discardableResult
+    func setAnimated(clipId: String, _ parameters: [(id: String, fallback: NativeParameterValue)], _ on: Bool, time: Double) -> Bool {
+        guard !isClipLocked(clipId) else { return false }
+        let pending = parameters.filter { isAnimated(clipId: clipId, $0.id) != on }
+        guard !pending.isEmpty else { return false }
+        if on {
+            return withHistory("Animate property", coalesceKey: "animate-\(UUID().uuidString)") {
+                var ok = false
+                for p in pending { ok = toggleKeyframe(clipId: clipId, p.id, time: time, fallback: p.fallback) || ok }
+                return ok
+            }
+        }
+        var held: [String: NativeParameterValue] = [:]
+        for p in pending {
+            guard let v = parameterValue(clipId: clipId, parameterId: p.id, time: time) else { return false }
+            held[p.id] = v
+        }
+        return withHistory("Stop animating property") {
+            editClip(clipId) { c in
+                let before = c.parameterTracks
+                c.parameterTracks.removeAll { held[$0.parameterId] != nil }
+                // As replaceParameterTracks: no crop pivot marker on a removed rotation key, no stale geometry snapshot.
+                c.cropPivotSegments = currentNativeCropPivotReferences(validNativeCropPivotSegments(c.cropPivotSegments, tracks: c.parameterTracks),
+                                                                       before: before, after: c.parameterTracks)
+                var sp = c.staticParameters ?? [:]
+                for (pid, v) in held { sp[pid] = v }
+                c.staticParameters = sp
+                return true
+            }
+        }
     }
 
     /// Composition time of the previous/next keyframe of the parameter relative to `time`.
