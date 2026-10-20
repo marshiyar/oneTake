@@ -75,6 +75,20 @@ final class PlaybackLoopSyncTests: XCTestCase {
         XCTAssertFalse(session.playback.isPlaying)
     }
 
+    func testClearingInAndOutFromTheShortcutsPanelReachesTheFeederAtOnce() throws {
+        let (session, _) = try makeSession()
+        defer { session.audio?.stop() }
+        session.playback.inPoint = 1; session.playback.outPoint = 2
+        XCTAssertEqual(session.audio?.loop?.start, 1); XCTAssertEqual(session.audio?.loop?.end, 2)
+        session.playback.inPoint = 0.5   // loop already on: moving a point still syncs
+        XCTAssertEqual(session.audio?.loop?.start, 0.5)
+        try XCTUnwrap(session.transport.shortcuts.onClearIn)()
+        XCTAssertEqual(session.audio?.loop?.start, 0, "the cleared in point reaches the feeder before another timer tick")
+        try XCTUnwrap(session.transport.shortcuts.onClearOut)()
+        XCTAssertEqual(session.audio?.loop?.end, 3)
+        XCTAssertTrue(session.playback.loopEnabled, "clearing the range leaves loop on")
+    }
+
     func testEnablingNearEndFollowsRepeatedDeviceWrapsWithoutRestarting() throws {
         let (session, output) = try makeSession()
         defer { session.audio?.stop() }

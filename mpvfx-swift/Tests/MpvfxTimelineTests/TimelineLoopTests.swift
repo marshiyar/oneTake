@@ -95,4 +95,20 @@ final class TimelineLoopTests: XCTestCase {
         XCTAssertTrue(p.tick(0.016)); XCTAssertEqual(p.currentTime, 1.02, accuracy: 1e-9); XCTAssertTrue(p.isPlaying)
         clock = 1.05; p.tick(0.016); XCTAssertEqual(p.currentTime, 1.05, accuracy: 1e-9)
     }
+
+    func testEveryRangeChangeNotifiesWithTheNewRange() {
+        let p = make()
+        var seen: [(Double, Double)] = []
+        p.onChange = { seen.append((p.loopStart, p.loopEnd)) }
+        p.inPoint = 1; p.outPoint = 2
+        XCTAssertEqual(seen.last?.0, 1); XCTAssertEqual(seen.last?.1, 2)
+        seen = []; p.inPoint = 1.5
+        XCTAssertEqual(seen.count, 1, "moving a point while loop is on notifies once"); XCTAssertEqual(seen.last?.0, 1.5)
+        seen = []; p.inPoint = nil
+        XCTAssertEqual(seen.count, 1, "clearing a point notifies though loop stays on"); XCTAssertEqual(seen.last?.0, 0)
+        seen = []; p.outPoint = nil
+        XCTAssertEqual(seen.count, 1); XCTAssertEqual(seen.last?.1, 3)
+        seen = []; p.outPoint = nil; p.inPoint = nil
+        XCTAssertTrue(seen.isEmpty, "no change, no notification")
+    }
 }

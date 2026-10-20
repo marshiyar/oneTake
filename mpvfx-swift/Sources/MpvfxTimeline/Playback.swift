@@ -41,22 +41,29 @@ public final class PlaybackState {
     }
     public var audioMuted = false
     /// Work-area in point (playerStore setInPoint): setting one turns loop on so playback respects it, and an out
-    /// point at or before it is dropped.
+    /// point at or before it is dropped. Any change of the range notifies `onChange`, also when loop was already on
+    /// or the point is cleared, so the audio feeder's loop range follows at once instead of at the next tick.
     public var inPoint: Double? {
         didSet {
             if let t = inPoint, !t.isFinite { inPoint = nil; return }
-            guard let t = inPoint else { return }
-            if let o = outPoint, t >= o { outPoint = nil }
-            loopEnabled = true
+            if let t = inPoint {
+                if let o = outPoint, t >= o { outPoint = nil }
+                let wasLooping = loopEnabled
+                loopEnabled = true                                  // notifies when it turned loop on
+                if wasLooping && inPoint != oldValue { onChange?() }
+            } else if oldValue != nil { onChange?() }
         }
     }
-    /// Work-area out point (setOutPoint): turns loop on; an in point at or after it is dropped.
+    /// Work-area out point (setOutPoint): turns loop on; an in point at or after it is dropped. Notifies like `inPoint`.
     public var outPoint: Double? {
         didSet {
             if let t = outPoint, !t.isFinite { outPoint = nil; return }
-            guard let t = outPoint else { return }
-            if let i = inPoint, t <= i { inPoint = nil }
-            loopEnabled = true
+            if let t = outPoint {
+                if let i = inPoint, t <= i { inPoint = nil }
+                let wasLooping = loopEnabled
+                loopEnabled = true
+                if wasLooping && outPoint != oldValue { onChange?() }
+            } else if oldValue != nil { onChange?() }
         }
     }
     var shuttleDirection: Double?
