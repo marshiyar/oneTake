@@ -116,6 +116,7 @@ final class EditorSession {
         pv.requestAnimationFrame = { [weak self] in self?.scheduleAnimationFrame() }
         editor.naturalSize = { [weak self] asset in asset.naturalSize ?? asset.source.flatMap { self?.naturalSizes[$0] } }
         makeAudio()
+        playback.onChange = { [weak self] in self?.syncAudio() }
         setupTransportPopovers()
         syncStage()
         let previousOnChange = editor.onChange
@@ -415,8 +416,14 @@ final class EditorSession {
         syncStage(); redraw()
     }
 
+    private var tickingPlayback = false
+
     /// Advance playback; returns true if still playing.
     func tick(_ dt: Double) -> Bool {
+        // Timer ticks follow the device, including a wrap just before or after reading its clock.
+        // Neither their onChange callback nor the surrounding sync may seek audio back to video.
+        tickingPlayback = true
+        defer { tickingPlayback = false }
         syncAudio()
         if playback.tick(dt) { timeline.syncFromPlayback() }
         syncAudio()
@@ -495,9 +502,14 @@ final class EditorSession {
         // Loop on: the feeder wraps at the loop end itself (seamless, no restart); off: straight through, and the
         // transport stops at the out point.
         let wantLoop = playback.loopEnabled ? (start: playback.loopStart, end: playback.loopEnd) : nil
-        if audio.loop?.start != wantLoop?.start || audio.loop?.end != wantLoop?.end { audio.loop = wantLoop }
+        let loopChanged = audio.loop?.start != wantLoop?.start || audio.loop?.end != wantLoop?.end
+        if loopChanged { audio.loop = wantLoop }
         if playback.wantsExternalClock {
-            if !audio.isPlaying || abs(audio.currentTime - playback.currentTime) > 0.25 { try? audio.play(from: playback.currentTime) }
+            // A toggle/range change must discard sound already queued under the old loop policy,
+            // especially a queued wrap when switching off. Ordinary device wraps never restart.
+            if !audio.isPlaying || loopChanged || (!tickingPlayback && abs(audio.currentTime - playback.currentTime) > 0.25) {
+                try? audio.play(from: playback.currentTime)
+            }
         } else if audio.isPlaying {
             audio.stop()
         }
