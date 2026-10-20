@@ -11,15 +11,16 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-// The keyframe diamond's context menu (no incoming-segment ease editor, no Custom ease yet).
+// The keyframe diamond's context menu (no incoming-segment ease editor; custom curves are edited in the inspector).
 import Foundation
 import MpvfxCanvas
 import MpvfxShared
 
 /// Drawn keyframe diamond context menu: move the keys to the playhead, set their
-/// outgoing ease, delete them, or delete every key in the diamond's scope. Each action is one undo step.
+/// outgoing ease or open the inspector's easing editor on them, delete them, or delete every key in the diamond's
+/// scope. Each edit is one undo step.
 public struct TimelineKeyframeMenu: Equatable, Sendable {
-    public enum Action: String, Sendable { case moveToPlayhead, linear, easeIn, easeOut, easeInOut, hold, delete, deleteAll }
+    public enum Action: String, Sendable { case moveToPlayhead, linear, easeIn, easeOut, easeInOut, hold, editEasing, delete, deleteAll }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
         public var enabled = true; public var checked: Bool?; public var destructive = false
@@ -66,10 +67,12 @@ public struct TimelineKeyframeMenu: Equatable, Sendable {
         itemRects().first { px >= $0.1.x && px <= $0.1.maxX && py >= $0.1.y && py < $0.1.maxY }?.0
     }
 
-    /// `current`: the ease every target key shares (nil when they differ), checked in the list.
-    public static func entries(count: Int, canMoveToPlayhead: Bool, current: NativeInterpolation?) -> [Entry] {
+    /// `current`: the ease every target key shares (nil when they differ), checked in the list. `canEditEasing`: the
+    /// host shows the easing editor (TimelineController.onEditKeyframeEasing is set).
+    public static func entries(count: Int, canMoveToPlayhead: Bool, current: NativeInterpolation?, canEditEasing: Bool) -> [Entry] {
         var e: [Entry] = [.item(Item(action: .moveToPlayhead, label: "Move to Playhead", enabled: canMoveToPlayhead)), .divider]
         for ease in eases { e.append(.item(Item(action: ease.action, label: ease.label, checked: current == ease.value))) }
+        e.append(.item(Item(action: .editEasing, label: "Edit Easing…", enabled: canEditEasing)))
         e.append(.divider)
         e.append(.item(Item(action: .delete, label: count == 1 ? "Delete Keyframe" : "Delete \(count) Keyframes", hint: "⌫", destructive: true)))
         e.append(.item(Item(action: .deleteAll, label: "Delete All Keyframes", destructive: true)))
@@ -102,7 +105,7 @@ extension TimelineController {
         let current = outs.allSatisfy { $0 == outs.first } ? outs.first : nil
         let group = hit.lane.flatMap { lane in clip(hit.clipId).flatMap { $0.1.lanes.indices.contains(lane) ? $0.1.lanes[lane].group : nil } }
         let entries = TimelineKeyframeMenu.entries(count: Set(refs.map(\.frame)).count, canMoveToPlayhead: playheadMoveDelta(refs) != nil,
-                                                   current: current)
+                                                   current: current, canEditEasing: onEditKeyframeEasing != nil)
         var m = TimelineKeyframeMenu(x: x, y: y, refs: refs, clipId: hit.clipId, group: group, entries: entries)
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
         if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }
@@ -142,6 +145,10 @@ extension TimelineController {
             guard let ease = TimelineKeyframeMenu.eases.first(where: { $0.action == action }) else { return false }
             let ok = editor.setOutgoing(m.refs.sorted { ($0.frame, $0.parameterId) < ($1.frame, $1.parameterId) }, ease.value)
             needsDisplay?(); return ok
+        case .editEasing:
+            guard let open = onEditKeyframeEasing else { return false }
+            open(m.clipId, m.refs)
+            return true
         case .delete:
             return deleteKeyframes(m.refs)
         case .deleteAll:

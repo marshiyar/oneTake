@@ -57,7 +57,7 @@ final class TimelineKeyframeMenuTests: XCTestCase {
         c.secondaryClick(x: x(c, 2), y: barY(c))
         let m = try XCTUnwrap(c.view.keyframeMenu)
         XCTAssertNil(c.view.clipMenu)
-        XCTAssertEqual(labels(m), ["Move to Playhead", "—", "Linear", "Ease In", "Ease Out", "Ease In-Out", "Hold", "—",
+        XCTAssertEqual(labels(m), ["Move to Playhead", "—", "Linear", "Ease In", "Ease Out", "Ease In-Out", "Hold", "Edit Easing…", "—",
                                    "Delete Keyframe", "Delete All Keyframes"])
         XCTAssertEqual(Set(c.view.selectedKeyframes.map(\.frame)), [60], "the clicked diamond becomes the selection")
         XCTAssertEqual(c.playback.currentTime, 5, accuracy: 1e-9, "opening the menu does not seek")
@@ -130,6 +130,28 @@ final class TimelineKeyframeMenuTests: XCTestCase {
         c.playback.seek(7); c.syncFromPlayback()
         c.secondaryClick(x: x(c, 0) + 2, y: barY(c))
         XCTAssertFalse(try item(try XCTUnwrap(c.view.keyframeMenu), .moveToPlayhead).enabled)
+    }
+
+    func testEditEasingHandsTheKeysToTheHost() throws {
+        let (c, e) = try make()
+        // No host easing editor: the item is disabled and a click leaves the menu open.
+        c.secondaryClick(x: x(c, 2), y: barY(c))
+        XCTAssertFalse(try item(try XCTUnwrap(c.view.keyframeMenu), .editEasing).enabled)
+        try click(c, try XCTUnwrap(c.view.keyframeMenu), .editEasing)
+        XCTAssertNotNil(c.view.keyframeMenu)
+        c.keyDown(EditorKey(.escape))
+        var opened: [(String, Set<TimelineKeyframeRef>)] = []
+        c.onEditKeyframeEasing = { opened.append(($0, $1)) }
+        c.secondaryClick(x: x(c, 2), y: barY(c))
+        let m = try XCTUnwrap(c.view.keyframeMenu)
+        XCTAssertTrue(try item(m, .editEasing).enabled)
+        let undo = e.undoStack.count
+        try click(c, m, .editEasing)
+        XCTAssertNil(c.view.keyframeMenu)
+        XCTAssertEqual(opened.count, 1)
+        XCTAssertEqual(opened.first?.0, "clip:a"); XCTAssertEqual(opened.first?.1, m.refs)
+        XCTAssertEqual(Set(opened.first?.1.map(\.frame) ?? []), [60])
+        XCTAssertEqual(e.undoStack.count, undo, "opening the editor edits nothing")
     }
 
     func testDeleteAndDeleteAll() throws {

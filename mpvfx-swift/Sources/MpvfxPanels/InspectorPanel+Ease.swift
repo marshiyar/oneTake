@@ -27,6 +27,32 @@ extension InspectorPanel {
     public static let defaultCubic = CubicBezierControlPoints(x1: 0.33, y1: 0, x2: 0.67, y2: 1)
     public static let cubicYRange: ClosedRange<Double> = -1...2
 
+    /// The parameters whose keys the Transform group's easing rows edit; keyed volume is eased in the Media group.
+    static let transformEasedChannels = [TimelineEditor.positionId, TimelineEditor.widthId, TimelineEditor.heightId,
+                                         TimelineEditor.rotationId, TimelineEditor.scaleId, TimelineEditor.opacityId]
+        + NativeTransform3D.parameterIds
+
+    /// The group whose easing rows edit keys of `parameterId`, nil for a parameter without an easing editor.
+    static func easingGroupId(_ parameterId: String) -> String? {
+        if transformEasedChannels.contains(parameterId) { return "layout" }
+        if parameterId == TimelineEditor.volumeId { return "media" }
+        return nil
+    }
+
+    /// The keyframe menu's "Edit Easing…": selects the clip, makes `refs` the keys the easing rows edit and opens the
+    /// group holding them, scrolled to its start. False when the keys have no easing editor (the panel is unchanged).
+    @discardableResult
+    public func showKeyframeEasing(clipId: String, refs: Set<TimelineKeyframeRef>) -> Bool {
+        let keys = refs.filter { $0.clipId == clipId }
+        guard let first = keys.sorted(by: { ($0.frame, $0.parameterId) < ($1.frame, $1.parameterId) }).first,
+              let group = Self.easingGroupId(first.parameterId) else { return false }
+        audioGroupId = nil
+        selection = [clipId]
+        selectedKeyframes = keys
+        if openGroupId != group { openGroupId = group; scrollOpenGroupToStart = true }
+        return true
+    }
+
     /// Presets in the picker's order; `value` nil is Custom.
     static let easePresets: [(key: String, label: String, value: NativeInterpolation?)] = [
         ("linear", "Linear", .linear),

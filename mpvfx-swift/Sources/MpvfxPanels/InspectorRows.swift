@@ -20,7 +20,10 @@ public struct InspectorRow {
     public enum KeyframeState: Equatable { case none, animated, onKey }
     public struct Keyframe {
         public var state: KeyframeState
+        /// ◆: add the key at the playhead, or remove the one there.
         public var toggle: () -> Void
+        /// Stopwatch: start animating (a key at the playhead), or stop (drop every key, keep the playhead's value).
+        public var stopwatch: () -> Void
         public var prev: (() -> Void)?
         public var next: (() -> Void)?
     }

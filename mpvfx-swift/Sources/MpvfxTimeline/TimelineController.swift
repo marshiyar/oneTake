@@ -92,6 +92,9 @@ public final class TimelineController {
     public var onNativeAudioAction: ((_ clipId: String, _ action: NativeAudioAction) -> Void)?
     /// T: put a text layer at the playhead (the host adds it and opens its Text section). Unset: T does nothing.
     public var onAddText: ((_ time: Double) -> Void)?
+    /// Keyframe menu "Edit Easing…": show the inspector's easing editor on these keys of the clip. Unset: the item is
+    /// disabled.
+    public var onEditKeyframeEasing: ((_ clipId: String, _ refs: Set<TimelineKeyframeRef>) -> Void)?
 
     func reload(from e: TimelineEditor) {
         let all = e.tracks

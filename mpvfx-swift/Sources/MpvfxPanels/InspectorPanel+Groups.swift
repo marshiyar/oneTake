@@ -84,6 +84,7 @@ extension InspectorPanel {
         return InspectorRow.Keyframe(
             state: on ? .onKey : (animated ? .animated : .none),
             toggle: { [weak self] in self?.edited(editor.toggleKeyframe(clipId: s.id, pid, time: t, fallback: fallback)) },
+            stopwatch: { [weak self] in self?.edited(editor.setAnimated(clipId: s.id, [(pid, fallback)], !animated, time: t)) },
             // KeyframeNavigation: a stepper is live only when there is a keyframe that way.
             prev: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: false) : nil).map { v in { [weak self] in self?.onSeek?(v) } },
             next: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: true) : nil).map { v in { [weak self] in self?.onSeek?(v) } })
@@ -142,6 +143,11 @@ extension InspectorPanel {
                     return ok
                 }(), label: "Edit transform")
             },
+            stopwatch: { [weak self] in
+                let on = wk.state == .none && hk.state == .none
+                self?.edited(editor.setAnimated(clipId: s.id, [(TimelineEditor.widthId, .number(w)), (TimelineEditor.heightId, .number(h))],
+                                                on, time: t), label: "Edit transform")
+            },
             prev: wk.prev ?? hk.prev, next: wk.next ?? hk.next)
         let pw = numberRow(key: "w", label: "W", value: w, decimals: 0, suffix: "px", tier: sizeTier(TimelineEditor.widthId, w == fit.width), step: 1,
                            apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(width: max(1, $0))) },
@@ -166,8 +172,7 @@ extension InspectorPanel {
         ]
         rows += transform3DRows(editor, s)
         // Keyframe easing (NativeInterpolationEditor) for the eased channels: the selected keys, else the playhead's.
-        let channels = ([pos, TimelineEditor.widthId, TimelineEditor.heightId, TimelineEditor.rotationId, TimelineEditor.scaleId,
-                        TimelineEditor.opacityId] + NativeTransform3D.parameterIds).filter { editor.isAnimated(clipId: s.id, $0) }
+        let channels = Self.transformEasedChannels.filter { editor.isAnimated(clipId: s.id, $0) }
         if !channels.isEmpty { rows += easingRows(editor, s, channels: channels) }
         rows += arcMotionRows(editor, s)
         return InspectorGroup(id: "layout", title: "Transform",
@@ -271,6 +276,7 @@ extension InspectorPanel {
                 },
                 reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.volumeId)) },
                 keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol))))))
+            if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
         }
         if s.kind == .video || s.kind == .audio {
             let rate = editor.playbackRate(clipId: s.id)

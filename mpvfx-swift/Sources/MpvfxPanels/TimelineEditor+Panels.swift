@@ -101,6 +101,37 @@ public extension TimelineEditor {
                                                         baselineValue: c.staticParameters?[parameterId] ?? v))))
     }
 
+    /// Stopwatch: `on` starts animating each listed parameter that has no keys with a keyframe holding its current
+    /// value at the playhead (its `fallback` when it has none); off drops every keyframe of the parameters and keeps
+    /// the value at the playhead as their static value. One undo step; false when nothing changes.
+    @discardableResult
+    func setAnimated(clipId: String, _ parameters: [(id: String, fallback: NativeParameterValue)], _ on: Bool, time: Double) -> Bool {
+        guard !isClipLocked(clipId) else { return false }
+        let pending = parameters.filter { isAnimated(clipId: clipId, $0.id) != on }
+        guard !pending.isEmpty else { return false }
+        if on {
+            return withHistory("Animate property", coalesceKey: "animate-\(UUID().uuidString)") {
+                var ok = false
+                for p in pending { ok = toggleKeyframe(clipId: clipId, p.id, time: time, fallback: p.fallback) || ok }
+                return ok
+            }
+        }
+        var held: [String: NativeParameterValue] = [:]
+        for p in pending {
+            guard let v = parameterValue(clipId: clipId, parameterId: p.id, time: time) else { return false }
+            held[p.id] = v
+        }
+        return withHistory("Stop animating property") {
+            editClip(clipId) { c in
+                c.parameterTracks.removeAll { held[$0.parameterId] != nil }
+                var sp = c.staticParameters ?? [:]
+                for (pid, v) in held { sp[pid] = v }
+                c.staticParameters = sp
+                return true
+            }
+        }
+    }
+
     /// Composition time of the previous/next keyframe of the parameter relative to `time`.
     func adjacentKeyframeTime(clipId: String, _ parameterId: String, time: Double, forward: Bool) -> Double? {
         guard let (_, c) = clip(clipId) else { return nil }
