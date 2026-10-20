@@ -86,10 +86,13 @@ pull requests.
 ## Approvals: the review App
 
 `main` requires `ci-ok` and one approving review. Approvals can come from the project's review GitHub App (installed
-on this repository only; Pull requests read and write, Contents read, Checks read, no webhook), whose App ID and
-private key are the repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`. After reviewing, the owner comments
-`/agent-approve <full head sha>` on the pull request; `.github/workflows/agent-approve.yml` posts the App's approval
-only when the comment comes from the owner's account, names the current head, and `ci-ok` passed on that commit.
+on this repository only; Pull requests read and write, Contents read and write, Checks read, no webhook), whose App
+ID and private key are the repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`. After reviewing, the owner
+comments `/agent-approve <full head sha>` on the pull request; `.github/workflows/agent-approve.yml` posts the App's
+approval only when the comment comes from the owner's account, names the current head, and `ci-ok` passed on that
+commit. It then turns on auto-merge for that head with the App's token, or merges it at once when it is already
+mergeable; both need the App's Contents write permission (with Contents read only, the approval is posted and the
+merge is left to the owner).
 
 ## macOS signing: one-time setup (owner)
 
