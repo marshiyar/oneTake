@@ -214,6 +214,21 @@ class ArtifactBaseline(unittest.TestCase):
             sentinel.compare_baseline("MpVFX", "MpVFX", ["libc.so.6"], {"read", "write", "socket"}, d, None, f)
             self.assertEqual([(r[1], r[2]) for r in f.rows if r[4] == "**FINDING**"], [("import-added", "fn socket")])
 
+    def test_baselines_are_kept_per_os(self):
+        # The Linux and macOS programs are both MpVFX: each is compared with its own OS's list.
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as out:
+            os.makedirs(os.path.join(d, "linux"))
+            with open(os.path.join(d, "linux", "MpVFX.imports"), "w") as fh:
+                fh.write("lib libc.so.6\nfn read\n")
+            f = sentinel.Findings({})
+            sentinel.compare_baseline("MpVFX", "macos/MpVFX", ["libSystem.B.dylib"], {"_read"}, d, out, f)
+            self.assertEqual(rules_of(f), ["import-baseline"])
+            self.assertTrue(os.path.isfile(os.path.join(out, "macos", "MpVFX.imports")))
+            f = sentinel.Findings({})
+            sentinel.compare_baseline("MpVFX", "linux/MpVFX", ["libc.so.6"], {"read"}, d, None, f)
+            self.assertEqual(rules_of(f), [])
+        self.assertEqual(sorted(sentinel.BASELINE_OS.values()), ["linux", "macos", "windows"])
+
 
 if __name__ == "__main__":
     unittest.main()
