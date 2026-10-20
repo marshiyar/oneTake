@@ -17,9 +17,10 @@ import MpvfxTimeline
 import MpvfxPanels
 import MpvfxDesktopCore
 
-/// Timeline callbacks the app answers (group rows, toolbar, Remove silence):
+/// Timeline callbacks the app answers (group rows, toolbar, Remove silence, keyframe menu):
 /// the audio-group FX button and name open the bus rack in the inspector; Remove silence analyses the selected
-/// video's media through the backend and cuts the silent spans in one undo step.
+/// video's media through the backend and cuts the silent spans in one undo step; the keyframe menu's Edit Easing
+/// opens the inspector's easing editor on the keys.
 extension EditorSession {
     func installTimelineHooks() {
         timeline.onOpenGroupFx = { [weak self] groupId, _ in self?.openAudioGroupRack(groupId) }
@@ -28,6 +29,7 @@ extension EditorSession {
         timeline.onNativeAudioAction = { [weak self] clipId, action in self?.nativeAudioAction(clipId: clipId, action) }
         timeline.importForPaste = { [weak self] paths, done in self?.importForPaste(paths, done) }
         timeline.onAddText = { [weak self] time in self?.addText(at: time) }
+        timeline.onEditKeyframeEasing = { [weak self] clipId, refs in self?.openKeyframeEasing(clipId: clipId, refs: refs) }
         // onAddBeat stays unset: the toolbar's own addBeat(at:) is used, and the button is enabled only once a music clip
         // has beat analysis (beatMusicClipId), which the native app does not produce yet.
     }
@@ -41,6 +43,14 @@ extension EditorSession {
         inspector.audioGroupId = nil
         inspector.selection = [id]
         inspector.openGroupId = "text"
+        panels.right.layout.setRightCollapsed(false)
+        panels.right.layout.setRightTab(.design)
+        redraw()
+    }
+
+    /// Keyframe menu "Edit Easing…": the keys' easing editor in Design (the timeline already selected the clip and keys).
+    func openKeyframeEasing(clipId: String, refs: Set<TimelineKeyframeRef>) {
+        guard let panels, panels.right.inspector.showKeyframeEasing(clipId: clipId, refs: refs) else { return }
         panels.right.layout.setRightCollapsed(false)
         panels.right.layout.setRightTab(.design)
         redraw()

@@ -87,7 +87,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Transform: X, Y, W, H, rotation, scale | done (undoable, keyframes at the playhead when animated; audit tests 0996b1e) | exact |
 | Transform: layer order | done: the Layer order field writes the clip's `layout.zIndex`, the stacking key preview and export share (the stage menu's z-order writes the same key); empty / reset returns to track order; test | close |
 | Transform: flex align/justify/direction/gap | dropped: flex layout of web containers has no native counterpart | n/a |
-| Keyframe diamond and prev/next per property | done | close |
+| Keyframe diamond and prev/next per property | done: with the stopwatch (start / stop animating, keeping the playhead's value) on the same row | close |
 | Keyframe easing presets (hold / linear / ease in/out) | done (setOutgoing) | close |
 | Keyframe easing custom curve handles, per-segment ease list, apply to all | partial: custom curve handles work; per-segment ease lists and apply to all are missing (panels) | close |
 | Ease curve editor (cubic bezier handles, spring, bounce params) | partial: cubic bezier handles work; spring and bounce parameters are missing (panels) | close |
@@ -171,7 +171,7 @@ their shape (`PlayerView+Outlines.swift`).
 | Remove silence (backend silence detection → one undo step, result toast) | done (de10f47) |
 | Add beat at playhead, beat strip (drag to move, ⌥-click delete), music beat analysis, beat edits persisted | missing (unowned: needs a native beat analysis and the beat file) |
 | Keyframe lanes, keyframe navigation in lane headers, group keyframe toggle (6671f11) | done |
-| Keyframe diamond context menu (delete, delete all, ease presets) | partial: right-click a diamond for Move to Playhead, Linear / Ease In / Ease Out / Ease In-Out / Hold (checked when every target key shares it), Delete Keyframe(s) and Delete All Keyframes (the clip bar's channels, or the lane's group); it acts on the key selection when the diamond is part of it, each action one undo step (`TimelineKeyframeMenu.swift`); "Edit Incoming Segment Ease…" and Custom are not ported |
+| Keyframe diamond context menu (delete, delete all, ease presets) | partial: right-click a diamond for Move to Playhead, Linear / Ease In / Ease Out / Ease In-Out / Hold (checked when every target key shares it), Edit Easing… (opens the inspector's easing editor, custom curve included, on the keys), Delete Keyframe(s) and Delete All Keyframes (the clip bar's channels, or the lane's group); it acts on the key selection when the diamond is part of it, each edit one undo step (`TimelineKeyframeMenu.swift`); "Edit Incoming Segment Ease…" is not ported |
 | Audio groups: create, header FX count, FX button / name open the bus rack, detach/reattach audio, mute | done |
 | Detach / Reattach audio from the clip menu: offered on any video clip with a media file (native clips carry no preview binding); detach probes the file for an audio stream, puts a linked audio clip on a new audio row with the same timing, trim, rate, gain, group, FX and automation and mutes the video (its Mute row hidden); reattach refuses after a move / trim / retime or a broken link with a message naming why; one undo step each; preview and export play the sound once | done |
 | Volume automation lanes, automation selection menu (Simplify), value input | partial: automation plays and exports; lane editing UI partial |
