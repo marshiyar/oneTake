@@ -106,6 +106,20 @@ class Png(unittest.TestCase):
         with self.assertRaises(ValueError):
             bot.png_decode(b"GIF89a")
 
+    def test_malformed_pngs_are_value_errors(self):
+        sig = b"\x89PNG\r\n\x1a\n"
+        good = png(2, 1, [[10, 20, 30, 255, 40, 50, 60, 255]])
+        bad = [sig,                                  # no IHDR
+               sig + b"\0\0\0",                      # chunk header cut short
+               sig + b"\0\0\0\x0dIHDR\0\0",           # IHDR longer than the file
+               good[:len(good) - 20],                # IDAT cut short
+               good.replace(b"IDAT", b"IDAX"),       # no image data
+               good[:25] + b"\x05" + good[26:],      # colour type 5 does not exist
+               png(1, 1, [[7]], ctype=3)]            # palette PNG without PLTE
+        for data in bad:
+            with self.assertRaises(ValueError, msg=data[:40]):
+                bot.png_decode(data)
+
 
 class Bench(unittest.TestCase):
     def test_rows_flag_a_p50_move_over_15_percent(self):

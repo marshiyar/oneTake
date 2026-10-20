@@ -35,8 +35,9 @@ persistent. Anything of that kind is a finding unless `.github/sentinel.toml` al
   binaries.lock     every download URL under this project's release host, every checksum 64 hex digits
 `artifact` reads each ELF, PE or Mach-O (fat too) with its own headers, no external tool: the libraries it loads and the
 functions it imports, against the forbidden sets (network, process spawning, input hooks, debugging, persistence) and,
-with --baseline, against the recorded list for that binary (.github/sentinel-baseline/<name>.imports): any import that
-is new since the last recorded release is a finding, so what ships never changes unnoticed.
+with --baseline, against the recorded list for that binary (.github/sentinel-baseline/<os>/<name>.imports, <os> from
+its format: ELF linux, PE windows, Mach-O macos; the Linux and macOS programs share a name): any import that is new
+since the last recorded release is a finding, so what ships never changes unnoticed.
 
 Prints a Markdown table (file, rule, line or symbol, detail); exit 1 on any finding not allowed, 0 clean, 2 bad input.
 """
@@ -525,13 +526,18 @@ def baseline_lines(libs, funcs):
     return [f"lib {l}" for l in sorted(set(libs))] + [f"fn {s}" for s in sorted(funcs)]
 
 
+# Baselines are kept per OS: the Linux and the macOS program are both called MpVFX.
+BASELINE_OS = {"ELF": "linux", "PE": "windows", "Mach-O": "macos"}
+
+
 def compare_baseline(shown, name, libs, funcs, baseline, out_dir, f):
-    """The binary's imports against .github/sentinel-baseline/<name>.imports: every new library or function is a
+    """The binary's imports against .github/sentinel-baseline/<name>.imports (name is <os>/<file name> from
+    scan_artifacts): every new library or function is a
     finding (what ships changed; the pull request that changed it updates the baseline), a missing baseline too. The
     current list is written to out_dir so the run's artifact holds the file to commit."""
     now = baseline_lines(libs, funcs)
     if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(os.path.join(out_dir, name + ".imports")), exist_ok=True)
         with open(os.path.join(out_dir, name + ".imports"), "w", encoding="utf-8") as fh:
             fh.write("\n".join(now) + "\n")
     path = os.path.join(baseline, name + ".imports")
@@ -542,7 +548,7 @@ def compare_baseline(shown, name, libs, funcs, baseline, out_dir, f):
         known = set(fh.read().split("\n"))
     for line in now:
         if line not in known:
-            f.add(shown, "import-added", line, f"not in `{os.path.basename(path)}`")
+            f.add(shown, "import-added", line, f"not in `{name}.imports`")
     gone = sorted(l for l in known if l and l not in set(now))
     if gone:
         f.rows.append((shown, "import-removed", f"{len(gone)}", ", ".join(gone[:8]) + (" …" if len(gone) > 8 else ""), "info"))
@@ -572,7 +578,7 @@ def scan_artifacts(roots, config, f, baseline=None, out_dir=None):
             fmt, libs, funcs = result
             shown = os.path.relpath(path, root if os.path.isdir(root) else os.path.dirname(root))
             if baseline:
-                compare_baseline(shown, os.path.basename(path), libs, funcs, baseline, out_dir, f)
+                compare_baseline(shown, BASELINE_OS[fmt] + "/" + os.path.basename(path), libs, funcs, baseline, out_dir, f)
             for lib in libs:
                 if NETWORK_LIBS.search(lib):
                     f.add(shown, "import-network-library", lib, f"{fmt} loads a network library")
