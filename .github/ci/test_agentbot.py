@@ -157,5 +157,30 @@ class Flakes(unittest.TestCase):
         self.assertIn("| `A.testOne` | 2 | 2026-10-20 |", body)
 
 
+class MainRun(unittest.TestCase):
+    def test_a_forks_pull_request_from_its_main_is_never_the_baseline(self):
+        runs = {"workflow_run": [{"id": 1, "event": "workflow_run", "conclusion": "success", "created_at": "2026-10-19",
+                                  "head_repository": {"full_name": "o/app"}}],
+                "pull_request": [{"id": 2, "event": "pull_request", "conclusion": "success", "created_at": "2026-10-20",
+                                  "head_repository": {"full_name": "fork/app"}}],
+                "schedule": [{"id": 3, "event": "schedule", "conclusion": "success", "created_at": "2026-10-21",
+                              "head_repository": {"full_name": "fork/app"}}]}
+        asked = []
+
+        def api(method, path, body=None):
+            if "/runs?" in path:
+                event = path.split("event=")[1].split("&")[0]
+                asked.append(event)
+                return {"workflow_runs": runs.get(event, []) + runs["pull_request"]}   # a lax filter: still refused
+            return {"artifacts": [{"name": "bench-linux"}]}
+        saved = bot.api, bot.REPO
+        bot.api, bot.REPO = api, "o/app"
+        try:
+            r = bot.latest_main_run("bench.yml", "bench-linux", events=("workflow_run", "schedule", "workflow_dispatch"))
+        finally:
+            bot.api, bot.REPO = saved
+        self.assertEqual(r["id"], 1)
+        self.assertEqual(asked, ["workflow_run", "schedule", "workflow_dispatch"])
+
 if __name__ == "__main__":
     unittest.main()
