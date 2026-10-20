@@ -295,11 +295,15 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         if isLibraryProject(s), let dir = try mapErrors({ try library.outputDirectory(s.id) }) {
             return dir
         }
-        return PosixPath.join(userData, "renders")   // shared by standalone projects
+        // Shared by standalone projects: Settings > Default export folder, else `<userData>/renders`.
+        return preferences?.defaultExportFolder ?? PosixPath.join(userData, "renders")
     }
 
     public func renders(projectId: String) throws -> [DesktopRender] {
-        ProjectRenders.list(try rendersDirectory(projectId: projectId)).map {
+        let dir = try rendersDirectory(projectId: projectId)
+        // A folder the user chose may hold their own videos: only files named like a render are the history.
+        let chosen = dir == preferences?.defaultExportFolder
+        return ProjectRenders.list(dir).filter { !chosen || ProjectRenders.isRenderId($0.id) }.map {
             DesktopRender(id: $0.id, filename: $0.filename, path: $0.path, size: $0.size, createdAt: $0.createdAt,
                           status: $0.status.rawValue, durationMs: $0.durationMs)
         }

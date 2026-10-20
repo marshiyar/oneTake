@@ -16,7 +16,7 @@ import CPulse
 import Foundation
 
 /// PulseAudio "simple" API sink (blocking writes on the feeder thread). Compiled when libpulse headers exist.
-public final class PulseAudioOutput: AudioOutput {
+public final class PulseAudioOutput: AudioOutput, AudioDeviceSelecting {
     public let format: AudioFormat
     var handle: OpaquePointer?
     let lock = NSLock()
@@ -27,6 +27,13 @@ public final class PulseAudioOutput: AudioOutput {
     let ioLock = NSLock()
     var written = 0
     let appName: String
+    var deviceName: String?
+
+    /// The sink to play through (`pa_sink_info.name`); nil is the server's default sink.
+    public var device: String? {
+        get { lock.lock(); defer { lock.unlock() }; return deviceName }
+        set { lock.lock(); deviceName = newValue; lock.unlock() }
+    }
 
     public init(format: AudioFormat = .standard, appName: String = "MpVFX") { self.format = format; self.appName = appName }
     deinit { stop() }
@@ -45,10 +52,41 @@ public final class PulseAudioOutput: AudioOutput {
         guard handle == nil else { return }
         var spec = pa_sample_spec(format: PA_SAMPLE_FLOAT32LE, rate: UInt32(format.sampleRate), channels: UInt8(format.channels))
         var err: Int32 = 0
-        guard let h = pa_simple_new(nil, appName, PA_STREAM_PLAYBACK, nil, "playback", &spec, nil, nil, &err) else {
+        guard let h = pa_simple_new(nil, appName, PA_STREAM_PLAYBACK, deviceName, "playback", &spec, nil, nil, &err) else {
             throw AudioOutputError.unavailable(String(cString: pa_strerror(err)))
         }
         handle = h
+    }
+
+    /// The server's sinks (name and description), asked through a short-lived context; [] when the server does not
+    /// answer within `timeout` seconds.
+    public static func devices(timeout: Double = 2) -> [AudioOutputDevice] {
+        final class Listing { var devices: [AudioOutputDevice] = []; var done = false }
+        guard let loop = pa_mainloop_new() else { return [] }
+        defer { pa_mainloop_free(loop) }
+        guard let ctx = pa_context_new(pa_mainloop_get_api(loop), "MpVFX") else { return [] }
+        defer { pa_context_disconnect(ctx); pa_context_unref(ctx) }
+        guard pa_context_connect(ctx, nil, PA_CONTEXT_NOAUTOSPAWN, nil) >= 0 else { return [] }
+        let deadline = Date().addingTimeInterval(timeout)
+        // Non-blocking iterations: a server that never answers cannot hold the caller past the deadline.
+        func spin() { _ = pa_mainloop_iterate(loop, 0, nil); usleep(1000) }
+        while pa_context_get_state(ctx) != PA_CONTEXT_READY {
+            let state = pa_context_get_state(ctx)
+            if state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED || Date() > deadline { return [] }
+            spin()
+        }
+        let listing = Listing()
+        guard let op = pa_context_get_sink_info_list(ctx, { _, info, eol, user in
+            guard let user else { return }
+            let listing = Unmanaged<Listing>.fromOpaque(user).takeUnretainedValue()
+            guard eol == 0, let info, let name = info.pointee.name else { listing.done = true; return }
+            let id = String(cString: name)
+            let description = info.pointee.description.map { String(cString: $0) } ?? id
+            listing.devices.append(AudioOutputDevice(id: id, name: description.isEmpty ? id : description))
+        }, Unmanaged.passUnretained(listing).toOpaque()) else { return [] }
+        defer { pa_operation_unref(op) }
+        while !listing.done && Date() <= deadline { spin() }
+        return withExtendedLifetime(listing) { listing.done ? listing.devices : [] }
     }
 
     public func write(_ samples: [Float]) throws {

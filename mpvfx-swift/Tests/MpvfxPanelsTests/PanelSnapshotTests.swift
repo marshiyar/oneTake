@@ -88,14 +88,15 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let s = Self.sidebarFixture()
             let t = snapshot("left-sidebar", w: 370, h: 1040, scale: scale) { s.draw($0, size: CanvasSize(370, 1040)) }
-            // Positions from the recorded reference layout at 370×1040 (left sidebar, library navigator, media bin).
+            // Positions from the recorded reference layout at 370×1040 (left sidebar, library navigator, media bin); below the
+            // navigator they sit 24px lower for its "Open project… / Recent" row (one line + gap, issue #31).
             assertPixel(t, 150, 1000, scale: scale, "#0a0a0a")       // card body: bg-neutral-950
             assertPixel(t, 100, 50, scale: scale, "#171717")         // library select (13,37 344×28): bg-neutral-900
-            assertPixel(t, 220, 258, scale: scale, "#0e0e0e")        // Import media (211.8,253 105×32): bg-panel-input
-            assertPixel(t, 100, 297.5, scale: scale, "#181818")      // header border-b at y 297: neutral-800/50 on neutral-950
-            assertPixel(t, 300, 320, scale: scale, "#0e0e0e")        // search (17,308 336×26.5): bg-panel-input
-            assertPixel(t, 19, 397.5, scale: scale, "#3a3a3a", tol: 10)  // "Added" badge (17,395.5): neutral-950/80 over the frame
-            assertPixel(t, 60, 440, scale: scale, "#fafafa", tol: 10)    // first tile (13,391.5 166×93.4) shows the frame
+            assertPixel(t, 220, 282, scale: scale, "#0e0e0e")        // Import media (211.8,277 105×32): bg-panel-input
+            assertPixel(t, 100, 321.5, scale: scale, "#181818")      // header border-b at y 321: neutral-800/50 on neutral-950
+            assertPixel(t, 300, 344, scale: scale, "#0e0e0e")        // search (17,332 336×26.5): bg-panel-input
+            assertPixel(t, 19, 421.5, scale: scale, "#3a3a3a", tol: 10)  // "Added" badge (17,419.5): neutral-950/80 over the frame
+            assertPixel(t, 60, 464, scale: scale, "#fafafa", tol: 10)    // first tile (13,415.5 166×93.4) shows the frame
         }
     }
 

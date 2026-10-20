@@ -35,6 +35,44 @@ final class DesktopPreferencesTests: XCTestCase {
         XCTAssertNil(DesktopPreferences(userData: dir).renderSettings)
     }
 
+    /// Issue #32: the Settings window's values persist in `<userData>/preferences.json` beside the other keys.
+    func testSettingsWindowValuesSurviveRelaunch() throws {
+        let prefs = DesktopPreferences(userData: dir)
+        XCTAssertNil(prefs.audioOutputDevice); XCTAssertNil(prefs.previewCacheMB); XCTAssertNil(prefs.defaultExportFolder)
+        prefs.renderSettings = .object(["format": .string("mp4")])
+        prefs.audioOutputDevice = "alsa_output.usb-Headset.analog-stereo"
+        prefs.previewCacheMB = 2048
+        prefs.defaultExportFolder = "/home/me/Exports"
+        let again = DesktopPreferences(userData: dir)
+        XCTAssertEqual(again.audioOutputDevice, "alsa_output.usb-Headset.analog-stereo")
+        XCTAssertEqual(again.previewCacheMB, 2048)
+        XCTAssertEqual(again.defaultExportFolder, "/home/me/Exports")
+        XCTAssertEqual(again.renderSettings, .object(["format": .string("mp4")]), "other keys are kept")
+        let text = try String(contentsOfFile: dir + "/preferences.json", encoding: .utf8)
+        XCTAssertTrue(text.contains("\"mpvfx-preview-cache-mb\":2048"), text)
+
+        // Back to the defaults: the keys are removed.
+        again.audioOutputDevice = nil; again.previewCacheMB = nil; again.defaultExportFolder = nil
+        let cleared = DesktopPreferences(userData: dir)
+        XCTAssertNil(cleared.audioOutputDevice); XCTAssertNil(cleared.previewCacheMB); XCTAssertNil(cleared.defaultExportFolder)
+        XCTAssertNil(cleared.value(DesktopPreferences.previewCacheKey))
+    }
+
+    /// Values a hand-edited file may hold that the window would never write read as the default.
+    func testInvalidSettingsReadAsDefaults() throws {
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        try #"{"mpvfx-audio-output-device":"","mpvfx-preview-cache-mb":12,"mpvfx-default-export-folder":"relative/dir"}"#
+            .write(toFile: dir + "/preferences.json", atomically: true, encoding: .utf8)
+        let prefs = DesktopPreferences(userData: dir)
+        XCTAssertNil(prefs.audioOutputDevice)
+        XCTAssertNil(prefs.previewCacheMB, "below the accepted range")
+        XCTAssertNil(prefs.defaultExportFolder, "not absolute")
+        prefs.previewCacheMB = 1_000_000
+        XCTAssertNil(DesktopPreferences(userData: dir).value(DesktopPreferences.previewCacheKey), "out of range is not stored")
+        prefs.previewCacheMB = 512
+        XCTAssertEqual(DesktopPreferences(userData: dir).previewCacheMB, 512)
+    }
+
     func testKeepsTheNewestTwoHundredHiddenRenders() {
         let prefs = DesktopPreferences(userData: dir)
         prefs.setHiddenRenders(projectId: "p", (0..<250).map { "r\($0)" })
