@@ -49,12 +49,14 @@ def machine():
     system = platform.system()
     cpu, ram = platform.processor() or platform.machine(), None
     if system == "Linux":
-        for line in open("/proc/cpuinfo", encoding="utf-8", errors="replace"):
-            if line.startswith("model name"):
-                cpu = line.split(":", 1)[1].strip(); break
-        for line in open("/proc/meminfo", encoding="utf-8"):
-            if line.startswith("MemTotal"):
-                ram = round(int(line.split()[1]) / 1048576, 1); break
+        with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    cpu = line.split(":", 1)[1].strip(); break
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemTotal"):
+                    ram = round(int(line.split()[1]) / 1048576, 1); break
     elif system == "Darwin":
         cpu = sh("sysctl", "-n", "machdep.cpu.brand_string") or cpu
         mem = sh("sysctl", "-n", "hw.memsize")
@@ -181,7 +183,9 @@ def bench_preview(bin_dir, runs, out_dir, r):
             wall, peak, out, code = run([exe, scenario, clips, results])
             if code != 0:
                 raise SystemExit(f"preview {scenario} run {i + 1}: exit {code}\n{out[-3000:]}")
-    for line in open(results, encoding="utf-8"):
+    with open(results, encoding="utf-8") as f:
+        result_lines = f.readlines()
+    for line in result_lines:
         line = line.strip()
         if not line:
             continue
