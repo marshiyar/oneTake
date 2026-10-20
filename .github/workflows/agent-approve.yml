@@ -75,5 +75,5 @@ jobs:
             # Already mergeable (green, approved, up to date): auto-merge refuses that state, so merge it now.
             gh api -X PUT "repos/$REPO/pulls/$PR/merge" -f merge_method=squash -f sha="$sha" --jq '.message'
           else
-            echo "::warning::auto-merge not turned on for #$PR: $out (it needs Settings > General > Allow auto-merge)"
+            echo "::warning::auto-merge not turned on for #$PR: $out (it needs Settings > General > Allow auto-merge, and the review App's Contents write permission)"
           fi

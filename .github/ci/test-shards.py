@@ -18,7 +18,7 @@ One shard list for every OS, so the same tests run together everywhere; each OS 
 (mpvfx-macos.yml for macOS, the linux-test and windows-test jobs of mpvfx-ci.yml). A shard's key hashes the git blobs
 of every target in its test targets' dependency closure (Sources/, Tests/), the package manifest and lock, the engine
 versions and checksums pinned in binaries.lock, the CI files that run the
-tests on that OS, and the OS name. A shard whose key already has a pass recorded (cache entry
+tests on that OS, the files outside Sources/ and Tests/ that tests read, and the OS name. A shard whose key already has a pass recorded (cache entry
 <os>-pass-<shard>-<key>) built from byte-identical inputs on that OS's pinned toolchain, so the workflow skips it; the
 nightly run and a dispatch with full_tests ignore recorded passes and run every shard (toolchain and runner drift).
 Prints the shard list as JSON. Run from mpvfx-swift.
@@ -46,7 +46,9 @@ SHARDS = [
     ("rest", None, "", "|".join([LIBRARY, LIVE_EDIT, SEEK, SEEK_SHORT, DETERMINISTIC])),  # 642 / 747 s
 ]
 PRODUCTS = {}   # no package products: the engines are prebuilt (binaries.lock)
-CI = ["../.github/ci/test-shards.py", "../.github/ci/run-shard.py", "binaries.lock", "scripts/fetch-binaries.py", "Package.swift", "Package.resolved", "scripts"]
+# Files outside Sources/ and Tests/ that tests read are inputs too: docs/DESIGN.md (VisualSpecTests checks its table).
+CI = ["../.github/ci/test-shards.py", "../.github/ci/run-shard.py", "binaries.lock", "scripts/fetch-binaries.py", "Package.swift", "Package.resolved", "scripts",
+      "docs/DESIGN.md"]
 WORKFLOW = {"macos": "../.github/workflows/mpvfx-macos.yml", "linux": "../.github/workflows/mpvfx-ci.yml",
             "windows": "../.github/workflows/mpvfx-ci.yml"}
 
