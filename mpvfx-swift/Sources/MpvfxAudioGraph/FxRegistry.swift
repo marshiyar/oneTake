@@ -68,7 +68,7 @@ public struct FxDef: Sendable {
     public let label: String
     public let group: String
     public let params: [FxParamDef]
-    public let web: String
+    public let implementation: String
 }
 
 private func freq(_ key: String = "frequency", _ label: String = "Frequency", _ def: Double = 1000, _ min: Double = 20, _ max: Double = 20000) -> FxParamDef {
@@ -91,56 +91,56 @@ public enum AudioFx {
 
     /// Every effect, in panel order (HF_AUDIO_FX).
     public static let definitions: [FxDef] = [
-        FxDef(id: "gain", label: "Gain", group: "dynamics", params: [gainDb(-60, 12, 0)], web: "gain-node"),
-        FxDef(id: "peaking", label: "Peaking EQ", group: "filter", params: [freq("frequency", "Frequency", 1000), gainDb(-40, 40, 0), qParam(1)], web: "biquad-peaking"),
-        FxDef(id: "lowshelf", label: "Low Shelf", group: "filter", params: [freq("frequency", "Frequency", 200, 20, 2000), gainDb(-40, 40, 0)], web: "biquad-lowshelf"),
-        FxDef(id: "highshelf", label: "High Shelf", group: "filter", params: [freq("frequency", "Frequency", 4000, 500, 20000), gainDb(-40, 40, 0)], web: "biquad-highshelf"),
-        FxDef(id: "highpass", label: "High-pass", group: "filter", params: [freq("frequency", "Cutoff", 300, 20, 20000), qParam(0.707), poles], web: "biquad-highpass"),
-        FxDef(id: "lowpass", label: "Low-pass", group: "filter", params: [freq("frequency", "Cutoff", 8000, 100, 20000), qParam(0.707), poles], web: "biquad-lowpass"),
+        FxDef(id: "gain", label: "Gain", group: "dynamics", params: [gainDb(-60, 12, 0)], implementation: "gain"),
+        FxDef(id: "peaking", label: "Peaking EQ", group: "filter", params: [freq("frequency", "Frequency", 1000), gainDb(-40, 40, 0), qParam(1)], implementation: "biquad-peaking"),
+        FxDef(id: "lowshelf", label: "Low Shelf", group: "filter", params: [freq("frequency", "Frequency", 200, 20, 2000), gainDb(-40, 40, 0)], implementation: "biquad-lowshelf"),
+        FxDef(id: "highshelf", label: "High Shelf", group: "filter", params: [freq("frequency", "Frequency", 4000, 500, 20000), gainDb(-40, 40, 0)], implementation: "biquad-highshelf"),
+        FxDef(id: "highpass", label: "High-pass", group: "filter", params: [freq("frequency", "Cutoff", 300, 20, 20000), qParam(0.707), poles], implementation: "biquad-highpass"),
+        FxDef(id: "lowpass", label: "Low-pass", group: "filter", params: [freq("frequency", "Cutoff", 8000, 100, 20000), qParam(0.707), poles], implementation: "biquad-lowpass"),
         FxDef(id: "compressor", label: "Compressor", group: "dynamics", params: [
             num("threshold", "Threshold", "dB", -60, 0, 0.5, -24), num("ratio", "Ratio", ":1", 1, 20, 0.1, 4),
             num("attack", "Attack", "ms", 0.01, 2000, 0.1, 20, scale: .log), num("release", "Release", "ms", 0.01, 9000, 1, 250, scale: .log),
             num("knee", "Knee", "", 1, 8, 0.01, 2.83), num("makeup", "Makeup", "dB", 0, 36, 0.1, 0), num("mix", "Mix", "", 0, 1, 0.01, 1),
-        ], web: "worklet-compressor"),
+        ], implementation: "compressor"),
         FxDef(id: "limiter", label: "Limiter", group: "dynamics", params: [
             num("limit", "Ceiling", "dB", -24, 0, 0.1, -1), num("attack", "Attack", "ms", 0.1, 80, 0.1, 5),
             num("release", "Release", "ms", 1, 8000, 1, 50, scale: .log), num("level_out", "Output", "dB", -24, 24, 0.1, 0),
-        ], web: "worklet-limiter"),
+        ], implementation: "limiter"),
         FxDef(id: "gate", label: "Noise Gate", group: "dynamics", params: [
             num("threshold", "Threshold", "dB", -80, 0, 0.5, -35), num("range", "Range", "dB", -80, 0, 0.5, -24),
             num("ratio", "Ratio", ":1", 1, 20, 0.1, 10), num("attack", "Attack", "ms", 0.01, 9000, 0.1, 1, scale: .log),
             num("release", "Release", "ms", 0.01, 9000, 1, 100, scale: .log), num("knee", "Knee", "", 1, 8, 0.01, 2.83),
-        ], web: "worklet-gate"),
+        ], implementation: "gate"),
         FxDef(id: "saturate", label: "Saturation", group: "nonlinear", params: [
             .enumeration(key: "type", label: "Curve", options: [("tanh", "Tanh"), ("atan", "Arctan"), ("cubic", "Cubic"), ("exp", "Exponential"), ("alg", "Algebraic"),
                                                                  ("quintic", "Quintic"), ("sin", "Sine"), ("erf", "Error function"), ("hard", "Hard clip")], defaultValue: "tanh"),
             num("threshold", "Threshold", "dB", -40, 0, 0.1, -6), num("output", "Output", "dB", -24, 24, 0.1, 0, automatable: true),
             num("oversample", "Oversample", "x", 1, 8, 1, 4),
-        ], web: "waveshaper"),
+        ], implementation: "waveshaper"),
         FxDef(id: "bitcrush", label: "Bitcrush", group: "nonlinear", params: [
             num("bits", "Bit depth", "bit", 1, 32, 0.1, 8), num("samples", "Sample hold", "x", 1, 250, 1, 1), num("mix", "Mix", "", 0, 1, 0.01, 1),
-        ], web: "worklet-bitcrush"),
+        ], implementation: "bitcrusher"),
         FxDef(id: "pitchshift", label: "Pitch shift", group: "time", params: [
             num("semitones", "Semitones", "st", -12, 12, 1, 0), num("mix", "Mix", "", 0, 1, 0.01, 1),
-        ], web: "worklet-pitchshift"),
+        ], implementation: "pitch-shift"),
         FxDef(id: "delay", label: "Delay", group: "time", params: [
             num("time", "Time", "ms", 1, 5000, 1, 250, scale: .log, automatable: true), num("feedback", "Feedback", "", 0.01, 0.95, 0.01, 0.35, automatable: true),
             num("mix", "Mix", "", 0, 1, 0.01, 0.4, automatable: true),
-        ], web: "delay-feedback"),
+        ], implementation: "delay-feedback"),
         FxDef(id: "chorus", label: "Chorus", group: "time", params: [
             num("delay", "Delay", "ms", 1, 100, 0.1, 7, automatable: true), num("depth", "Depth", "ms", 0, 10, 0.01, 2, automatable: true),
             num("speed", "Rate", "Hz", 0.01, 10, 0.01, 1, automatable: true), num("mix", "Mix", "", 0, 1, 0.01, 0.5, automatable: true),
-        ], web: "chorus-lfo"),
+        ], implementation: "chorus-lfo"),
         FxDef(id: "phaser", label: "Phaser", group: "time", params: [
             num("in_gain", "Input", "", 0, 1, 0.01, 0.4, automatable: true), num("out_gain", "Output", "", 0, 2, 0.01, 0.74, automatable: true),
             num("delay", "Delay", "ms", 0.1, 5, 0.1, 3), num("decay", "Decay", "", 0, 0.99, 0.01, 0.4),
             num("speed", "Rate", "Hz", 0.1, 2, 0.01, 0.5, automatable: true),
             .enumeration(key: "type", label: "Waveform", options: [("0", "Triangular"), ("1", "Sinusoidal")], defaultValue: "0"),
-        ], web: "allpass-phaser"),
+        ], implementation: "allpass-phaser"),
         FxDef(id: "reverb", label: "Reverb", group: "time", params: [
             num("size", "Room size", "", 0.05, 1, 0.01, 0.7), num("damping", "Damping", "", 0, 1, 0.01, 0.5),
             num("wet", "Wet", "", 0, 1, 0.01, 0.35, automatable: true), num("dry", "Dry", "", 0, 1, 0.01, 0.7, automatable: true),
-        ], web: "convolver"),
+        ], implementation: "convolver"),
     ]
 
     public static let ids: [String] = definitions.map(\.id)

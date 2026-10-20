@@ -205,9 +205,9 @@ extension SessionPanels {
             var request = RenderRequest(projectId: projectId, document: session.editor.document, settings: settings,
                                         settingsJSON: RenderSettingsBridge.json(model))
             request.jobId = jobId; request.keyframeEngine = session.engine
-            var callbacks = RenderCallbacks { outcome, ms in post { [weak self] in self?.renderFinished(jobId, outcome, durationMs: ms) } }
-            callbacks.started = { _ in post { [weak self] in self?.updateActive(jobId) { $0.view.status = .rendering; $0.view.stage = "Rendering" } } }
-            callbacks.progress = { p in post { [weak self] in self?.renderProgress(jobId, p) } }
+            var callbacks = RenderCallbacks { [weak self] outcome, ms in post { self?.renderFinished(jobId, outcome, durationMs: ms) } }
+            callbacks.started = { [weak self] _ in post { self?.updateActive(jobId) { $0.view.status = .rendering; $0.view.stage = "Rendering" } } }
+            callbacks.progress = { [weak self] p in post { self?.renderProgress(jobId, p) } }
             run = try RenderRun.start(backend: backend, request, callbacks)
         } catch {
             let message = (error as? DesktopError)?.message ?? "\(error)"

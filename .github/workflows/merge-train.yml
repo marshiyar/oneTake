@@ -6,9 +6,8 @@
 # with git (which runs none of their code). pull_request_target is used so this file and the script always come from
 # main, never from the pull request. The review App's token (secrets AGENT_APP_ID, AGENT_APP_PRIVATE_KEY) writes
 # comments and labels and turns on auto-merge. The train branch is pushed and its pull request opened with the
-# workflow's own token, so the App is neither the author nor the last pusher and may approve the train
-# (agent-approve.yml, once ci-ok passed and the train is exactly main plus the queued commits); the App then reopens
-# it so CI starts (a pull request opened with the workflow token starts no workflow).
+# workflow's own token; the App then reopens it so CI starts (a pull request opened with the workflow token starts no
+# workflow).
 name: merge-train
 
 on:

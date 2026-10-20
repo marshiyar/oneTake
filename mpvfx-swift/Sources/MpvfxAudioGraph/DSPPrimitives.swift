@@ -13,13 +13,13 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 
-// Models of the native Web Audio nodes the FX graph builders use, following the
-// Web Audio API and Chromium's implementation structure (biquad.cc,
+// Native DSP primitives used by the FX graph builders. Their algorithms follow
+// the Web Audio API and Chromium's implementation structure (biquad.cc,
 // delay_dsp_kernel.cc, audio_buffer_source_node.cc, wave_shaper_dsp_kernel.cc,
 // up_sampler.cc / down_sampler.cc, reverb.cc). Samples between nodes are Float;
 // filter state is Double, as in Chromium.
 
-public let renderQuantum = 128
+public let dspBlockSize = 128
 
 // MARK: Biquad
 
@@ -98,8 +98,8 @@ struct BiquadCoefficients: Equatable {
     }
 }
 
-/// BiquadFilterNode: per-channel Direct Form I in Double, a-rate frequency/Q/gain.
-final class BiquadNode {
+/// Per-channel Direct Form I biquad in Double, with audio-rate frequency/Q/gain.
+final class BiquadFilter {
     let type: BiquadType
     let frequency: ParamTimeline, q: ParamTimeline, gain: ParamTimeline
     /// Audio-rate signal summed into `frequency` (the phaser's LFO), mono.
@@ -108,7 +108,7 @@ final class BiquadNode {
     var state: [(x1: Double, x2: Double, y1: Double, y2: Double)] = []
     private var cachedKey: (Float, Float, Float) = (.nan, .nan, .nan)
     private var cached = BiquadCoefficients()
-    private var fBuf = [Float](repeating: 0, count: renderQuantum), qBuf = [Float](repeating: 0, count: renderQuantum), gBuf = [Float](repeating: 0, count: renderQuantum)
+    private var fBuf = [Float](repeating: 0, count: dspBlockSize), qBuf = [Float](repeating: 0, count: dspBlockSize), gBuf = [Float](repeating: 0, count: dspBlockSize)
 
     init(_ type: BiquadType, sampleRate: Double, frequency: Double = 350, q: Double = 1, gain: Double = 0) {
         self.type = type
@@ -155,8 +155,8 @@ final class BiquadNode {
     }
 }
 
-/// IIRFilterNode (used for the one-pole high/low-pass): Double state, fixed coefficients.
-final class IIRNode {
+/// Fixed-coefficient IIR filter in Double, used for one-pole high/low-pass.
+final class IIRFilter {
     let ff: [Double], fb: [Double]
     var xs: [[Double]] = [], ys: [[Double]] = []
     init(feedforward: [Double], feedback: [Double]) {
@@ -184,9 +184,9 @@ final class IIRNode {
 
 // MARK: Gain
 
-final class GainNode {
+final class GainStage {
     let gain: ParamTimeline
-    private var buf = [Float](repeating: 0, count: renderQuantum)
+    private var buf = [Float](repeating: 0, count: dspBlockSize)
     init(_ value: Double, sampleRate: Double) { gain = ParamTimeline(Float(value), sampleRate: sampleRate) }
     func process(_ input: [[Float]], frame: Int) -> [[Float]] {
         let n = input.first?.count ?? 0
@@ -210,7 +210,7 @@ final class GainNode {
 
 // MARK: Delay
 
-/// DelayNode: circular buffer, write-then-read, linear interpolation (Chromium AudioDelayDSPKernel).
+/// Circular delay line using write-then-read and linear interpolation (Chromium AudioDelayDSPKernel).
 final class DelayLine {
     var buffer: [Float]
     var writeIndex = 0
@@ -219,7 +219,7 @@ final class DelayLine {
     init(maxDelay: Double, sampleRate: Double) {
         self.maxDelay = maxDelay
         self.sampleRate = sampleRate
-        buffer = [Float](repeating: 0, count: Int((maxDelay * sampleRate).rounded(.up)) + 1 + renderQuantum)
+        buffer = [Float](repeating: 0, count: Int((maxDelay * sampleRate).rounded(.up)) + 1 + dspBlockSize)
     }
     /// `delaySeconds[k]` is the computed delayTime for frame k.
     func process(_ input: [Float], _ delaySeconds: [Float]) -> [Float] {
@@ -243,7 +243,7 @@ final class DelayLine {
 
 // MARK: Looping buffer source (LFO)
 
-/// AudioBufferSourceNode playing a one-second single-cycle buffer in a loop, k-rate playbackRate.
+/// Looping one-second wavetable oscillator with block-rate playback speed.
 final class LoopingBufferSource {
     let cycle: [Float]
     let playbackRate: ParamTimeline
@@ -368,7 +368,7 @@ struct DownSampler {
     }
 }
 
-final class WaveShaperNode {
+final class WaveShaper {
     var curve: [Float] = []
     var oversample = 1
     private var up1: [UpSampler] = [], up2: [UpSampler] = [], down1: [DownSampler] = [], down2: [DownSampler] = []
@@ -399,31 +399,31 @@ final class WaveShaperNode {
 
 // MARK: Convolver
 
-/// ConvolverNode with `normalize = false`: exact linear convolution (uniformly
+/// FFTConvolver with `normalize = false`: exact linear convolution (uniformly
 /// partitioned FFT, 128-frame partitions, Double precision), zero latency.
-final class ConvolverNode {
+final class FFTConvolver {
     let partitions: [[(Double, Double)]] // spectrum per IR partition (FFT size 256)
     var inputSpectra: [[[(Double, Double)]]] = [] // per channel: ring of past input-block spectra
     var ringIndex = 0
     var overlap: [[Double]] = []
-    static let block = renderQuantum
-    static let fftSize = 2 * renderQuantum
+    static let block = dspBlockSize
+    static let fftSize = 2 * dspBlockSize
 
     init(impulse: [Float]) {
         var parts: [[(Double, Double)]] = []
         var at = 0
         while at < impulse.count {
-            var re = [Double](repeating: 0, count: ConvolverNode.fftSize), im = re
-            for k in 0..<min(ConvolverNode.block, impulse.count - at) { re[k] = Double(impulse[at + k]) }
+            var re = [Double](repeating: 0, count: FFTConvolver.fftSize), im = re
+            for k in 0..<min(FFTConvolver.block, impulse.count - at) { re[k] = Double(impulse[at + k]) }
             AudioCarve.fft(&re, &im)
-            parts.append((0..<ConvolverNode.fftSize).map { (re[$0], im[$0]) })
-            at += ConvolverNode.block
+            parts.append((0..<FFTConvolver.fftSize).map { (re[$0], im[$0]) })
+            at += FFTConvolver.block
         }
         partitions = parts
     }
 
     func process(_ input: [[Float]]) -> [[Float]] {
-        let size = ConvolverNode.fftSize, blk = ConvolverNode.block
+        let size = FFTConvolver.fftSize, blk = FFTConvolver.block
         let pcount = partitions.count
         while inputSpectra.count < input.count {
             inputSpectra.append([[(Double, Double)]](repeating: [(Double, Double)](repeating: (0, 0), count: size), count: max(1, pcount)))

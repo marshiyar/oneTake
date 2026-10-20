@@ -99,6 +99,43 @@ final class ImportFormatsTests: XCTestCase {
         XCTAssertEqual(ProjectMediaCatalog.category(of: "a.cur"), .images)
     }
 
+    /// Ogg Vorbis (.ogg, .oga) and SILK-only Ogg Opus (.opus, also Opus in .ogg) import as audio; a CELT or hybrid Opus
+    /// stream is refused with a reason; the probe reports the codec,
+    /// rate, channels and the duration from the last granule position. EngineFixtures/ogg: Vorbis 44100 Hz stereo
+    /// 0.251 s, Vorbis 22050 Hz stereo 0.253 s, Opus CELT 48 kHz stereo 0.25 s and Opus SILK 48 kHz mono 0.5 s.
+    func testImportsOggVorbisAndOpus() throws {
+        let copy = { (fixture: String, name: String) throws -> String in
+            let path = self.root + "/" + name
+            try FileManager.default.copyItem(atPath: engineFixture("ogg/" + fixture), toPath: path)
+            return path
+        }
+        let paths = [
+            try copy("vorbis_44k_stereo.ogg", "song.ogg"),
+            try copy("vorbis_22k_stereo_q2.ogg", "song.oga"),
+            try copy("opus_ffcelt_stereo.opus", "voice.opus"),
+            try copy("opus_silk_wb60_mono.opus", "speech.ogg"),
+        ]
+        let result = try importing(paths)
+        // The engine decodes SILK-only Opus (speech); a CELT or hybrid stream (music) is refused by the probe with
+        // the reason the import names, and the other files still import.
+        XCTAssertEqual(result.invalid.map(\.name), ["voice.opus"])
+        XCTAssertTrue(result.invalid.first?.reason.contains("CELT") ?? false, "\(result.invalid)")
+        XCTAssertEqual(result.files, ["song.ogg", "song.oga", "speech.ogg"])
+        let vorbis = try MediaProbe.probe(path: paths[0])
+        XCTAssertEqual(vorbis.container, "ogg")
+        XCTAssertEqual(vorbis.audio?.codec, "vorbis"); XCTAssertEqual(vorbis.audio?.sampleRate, 44_100); XCTAssertEqual(vorbis.audio?.channels, 2)
+        XCTAssertEqual(vorbis.duration ?? -1, 11072.0 / 44_100, accuracy: 1e-9)
+        let opus = try MediaProbe.probe(path: paths[3])
+        XCTAssertEqual(opus.audio?.codec, "opus"); XCTAssertEqual(opus.audio?.sampleRate, 48_000); XCTAssertEqual(opus.audio?.channels, 1)
+        XCTAssertEqual(opus.duration ?? -1, 0.5, accuracy: 1e-9)
+        XCTAssertThrowsError(try MediaProbe.probe(path: paths[2]))   // CELT: refused, not decoded
+        XCTAssertEqual(ImportFormats.kind(of: "a.opus"), .audio); XCTAssertEqual(ImportFormats.kind(of: "a.OGA"), .audio)
+        XCTAssertEqual(ProjectMediaCatalog.category(of: "a.opus"), .audio)
+        // An Ogg file that is not Vorbis or Opus (here junk) is refused after the probe, not by its extension.
+        XCTAssertNil(ImportFormats.refusal(forName: "x.ogg"))
+        XCTAssertNotNil(try refusal("broken.opus", Data("OggS not really".utf8)))
+    }
+
     /// H.264 with PCM, FLAC or AAC in every other container of formats.md imports with its sound: Matroska, AVI,
     /// MPEG-TS, M2TS (.m2ts and .mts) and MXF, each holding the streams of an MP4/MOV fixture; HEVC with AAC in
     /// Matroska imports too.
@@ -135,8 +172,6 @@ final class ImportFormatsTests: XCTestCase {
         let bytes = Data("not media".utf8)
         let images = ["avif", "svg"]
         XCTAssertEqual(try images.map { try refusal("image.\($0)", bytes) }, images.map { "This image format is not supported yet: \($0)." })
-        XCTAssertEqual(try refusal("song.ogg", bytes), "This audio format is not supported yet: ogg vorbis.")
-        XCTAssertEqual(try refusal("song.opus", bytes), "This audio format is not supported yet: opus.")
         // The video containers are no longer refused by name: bytes that are not media fail the probe instead.
         let containers = ["clip.webm", "clip.mkv", "clip.avi", "clip.ts", "clip.mts", "clip.m2ts", "clip.mxf"]
         XCTAssertEqual(containers.map { ImportFormats.refusal(forName: $0) }, Array(repeating: nil, count: containers.count))

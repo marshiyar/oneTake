@@ -1,8 +1,9 @@
 name: mpvfx-macos
 
-# macOS build, tests and disk image. Called by mpvfx-ci.yml on every pull request into main, every push to main and
-# every night, so one publish job there releases all platforms together; also run by hand on any branch (Run
-# workflow), where "skip_tests" gives a packaging-only run (artifact only, never published).
+# macOS build, tests and disk image. Called by mpvfx-ci.yml on every pull request into main, every push to main, every
+# night and every v* tag push, so one publish job there releases all platforms together (this workflow never publishes
+# itself); also run by hand on any branch (Run workflow), where "skip_tests" gives a packaging-only run (artifact
+# only, never published).
 #
 # The suite runs as 4 test shards beside the package job (.github/ci/test-shards.py, the same shards as Linux and
 # Windows). A shard that passed is recorded under the hash of every file its tests are built from; while none of those
@@ -147,7 +148,7 @@ jobs:
           xcrun -sdk macosx metal -c Sources/MpvfxMetal/Shaders/MpvfxColor.metal -o "$RUNNER_TEMP/MpvfxColor.air"
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Build
-        run: swift build --build-tests
+        run: swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           NSUnbufferedIO: "YES"
@@ -210,7 +211,7 @@ jobs:
           xcrun -sdk macosx metal -c Sources/MpvfxMetal/Shaders/MpvfxColor.metal -o "$RUNNER_TEMP/MpvfxColor.air"
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Release build
-        run: swift build -c release
+        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Signing certificate (Developer ID, when the optional secrets are set)
         id: cert
         env:
@@ -229,6 +230,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_TEAM_ID || '' }}
           MPVFX_BUILD: ${{ github.sha }}
+          MPVFX_SYMBOLS_DIR: ${{ github.workspace }}/symbols
         run: |
           export MPVFX_BUILD=${MPVFX_BUILD::7}
           sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" | tee "$RUNNER_TEMP/package.log"
@@ -280,3 +282,10 @@ jobs:
             dist/*.dmg
             dist/mac-smoke.png
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: symbols-macos
+          path: symbols/*.dSYM.tar.gz
+          if-no-files-found: ignore
+          retention-days: 90

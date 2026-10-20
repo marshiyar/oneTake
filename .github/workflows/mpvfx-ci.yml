@@ -1,8 +1,10 @@
 name: mpvfx-ci
 
 # The app on Linux and Windows (a build, package and install + launch job per OS beside its test shards) and on macOS
-# through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main and every night; when
-# every platform is green, one publish job releases all installers together as the latest release.
+# through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main, every night and every
+# push of a v* tag; when every platform is green, one publish job releases all installers together
+# (.github/ci/publish.sh): a run of main as the prerelease nightly-<commit>, a v* tag as the official release of that
+# tag, marked latest. Pull requests and other branches never publish.
 #
 # The media and keyframe engines are not built here: every job downloads the prebuilt libraries pinned in
 # mpvfx-swift/binaries.lock (scripts/fetch-binaries.py checks each SHA-256) from public releases. No repository secret
@@ -19,6 +21,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+    # An official release: the tag's version must equal mpvfx-swift/packaging/VERSION. Path filters do not apply to tag
+    # pushes, so every v* tag runs the full build.
+    tags: ['v*']
     paths-ignore: ['**/*.md', '**/docs/**', '.gitignore']
   # The merge queue tests each queued pull request on top of the ones ahead of it; ci-ok is the check it waits for.
   merge_group:
@@ -31,8 +36,14 @@ on:
         description: Run every test shard, ignoring passes recorded for unchanged inputs
         type: boolean
         default: false
+      publish:
+        description: Publish the installers when every job passes (codex-apply starts its runs with false)
+        type: boolean
+        default: true
 
 concurrency:
+  # By full ref (refs/heads/main, refs/tags/v0.2.0, refs/pull/N/merge): a newer push cancels an older run of the same
+  # ref only, never a tag build.
   group: mpvfx-ci-${{ github.ref }}
   cancel-in-progress: true
 
@@ -230,13 +241,18 @@ jobs:
       - name: Toolchain version
         run: swift --version
       - name: Release build (static Swift runtime)
-        run: swift build -c release --static-swift-stdlib
+        run: swift build -c release --static-swift-stdlib -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Package
         run: |
           short=${GITHUB_SHA::7}; name=mpvfx-linux-x64-$short; out="$GITHUB_WORKSPACE/dist/$name"
           mkdir -p "$out"
           bin=$(swift build -c release --static-swift-stdlib --show-bin-path)
           cp "$bin/MpVFX" "$out/"
+          # Shipped binaries carry no symbols (strip-check.yml verifies every installer); the debug symbols stay in
+          # CI as the symbols-linux artifact for symbolicating crash reports from this build.
+          mkdir -p "$GITHUB_WORKSPACE/symbols"
+          objcopy --only-keep-debug "$out/MpVFX" "$GITHUB_WORKSPACE/symbols/MpVFX-linux-x64-$short.debug"
+          strip --strip-unneeded "$out/MpVFX"
           for b in "$bin"/*.resources; do [ -e "$b" ] && cp -R "$b" "$out/"; done
           # The engine libraries travel next to the program, which finds them through $ORIGIN.
           cp -L .binaries/*/lib/*.so* "$out/"
@@ -291,6 +307,13 @@ jobs:
             dist/*.deb
             dist/linux-smoke.png
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: symbols-linux
+          path: symbols/*.debug
+          if-no-files-found: ignore
+          retention-days: 90
 
   linux-test:
     # One test shard (.github/ci/test-shards.py) per job, only those the plan job found no pass for.
@@ -328,7 +351,7 @@ jobs:
             linux-debug-${{ github.ref_name }}-
             linux-debug-
       - name: Build
-        run: swift --version && swift build --build-tests
+        run: swift --version && swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           FILTER: ${{ matrix.filter }}
@@ -376,8 +399,10 @@ jobs:
           restore-keys: windows-release-
       - name: Toolchain version
         run: swift --version
+      - name: Release build, linked without debug data (strip-check.yml verifies the shipped exe)
+        run: swift build -c release -Xlinker -debug:none
       - name: Release build
-        run: swift build -c release
+        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Package (portable zip)
         shell: pwsh
         run: |
@@ -487,7 +512,7 @@ jobs:
           key: windows-debug-${{ github.sha }}
           restore-keys: windows-debug-
       - name: Build
-        run: swift --version && swift build --build-tests
+        run: swift --version && swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           FILTER: ${{ matrix.filter }}
@@ -535,9 +560,12 @@ jobs:
           done
 
   publish:
-    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos]
+    needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
+    # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
     if: >-
-      always() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && needs.plan.result == 'success' && needs.checks.result == 'success'
+      always() && github.event_name != 'pull_request'
+      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && needs.plan.result == 'success' && needs.checks.result == 'success'
       && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
       && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
       && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
@@ -548,12 +576,16 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          sparse-checkout: .github
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+          # publish.sh, VERSION (checked against a v* tag) and the root files (CHANGELOG.md, when there is one).
+          sparse-checkout: |
+            .github
+            mpvfx-swift/packaging
+      - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: '{linux,windows,macos}'   # the installers; the symbols-* artifacts stay in CI
           merge-multiple: true
-      - name: Prerelease
+      - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

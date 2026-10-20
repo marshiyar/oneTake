@@ -15,24 +15,24 @@
 # Platforms: macos-arm64, macos-x86_64, linux-x86_64, linux-aarch64, windows-x86_64.
 
 [media]
-version = "0.1.0"
-tag = "media-v0.1.0"
+version = "0.2.0"
+tag = "media-v0.2.0"
 repo = "marshiyar/mpvfx-media-binaries"
 asset = "mpvfx-media-{version}-{platform}"
 library = "mpvfx_ffi"
 header = "mpvfx_media.h"
 
 [media.platforms.macos-arm64]
-url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-macos-arm64.tar.gz"
-sha256 = "3d1d714627c9b147e17867f6e008ee7e783e8042c94ddbffebf3c8da03c0f3fe"
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.2.0/mpvfx-media-0.2.0-macos-arm64.tar.gz"
+sha256 = "86f44e53b9172ba60a30ae9cc8f75528efab9aab27e0f10de398420c5b3b8666"
 
 [media.platforms.linux-x86_64]
-url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-linux-x86_64.tar.gz"
-sha256 = "e24ac383d5a5bdd729874d20592772f5f70fde386d64cf70e6f5436a1c33213f"
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.2.0/mpvfx-media-0.2.0-linux-x86_64.tar.gz"
+sha256 = "980c8ae553ff8f6b0f9d420313d931c638f653615e67a72cf1dcf28fa24af12b"
 
 [media.platforms.windows-x86_64]
-url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.1.0/mpvfx-media-0.1.0-windows-x86_64.zip"
-sha256 = "7417eb1b651e4ed3da616ddb3dff073966b2aa4e19293338af22a6413f158f97"
+url = "https://github.com/marshiyar/mpvfx-media-binaries/releases/download/media-v0.2.0/mpvfx-media-0.2.0-windows-x86_64.zip"
+sha256 = "12228165b7f45002b45446944b1c0bec732a69ee77cb4a555a411c00b91c27b5"
 
 [keyframes]
 version = "1.0.0"

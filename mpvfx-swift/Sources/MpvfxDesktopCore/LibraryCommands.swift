@@ -38,7 +38,7 @@ public enum LibraryCommands {
     public static func dispatch(service: LibraryService, backend: DesktopBackend, dialogs: NativeDialogs?,
                                 command: JSONValue) async throws -> JSONValue {
         guard let type = command["type"]?.string else { throw DesktopError("Invalid library command") }
-        func str(_ k: String) -> String { command[k]?.string ?? "" }
+        @Sendable func str(_ k: String) -> String { command[k]?.string ?? "" }
         var projectId: String?
         var path: String?
         var errors: [String] = []
