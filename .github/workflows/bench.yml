@@ -78,11 +78,11 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
             git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
             xvfb xauth dbus-x11 python3 libvulkan-dev mesa-vulkan-drivers
-      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
-      # never a pull request head). Other events check out their own commit.
+      # Every event checks out its own commit. After CI on main that is main's head: the commit just tested or a newer
+      # one (bench.py records the commit it measured). No ref comes from the workflow_run event, so nothing it names is
+      # checked out with this workflow's token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false   # read-only token, and nothing here uses git against origin
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
@@ -125,11 +125,11 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
-      # never a pull request head). Other events check out their own commit.
+      # Every event checks out its own commit. After CI on main that is main's head: the commit just tested or a newer
+      # one (bench.py records the commit it measured). No ref comes from the workflow_run event, so nothing it names is
+      # checked out with this workflow's token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false   # read-only token, and nothing here uses git against origin
       - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
         with:
@@ -175,11 +175,11 @@ jobs:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
-      # never a pull request head). Other events check out their own commit.
+      # Every event checks out its own commit. After CI on main that is main's head: the commit just tested or a newer
+      # one (bench.py records the commit it measured). No ref comes from the workflow_run event, so nothing it names is
+      # checked out with this workflow's token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false   # read-only token, and nothing here uses git against origin
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
