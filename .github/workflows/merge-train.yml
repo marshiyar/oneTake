@@ -1,0 +1,98 @@
+# The merge train (.github/ci/merge_train.py): pull requests the owner labels `queue` are merged together onto main as
+# one train/<n> pull request, tested once by mpvfx-ci, and landed together (squash); a failing train is split in two
+# until the failing pull request is found. One train is open at a time.
+#
+# Nothing from a pull request runs here. Both jobs check out main only; a pull request's commits are only merged
+# with git (which runs none of their code). pull_request_target is used so this file and the script always come from
+# main, never from the pull request. The review App's token (secrets AGENT_APP_ID, AGENT_APP_PRIVATE_KEY) writes
+# comments and labels and turns on auto-merge. The train branch is pushed and its pull request opened with the
+# workflow's own token, so the App is neither the author nor the last pusher and may approve the train
+# (agent-approve.yml, once ci-ok passed and the train is exactly main plus the queued commits); the App then reopens
+# it so CI starts (a pull request opened with the workflow token starts no workflow).
+name: merge-train
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  pull_request_target:   # zizmor: ignore[dangerous-triggers] main's file and script only; PR code is never checked out or run
+    types: [labeled, closed]
+  workflow_run:          # zizmor: ignore[dangerous-triggers] reads ci-ok results only; runs nothing from the train
+    workflows: [mpvfx-ci]
+    types: [completed]
+    branches: ['train/**']
+
+permissions: {}
+
+jobs:
+  # The owner added `queue`: note the head commit they queued (the train takes exactly that commit).
+  record:
+    if: >-
+      github.event_name == 'pull_request_target' && github.event.action == 'labeled' &&
+      github.event.label.name == 'queue'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Token for the review App
+        id: app
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          permission-pull-requests: write   # comment, remove the label
+          permission-issues: write
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/ci
+      - name: Record the queued commit
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_LOGIN: ${{ steps.app.outputs.app-slug }}[bot]
+          OWNER: ${{ github.repository_owner }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SENDER: ${{ github.event.sender.login }}
+        run: python3 -I -B .github/ci/merge_train.py record --pr "$PR" --sha "$HEAD_SHA" --sender "$SENDER"
+
+  train:
+    needs: record
+    if: >-
+      always() && needs.record.result != 'failure' && (
+        github.event_name != 'pull_request_target' ||
+        (github.event.action == 'labeled' && github.event.label.name == 'queue') ||
+        (github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'train')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: merge-train
+      cancel-in-progress: false
+    permissions:
+      contents: write        # push train/<n> (a new branch; never a force push, never main)
+      pull-requests: write   # open the train pull request as github-actions[bot]
+    steps:
+      - name: Token for the review App
+        id: app
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          permission-contents: write        # turn on auto-merge
+          permission-pull-requests: write   # comments, labels, close/reopen trains
+          permission-issues: write
+          permission-checks: read           # ci-ok on train heads
+          permission-actions: read          # link to the failed run
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: One round of the train
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PUSH_TOKEN: ${{ github.token }}
+          APP_LOGIN: ${{ steps.app.outputs.app-slug }}[bot]
+          OWNER: ${{ github.repository_owner }}
+        run: python3 -I -B .github/ci/merge_train.py step
