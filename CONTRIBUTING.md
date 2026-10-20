@@ -7,7 +7,8 @@ Thanks for helping. A few rules keep the history readable and the project releas
 1. Branch from `main`; open a pull request into `main`.
 2. Before pushing, run `sh mpvfx-swift/scripts/check.sh` (it fetches the engine libraries, builds, runs the tests and
    checks copyright blocks).
-3. `ci-ok` is the required check. Documentation-only pull requests skip the build and tests.
+3. `ci-ok` is the required check. Documentation-only pull requests skip the build and tests; the others build and
+   test only the platforms their files can affect (`.github/ci/platforms.py`).
 4. One approving review is required. Pull requests are squash merged into `main`, and auto-merge lands them once
    they are approved.
 5. Keep a pull request to one change. Say what changed and why in the description, in plain words a user of the

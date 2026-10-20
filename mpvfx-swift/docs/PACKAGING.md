@@ -40,8 +40,10 @@ gives a packaging-only run). Each OS has one build, package and install-smoke jo
 shards (`linux test (…)`, `windows test (…)`, `macos / test (…)`), the same shard list on every OS
 (`.github/ci/test-shards.py`, balanced by measured test time). A shard that passed on an OS is not rerun there while
 every file its tests are built from (and `binaries.lock`) is unchanged (cache entry `<os>-pass-<shard>-<key>`). The
-nightly run ignores every recorded pass and runs all of it. `ci-ok` passes when every job passed or was skipped for a
-recorded pass. Pull requests build and test but never publish. The macOS jobs run on GitHub's `xcode-27` runner with
+nightly run ignores every recorded pass and runs all of it. A pull request builds and tests only the platforms its
+files can affect (`.github/ci/platforms.py`: a Windows-only change never waits for a Mac; anything shared runs all
+three), and the macOS jobs start only after the fast Linux checks passed. `ci-ok` passes when every job passed or was
+skipped for a recorded pass or an unaffected platform. Pull requests build and test but never publish. The macOS jobs run on GitHub's `xcode-27` runner with
 Xcode pinned (`XCODE_VERSION` in `mpvfx-macos.yml`). Each job installs its installer on the runner, launches the
 installed app with a hidden window (the `*-smoke.png` snapshot) with the build tree and the fetched libraries moved
 away, and, on Windows and Linux, uninstalls it again.
