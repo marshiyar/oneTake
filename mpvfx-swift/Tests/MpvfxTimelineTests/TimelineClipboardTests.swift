@@ -246,4 +246,92 @@ final class TimelineClipboardTests: XCTestCase {
         XCTAssertEqual(m.y, 590 - m.height)
         XCTAssertLessThanOrEqual(m.rect.maxY, 600)
     }
+    // MARK: Review findings (PR #63)
+
+    static let graded = json().replacingOccurrences(of: #""effectId":"color-grade","enabled":true,"parameters":{}"#,
+        with: #""effectId":"color-grading","enabled":true,"parameters":{"lut":{"src":"luts/warm.cube","intensity":0.5}}"#)
+    func lut(_ c: NativeProjectClip?) -> String? {
+        guard case .object(let l)? = c?.effects.first(where: { $0.effectId == "color-grading" })?.parameters?["lut"],
+              case .string(let s)? = l["src"] else { return nil }
+        return s
+    }
+
+    func testACopiedProjectFolderDoesNotReuseAssetsByIdAlone() throws {
+        let (_, one) = try make()
+        let board = try XCTUnwrap(one.copyClips(["clip:a"]))
+        // The same project.json in another folder: same document id, same asset ids, other files.
+        let (_, copy) = try make(dir: "/projects/one-copy")
+        XCTAssertEqual(copy.filesToImport(board), ["/projects/one/media/a.mp4"])
+        let id = try XCTUnwrap(copy.paste(board, at: 0).first)
+        let pasted = try XCTUnwrap(clip(copy, id))
+        XCTAssertNotEqual(pasted.assetId, "asset:a", "asset:a of the copy plays /projects/one-copy/media/a.mp4")
+        XCTAssertEqual(copy.document.assets.first { $0.id == pasted.assetId }?.source, "/projects/one/media/a.mp4")
+        // Back in the folder it came from, the asset is reused and the clip goes back to its own track.
+        XCTAssertEqual(one.filesToImport(board), [])
+        let back = try XCTUnwrap(one.paste(board, at: 10).first)
+        XCTAssertEqual(clip(one, back)?.assetId, "asset:a")
+        XCTAssertEqual(trackId(one, back), "track:v1")
+    }
+
+    func testLutsTravelWithTheGrade() throws {
+        let (_, one) = try make(Self.graded)
+        let board = try XCTUnwrap(one.copyClips(["clip:a"]))
+        XCTAssertEqual(lut(board.items.first?.clip), "/projects/one/luts/warm.cube")
+        let same = try XCTUnwrap(one.paste(board, at: 10).first)
+        XCTAssertEqual(lut(clip(one, same)), "luts/warm.cube", "inside its project the LUT stays project-relative")
+        let (_, two) = try make(dir: "/projects/two")
+        XCTAssertEqual(two.filesToImport(board), ["/projects/one/media/a.mp4", "/projects/one/luts/warm.cube"])
+        let other = try XCTUnwrap(two.paste(board, at: 0).first)
+        XCTAssertEqual(lut(clip(two, other)), "/projects/one/luts/warm.cube", "never resolved against the other project")
+    }
+
+    func testCrossProjectPasteImportsItsFilesFirst() throws {
+        let (_, one) = try make(Self.graded)
+        let (c, two) = try make(dir: "/projects/two")
+        c.clipboard = try XCTUnwrap(one.copyClips(["clip:a"]))
+        var asked: [String] = []
+        var finish: (([String: String]?) -> Void)?
+        c.importForPaste = { paths, done in asked = paths; finish = done }
+        c.view.selection = []
+        XCTAssertTrue(c.pasteClipboard())
+        XCTAssertEqual(asked, ["/projects/one/media/a.mp4", "/projects/one/luts/warm.cube"])
+        let before = two.document.sequence.tracks.flatMap(\.clips).count
+        XCTAssertEqual(two.document.sequence.tracks.flatMap(\.clips).count, before, "nothing lands until the files are in")
+        finish?(["/projects/one/media/a.mp4": "media/a 2.mp4", "/projects/one/luts/warm.cube": "luts/warm.cube"])
+        let id = try XCTUnwrap(c.view.selection.first)
+        let pasted = try XCTUnwrap(clip(two, id))
+        XCTAssertEqual(two.document.assets.first { $0.id == pasted.assetId }?.source, "media/a 2.mp4", "project-relative, so export reads it")
+        XCTAssertEqual(lut(pasted), "luts/warm.cube")
+        // A failed import pastes nothing.
+        let count = two.document.sequence.tracks.flatMap(\.clips).count
+        XCTAssertTrue(c.pasteClipboard())
+        finish?(nil)
+        XCTAssertEqual(two.document.sequence.tracks.flatMap(\.clips).count, count)
+    }
+
+    func testMixedTracksTakeAnyKindAndALockedAnchorRefuses() throws {
+        let mixed = Self.json().replacingOccurrences(of: #""id":"track:v2","kind":"video""#, with: #""id":"track:v2","kind":"mixed""#)
+        let (_, e) = try make(mixed)
+        let music = try XCTUnwrap(e.copyClips(["clip:m"]))
+        let id = try XCTUnwrap(e.paste(music, at: 0, onto: "track:v2").first)
+        XCTAssertEqual(trackId(e, id), "track:v2", "an audio clip onto a mixed track stays there")
+        XCTAssertTrue(e.setTrackLocked("track:v2", true))
+        XCTAssertEqual(e.paste(music, at: 0, onto: "track:v2"), [])
+        XCTAssertEqual(e.lastFailure?.message, "Track is locked")
+        // Locked, a track of the other kind refuses too instead of the clip landing somewhere else.
+        XCTAssertTrue(e.setTrackLocked("track:v1", true))
+        XCTAssertEqual(e.paste(music, at: 0, onto: "track:v1"), [])
+    }
+
+    func testFrameRatesCompareByValue() throws {
+        let (_, one) = try make()
+        let board = try XCTUnwrap(one.copyClips(["clip:a"]))
+        var json = Self.json(id: "project:extra")
+        let plain = #""revision":1,"frameRate":{"numerator":30,"denominator":1}"#
+        XCTAssertTrue(json.contains(plain))
+        json = json.replacingOccurrences(of: plain, with: #""revision":1,"frameRate":{"numerator":30,"denominator":1,"note":"kept"}"#)
+        let (_, other) = try make(json, dir: "/projects/extra")
+        XCTAssertNotEqual(other.document.frameRate, one.document.frameRate, "the unknown key is preserved")
+        XCTAssertEqual(other.paste(board, at: 0).count, 1, other.lastFailure?.message ?? "")
+    }
 }

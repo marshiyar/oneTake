@@ -82,7 +82,11 @@ final class StemDecoderTests: XCTestCase {
         let slow = try DocumentAudioGraph.decodeStem(key(path, seconds: 6, rate: 0.5, preservesPitch: false), sampleRate: 48_000)
         XCTAssertEqual(Double(slow[0].count), 192_000, accuracy: 4, "2 s of source at 0.5x lasts 4 s")
         XCTAssertEqual(crossingsPerSecond(Array(slow[0][9600..<182_400]), sampleRate: 48_000), 440, accuracy: 10, "an octave down: 220 Hz")
-        XCTAssertEqual(StemDecoder.resampledRate(48_000, 1.5), 32_000)
+        XCTAssertEqual(try StemDecoder.resampledRate(48_000, 1.5), 32_000)
+        // The document accepts any positive ratio; one far outside the range is a decode error, not a trap.
+        XCTAssertThrowsError(try StemDecoder.resampledRate(48_000, 1 / 9e18))
+        XCTAssertThrowsError(try StemDecoder.resampledRate(48_000, .infinity))
+        XCTAssertThrowsError(try DocumentAudioGraph.decodeStem(key(path, seconds: 2, rate: 1 / 9e18, preservesPitch: false), sampleRate: 48_000))
     }
 
     func testDocumentInputsCarryThePitchOption() throws {

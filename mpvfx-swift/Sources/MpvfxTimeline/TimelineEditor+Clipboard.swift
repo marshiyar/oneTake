@@ -86,7 +86,8 @@ public extension TimelineEditor {
         var items: [TimelineClipboard.Item] = []
         for t in document.sequence.tracks {
             for c in t.clips where ids.contains(c.id) {
-                items.append(.init(trackId: t.id, trackKind: t.kind, trackRow: order.firstIndex(of: t.id) ?? 0, clip: c))
+                let clip = TimelineClipboard.mapLuts(c) { TimelineClipboard.absolute($0, in: projectDirectory) }
+                items.append(.init(trackId: t.id, trackKind: t.kind, trackRow: order.firstIndex(of: t.id) ?? 0, clip: clip))
             }
         }
         if items.isEmpty { return nil }
@@ -94,7 +95,32 @@ public extension TimelineEditor {
         let assets = document.assets.filter { used.contains($0.id) }.map { a -> NativeProjectAsset in
             var a = a; a.source = a.source.map { TimelineClipboard.absolute($0, in: projectDirectory) }; return a
         }
-        return TimelineClipboard(projectId: document.id, frameRate: document.frameRate, items: items, assets: assets)
+        return TimelineClipboard(projectId: document.id, projectDirectory: projectDirectory?.standardizedFileURL.path,
+                                 frameRate: document.frameRate, items: items, assets: assets)
+    }
+
+    /// The files a paste of `board` would point at from outside this project: media it would add as new assets and
+    /// the LUTs of its color grades, as absolute paths. A host copies them in first (TimelineController.importForPaste)
+    /// and pastes `board.rebased(...)`, because export only reads media inside the project.
+    func filesToImport(_ board: TimelineClipboard) -> [String] {
+        var out: [String] = []
+        func add(_ src: String) {
+            let abs = TimelineClipboard.absolute(src, in: projectDirectory)
+            if HostPath.isAbsolute(abs), TimelineClipboard.relative(abs, in: projectDirectory) == abs, !out.contains(abs) { out.append(abs) }
+        }
+        for a in board.assets where reusedAsset(a) == nil { a.source.map(add) }
+        for item in board.items { _ = TimelineClipboard.mapLuts(item.clip) { add($0); return $0 } }
+        return out
+    }
+
+    /// This project's asset a copied asset maps to: the same id playing the same file, else any asset of its kind
+    /// playing that file. Ids alone are not enough: a copied project folder keeps its document and asset ids.
+    internal func reusedAsset(_ a: NativeProjectAsset) -> String? {
+        let src = a.source.map { TimelineClipboard.absolute($0, in: projectDirectory) }
+        func same(_ b: NativeProjectAsset) -> Bool { b.kind == a.kind && b.source.map { TimelineClipboard.absolute($0, in: projectDirectory) } == src }
+        if let b = document.assets.first(where: { $0.id == a.id }), same(b) { return b.id }
+        guard src != nil else { return nil }
+        return document.assets.first(where: same)?.id
     }
 
     /// Pastes at `time` (the earliest copied clip lands there, relative offsets kept); one undo step ("Paste").
@@ -112,22 +138,22 @@ public extension TimelineEditor {
     func paste(_ board: TimelineClipboard, at time: Double, onto anchor: String? = nil) -> [String] {
         func refuse(_ message: String) -> [String] { lastFailure = .init(code: .documentMismatch, message: message); return [] }
         guard let first = board.items.map(\.clip.startFrame).min() else { return [] }
-        guard board.frameRate == document.frameRate else {
+        guard board.frameRate.numerator * document.frameRate.denominator == document.frameRate.numerator * board.frameRate.denominator else {
             return refuse("These clips were copied from a project at another frame rate and cannot be pasted here")
         }
         var d = document
         var order = displayTrackIds
-        let sameProject = board.projectId == d.id
+        // A copied project folder keeps its document id, so the folder decides too.
+        let sameProject = board.projectId == d.id && board.projectDirectory == projectDirectory?.standardizedFileURL.path
 
-        // Assets: the copied id when it is this project's asset, else one playing the same file, else a new asset.
+        // Assets: one of this project's playing the same file, else a new asset (project-relative when the file is
+        // inside this project, e.g. after importForPaste copied it in).
         var assetIds: [String: String] = [:]
         for a in board.assets {
-            if sameProject, d.assets.contains(where: { $0.id == a.id }) { assetIds[a.id] = a.id; continue }
-            if let src = a.source, let same = d.assets.first(where: { $0.kind == a.kind && $0.source.map { TimelineClipboard.absolute($0, in: projectDirectory) } == src }) {
-                assetIds[a.id] = same.id; continue
-            }
+            if let same = reusedAsset(a) { assetIds[a.id] = same; continue }
             var added = a
             added.id = TimelineClipboard.freshId(a.id, taken: Set(d.assets.map(\.id)))
+            added.source = a.source.map { TimelineClipboard.relative(TimelineClipboard.absolute($0, in: projectDirectory), in: projectDirectory) }
             d.assets.append(added)
             assetIds[a.id] = added.id
         }
@@ -136,23 +162,28 @@ public extension TimelineEditor {
         let sourceRows = Dictionary(board.items.map { ($0.trackId, ($0.trackRow, $0.trackKind)) }, uniquingKeysWith: { a, _ in a })
         let sourceTracks = sourceRows.sorted { $0.value.0 < $1.value.0 }
         var destination: [String: String] = [:]
-        if anchor == nil && sameProject && sourceTracks.allSatisfy({ s in d.sequence.tracks.contains { $0.id == s.key && $0.kind == s.value.1 } }) {
+        // A mixed track takes clips of any kind, as clip insert and move allow.
+        func accepts(_ id: String, _ kind: NativeProjectTrackKind) -> Bool {
+            d.sequence.tracks.first { $0.id == id }.map { $0.kind == kind || $0.kind == .mixed } ?? false
+        }
+        if anchor == nil && sameProject && sourceTracks.allSatisfy({ s in accepts(s.key, s.value.1) }) {
             for s in sourceTracks { destination[s.key] = s.key }
         } else {
             let top = sourceTracks[0]
-            let kindOf = { (id: String) in d.sequence.tracks.first { $0.id == id }?.kind }
+            let locked = { (id: String) in d.sequence.tracks.first { $0.id == id }?.locked == true }
             let anchorRow: Int
             if let anchor {
                 guard let row = order.firstIndex(of: anchor) else { return refuse("Track \(anchor) was not found") }
+                if locked(anchor) { return refuse("Track is locked") }   // pasting onto a locked track, never around it
                 anchorRow = row
             } else {
-                anchorRow = order.firstIndex { kindOf($0) == top.value.1 } ?? order.count
+                anchorRow = order.firstIndex { accepts($0, top.value.1) } ?? order.count
             }
             var used = Set<String>()
             for s in sourceTracks {
                 let want = s.value.1
                 let row = anchorRow + (s.value.0 - top.value.0)
-                if let id = order.indices.filter({ $0 >= row }).map({ order[$0] }).first(where: { kindOf($0) == want && !used.contains($0) }) {
+                if let id = order.indices.filter({ $0 >= row }).map({ order[$0] }).first(where: { accepts($0, want) && !used.contains($0) }) {
                     destination[s.key] = id
                 } else {
                     destination[s.key] = Self.appendTrack(&d, kind: want, order: &order, at: nil)
@@ -180,6 +211,7 @@ public extension TimelineEditor {
             c.startFrame = base + (item.clip.startFrame - first)
             c.assetId = assetIds[item.clip.assetId]!
             c.binding = nil
+            c = TimelineClipboard.mapLuts(c) { TimelineClipboard.relative(TimelineClipboard.absolute($0, in: projectDirectory), in: projectDirectory) }
             if let g = c.audioGroupId, !groups.contains(g) { c.audioGroupId = nil }
             c.audioDetachedFrom = c.audioDetachedFrom.flatMap { newIds[$0] }
             d.sequence.tracks[ti].clips.append(c)
@@ -200,6 +232,8 @@ public struct TimelineClipboard: Equatable {
         public var clip: NativeProjectClip
     }
     public var projectId: String
+    /// The copied-from project's folder (standardized path); nil when it had none.
+    public var projectDirectory: String?
     public var frameRate: RationalFrameRate
     public var items: [Item]
     public var assets: [NativeProjectAsset]
@@ -208,6 +242,41 @@ public struct TimelineClipboard: Equatable {
     static func absolute(_ source: String, in dir: URL?) -> String {
         guard let dir, !HostPath.isAbsolute(source) else { return source }
         return dir.appendingPathComponent(source).path
+    }
+
+    /// `path` relative to `dir` when it lies inside it, else unchanged.
+    static func relative(_ path: String, in dir: URL?) -> String {
+        guard let dir, HostPath.isAbsolute(path) else { return path }
+        let root = HostPath.slashes(dir.standardizedFileURL.path), p = HostPath.slashes(path)
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        return p.hasPrefix(prefix) && p.count > prefix.count ? String(p.dropFirst(prefix.count)) : path
+    }
+
+    /// The clip with `transform` applied to the `lut.src` of each color grade (a project-relative or absolute path;
+    /// URLs are left alone).
+    static func mapLuts(_ clip: NativeProjectClip, _ transform: (String) -> String) -> NativeProjectClip {
+        var clip = clip
+        for i in clip.effects.indices where clip.effects[i].effectId == "color-grading" {   // ColorGrading.effectId
+            guard var params = clip.effects[i].parameters else { continue }
+            func mapped(_ s: String) -> String { s.contains(":") && !HostPath.isAbsolute(s) ? s : transform(s) }
+            switch params["lut"] {
+            case .string(let s)?: params["lut"] = .string(mapped(s))
+            case .object(var l)?:
+                if case .string(let s)? = l["src"] { l["src"] = .string(mapped(s)); params["lut"] = .object(l) }
+            default: continue
+            }
+            clip.effects[i].parameters = params
+        }
+        return clip
+    }
+
+    /// The board with the files `imported` maps (absolute path -> its copy in the destination, relative or absolute)
+    /// swapped in for its media and LUT sources.
+    public func rebased(_ imported: [String: String]) -> TimelineClipboard {
+        var b = self
+        for i in b.assets.indices { if let s = b.assets[i].source, let to = imported[s] { b.assets[i].source = to } }
+        for i in b.items.indices { b.items[i].clip = Self.mapLuts(b.items[i].clip) { imported[$0] ?? $0 } }
+        return b
     }
 
     /// `<id>-copy`, then `<id>-copy2`, ... until it is not in `taken`.

@@ -39,7 +39,7 @@ public enum StemDecoder {
         let sped = abs(key.rate - 1) > 1e-9
         let reader: AudioSampleReader
         if sped && !key.preservesPitch {
-            reader = try AudioSampleReader(path: key.path, sampleRate: resampledRate(sampleRate, key.rate), channels: 2)
+            reader = try AudioSampleReader(path: key.path, sampleRate: try resampledRate(sampleRate, key.rate), channels: 2)
         } else {
             reader = try AudioSampleReader(path: key.path, sampleRate: sampleRate, channels: 2)
             // Tempo before seek: the engine converts the frames it drops after a seek at the tempo in force.
@@ -61,7 +61,13 @@ public enum StemDecoder {
 
     /// The rate a clip at speed `rate` is decoded at when its pitch follows the speed: `sampleRate / rate` samples per
     /// source second, played back at `sampleRate`.
-    public static func resampledRate(_ sampleRate: Int, _ rate: Double) -> Int {
-        max(1, Int((Double(sampleRate) / rate).rounded()))
+    /// Speeds outside `resampledRates` (1/16x to 16x) are refused: the document allows any positive ratio, and the
+    /// decode rate must stay a sample rate the engine can open.
+    public static func resampledRate(_ sampleRate: Int, _ rate: Double) throws -> Int {
+        guard rate.isFinite, resampledRates.contains(rate) else {
+            throw StemDecodeError("This clip's speed (\(rate)x) is outside 1/16x to 16x, so its sound cannot follow the speed.")
+        }
+        return max(1, Int((Double(sampleRate) / rate).rounded()))
     }
+    public static let resampledRates: ClosedRange<Double> = 1.0 / 16 ... 16
 }
