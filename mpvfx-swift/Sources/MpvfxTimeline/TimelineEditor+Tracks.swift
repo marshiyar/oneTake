@@ -32,16 +32,8 @@ public extension TimelineEditor {
     @discardableResult
     func addTrack(kind: NativeProjectTrackKind, at index: Int? = nil) -> String? {
         var d = document
-        let existing = Set(d.sequence.tracks.map(\.id))
-        var n = d.sequence.tracks.filter { $0.kind == kind }.count + 1
-        while existing.contains("track:\(kind.rawValue)\(n)") { n += 1 }
-        let id = "track:\(kind.rawValue)\(n)"
-        let authored = (d.sequence.tracks.enumerated().filter { $0.element.kind == kind }
-            .map { ($0.element.lane ?? Self.indexLane($0.offset)).authoredTrack }.max() ?? 0) + 1
-        d.sequence.tracks.append(NativeProjectTrack(id: id, kind: kind, lane: .init(authoredTrack: authored, displayTrack: 0), clips: []))
         var order = displayTrackIds
-        order.insert(id, at: max(0, min(order.count, index ?? order.count)))
-        Self.renumberDisplay(&d, order)
+        let id = Self.appendTrack(&d, kind: kind, order: &order, at: index)
         return commit(d, "Add track") ? id : nil
     }
 
@@ -114,6 +106,21 @@ public extension TimelineEditor {
     internal func commit(_ d: NativeProjectDocument, _ label: String) -> Bool {
         guard d != document else { return false }
         return withHistory(label) { apply(.restoreDocument(d)) }
+    }
+
+    /// Adds an empty track of `kind` to `d` at display position `index` of `order` (nil = bottom) and renumbers the
+    /// lanes to `order`. Returns the new track id.
+    internal static func appendTrack(_ d: inout NativeProjectDocument, kind: NativeProjectTrackKind, order: inout [String], at index: Int?) -> String {
+        let existing = Set(d.sequence.tracks.map(\.id))
+        var n = d.sequence.tracks.filter { $0.kind == kind }.count + 1
+        while existing.contains("track:\(kind.rawValue)\(n)") { n += 1 }
+        let id = "track:\(kind.rawValue)\(n)"
+        let authored = (d.sequence.tracks.enumerated().filter { $0.element.kind == kind }
+            .map { ($0.element.lane ?? Self.indexLane($0.offset)).authoredTrack }.max() ?? 0) + 1
+        d.sequence.tracks.append(NativeProjectTrack(id: id, kind: kind, lane: .init(authoredTrack: authored, displayTrack: 0), clips: []))
+        order.insert(id, at: max(0, min(order.count, index ?? order.count)))
+        renumberDisplay(&d, order)
+        return id
     }
 
     /// The lane the parser assumes for a track without one.

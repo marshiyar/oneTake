@@ -162,6 +162,8 @@ public struct NativeProjectClip: Codable, Equatable {
     public var startFrame: Double; public var durationFrames: Double; public var sourceInFrame: Double
     public var sourceInFraction: NativePlaybackRate?
     public var playbackRate: NativePlaybackRate?
+    /// False plays a sped-up or slowed clip's sound at a pitch that follows the speed; absent or true keeps the pitch.
+    public var preservesPitch: Bool? = nil
     /// Required on the document; optional only on input (NativeProjectDocumentInput).
     public var muted: Bool
     public var staticParameters: NativeOrderedMap<NativeParameterValue>?

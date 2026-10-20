@@ -21,6 +21,9 @@ official releases (from `v*` tags, the "latest" release) and nightly builds of `
 Each has a macOS disk image (Apple silicon, macOS 15 or newer), a Windows installer and a portable zip (Windows 10 or 11,
 x64), and a Linux `.deb` (Ubuntu 24.04 or newer, Debian 13) and archive.
 
+The Windows installer is not code-signed yet, so the first time you run it Windows SmartScreen shows "Windows protected
+your PC": choose **More info**, then **Run anyway**.
+
 New to the app? [`docs/GETTING_STARTED.md`](mpvfx-swift/docs/GETTING_STARTED.md) walks through opening the sample project
 ([`samples/getting-started`](mpvfx-swift/samples/getting-started)), importing, cutting, grading and exporting.
 

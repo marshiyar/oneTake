@@ -29,6 +29,8 @@ on:
       - 'mpvfx-swift/Sources/OneTakeMedia/**'
       - 'mpvfx-swift/Sources/MpvfxDesktop/main.swift'
       - 'mpvfx-swift/binaries.lock'
+      - 'mpvfx-swift/Sources/MpvfxAudioBench/**'
+      - 'mpvfx-swift/Sources/MpvfxColorBench/**'
       - 'mpvfx-swift/tools/MpvfxPreviewBench/**'
       - '.github/ci/bench.py'
       - '.github/workflows/bench.yml'

@@ -23,8 +23,10 @@ public enum DocumentAudioGraph {
     /// What a stem decode depends on; also the cache key, so an edit only re-decodes the clips it changed.
     public struct StemKey: Hashable, Sendable {
         public var path: String, sourceIn: Double, duration: Double, rate: Double
-        public init(path: String, sourceIn: Double, duration: Double, rate: Double) {
-            self.path = path; self.sourceIn = sourceIn; self.duration = duration; self.rate = rate
+        /// The clip's `preservesPitch`: true plays `rate` as tempo, false resamples so the pitch follows the speed.
+        public var preservesPitch: Bool
+        public init(path: String, sourceIn: Double, duration: Double, rate: Double, preservesPitch: Bool = true) {
+            self.path = path; self.sourceIn = sourceIn; self.duration = duration; self.rate = rate; self.preservesPitch = preservesPitch
         }
     }
 
@@ -56,7 +58,9 @@ public enum DocumentAudioGraph {
             let rate = c.playbackRate.map { $0.denominator != 0 && $0.numerator > 0 ? $0.numerator / $0.denominator : 1 } ?? 1
             var volume = 1.0
             if case .number(let v)? = c.staticParameters?["audio.volume"] { volume = max(0, v) }
-            tracks.append(.init(id: c.id, stem: StemKey(path: path, sourceIn: c.sourceInFrame / fps, duration: end - start, rate: rate),
+            let stem = StemKey(path: path, sourceIn: c.sourceInFrame / fps, duration: end - start, rate: rate,
+                               preservesPitch: c.preservesPitch ?? true)
+            tracks.append(.init(id: c.id, stem: stem,
                                 start: start, end: end, volume: volume, muted: c.muted,
                                 fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty))
         }
@@ -96,7 +100,7 @@ public enum DocumentAudioGraph {
     }
 
     /// Decodes a stem as stereo planes at `sampleRate` through the media engine (`StemDecoder`): seeked to the clip's
-    /// source in point, clip rate as pitch-preserving tempo, read in bounded chunks.
+    /// source in point, clip rate as tempo (or resampled when the clip lets the pitch follow), read in bounded chunks.
     public static func decodeStem(_ key: StemKey, sampleRate: Int = 48_000) throws -> [[Float]] {
         try StemDecoder.decode(key, sampleRate: sampleRate)
     }
