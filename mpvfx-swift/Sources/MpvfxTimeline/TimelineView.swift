@@ -123,7 +123,8 @@ public enum TimelineRuler {
         guard t.isFinite, frameRate.isFinite, frameRate > 0 else { return hours ? "00:00:00:00" : "00:00:00" }
         let base = max(1, Int(frameRate.rounded()))
         let frames = Int((max(0, t) * frameRate).rounded()), s = frames / base
-        if hours || s >= 3600 {
+        // The hours field follows the real time: at fractional rates the nominal frame count lags it.
+        if hours || t >= 3600 || s >= 3600 {
             return String(format: "%02d:%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60, frames % base)
         }
         return String(format: "%02d:%02d:%02d", s / 60, s % 60, frames % base)
