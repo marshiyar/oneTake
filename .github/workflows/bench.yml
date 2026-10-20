@@ -1,0 +1,214 @@
+name: bench
+
+# The app's benchmarks from a release build, on every OS, each in its own job: startup (launch to the first painted
+# frame), the audio graph (MpvfxAudioBench), the colour grade on the CPU and the GPU (MpvfxColorBench: Vulkan,
+# Direct3D 11, Metal) and preview playback (MpvfxPreviewBench: 1080p, 4K, stacked, graded, scrub). .github/ci/bench.py
+# runs each benchmark as separate processes (default 5), records every sample with p50, p95 and max, the peak memory,
+# the machine and the commit, prints the table into the job summary and saves bench-<os>.json as the artifact
+# bench-<os> (90 days). Runs after every green mpvfx-ci run on main, every Sunday, and by hand with a run count.
+# GitHub's hosted runners are shared machines with virtual GPUs (lavapipe, WARP, Apple's paravirtual device): the
+# numbers are for trends between runs of the same class, never for comparing against a developer's machine.
+# Separate from mpvfx-ci on purpose: it never blocks a merge and never publishes anything.
+
+on:
+  workflow_run:
+    workflows: [mpvfx-ci]
+    types: [completed]
+    branches: [main]
+  # A pull request that touches performance-sensitive code is benchmarked too; agentbot compares it with main.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mpvfx-swift/Sources/MpvfxPlayer/**'
+      - 'mpvfx-swift/Sources/MpvfxColor/**'
+      - 'mpvfx-swift/Sources/MpvfxMetal/**'
+      - 'mpvfx-swift/Sources/CMpvfxVulkan/**'
+      - 'mpvfx-swift/Sources/CMpvfxWin32/d3d11_grade.cpp'
+      - 'mpvfx-swift/Sources/MpvfxAudio/**'
+      - 'mpvfx-swift/Sources/MpvfxAudioGraph/**'
+      - 'mpvfx-swift/Sources/OneTakeMedia/**'
+      - 'mpvfx-swift/Sources/MpvfxDesktop/main.swift'
+      - 'mpvfx-swift/binaries.lock'
+      - 'mpvfx-swift/tools/MpvfxPreviewBench/**'
+      - '.github/ci/bench.py'
+      - '.github/workflows/bench.yml'
+  schedule:
+    - cron: '20 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Processes per benchmark
+        type: number
+        default: 5
+      only:
+        description: Comma list of benchmarks to run (startup,audio,grade,preview); empty = all
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RUNS: ${{ inputs.runs || 5 }}
+  ONLY: ${{ inputs.only || '' }}
+  XCODE_VERSION: '27.0'
+
+jobs:
+  linux:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    container: swift:6.3.3-noble
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - name: System packages
+        working-directory: /
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+            git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
+            xvfb xauth dbus-x11 python3 libvulkan-dev mesa-vulkan-drivers
+      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
+      # never a pull request head). Other events check out their own commit.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Engine libraries (binaries.lock)
+        run: python3 -I -B scripts/fetch-binaries.py
+      - name: Restore the release build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: linux-release-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            linux-release-${{ github.ref_name }}-
+            linux-release-
+      - name: Release build
+        run: swift --version && swift build -c release
+      - name: Benchmarks, Vulkan on lavapipe (a software device; correctness, not GPU speed)
+        env:
+          MPVFX_GPU: software
+        run: |
+          python3 -I -B -u ../.github/ci/bench.py --out "$RUNNER_TEMP/bench" --runs "$RUNS" ${ONLY:+--only "$ONLY"} \
+            --launcher "xvfb-run -a -s '-screen 0 1440x900x24' dbus-run-session --" 2>&1 | tee "$RUNNER_TEMP/bench.log"
+          test ${PIPESTATUS[0]} -eq 0
+          cat "$RUNNER_TEMP/bench.log" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-linux
+          path: |
+            ${{ runner.temp }}/bench/bench-*.json
+            ${{ runner.temp }}/bench/preview.jsonl
+            ${{ runner.temp }}/bench.log
+          if-no-files-found: ignore
+          retention-days: 90
+
+  windows:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
+      # never a pull request head). Other events check out their own commit.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
+        with:
+          swift-version: swift-6.3.3-release
+          swift-build: 6.3.3-RELEASE
+      - name: Engine libraries (binaries.lock), DLL folders on PATH
+        run: |
+          python -I -B scripts/fetch-binaries.py
+          for d in .binaries/*/bin; do cygpath -w "$PWD/$d" >> "$GITHUB_PATH"; done
+      - name: Restore the release build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: windows-release-${{ github.sha }}
+          restore-keys: windows-release-
+      - name: Release build
+        run: swift --version && swift build -c release
+      - name: Benchmarks, Direct3D 11 on WARP (a software device; correctness, not GPU speed)
+        env:
+          MPVFX_GPU: software
+        run: |
+          python -I -B -u ../.github/ci/bench.py --out "$RUNNER_TEMP/bench" --runs "$RUNS" ${ONLY:+--only "$ONLY"} 2>&1 | tee "$RUNNER_TEMP/bench.log"
+          test ${PIPESTATUS[0]} -eq 0
+          cat "$RUNNER_TEMP/bench.log" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-windows
+          path: |
+            ${{ runner.temp }}/bench/bench-*.json
+            ${{ runner.temp }}/bench/preview.jsonl
+            ${{ runner.temp }}/bench.log
+          if-no-files-found: ignore
+          retention-days: 90
+
+  macos:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: xcode-27
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
+      # never a pull request head). Other events check out their own commit.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Xcode ${{ env.XCODE_VERSION }}
+        run: |
+          x=/Applications/Xcode_${XCODE_VERSION}.app
+          test -d "$x" || { echo "::error::$x is not on this runner"; ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$x/Contents/Developer"
+          xcodebuild -version && swift --version
+      - name: Engine libraries (binaries.lock)
+        run: python3 -I -B scripts/fetch-binaries.py
+      - name: Restore the release build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: mpvfx-swift/.build
+          key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            macos27-release-${{ github.ref_name }}-
+            macos27-release-
+      - name: Forget build plans recorded on another runner
+        run: |
+          rm -rf .build/out/Intermediates.noindex/XCBuildData/*.xcbuilddata .build/out/Intermediates.noindex/XCBuildData/prior-build-descriptions.txt
+          rm -rf .build/*.yaml .build/*/*/description.json
+      - name: Metal toolchain
+        run: sh ../.github/ci/metal-toolchain.sh
+      - name: Release build
+        run: swift build -c release
+      - name: Benchmarks, Metal on the runner's paravirtual GPU
+        run: |
+          python3 -I -B -u ../.github/ci/bench.py --out "$RUNNER_TEMP/bench" --runs "$RUNS" ${ONLY:+--only "$ONLY"} 2>&1 | tee "$RUNNER_TEMP/bench.log"
+          test ${PIPESTATUS[0]} -eq 0
+          cat "$RUNNER_TEMP/bench.log" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-macos
+          path: |
+            ${{ runner.temp }}/bench/bench-*.json
+            ${{ runner.temp }}/bench/preview.jsonl
+            ${{ runner.temp }}/bench.log
+          if-no-files-found: ignore
+          retention-days: 90
