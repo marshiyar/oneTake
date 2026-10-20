@@ -18,9 +18,16 @@
 //   web-only items (Reload, Force Reload, Toggle Developer Tools, page zoom, Speech, Help > Learn More).
 //   Quit is routed through ShellLifecycle.quitRequested() -> SaveBarrier. The editor sees a key
 //   first and the menu only acts on shortcuts the editor did not handle.
+// File > Open… (Cmd+O) and Open Recent on macOS; Linux and Windows open projects with Ctrl+O and from the
+// left sidebar's "Open project…" and "Recent" (EditorSession.requestOpenProject, recentProjects).
 public struct MenuItem: Equatable, Sendable {
     public enum Command: String, Sendable {
         case about, services, hide, hideOthers, showAll, quit
+        /// MpVFX > Settings… (Cmd+,): the editor's Settings card (Ctrl+, on Linux and Windows).
+        case settings
+        case openProject
+        /// File > Open Recent: a submenu the shell fills from `DesktopBackend.recentProjects()` when it opens.
+        case openRecent
         case closeWindow
         case undo, redo, cut, copy, paste, pasteAndMatchStyle, delete, selectAll
         case toggleFullScreen
@@ -51,6 +58,7 @@ public enum MenuModel {
             return [
                 Menu(label: appName, items: [
                     MenuItem(label: "About \(appName)", command: .about),
+                    MenuItem(label: "Settings…", command: .settings, key: ",", modifiers: [.command], separatorBefore: true),
                     MenuItem(label: "Services", command: .services, separatorBefore: true),
                     MenuItem(label: "Hide \(appName)", command: .hide, key: "h", modifiers: [.command], separatorBefore: true),
                     MenuItem(label: "Hide Others", command: .hideOthers, key: "h", modifiers: [.command, .option]),
@@ -58,7 +66,9 @@ public enum MenuModel {
                     MenuItem(label: "Quit \(appName)", command: .quit, key: "q", modifiers: [.command], separatorBefore: true),
                 ]),
                 Menu(label: "File", items: [
-                    MenuItem(label: "Close Window", command: .closeWindow, key: "w", modifiers: [.command]),
+                    MenuItem(label: "Open…", command: .openProject, key: "o", modifiers: [.command]),
+                    MenuItem(label: "Open Recent", command: .openRecent),
+                    MenuItem(label: "Close Window", command: .closeWindow, key: "w", modifiers: [.command], separatorBefore: true),
                 ]),
                 Menu(label: "Edit", items: [
                     MenuItem(label: "Undo", command: .undo, key: "z", modifiers: [.command]),

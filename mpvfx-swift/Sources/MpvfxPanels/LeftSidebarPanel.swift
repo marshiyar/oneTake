@@ -54,8 +54,12 @@ public struct LibraryNavModel: Equatable {
             self.id = id; self.name = name; self.events = events; self.projects = projects; self.assets = assets; self.exports = exports
         }
     }
+    /// A recently opened project folder (the "Recent" list beside "Open project…").
+    public struct RecentProject: Equatable { public var path, name: String
+        public init(path: String, name: String) { self.path = path; self.name = name } }
     public var available = false
     public var libraries: [Library] = []
+    public var recentProjects: [RecentProject] = []
     public var currentProjectId: String?
     public var isStandalone = false
     public var busy = false
@@ -75,6 +79,9 @@ public enum LibraryNavCommand: Equatable {
     case saveOutput(libraryId: String, jobId: String)
     case reveal(libraryId: String)
     case openStandalone
+    /// Any project folder through the folder dialog, or one from the recent list (its folder).
+    case openProject
+    case openRecentProject(String)
 }
 
 /// The left sidebar:
@@ -85,7 +92,7 @@ public final class LeftSidebarPanel {
         case tab(LeftSidebarTab)
         case newLibrary, openLibrary, pickLibrary, pickEvent, newEvent, pickProject, newProject
         case toggleMedia, toggleExports, storageMode, importIntoEvent, attach(String), relink(String), saveOutput(String)
-        case reveal, openStandalone, createConfirm, createCancel, createField
+        case reveal, openStandalone, openProject, pickRecent, createConfirm, createCancel, createField
         case asset(String)
         case menu(String), menuItem(String, Int), deleteConfirm(String), deleteCancel, removePlacements, renameField, renameOK, renameCancel
         case libraryArea, binArea
@@ -295,6 +302,13 @@ public final class LeftSidebarPanel {
             else if activeLibrary != nil {
                 PanelDraw.text(c, "Editing the existing standalone project", in: CanvasRect(x: x, y: y, width: w, height: lineH), font: font, color: PanelTheme.neutral500); y += lineH + gap
             }
+            // Any project folder (Cmd/Ctrl+O) and the recently opened ones: the only place to open projects on Linux and
+            // Windows, which have no menu bar.
+            let openRight = x + c.measureText("Open project…", font: font).width
+            _ = button("Open project…", .openProject, right: openRight, at: y, enabled: !library.busy)
+            _ = button("Recent", .pickRecent, right: openRight + 16 + c.measureText("Recent", font: font).width, at: y,
+                       enabled: !library.busy && !library.recentProjects.isEmpty)
+            y += lineH + gap
             if let err = library.error {
                 for line in InspectorPanel.wrap(err, perLine: max(20, Int(w / 6.5))) {
                     PanelDraw.text(c, line, in: CanvasRect(x: x, y: y, width: w, height: 16), font: font, color: PanelTheme.red400); y += 16
@@ -655,6 +669,10 @@ public final class LeftSidebarPanel {
         case .saveOutput(let j): if let l = activeLibrary { onLibrary?(.saveOutput(libraryId: l.id, jobId: j)) }
         case .reveal: if let l = activeLibrary { onLibrary?(.reveal(libraryId: l.id)) }
         case .openStandalone: onLibrary?(.openStandalone)
+        case .openProject: onLibrary?(.openProject)
+        case .pickRecent:
+            openDropdown(hit, library.recentProjects.map { .init(value: $0.path, label: $0.name) }, nil) { [weak self] v in self?.onLibrary?(.openRecentProject(v)) }
+            return true
         case .asset(let id):
             pressedAsset = (id, p)
             // Double-click (or Enter) adds at the playhead.

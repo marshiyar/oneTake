@@ -72,6 +72,10 @@ public enum ProjectRenders {
 
     /// Removes the render's file(s) and sidecar. Returns whether anything was removed.
     @discardableResult
+    /// Whether `id` is an app render's job id: renders are written as `render-<uuid>.<format>` (RenderRequest.jobId,
+    /// the Renders tab), so a folder shared with other videos lists only these.
+    public static func isRenderId(_ id: String) -> Bool { id.hasPrefix("render-") && isTransactionId(id) }
+
     public static func delete(_ rendersDir: String, id: String) throws -> Bool {
         guard isTransactionId(id) else { throw MediaToolError("Invalid render job") }
         var removed = false
