@@ -28,6 +28,10 @@ on:
         description: Run every test shard, ignoring passes recorded for unchanged inputs
         type: boolean
         default: false
+      publish:
+        description: Publish the installers when every job passes (codex-apply starts its runs with false)
+        type: boolean
+        default: true
 
 concurrency:
   group: mpvfx-ci-${{ github.ref }}
@@ -534,7 +538,7 @@ jobs:
   publish:
     needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos]
     if: >-
-      always() && github.event_name != 'pull_request' && needs.plan.result == 'success' && needs.checks.result == 'success'
+      always() && github.event_name != 'pull_request' && inputs.publish != false && needs.plan.result == 'success' && needs.checks.result == 'success'
       && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
       && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
       && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
