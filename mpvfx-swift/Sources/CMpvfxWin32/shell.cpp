@@ -35,6 +35,11 @@ mpvfx_hresult mpvfx_clipboard_set_text(void *hwnd, const uint16_t *text) {
     HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
     if (!memory) return HRESULT_FROM_WIN32(GetLastError());
     void *data = GlobalLock(memory);
+    if (!data) {
+        const DWORD error = GetLastError();
+        GlobalFree(memory);
+        return HRESULT_FROM_WIN32(error);
+    }
     std::memcpy(data, text, bytes);
     GlobalUnlock(memory);
     if (!OpenClipboard(static_cast<HWND>(hwnd))) {

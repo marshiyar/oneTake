@@ -308,7 +308,10 @@ final class SessionPanels {
         case .createProject(let l, let e, let name): command = ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
-            if left.library.currentProjectId != nil, let id = projectId { command["projectId"] = .string(id) }
+            if left.library.currentProjectId != nil, let id = projectId,
+               libraryViews.first(where: { $0.id == l })?.projects.contains(where: { $0.id == id }) == true {
+                command["projectId"] = .string(id)
+            }
         case .attach(let l, let a):
             guard let id = projectId else { return }
             command = ["type": .string("attach"), "libraryId": .string(l), "projectId": .string(id), "assetId": .string(a)]
@@ -551,6 +554,8 @@ extension EditorSession {
         shellInputs += [li, ri]
         router.panes[.left] = ShellPane(input: li) { [weak p] c, size in p?.startIfNeeded(); p?.left.draw(c, size: size) }
         router.panes[.right] = ShellPane(input: ri) { [weak p] c, size in p?.startIfNeeded(); p?.syncBeforePaint(); p?.right.draw(c, size: size) }
+        router.panes[.left]?.hint = { [weak p] in p?.left.hint }
+        router.panes[.right]?.hint = { [weak p] in p?.right.hint }
         let previous = editor.onChange
         editor.onChange = { [weak p] in previous?(); p?.syncItems() }
         p.syncItems()

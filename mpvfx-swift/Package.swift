@@ -134,7 +134,8 @@ let package = Package(
         // Uniform/parameter layout shared with the Metal kernels (the header lives beside the shader).
         .target(name: "CMpvfxColorShared"),
         // Windows: the Direct3D 11 compute grade lives in CMpvfxWin32 (d3d11_grade.cpp); Linux: CMpvfxVulkan.
-        .target(name: "MpvfxColor", dependencies: colorDependencies),
+        .target(name: "MpvfxColor", dependencies: colorDependencies,
+                swiftSettings: [.swiftLanguageMode(.v6)]),
         // System SQLite (no download): libsqlite3 on Linux, SDK sqlite3 on macOS, winsqlite3 on Windows 10+.
         .systemLibrary(name: "CSQLite", path: "Sources/CSQLite", providers: [.apt(["libsqlite3-dev"])]),
         .target(name: "MpvfxRuntime", dependencies: ["MpvfxShared", "MpvfxColor", "CSQLite", "MpvfxAudio", "MpvfxAudioGraph", mediaEngine],
