@@ -69,14 +69,6 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
             let sub = NSMenu(title: menu.label)
             for item in menu.items {
                 if item.separatorBefore { sub.addItem(.separator()) }
-                if item.command == .openRecent {
-                    // Filled from the backend's recent projects each time it opens (menuNeedsUpdate).
-                    let recent = NSMenu(title: item.label)
-                    recent.delegate = self
-                    let mi = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
-                    mi.submenu = recent
-                    sub.addItem(mi); continue
-                }
                 if item.command == .services {
                     let services = NSMenu(title: item.label)
                     let mi = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
@@ -88,13 +80,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                 let selector: Selector
                 switch item.command {
                 case .about: selector = #selector(NSApplication.orderFrontStandardAboutPanel(_:))
-                case .services, .openRecent: continue
-                case .openProject, .settings:
-                    let action = item.command == .settings ? #selector(openSettings(_:)) : #selector(openProject(_:))
-                    let mi = NSMenuItem(title: item.label, action: action, keyEquivalent: item.key ?? "")
-                    mi.keyEquivalentModifierMask = .command
-                    mi.target = self
-                    sub.addItem(mi); continue
+                case .services: continue
                 case .hide: selector = #selector(NSApplication.hide(_:))
                 case .hideOthers: selector = #selector(NSApplication.hideOtherApplications(_:))
                 case .showAll: selector = #selector(NSApplication.unhideAllApplications(_:))
@@ -133,19 +119,6 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         }
         return main
     }
-
-    /// File > Open…: the folder dialog (⌘O in the editor reaches the same call through EditorSession.commandKey).
-    @objc func openProject(_ sender: NSMenuItem) { session?.requestOpenProject() }
-
-    /// MpVFX > Settings… (⌘, in the editor reaches the same card through EditorSession.commandKey).
-    @objc func openSettings(_ sender: NSMenuItem) { session?.showSettings() }
-
-    @objc func openRecentProject(_ sender: NSMenuItem) {
-        guard let path = sender.representedObject as? String else { return }
-        session?.openProject(path: path)
-    }
-
-    @objc func clearRecentProjects(_ sender: NSMenuItem) { session?.clearRecentProjects() }
 
     @objc func chooseAppearance(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let a = ThemeAppearance(rawValue: raw) else { return }
@@ -357,23 +330,6 @@ extension MacShell: SmokeHost {
     func quitAfterSmoke() { requestTerminate() }
 
     func smokeAppearanceChanged() { syncAppearanceMenu() }
-}
-
-/// File > Open Recent: the recent projects (title, folder as tooltip), then Clear Menu.
-extension MacShell: NSMenuDelegate {
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        let recent = session?.recentProjects ?? []
-        for p in recent {
-            let mi = NSMenuItem(title: p.title, action: #selector(openRecentProject(_:)), keyEquivalent: "")
-            mi.target = self; mi.representedObject = p.directory; mi.toolTip = p.directory
-            menu.addItem(mi)
-        }
-        if !recent.isEmpty { menu.addItem(.separator()) }
-        let clear = NSMenuItem(title: "Clear Menu", action: recent.isEmpty ? nil : #selector(clearRecentProjects(_:)), keyEquivalent: "")
-        clear.target = self
-        menu.addItem(clear)
-    }
 }
 
 /// The appearance items show a checkmark on the current setting whenever the View menu opens.

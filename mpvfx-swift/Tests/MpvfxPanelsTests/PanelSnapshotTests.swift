@@ -84,19 +84,22 @@ final class PanelSnapshotTests: XCTestCase {
         return s
     }
 
-    func testLeftSidebar() {
+    func testLeftSidebar() throws {
         for scale in [1.0, 2.0] {
             let s = Self.sidebarFixture()
             let t = snapshot("left-sidebar", w: 370, h: 1040, scale: scale) { s.draw($0, size: CanvasSize(370, 1040)) }
-            // Positions from the recorded reference layout at 370×1040 (left sidebar, library navigator, media bin); below the
-            // navigator they sit 24px lower for its "Open project… / Recent" row (one line + gap, issue #31).
-            assertPixel(t, 150, 1000, scale: scale, "#0a0a0a")       // card body: bg-neutral-950
-            assertPixel(t, 100, 50, scale: scale, "#171717")         // library select (13,37 344×28): bg-neutral-900
-            assertPixel(t, 220, 282, scale: scale, "#0e0e0e")        // Import media (211.8,277 105×32): bg-panel-input
-            assertPixel(t, 100, 321.5, scale: scale, "#181818")      // header border-b at y 321: neutral-800/50 on neutral-950
-            assertPixel(t, 300, 344, scale: scale, "#0e0e0e")        // search (17,332 336×26.5): bg-panel-input
-            assertPixel(t, 19, 421.5, scale: scale, "#3a3a3a", tol: 10)  // "Added" badge (17,419.5): neutral-950/80 over the frame
-            assertPixel(t, 60, 464, scale: scale, "#fafafa", tol: 10)    // first tile (13,415.5 166×93.4) shows the frame
+            // At 370×1040: the tab strip (0…32), the library navigator, a hairline, then the media bin.
+            let tab = try XCTUnwrap(s.hits.rect { $0 == .tab(.assets) }), imp = try XCTUnwrap(s.hits.rect { $0 == .importMedia })
+            assertPixel(t, 150, 1000, scale: scale, "#1d1d1d")       // flat body: bg-panel-bg
+            assertPixel(t, 0, 0, scale: scale, "#1d1d1d")            // no rounded corner: the strip reaches the panel's corner
+            assertPixel(t, tab.midX, 31, scale: scale, "#4c8df0")    // the Media tab's accent underline
+            assertPixel(t, 200, 31, scale: scale, "#141414")         // the strip's hairline
+            assertPixel(t, imp.x + 4, imp.midY, scale: scale, "#0e0e0e")   // Import media (24 tall): bg-panel-input
+            assertPixel(t, 100, 80, scale: scale, "#0e0e0e")         // library select (12,68 346×28): bg-panel-input
+            assertPixel(t, 100, 272, scale: scale, "#141414")        // hairline between the navigator and the bin
+            assertPixel(t, 300, 295, scale: scale, "#0e0e0e")        // search (16,283 338×26.5): bg-panel-input
+            assertPixel(t, 19, 375, scale: scale, "#3a3a3a", tol: 10)    // "Added" badge: neutral-950/80 over the frame
+            assertPixel(t, 60, 415, scale: scale, "#fafafa", tol: 10)    // the first tile shows the frame
         }
     }
 
@@ -114,8 +117,35 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let r = try Self.rightFixture(open: nil, h: 1040)
             let t = snapshot("inspector-layout", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 55, 15, scale: scale, "#262626")          // active "Design" tab (49,9 58×32): bg-neutral-800
-            assertPixel(t, 200, 70, scale: scale, "#1d1d1d")         // flat panel bg-panel-bg under the header
+            let design = try XCTUnwrap(r.hits.rect { $0 == .design }), renders = try XCTUnwrap(r.hits.rect { $0 == .renders })
+            XCTAssertEqual(design.y, 0); XCTAssertEqual(design.height, PanelTabStrip.height)
+            assertPixel(t, design.midX, 31, scale: scale, "#4c8df0")     // the active tab's 2px accent underline (30…32)
+            assertPixel(t, design.midX, 30, scale: scale, "#4c8df0")
+            assertPixel(t, renders.midX, 31, scale: scale, "#141414")    // an idle tab: the strip's hairline
+            assertPixel(t, renders.midX, 29, scale: scale, "#1d1d1d")
+            assertPixel(t, 0, 0, scale: scale, "#1d1d1d")                // flat: the strip reaches the panel's corner
+            assertPixel(t, 408, 1039, scale: scale, "#1d1d1d")           // and so does the body
+            assertPixel(t, 200, 70, scale: scale, "#1d1d1d")             // flat panel bg-panel-bg under the strip
+        }
+    }
+
+    /// The tab strip's buttons: the panel menu's hover wash and the open menu right-aligned under it.
+    func testTabStripMenuButton() throws {
+        for scale in [1.0, 2.0] {
+            let r = try Self.rightFixture(open: nil, h: 600)
+            r.draw(PanelMeasureCanvas(), size: CanvasSize(409, 600))
+            let menu = try XCTUnwrap(r.hits.rect { $0 == .panelMenu })
+            XCTAssertEqual(menu, CanvasRect(x: 409 - 4 - 24, y: 4, width: 24, height: 24))
+            r.hovered = .panelMenu
+            var t = snapshot("tab-strip-menu-hover", w: 409, h: 600, scale: scale) { r.draw($0, size: CanvasSize(409, 600)) }
+            assertPixel(t, menu.x + 3, menu.y + 3, scale: scale, "#2c2c2c")   // hover wash: panel-hover
+            assertPixel(t, menu.midX, menu.midY, scale: scale, "#e4e4e7", tol: 40)   // the middle dot in text-1
+            _ = r.pointerDown(CanvasPoint(menu.midX, menu.midY))
+            XCTAssertTrue(r.dropdown.isOpen)
+            t = snapshot("tab-strip-menu-open", w: 409, h: 600, scale: scale) { r.draw($0, size: CanvasSize(409, 600)) }
+            XCTAssertEqual(r.dropdown.rect.maxX, 409 - 4, accuracy: 0.5, "the menu stays inside the panel")
+            assertPixel(t, r.dropdown.rect.midX, r.dropdown.rect.maxY - 3, scale: scale, "#252525")   // popover
+            r.dropdown.close()
         }
     }
 
@@ -125,13 +155,14 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let r = try Self.rightFixture(open: "layout", h: 1040)
             let t = snapshot("inspector-layout", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 94, scale: scale, "#141414")      // header border-b: 44.5px laid out, painted at 94
-            assertPixel(t, 200, 96, scale: scale, "#1d1d1d")      // open Transform header (95…135)
-            assertPixel(t, 386, 114, scale: scale, "#71717a")     // open caret M2 4l4 4 4-4z at (380,108.5), text-3
-            assertPixel(t, 200, 140, scale: scale, "#191919")     // open body bg-panel-bg-inset from 135
-            assertPixel(t, 100, 180, scale: scale, "#1d1d1d")     // Position X field (17,170.5 183.5×30) rounded bg-panel-bg
-            assertPixel(t, 204, 180, scale: scale, "#191919")     // gap-2 between the X and Y fields
-            assertPixel(t, 100, 194, scale: scale, "#272727", tol: 8)   // value underline border-panel-border-input/50
+            // The inspector starts under the 32px tab strip and spans the panel's full width.
+            assertPixel(t, 200, 76, scale: scale, "#141414")      // header border-b: 44.5px laid out, painted at 76
+            assertPixel(t, 200, 78, scale: scale, "#1d1d1d")      // open Transform header (77…117)
+            assertPixel(t, 386, 96, scale: scale, "#71717a")      // open caret M2 4l4 4 4-4z at (381,90.5), text-3
+            assertPixel(t, 200, 122, scale: scale, "#191919")     // open body bg-panel-bg-inset from 117
+            assertPixel(t, 100, 162, scale: scale, "#1d1d1d")     // Position X field (16,152.5 185×30) rounded bg-panel-bg
+            assertPixel(t, 204, 162, scale: scale, "#191919")     // gap-2 between the X and Y fields
+            assertPixel(t, 100, 176, scale: scale, "#272727", tol: 8)   // value underline border-panel-border-input/50
         }
         // FlatSegmentedRow: the active option sits on a 2px accent underline; KeyframeNavigation's active diamond.
         for scale in [1.0, 2.0] {
@@ -213,8 +244,8 @@ final class PanelSnapshotTests: XCTestCase {
     }
 
     /// Grade opens on the Scopes row (35pt, "Off") and, while look frames are unavailable, the Retry link, so the
-    /// preset grid starts where the reference's does: 123 below the Grade header's top (the reference's header sits at
-    /// 95.5 because its scroll came out at 79, ours at 94.5 with the header scrolled exactly to the body's top).
+    /// preset grid starts where the reference's does: 123 below the Grade header's top (the header scrolled exactly to
+    /// the body's top, 76.5 under the 32px tab strip).
     func testGradeScopesRowAndRetryPlaceTheGrid() throws {
         let r = try Self.rightFixture(open: "grade", h: 1900)
         let c = PanelMeasureCanvas()
@@ -222,13 +253,13 @@ final class PanelSnapshotTests: XCTestCase {
         XCTAssertTrue(c.drawnStrings.contains("Scopes")); XCTAssertTrue(c.drawnStrings.contains("Off"))
         XCTAssertTrue(c.drawnStrings.contains("Retry look previews"))
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
-        XCTAssertEqual(tile.y, 94.5 + 123, accuracy: 0.5)
-        XCTAssertEqual(tile.x, 17, accuracy: 0.5)
+        XCTAssertEqual(tile.y, 76.5 + 123, accuracy: 0.5)
+        XCTAssertEqual(tile.x, 16, accuracy: 0.5)
         // With look frames available the link goes and the grid moves up by its 18 + 6.
         r.inspector.presetPreview = { _ in .rendering }
         c.reset(); r.draw(c, size: CanvasSize(409, 1900))
         XCTAssertFalse(c.drawnStrings.contains("Retry look previews"))
-        XCTAssertEqual(try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) }).y, 94.5 + 123 - 24, accuracy: 0.5)
+        XCTAssertEqual(try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) }).y, 76.5 + 123 - 24, accuracy: 0.5)
     }
 
     /// Opening Scopes shows the status, the mode tabs and the scope of the host's graded frame; tabs switch mode.
@@ -249,7 +280,7 @@ final class PanelSnapshotTests: XCTestCase {
         XCTAssertGreaterThan(asked, 0)
         for s in ["ready", "Histogram", "Waveform", "RGB Parade", "Vectorscope"] { XCTAssertTrue(c.drawnStrings.contains(s), s) }
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
-        XCTAssertEqual(tile.y, 94.5 + 123 + 234.35 - 35, accuracy: 1, "the open scopes push the grid down")
+        XCTAssertEqual(tile.y, 76.5 + 123 + 234.35 - 35, accuracy: 1, "the open scopes push the grid down")
         let parade = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 4) })
         XCTAssertTrue(r.inspector.pointerDown(CanvasPoint(parade.midX, parade.midY))); r.inspector.pointerUp(CanvasPoint(parade.midX, parade.midY))
         XCTAssertEqual(r.inspector.grade.scopeMode, .parade)
@@ -328,21 +359,21 @@ final class PanelSnapshotTests: XCTestCase {
                 let r = Self.rendersFixture(v)
                 let t = snapshot("renders-\(v)", w: 409, h: 600, scale: scale) { r.draw($0, size: CanvasSize(409, 600)) }
                 switch v {
-                case "done":
-                    assertPixel(t, 100, 95, scale: scale, "#0e0e0e")     // Format select (13,81 187.5×28) bg-panel-input
-                    assertPixel(t, 30, 180, scale: scale, "#ffffff")     // Export (13,176 383×32) bg-white
-                    assertPixel(t, 200, 240, scale: scale, "#050505", tol: 10)  // settings border-b straddling 240 (239.5…240.5)
-                    assertPixel(t, 20, 290, scale: scale, "#fafafa", tol: 12)   // the 16:9 poster frame fills the 80×45 well at (13,280)
+                case "done":   // the tab's content starts under the 32px strip, flush with the panel's edges
+                    assertPixel(t, 100, 77, scale: scale, "#0e0e0e")     // Format select (12,63 188×28) bg-panel-input
+                    assertPixel(t, 30, 162, scale: scale, "#ffffff")     // Export (12,158 385×32) bg-white
+                    assertPixel(t, 200, 222, scale: scale, "#070707", tol: 10)  // settings border-b straddling 222 (221.5…222.5)
+                    assertPixel(t, 20, 272, scale: scale, "#fafafa", tol: 12)   // the 16:9 poster frame fills the 80×45 well at (12,262)
                 case "mixed":
-                    assertPixel(t, 30, 180, scale: scale, "#858585", tol: 10)   // Rendering… (white/50 over neutral-950)
-                    assertPixel(t, 53, 353, scale: scale, "#f87171", tol: 20)   // failed status dot at (49,349)
-                    assertPixel(t, 140, 519.5, scale: scale, "#4c8df0", tol: 12) // progress fill (103,517.5 83.9×4)
-                    assertPixel(t, 250, 519.5, scale: scale, "#000000", tol: 8)  // progress track
+                    assertPixel(t, 30, 162, scale: scale, "#8e8e8e", tol: 10)   // Rendering… (white/50 over bg-panel-bg)
+                    assertPixel(t, 52, 335, scale: scale, "#f87171", tol: 20)   // failed status dot at (48,331)
+                    assertPixel(t, 140, 501.5, scale: scale, "#4c8df0", tol: 12) // progress fill (102,499.5 84.4×4)
+                    assertPixel(t, 250, 501.5, scale: scale, "#000000", tol: 8)  // progress track
                 case "error":
-                    assertPixel(t, 30, 180, scale: scale, "#ffffff")             // Export enabled (13,176 383×32) bg-white
-                    assertPixel(t, 300, 256, scale: scale, "#1d0e0e", tol: 10)   // error strip bg-red-500/10
+                    assertPixel(t, 30, 162, scale: scale, "#ffffff")             // Export enabled (12,158 385×32) bg-white
+                    assertPixel(t, 300, 238, scale: scale, "#322121", tol: 10)   // error strip bg-red-500/10
                 default:
-                    assertPixel(t, 100, 400, scale: scale, "#0a0a0a")
+                    assertPixel(t, 100, 400, scale: scale, "#1d1d1d")
                 }
             }
         }
@@ -356,19 +387,19 @@ final class PanelSnapshotTests: XCTestCase {
             r.inspector.onAnimate = {}
             r.inspector.toggleGroup("layout"); r.inspector.toggleGroup("layout")
             var t = snapshot("inspector-enter-0", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 140, scale: scale, "#1d1d1d", tol: 2)    // body at opacity 0: bg-panel-bg
+            assertPixel(t, 200, 122, scale: scale, "#1d1d1d", tol: 2)    // body at opacity 0: bg-panel-bg
             r.inspector.tick(0.03)
             t = snapshot("inspector-enter-mid", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            let mid = t.pixel(Int(200 * scale), Int(140 * scale))
+            let mid = t.pixel(Int(200 * scale), Int(122 * scale))
             XCTAssertGreaterThan(Int(mid.r), 0x19); XCTAssertLessThan(Int(mid.r), 0x1d)   // between inset #191919 and panel-bg #1d1d1d
             r.inspector.tick(0.2)
             t = snapshot("inspector-enter-1", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 140, scale: scale, "#191919")            // settled: bg-panel-bg-inset
-            // Focus ring on the Transform header (95…135): 2px accent just outside it, clipped to the scrolling body
+            assertPixel(t, 200, 122, scale: scale, "#191919")            // settled: bg-panel-bg-inset
+            // Focus ring on the Transform header (77…117): 2px accent just outside it, clipped to the scrolling body
             // (so its top edge under the clip header is hidden, as the overflow-y-auto body clips the outline).
             r.inspector.focus.current = .group("layout"); r.inspector.focus.visible = true
             t = snapshot("inspector-focus", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 136, scale: scale, "#4c8df0", tol: 30)
+            assertPixel(t, 200, 118, scale: scale, "#4c8df0", tol: 30)
         }
     }
 }

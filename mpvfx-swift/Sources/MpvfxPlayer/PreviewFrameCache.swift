@@ -22,12 +22,7 @@ import MpvfxShared
 public final class PreviewFrameCache: @unchecked Sendable {
     public struct Key: Hashable, Sendable { public var lane: String; public var frame: Int }
 
-    private var budget: Int
-    /// The byte budget. Lowering it (Settings > Preview cache) evicts least recently used frames down to it now.
-    public var budgetBytes: Int {
-        get { lock.lock(); defer { lock.unlock() }; return budget }
-        set { lock.lock(); defer { lock.unlock() }; budget = max(1, newValue); evict(to: budget, protecting: nil) }
-    }
+    public let budgetBytes: Int
     let lock = NSLock()
     var frames: [Key: (image: CanvasImage, tick: UInt64)] = [:]
     var byLane: [String: Set<Int>] = [:]
@@ -38,7 +33,7 @@ public final class PreviewFrameCache: @unchecked Sendable {
     var pressureToken: MemoryPressureMonitor.Token?
 
     public init(budgetBytes: Int = MemoryBudget.previewFrames(), pressure: MemoryPressureMonitor? = .shared) {
-        budget = max(1, budgetBytes)
+        self.budgetBytes = max(1, budgetBytes)
         pressureToken = pressure?.observe { [weak self] level in self?.purge(level) }
     }
 
@@ -46,7 +41,7 @@ public final class PreviewFrameCache: @unchecked Sendable {
     public func purge(_ level: MemoryPressureMonitor.Level) {
         lock.lock(); defer { lock.unlock() }
         switch level {
-        case .warning: evict(to: budget / 2, protecting: nil)
+        case .warning: evict(to: budgetBytes / 2, protecting: nil)
         case .critical: frames = [:]; byLane = [:]; bytes = 0
         }
     }
@@ -63,7 +58,7 @@ public final class PreviewFrameCache: @unchecked Sendable {
         frames[key] = (image, tick)
         byLane[lane, default: []].insert(frame)
         bytes += Self.size(image)
-        if bytes > budget { evict(to: budget, protecting: key) }   // least recently used first
+        if bytes > budgetBytes { evict(to: budgetBytes, protecting: key) }   // least recently used first
         peakBytes = max(peakBytes, bytes)
     }
 

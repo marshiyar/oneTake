@@ -54,12 +54,8 @@ public struct LibraryNavModel: Equatable {
             self.id = id; self.name = name; self.events = events; self.projects = projects; self.assets = assets; self.exports = exports
         }
     }
-    /// A recently opened project folder (the "Recent" list beside "Open project…").
-    public struct RecentProject: Equatable { public var path, name: String
-        public init(path: String, name: String) { self.path = path; self.name = name } }
     public var available = false
     public var libraries: [Library] = []
-    public var recentProjects: [RecentProject] = []
     public var currentProjectId: String?
     public var isStandalone = false
     public var busy = false
@@ -79,20 +75,17 @@ public enum LibraryNavCommand: Equatable {
     case saveOutput(libraryId: String, jobId: String)
     case reveal(libraryId: String)
     case openStandalone
-    /// Any project folder through the folder dialog, or one from the recent list (its folder).
-    case openProject
-    case openRecentProject(String)
 }
 
-/// The left sidebar:
-/// library navigator on top (max 45%), the tab/import header, search, and the categorized media bin.
+/// The left sidebar: the tab strip (Media; Import media, hide and the panel menu), the library navigator (max 45%),
+/// search, and the categorized media bin.
 public final class LeftSidebarPanel {
     public enum Hit: Equatable {
-        case showSidebar, hideSidebar, importMedia, search, clearSearch
+        case showSidebar, hideSidebar, importMedia, panelMenu, search, clearSearch
         case tab(LeftSidebarTab)
         case newLibrary, openLibrary, pickLibrary, pickEvent, newEvent, pickProject, newProject
         case toggleMedia, toggleExports, storageMode, importIntoEvent, attach(String), relink(String), saveOutput(String)
-        case reveal, openStandalone, openProject, pickRecent, createConfirm, createCancel, createField
+        case reveal, openStandalone, createConfirm, createCancel, createField
         case asset(String)
         case menu(String), menuItem(String, Int), deleteConfirm(String), deleteCancel, removePlacements, renameField, renameOK, renameCancel
         case libraryArea, binArea
@@ -148,6 +141,19 @@ public final class LeftSidebarPanel {
 
     /// Tabs shown (getSidebarTabs): Media always; Scenes with sub-compositions; Elements with blocks (none natively).
     public var availableTabs: [LeftSidebarTab] { [.assets] }
+    public static let tabLabels: [LeftSidebarTab: String] = [.assets: "Media", .compositions: "Scenes", .blocks: "Elements"]
+
+    /// What the status line says for the control under the pointer.
+    public var hint: String? {
+        switch hovered {
+        case .importMedia?: "Import media files into the project"
+        case .hideSidebar?: "Hide the panel"
+        case .showSidebar?: "Show the panel"
+        case .panelMenu?: "Panel menu"
+        case .asset?: "Drag onto the timeline or the stage · double-click to add at the playhead · right-click for more"
+        default: nil
+        }
+    }
 
     var activeLibrary: LibraryNavModel.Library? {
         let libs = library.libraries
@@ -180,23 +186,20 @@ public final class LeftSidebarPanel {
         self.size = size
         hits.reset()
         let r = CanvasRect(x: 0, y: 0, width: size.width, height: size.height)
-        if layout.effectiveLeftCollapsed {   // rail: w-10 card with the show button
-            PanelDraw.card(c, r, border: PanelTheme.cardBorderSoft)
-            let b = CanvasRect(x: (r.width - 32) / 2, y: 4, width: 32, height: 32)
-            PanelDraw.iconButton(c, b, icon: .sidebarShowLeft, hovered: hovered == .showSidebar)
-            hits.add(b, .showSidebar)
+        if layout.effectiveLeftCollapsed {   // the rail
+            hits.add(PanelTabStrip.drawRail(c, r, icon: .sidebarShowLeft, hovered: hovered == .showSidebar), .showSidebar)
             return
         }
-        PanelDraw.card(c, r, border: PanelTheme.cardBorderSoft)
+        c.fillRect(r, PanelTheme.panelBg)
         c.withState {
-            c.clip(.roundedRect(r.insetBy(1), radius: PanelTheme.radiusLg - 1))
-            var y = 1.0
+            c.clip(r)
+            var y = drawTabStrip(c, CanvasRect(x: 0, y: 0, width: r.width, height: PanelTabStrip.height))
             if library.available || onLibrary != nil {
-                let libH = drawLibrary(c, CanvasRect(x: 1, y: y, width: r.width - 2, height: min(r.height * 0.45, 2000)))
-                y += libH
+                y += drawLibrary(c, CanvasRect(x: 0, y: y, width: r.width, height: r.height * 0.45))
+                PanelDraw.hline(c, x0: 0, x1: r.maxX, y: y, PanelTheme.panelHairline)
+                y += 1
             }
-            y += drawHeader(c, CanvasRect(x: 1, y: y, width: r.width - 2, height: 57))
-            drawAssets(c, CanvasRect(x: 1, y: y, width: r.width - 2, height: max(0, r.height - 1 - y)))
+            drawAssets(c, CanvasRect(x: 0, y: y, width: r.width, height: max(0, r.height - y)))
         }
         if let m = menu { drawMenu(c, m) }
         dropdown.draw(c)
@@ -218,8 +221,8 @@ public final class LeftSidebarPanel {
             if enabled { hits.add(br, hit) }
             return br.x
         }
-        func select(_ text: String, _ hit: Hit, _ rect: CanvasRect) {   // control: bg-neutral-900 rounded px-2 py-1.5 text-xs
-            c.fillRoundedRect(rect, radius: PanelTheme.radius, PanelTheme.neutral900)
+        func select(_ text: String, _ hit: Hit, _ rect: CanvasRect) {   // control: bg-panel-input rounded px-2 py-1.5 text-xs
+            c.fillRoundedRect(rect, radius: PanelTheme.radius, PanelTheme.panelInput)
             PanelDraw.text(c, text, in: CanvasRect(x: rect.x + 12, y: rect.y + 6, width: rect.width - 34, height: lineH), font: font, color: PanelTheme.neutral200)
             PanelIcon.selectCaret.draw(c, in: CanvasRect(x: rect.maxX - 20, y: rect.y + (rect.height - 12) / 2, width: 12, height: 12),
                                        color: hovered == hit ? PanelTheme.neutral200 : PanelTheme.neutral400)
@@ -256,7 +259,7 @@ public final class LeftSidebarPanel {
                 _ = button("New project", .newProject, right: x + w, at: y, height: rowH, enabled: !library.busy && ev != nil); y += rowH + gap
                 if let cr = creating {
                     let fr = CanvasRect(x: x, y: y, width: w - 100, height: rowH)
-                    c.fillRoundedRect(fr, radius: PanelTheme.radius, PanelTheme.neutral900)
+                    c.fillRoundedRect(fr, radius: PanelTheme.radius, PanelTheme.panelInput)
                     let text = cr.field.draft.isEmpty ? (cr.kind == "event" ? "Event name" : "Project name") : cr.field.draft
                     PanelDraw.text(c, text, in: fr.insetBy(8), font: font, color: cr.field.draft.isEmpty ? PanelTheme.neutral500 : PanelTheme.neutral200)
                     hits.add(fr, .createField)
@@ -302,13 +305,6 @@ public final class LeftSidebarPanel {
             else if activeLibrary != nil {
                 PanelDraw.text(c, "Editing the existing standalone project", in: CanvasRect(x: x, y: y, width: w, height: lineH), font: font, color: PanelTheme.neutral500); y += lineH + gap
             }
-            // Any project folder (Cmd/Ctrl+O) and the recently opened ones: the only place to open projects on Linux and
-            // Windows, which have no menu bar.
-            let openRight = x + c.measureText("Open project…", font: font).width
-            _ = button("Open project…", .openProject, right: openRight, at: y, enabled: !library.busy)
-            _ = button("Recent", .pickRecent, right: openRight + 16 + c.measureText("Recent", font: font).width, at: y,
-                       enabled: !library.busy && !library.recentProjects.isEmpty)
-            y += lineH + gap
             if let err = library.error {
                 for line in InspectorPanel.wrap(err, perLine: max(20, Int(w / 6.5))) {
                     PanelDraw.text(c, line, in: CanvasRect(x: x, y: y, width: w, height: 16), font: font, color: PanelTheme.red400); y += 16
@@ -327,27 +323,37 @@ public final class LeftSidebarPanel {
         return h
     }
 
-    // MARK: Header (border-b px-3 py-3: tabs, Import media, hide)
+    // MARK: Tab strip (the tabs; Import media, hide and the panel menu at the right end)
 
-    func drawHeader(_ c: CanvasContext, _ r: CanvasRect) -> Double {
-        let rowY = r.y + 12, h = 32.0
-        var right = r.maxX - 12
-        let hide = CanvasRect(x: right - 32, y: rowY, width: 32, height: h)
-        PanelDraw.iconButton(c, hide, icon: .sidebarHideLeft, hovered: hovered == .hideSidebar)
+    func drawTabStrip(_ c: CanvasContext, _ strip: CanvasRect) -> Double {
+        PanelTabStrip.drawBackground(c, strip)
+        let tabs = availableTabs
+        let tabRects = PanelTabStrip.tabRects(c, strip, labels: tabs.map { Self.tabLabels[$0]! })
+        for (rect, t) in zip(tabRects, tabs) {
+            PanelTabStrip.tab(c, rect, label: Self.tabLabels[t]!, active: tab == t, hovered: hovered == .tab(t))
+            hits.add(rect, .tab(t))
+        }
+        let hide = PanelTabStrip.buttonRect(strip, index: 1), menu = PanelTabStrip.buttonRect(strip, index: 0)
+        PanelTabStrip.iconButton(c, hide, icon: .sidebarHideLeft, hovered: hovered == .hideSidebar)
         hits.add(hide, .hideSidebar)
-        right = hide.x - 8
+        PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == "\(Hit.panelMenu)")
+        hits.add(menu, .panelMenu)
+        // Import media: plus and label (px-2, gap 6) before the icons; only the plus when the strip has no room for the label.
         let label = importing ? "Importing…" : "Import media"
-        let font = PanelTheme.font(11, .medium)
-        let bw = c.measureText(label, font: font).width + 24 + 17
-        // Single tab (Media only): the row is justify-end, so the button sits by the hide control.
-        let ib = CanvasRect(x: right - bw, y: rowY, width: bw, height: h)
-        c.fillRoundedRect(ib, radius: PanelTheme.radiusMd, PanelTheme.panelInput)
+        let font = PanelTheme.font(11, .medium), bh = PanelTabStrip.buttonSize, glyph = 11.0
+        let labelled = 8 + glyph + 6 + c.measureText(label, font: font).width + 8
+        let showLabel = labelled <= hide.x - 4 - (tabRects.last?.maxX ?? strip.x) - 4
+        let bw = showLabel ? labelled : bh
+        let ib = CanvasRect(x: hide.x - 4 - bw, y: hide.y, width: bw, height: bh)
+        c.fillRoundedRect(ib, radius: PanelTheme.radius, hovered == .importMedia ? PanelTheme.panelHover : PanelTheme.panelInput)
         let tc = hovered == .importMedia ? PanelTheme.text1 : PanelTheme.text3
-        PanelIcon.plus.draw(c, in: CanvasRect(x: ib.x + 12, y: ib.y + (h - 11) / 2, width: 11, height: 11), color: tc, lineWidth: 2.5)
-        PanelDraw.text(c, label, in: CanvasRect(x: ib.x + 29, y: ib.y + (h - 16.5) / 2, width: bw - 29, height: 16.5), font: font, color: tc)
+        let gx = showLabel ? ib.x + 8 : ib.midX - glyph / 2
+        PanelIcon.plus.draw(c, in: CanvasRect(x: gx, y: ib.y + (bh - glyph) / 2, width: glyph, height: glyph), color: tc, lineWidth: 2.5)
+        if showLabel {
+            PanelDraw.text(c, label, in: CanvasRect(x: gx + glyph + 6, y: ib.y, width: ib.maxX - 8 - gx - glyph - 6, height: bh), font: font, color: tc)
+        }
         if !importing { hits.add(ib, .importMedia) }
-        PanelDraw.hline(c, x0: r.x, x1: r.maxX, y: r.y + 56, PanelTheme.cardBorderSoft)
-        return 57
+        return strip.height
     }
 
     // MARK: Media bin
@@ -636,6 +642,11 @@ public final class LeftSidebarPanel {
         switch hit {
         case .showSidebar, .hideSidebar: layout.toggleLeft()
         case .importMedia: onImport?()
+        case .panelMenu:
+            openDropdown(hit, [.init(value: "import", label: "Import media…"), .init(value: "hide", label: "Hide panel")], nil) { [weak self] v in
+                if v == "import" { self?.onImport?() } else { self?.layout.toggleLeft() }
+            }
+            return true
         case .search: if search == nil { search = PanelTextField(key: "search", value: searchQuery) }
         case .clearSearch: searchQuery = ""; search = nil; binScroll = 0
         case .tab(let t): selectTab(t)
@@ -669,10 +680,6 @@ public final class LeftSidebarPanel {
         case .saveOutput(let j): if let l = activeLibrary { onLibrary?(.saveOutput(libraryId: l.id, jobId: j)) }
         case .reveal: if let l = activeLibrary { onLibrary?(.reveal(libraryId: l.id)) }
         case .openStandalone: onLibrary?(.openStandalone)
-        case .openProject: onLibrary?(.openProject)
-        case .pickRecent:
-            openDropdown(hit, library.recentProjects.map { .init(value: $0.path, label: $0.name) }, nil) { [weak self] v in self?.onLibrary?(.openRecentProject(v)) }
-            return true
         case .asset(let id):
             pressedAsset = (id, p)
             // Double-click (or Enter) adds at the playhead.

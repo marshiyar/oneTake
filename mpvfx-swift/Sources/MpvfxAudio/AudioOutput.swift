@@ -37,30 +37,6 @@ public protocol AudioOutput: AnyObject {
     func stop()
 }
 
-/// An output device the system offers (Settings > Audio output). `id` is what the output opens it by.
-public struct AudioOutputDevice: Equatable, Sendable {
-    public var id: String, name: String
-    public init(id: String, name: String) { self.id = id; self.name = name }
-}
-
-/// An output that can play through a chosen device instead of the system default.
-public protocol AudioDeviceSelecting: AnyObject {
-    /// The device id (nil: the system default). Takes effect the next time the output starts.
-    var device: String? { get set }
-}
-
-public enum AudioOutputDevices {
-    /// The output devices of the compiled sink, in the system's order; [] where choosing one is not supported (macOS
-    /// and Windows play through the system default) or the sound server does not answer.
-    public static func list() -> [AudioOutputDevice] {
-        #if canImport(CPulse)
-        return PulseAudioOutput.devices()
-        #else
-        return []
-        #endif
-    }
-}
-
 public enum AudioOutputError: Error, Equatable { case unavailable(String), deviceError(String) }
 
 /// Test/headless sink. Nothing is played; the clock advances only through `advance(seconds:)`, so playback

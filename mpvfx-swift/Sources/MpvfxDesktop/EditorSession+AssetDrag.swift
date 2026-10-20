@@ -144,7 +144,7 @@ final class BinAssetDrag: CrossPaneDrag {
     func drawDrag(_ c: CanvasContext) {
         let assetOver = window != nil && panels.left.draggingAssetId != nil && overTimeline
         if assetOver || fileDragOverTimeline, let router = session.shell, let f = router.frames {
-            AssetDropOutline.draw(c, timeline: router.rect(.timeline, f), card: f.timeline.insetBy(1))
+            AssetDropOutline.draw(c, timeline: router.rect(.timeline, f))
         }
         guard let w = window, let id = panels.left.draggingAssetId else { return }
         let name = panels.left.items.first { $0.id == id }?.name ?? (id as NSString).lastPathComponent

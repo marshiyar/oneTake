@@ -33,24 +33,5 @@ final class PulseAudioOutputTests: XCTestCase {
         out.flush(); XCTAssertEqual(out.framesPlayed, 0)
         out.stop()
     }
-
-    /// Settings > Audio output: the sinks, or nothing (no server) within the timeout; a chosen sink that does not exist
-    /// fails to start cleanly instead of playing elsewhere.
-    func testDevicesAnswerWithinTheTimeoutAndAMissingSinkIsUnavailable() throws {
-        let start = Date()
-        let devices = PulseAudioOutput.devices(timeout: 1)
-        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
-        XCTAssertEqual(Set(devices.map(\.id)).count, devices.count, "ids are unique")
-        XCTAssertFalse(devices.contains { $0.id.isEmpty || $0.name.isEmpty })
-        XCTAssertEqual(AudioOutputDevices.list().map(\.id), PulseAudioOutput.devices().map(\.id))
-
-        let out = PulseAudioOutput(appName: "MpVFX-tests")
-        out.device = "mpvfx-no-such-sink"
-        XCTAssertEqual(out.device, "mpvfx-no-such-sink")
-        XCTAssertThrowsError(try out.start()) { error in
-            guard case AudioOutputError.unavailable = error else { return XCTFail("\(error)") }
-        }
-        out.stop()
-    }
 }
 #endif

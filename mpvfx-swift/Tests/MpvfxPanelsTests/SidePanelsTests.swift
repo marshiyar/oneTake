@@ -29,7 +29,7 @@ final class PanelFitTests: XCTestCase {
         let d = PanelFit.defaults(1440)
         XCTAssertEqual(d, PanelFit.Widths(left: 370, right: 409))
         let f = PanelFit.fit(1440, d)
-        XCTAssertEqual(f.left, 370); XCTAssertEqual(f.right, 409); XCTAssertEqual(f.preview, 1440 - 370 - 409 - 6)
+        XCTAssertEqual(f.left, 370); XCTAssertEqual(f.right, 409); XCTAssertEqual(f.preview, 1440 - 370 - 409 - 2)
         XCTAssertFalse(f.autoCollapseLeft); XCTAssertFalse(f.autoCollapseRight)
     }
     func testNarrowWindowRailsAndReservesPreview() {
@@ -43,7 +43,7 @@ final class PanelFitTests: XCTestCase {
         XCTAssertFalse(reopened.autoCollapseLeft); XCTAssertGreaterThanOrEqual(reopened.left, PanelFit.minLeft)
     }
     func testCapAndTimelineHeight() {
-        XCTAssertEqual(PanelFit.fit(1000, PanelFit.Widths(left: 900, right: 280)).left, 400 - 0 >= 200 ? min(400, 1000 - 360 - 6 - 280) : 200)
+        XCTAssertEqual(PanelFit.fit(1000, PanelFit.Widths(left: 900, right: 280)).left, 400 - 0 >= 200 ? min(400, 1000 - 360 - 2 - 280) : 200)
         XCTAssertEqual(PanelFit.fitTimelineHeight(900, 5000), 700)
         XCTAssertEqual(PanelFit.fitTimelineHeight(900, 10), 100)
     }
@@ -92,12 +92,13 @@ final class PanelLayoutStateTests: XCTestCase {
     func testShellRegions() {
         let s = PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440)
         let r = ShellRegions.compute(size: CanvasSize(1440, 500), layout: s)
-        XCTAssertEqual(r.left.width, 370); XCTAssertEqual(r.leftSeam?.x, 370); XCTAssertEqual(r.preview.x, 373)
+        XCTAssertEqual(r.left.width, 370); XCTAssertEqual(r.leftSeam, CanvasRect(x: 370, y: 0, width: 1, height: 500)); XCTAssertEqual(r.preview.x, 371)
+        XCTAssertEqual(r.rightSeam?.x, r.preview.maxX); XCTAssertEqual(r.right.x, r.preview.maxX + 1)
         XCTAssertEqual(r.right.maxX, 1440); XCTAssertEqual(r.right.width, 409)
-        XCTAssertEqual(r.leftSeamHit?.width, 13); XCTAssertEqual(r.rightSeamHit?.x, r.rightSeam!.x - 8)
+        XCTAssertEqual(r.leftSeamHit?.width, 13); XCTAssertEqual(r.leftSeamHit?.x, 364); XCTAssertEqual(r.rightSeamHit?.x, r.rightSeam!.x - 6)
         s.toggleLeft()
         let railed = ShellRegions.compute(size: CanvasSize(1440, 500), layout: s)
-        XCTAssertTrue(railed.leftRail); XCTAssertEqual(railed.left.width, 40); XCTAssertNil(railed.leftSeam); XCTAssertEqual(railed.preview.x, 42)
+        XCTAssertTrue(railed.leftRail); XCTAssertEqual(railed.left.width, 40); XCTAssertNil(railed.leftSeam); XCTAssertEqual(railed.preview.x, 41)
     }
 }
 
@@ -399,7 +400,7 @@ final class MediaBinTests: XCTestCase {
     }
 
     /// The timeline drop outline (isDragOver): a 1 px accent/60 line just inside the tracks area under
-    /// the toolbar, clipped to the timeline card.
+    /// the toolbar.
     func testTimelineDropOutlineMatchesTheTsOutline() {
         final class Rec: CanvasContext {
             var strokes: [(CanvasPath, CanvasColor, StrokeStyle)] = []; var clips: [CanvasPath] = []
@@ -414,12 +415,12 @@ final class MediaBinTests: XCTestCase {
         let timeline = CanvasRect(x: 2, y: 540, width: 1436, height: 358)
         XCTAssertEqual(AssetDropOutline.tracksArea(timeline: timeline), CanvasRect(x: 2, y: 573, width: 1436, height: 325))
         let c = Rec()
-        AssetDropOutline.draw(c, timeline: timeline, card: timeline.insetBy(1))
+        AssetDropOutline.draw(c, timeline: timeline)
         XCTAssertEqual(c.strokes.count, 1)
         XCTAssertEqual(c.strokes.first?.0, .rect(CanvasRect(x: 2.5, y: 573.5, width: 1435, height: 324)))
         XCTAssertEqual(c.strokes.first?.1, PanelTheme.accent.withAlpha(0.6))
         XCTAssertEqual(c.strokes.first?.2.width, 1)
-        XCTAssertEqual(c.clips.count, 1, "clipped to the card's rounded corners")
+        XCTAssertTrue(c.clips.isEmpty, "the flat timeline has no rounded corners to clip to")
     }
 
     func testSidebarCategoriesSearchAndMenu() throws {
@@ -472,98 +473,6 @@ final class MediaBinTests: XCTestCase {
         for ch in "Day 2" { _ = s.keyDown(ch == " " ? EditorKey(.space) : EditorKey(.char(ch))) }
         _ = s.keyDown(EditorKey(.enter))
         XCTAssertEqual(cmds, [.reveal(libraryId: "L"), .createEvent(libraryId: "L", name: "Day 2")])
-    }
-
-    /// "Open project…" asks for a folder; "Recent" lists the projects opened before and opens the one picked.
-    func testOpenProjectAndRecentProjects() throws {
-        let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
-        s.library.available = true
-        s.library.isStandalone = true
-        var cmds: [LibraryNavCommand] = []
-        s.onLibrary = { cmds.append($0) }
-        let c = PanelMeasureCanvas()
-        s.draw(c, size: CanvasSize(370, 900))
-        XCTAssertTrue(c.drawnStrings.contains("Open project…"))
-        XCTAssertTrue(c.drawnStrings.contains("Recent"))
-        XCTAssertNil(s.hits.rect { $0 == .pickRecent }, "no recent projects: Recent is disabled")
-        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .openProject })))
-        XCTAssertEqual(cmds, [.openProject])
-
-        s.library.recentProjects = [.init(path: "/p/Alpha", name: "Alpha"), .init(path: "/q/Beta", name: "Beta")]
-        c.reset(); s.draw(c, size: CanvasSize(370, 900))
-        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .pickRecent }))))
-        XCTAssertTrue(s.dropdown.isOpen)
-        XCTAssertEqual(s.dropdown.options.map(\.label), ["Alpha", "Beta"])
-        s.dropdown.pick("/q/Beta")
-        XCTAssertEqual(cmds, [.openProject, .openRecentProject("/q/Beta")])
-    }
-}
-
-/// Issue #32: the Settings card's rows report every change; it is modal and closes on Escape or a press outside.
-final class SettingsPanelTests: XCTestCase {
-    func testRowsReportChangesAndTheCardIsModal() throws {
-        let s = SettingsPanel()
-        var changes: [SettingsPanel.Values] = [], chooses = 0
-        s.onChange = { changes.append($0) }
-        s.onChooseExportFolder = { chooses += 1 }
-        s.devices = [.init(id: "sink.a", name: "Speakers"), .init(id: "sink.b", name: "Headset")]
-        let c = PanelMeasureCanvas(), size = CanvasSize(1440, 900)
-        s.draw(c, size: size)
-        XCTAssertTrue(c.drawnStrings.isEmpty, "closed: nothing drawn")
-        XCTAssertFalse(s.pointerDown(CanvasPoint(10, 10)), "closed: presses go to the editor")
-
-        s.open(); s.draw(c, size: size)
-        for label in ["Settings", "Appearance", "Audio output", "System default", "Preview cache", "Automatic", "Export folder", "App renders folder", "Choose…"] {
-            XCTAssertTrue(c.drawnStrings.contains(label), label)
-        }
-        XCTAssertFalse(c.drawnStrings.contains("Reset"), "no folder chosen: nothing to reset")
-
-        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .appearance(.light) }))))
-        XCTAssertEqual(changes.last?.appearance, .light)
-
-        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .audio }))))
-        XCTAssertEqual(s.dropdown.options.map(\.label), ["System default", "Speakers", "Headset"])
-        s.dropdown.pick("sink.b")
-        XCTAssertEqual(changes.last?.audioDevice, "sink.b")
-
-        s.draw(c, size: size)
-        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .cache }))))
-        XCTAssertEqual(s.dropdown.options.map(\.label), ["Automatic", "512 MB", "1 GB", "2 GB", "4 GB", "8 GB"])
-        s.dropdown.pick("2048")
-        XCTAssertEqual(changes.last?.previewCacheMB, 2048)
-
-        s.draw(c, size: size)
-        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .chooseFolder }))))
-        XCTAssertEqual(chooses, 1)
-        s.exportFolderChosen("/media/exports")
-        XCTAssertEqual(changes.last?.exportFolder, "/media/exports")
-        c.reset(); s.draw(c, size: size)
-        XCTAssertTrue(c.drawnStrings.contains("/media/exports"))
-        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .resetFolder }))))
-        XCTAssertNil(changes.last?.exportFolder)
-        XCTAssertEqual(changes.count, 5)
-        XCTAssertEqual(s.values, SettingsPanel.Values(appearance: .light, audioDevice: "sink.b", previewCacheMB: 2048, exportFolder: nil))
-
-        // Keys: plain keys stay with the card, command shortcuts pass through, Escape closes.
-        XCTAssertTrue(s.keyDown(EditorKey(.char("j"))))
-        XCTAssertFalse(s.keyDown(EditorKey(.char("s"), ctrl: true)))
-        XCTAssertTrue(s.keyDown(EditorKey(.escape)))
-        XCTAssertFalse(s.isOpen)
-
-        // A press outside the card closes it and is not passed on.
-        s.open(); s.draw(c, size: size)
-        XCTAssertTrue(s.pointerDown(CanvasPoint(4, 4)))
-        XCTAssertFalse(s.isOpen)
-    }
-
-    func testAChosenDeviceThatIsGoneStaysVisible() {
-        let s = SettingsPanel()
-        s.values.audioDevice = "sink.unplugged"
-        s.open()
-        let c = PanelMeasureCanvas()
-        s.draw(c, size: CanvasSize(800, 600))
-        XCTAssertTrue(c.drawnStrings.contains("sink.unplugged (not connected)"))
-        XCTAssertEqual(SettingsPanel.cacheLabel(1536), "1536 MB")
     }
 }
 
@@ -628,7 +537,7 @@ final class RightPanelTests: XCTestCase {
         let c = PanelMeasureCanvas()
         r.draw(c, size: CanvasSize(409, 600))
         XCTAssertTrue(r.keyDown(EditorKey(.tab)))
-        XCTAssertEqual(r.focus.current, .hide)
+        XCTAssertEqual(r.focus.current, .design, "Tab starts at the strip's first tab")
         var n = 0
         while r.focus.current != .export, n < 30 { _ = r.keyDown(EditorKey(.tab)); n += 1 }
         XCTAssertEqual(r.focus.current, .export)
@@ -689,6 +598,64 @@ final class RightPanelTests: XCTestCase {
         XCTAssertTrue(layout.effectiveRightCollapsed)
         c.reset(); r.draw(c, size: CanvasSize(40, 800))
         XCTAssertNotNil(r.hits.rect { $0 == .show })
+    }
+}
+
+/// The side panels' tab strips: the panel menu's actions, the hints the status line shows, and the Import media
+/// button dropping its label when the strip is narrow.
+final class PanelTabStripTests: XCTestCase {
+    func testRightPanelMenu() throws {
+        let layout = PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440)
+        let r = RightPanel(layout: layout)
+        var actions: [RenderAction] = []
+        r.onRender = { actions.append($0) }
+        let c = PanelMeasureCanvas()
+        r.draw(c, size: CanvasSize(409, 800))
+        let menu = try XCTUnwrap(r.hits.rect { $0 == .panelMenu })
+        XCTAssertTrue(r.pointerMove(center(menu)))
+        XCTAssertEqual(r.hint, "Panel menu")
+        _ = r.pointerDown(center(menu))
+        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide panel"], "nothing finished to hide yet")
+        r.dropdown.close()
+        r.jobs = [.init(id: "1", name: "Main.mp4", status: .complete), .init(id: "2", name: "Next.mp4", status: .rendering)]
+        c.reset(); r.draw(c, size: CanvasSize(409, 800))
+        _ = r.pointerDown(center(menu))
+        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide finished renders", "Hide panel"])
+        r.dropdown.pick("hideFinished")
+        XCTAssertEqual(actions, [.hideFinished])
+        _ = r.pointerDown(center(menu))
+        r.dropdown.pick("hide")
+        XCTAssertTrue(layout.effectiveRightCollapsed)
+        c.reset(); r.draw(c, size: CanvasSize(40, 800))
+        let show = try XCTUnwrap(r.hits.rect { $0 == .show })
+        XCTAssertTrue(r.pointerMove(center(show)))
+        XCTAssertEqual(r.hint, "Show the panel")
+    }
+
+    func testLeftPanelMenuAndNarrowImport() throws {
+        let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
+        var imports = 0
+        s.onImport = { imports += 1 }
+        let c = PanelMeasureCanvas()
+        s.draw(c, size: CanvasSize(370, 800))
+        XCTAssertTrue(c.drawnStrings.contains("Media")); XCTAssertTrue(c.drawnStrings.contains("Import media"))
+        let tab = try XCTUnwrap(s.hits.rect { $0 == .tab(.assets) })
+        XCTAssertEqual(tab.y, 0); XCTAssertEqual(tab.height, PanelTabStrip.height)
+        let menu = try XCTUnwrap(s.hits.rect { $0 == .panelMenu })
+        _ = s.pointerDown(center(menu))
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["Import media…", "Hide panel"])
+        s.dropdown.pick("import")
+        XCTAssertEqual(imports, 1)
+        let importButton = try XCTUnwrap(s.hits.rect { $0 == .importMedia })
+        XCTAssertTrue(s.pointerMove(center(importButton)))
+        XCTAssertEqual(s.hint, "Import media files into the project")
+        // At 120 points the label does not fit beside the tab: the button keeps only its plus.
+        c.reset(); s.draw(c, size: CanvasSize(120, 800))
+        XCTAssertFalse(c.drawnStrings.contains("Import media"))
+        XCTAssertEqual(try XCTUnwrap(s.hits.rect { $0 == .importMedia }).width, PanelTabStrip.buttonSize)
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .panelMenu })))
+        s.dropdown.pick("hide")
+        XCTAssertTrue(s.layout.effectiveLeftCollapsed)
     }
 }
 

@@ -182,7 +182,7 @@ final class ThemeTokensTests: XCTestCase {
                        "PanelStyle": try Self.computedColorNames("Sources/MpvfxPanels/PanelStyle.swift")]
         XCTAssertTrue(fixed.isSuperset(of: ["stageCanvas", "guide", "stageInk", "bandEdges", "nativeRangeEdge"]))
         XCTAssertFalse(fixed.contains("studioAccent") || fixed.contains("neutralPairs") || fixed.contains("white"))
-        XCTAssertTrue(facades["PanelTheme"]!.isSuperset(of: ["panelBg", "text1", "seam"]))
+        XCTAssertTrue(facades["PanelTheme"]!.isSuperset(of: ["panelBg", "text1", "seamHover"]))
         // The scanner itself: what it must flag and what it must leave alone.
         let flagged = ["    public static let accent = CanvasColor(ThemeTokens.studioAccent)", "    let bg = PanelTheme.panelBg",
                        "    private var ink: CanvasColor = CanvasColor(ThemeTokens.white)", "static var c = ThemeTokens.mintPair.now",

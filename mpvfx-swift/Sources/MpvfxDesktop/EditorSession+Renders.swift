@@ -259,13 +259,10 @@ extension SessionPanels {
 }
 
 extension EditorSession {
-    /// `<userData>/preferences.json` (render settings, hidden renders, the Settings window), opened once per session.
-    /// The backend's copy when it has one, so a setting the backend reads (the default export folder) is the one the
-    /// window wrote, and neither copy overwrites the other's keys.
+    /// `<userData>/preferences.json` (render settings, hidden renders), opened once per session.
     func preferences(userData: String) -> DesktopPreferences {
         if let p = desktopPreferences { return p }
-        let path = (userData as NSString).appendingPathComponent("preferences.json")
-        let p = backend?.preferences.flatMap { $0.path == path ? $0 : nil } ?? DesktopPreferences(userData: userData)
+        let p = DesktopPreferences(userData: userData)
         desktopPreferences = p
         return p
     }
