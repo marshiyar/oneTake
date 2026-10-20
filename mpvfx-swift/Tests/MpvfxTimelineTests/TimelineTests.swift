@@ -57,17 +57,17 @@ final class TimelineRenderTests: XCTestCase {
         let t = CairoImageTarget(width: 1200, height: 260)
         v.draw(t.canvas, size: CanvasSize(1200, 260))
         func rgb(_ x: Int, _ y: Int) -> [UInt8] { let p = t.pixel(x, y); return [p.r, p.g, p.b] }
-        XCTAssertEqual(rgb(1150, 30), [10, 10, 11], "top pad = shell #0A0A0B")
-        XCTAssertEqual(rgb(200, 60), [14, 15, 18], "label column = gutter #0E0F12")
-        XCTAssertEqual(rgb(1150, 60), [16, 16, 20], "empty row = #101014")
+        XCTAssertEqual(rgb(1150, 30), [29, 29, 29], "top pad = timeline surface #1D1D1D")
+        XCTAssertEqual(rgb(200, 60), [33, 33, 33], "label column = gutter #212121")
+        XCTAssertEqual(rgb(1150, 60), [29, 29, 29], "empty row = #1D1D1D")
         // Playhead at t=2.4, pps 90 -> centre x = 264 + 216 = 480.
         // Playhead line is one opaque pixel (snapped like Chromium), not two 50% AA pixels.
-        let line = t.pixel(480, 200); XCTAssertEqual([line.r, line.g, line.b], [60, 230, 172], "accent line")
-        XCTAssertEqual(rgb(479, 200), [10, 10, 11], "no AA bleed left of the line")
-        XCTAssertEqual(rgb(481, 200), [10, 10, 11], "no AA bleed right of the line")
-        let headCentre = rgb(480, 6); XCTAssertNotEqual(headCentre, [60, 230, 172], "head is outline-only at rest")
+        let line = t.pixel(480, 200); XCTAssertEqual([line.r, line.g, line.b], [90, 152, 240], "accent line")
+        XCTAssertEqual(rgb(479, 200), [29, 29, 29], "no AA bleed left of the line")
+        XCTAssertEqual(rgb(481, 200), [29, 29, 29], "no AA bleed right of the line")
+        let headCentre = rgb(480, 6); XCTAssertNotEqual(headCentre, [90, 152, 240], "head is outline-only at rest")
         v.scrubbing = true; v.draw(t.canvas, size: CanvasSize(1200, 260))
-        XCTAssertEqual(rgb(480, 6), [60, 230, 172], "head filled while scrubbing")
+        XCTAssertEqual(rgb(480, 6), [90, 152, 240], "head filled while scrubbing")
     }
 }
 #endif
