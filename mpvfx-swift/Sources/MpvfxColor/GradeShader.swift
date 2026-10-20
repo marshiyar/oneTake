@@ -854,7 +854,8 @@ struct GradeProgram: Sendable {
         let r = Swift.max(radius, 0)
         let stepUv = V2(direction.x * r / Swift.max(res.x, 1), direction.y * r / Swift.max(res.y, 1)) * (bloomPass ? 0.5 : 1.0 / 12.0)
         let weights = bloomPass ? bloomWeights : blurWeights
-        let out: [V4] = concurrentRows(height) { rows in
+        var out = [V4](repeating: .zero, count: width * height)
+        concurrentRows(height, elementsPerRow: width, into: &out) { rows in
             var buf = [V4](repeating: .zero, count: rows.count * width)
             for y in rows {
                 for x in 0..<width {
@@ -899,7 +900,8 @@ struct GradeProgram: Sendable {
         let radius = Int((mixf(2, 16, clampf(kr, 0, 1)) + 0.5).rounded(.down))
         // Horizontal moments (half-float target, NEAREST): mean colour and mean squared magnitude / 3 over x..x+radius.
         let source = source, blur = blur, blurAmount = blurAmount
-        let moments: [V4] = concurrentRows(h) { rows in
+        var moments = [V4](repeating: .zero, count: w * h)
+        concurrentRows(h, elementsPerRow: w, into: &moments) { rows in
             var buf = [V4](repeating: .zero, count: rows.count * w)
             for y in rows {
                 for x in 0..<w {
@@ -921,7 +923,8 @@ struct GradeProgram: Sendable {
         let exponent = 1 + clampf(sharpness, 0, 1) * 8
         let satAmount = clampf(saturation, 0, 1) * 2
         let origins: [V2] = [V2(Float(-radius), Float(-radius)), V2(0, Float(-radius)), V2(Float(-radius), 0), V2(0, 0)]
-        let out: [V4] = concurrentRows(h) { rows in
+        var out = [V4](repeating: .zero, count: w * h)
+        concurrentRows(h, elementsPerRow: w, into: &out) { rows in
             var buf = [V4](repeating: .zero, count: rows.count * w)
             for y in rows {
                 for x in 0..<w {
@@ -957,21 +960,43 @@ struct GradeProgram: Sendable {
     }
 }
 
-/// Computes contiguous row chunks in parallel and joins their values in row order.
-/// Each worker owns its output array; only immutable, Sendable inputs cross the dispatch boundary.
-/// The mutex protects publication of completed chunks, never the pixel work. concurrentPerform joins
-/// every worker before the result is read, so no borrowed output storage escapes or aliases a writer.
-func concurrentRows<Element: Sendable>(_ count: Int, _ body: @Sendable (Range<Int>) -> [Element]) -> [Element] {
-    guard count > 0 else { return [] }
+/// Computes rows in parallel and publishes each completed row into the existing output array.
+/// Workers own at most one row of scratch storage each. The mutex exclusively owns the destination
+/// until concurrentPerform joins all workers; its lock protects only the row copy, never pixel work.
+/// No output pointers cross threads, and elements beyond the rendered rows are left unchanged.
+func concurrentRows<Element: Sendable>(_ count: Int, elementsPerRow: Int, into output: inout [Element],
+                                       _ body: @Sendable (Range<Int>) -> [Element]) {
+    guard count > 0 else { return }
+    precondition(elementsPerRow > 0 && output.count / elementsPerRow >= count)
     let workers = Swift.max(1, Swift.min(ProcessInfo.processInfo.activeProcessorCount, count))
-    if workers == 1 || count < 16 { return body(0..<count) }
+    if workers == 1 || count < 16 {
+        for row in 0..<count {
+            let values = body(row..<row + 1)
+            precondition(values.count == elementsPerRow)
+            let start = row * elementsPerRow
+            output.replaceSubrange(start..<start + elementsPerRow, with: values)
+        }
+        return
+    }
+    // Transfer the array's ownership, rather than leaving a second reference that would force a
+    // full-frame copy on the first publication. Array's usual copy-on-write still protects callers
+    // that share the original frame, just as an ordinary in-place render does.
+    let result = Mutex(output)
+    output = []
     let chunk = (count + workers - 1) / workers
-    let results = Mutex([[Element]](repeating: [], count: workers))
     DispatchQueue.concurrentPerform(iterations: workers) { w in
         let lo = w * chunk, hi = Swift.min(count, lo + chunk)
         guard lo < hi else { return }
-        let values = body(lo..<hi)
-        results.withLock { $0[w] = values }
+        for row in lo..<hi {
+            let values = body(row..<row + 1)
+            precondition(values.count == elementsPerRow)
+            let start = row * elementsPerRow
+            result.withLock { $0.replaceSubrange(start..<start + elementsPerRow, with: values) }
+        }
     }
-    return results.withLock { $0.flatMap { $0 } }
+    output = result.withLock { values in
+        let completed = values
+        values = []
+        return completed
+    }
 }

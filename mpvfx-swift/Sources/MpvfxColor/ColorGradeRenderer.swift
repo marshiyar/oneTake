@@ -77,7 +77,7 @@ public final class ColorGradeRenderer: Equatable, Sendable {
         if p.bloomAmount > 0 { p.prepareBloom(radius: p.ef(.bloomRadius)) }
         if p.kuwaharaAmount > 0 { p.prepareKuwahara(radius: p.ef(.kuwaharaRadius), sharpness: p.ef(.kuwaharaSharpness), saturation: p.ef(.kuwaharaSaturation)) }
         let prepared = p
-        let graded: [UInt8] = concurrentRows(height) { rows in
+        concurrentRows(height, elementsPerRow: width * 4, into: &rgba) { rows in
             var out = [UInt8](repeating: 0, count: rows.count * width * 4)
             for y in rows {
                 let gy = height - 1 - y
@@ -91,7 +91,6 @@ public final class ColorGradeRenderer: Equatable, Sendable {
             }
             return out
         }
-        rgba.replaceSubrange(0..<(width * height * 4), with: graded)
     }
 
     /// The grade of one colour, without the spatial effects (scopes, swatches, tests): primary, wheels, curves,

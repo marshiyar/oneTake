@@ -16,12 +16,13 @@ import Synchronization
 @testable import MpvfxColor
 
 final class ConcurrentGradeTests: XCTestCase {
-    func testRowChunksVisitEveryRowOnceInOrder() {
+    func testRowsVisitEveryRowOnceAndPublishInOrder() {
         // Both sides of the serial threshold, uneven chunks, and more rows than workers.
         let counts = [0, 1, 15, 16, 17, 33, ProcessInfo.processInfo.activeProcessorCount * 2 + 1]
         for count in counts {
             let visits = Mutex([Int](repeating: 0, count: count))
-            let rows: [Int] = concurrentRows(count) { chunk in
+            var rows = [Int](repeating: -1, count: count)
+            concurrentRows(count, elementsPerRow: 1, into: &rows) { chunk in
                 visits.withLock { seen in
                     for row in chunk { seen[row] += 1 }
                 }
@@ -31,6 +32,23 @@ final class ConcurrentGradeTests: XCTestCase {
             }
             XCTAssertEqual(rows, Array(0..<count))
             XCTAssertEqual(visits.withLock { $0 }, [Int](repeating: 1, count: count))
+        }
+    }
+
+    func testPublishingRowsPreservesSharedInputAndTrailingElements() {
+        for count in [15, 17] {
+            let original = Array(0..<(count * 3 + 5))
+            var output = original
+            concurrentRows(count, elementsPerRow: 3, into: &output) { rows in
+                rows.flatMap { row in [row * 10, row * 10 + 1, row * 10 + 2] }
+            }
+            var expected: [Int] = []
+            for row in 0..<count {
+                for column in 0..<3 { expected.append(row * 10 + column) }
+            }
+            XCTAssertEqual(Array(output.prefix(count * 3)), expected)
+            XCTAssertEqual(Array(output.suffix(5)), Array(original.suffix(5)))
+            XCTAssertEqual(original, Array(0..<(count * 3 + 5)), "shared input must retain its value")
         }
     }
 
