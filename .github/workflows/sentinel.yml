@@ -44,7 +44,9 @@ jobs:
       - name: The scanner's own tests
         run: python3 -I -B .github/ci/test_sentinel.py
       - name: Sources, scripts, workflows, files and binaries.lock
-        run: python3 -I -B .github/ci/sentinel.py repo | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/sentinel.py repo | tee -a "$GITHUB_STEP_SUMMARY"
 
   installers:
     # Which installers the mpvfx-ci run built. A pull request that changes only documentation builds none, so the
@@ -88,7 +90,9 @@ jobs:
           tar -xzf dist/mpvfx-linux-x64-*.tar.gz -C unpacked/portable
           dpkg-deb -x dist/mpvfx_*.deb unpacked/deb
       - name: Imports of every shipped binary
-        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -121,7 +125,9 @@ jobs:
           cp dist/MpVFX-*-setup.exe unpacked/installer/MpVFX-setup.exe
           7z x -y -ounpacked/setup dist/MpVFX-*-setup.exe >/dev/null || { echo "::error::7z could not unpack setup.exe"; exit 1; }
       - name: Imports of every shipped binary (the Swift and MSVC runtimes are skipped)
-        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -150,7 +156,9 @@ jobs:
           mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
           mkdir -p unpacked; cp -R "$mnt/MpVFX.app" unpacked/; hdiutil detach "$mnt"
       - name: Imports of every shipped binary
-        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
