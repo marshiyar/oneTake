@@ -116,8 +116,10 @@ Without them the image is still built, ad-hoc signed and not notarized.
 From `mpvfx-swift/`, after `python3 scripts/fetch-binaries.py`:
 
 ```sh
-# macOS: adhoc for this machine; developer-id signs and notarizes (MACOS_SIGN_IDENTITY and APPLE_* from the table above)
+# macOS, ad-hoc signed for this machine:
 swift build -c release && sh packaging/macos/package.sh dist adhoc
+# macOS, Developer ID signed and notarized (MACOS_SIGN_IDENTITY and APPLE_* from the table above set):
+swift build -c release && sh packaging/macos/package.sh dist developer-id
 # Linux (Debian/Ubuntu; needs patchelf)
 swift build -c release --static-swift-stdlib
 sh packaging/linux/build-deb.sh dist "$(swift build -c release --static-swift-stdlib --show-bin-path)"
