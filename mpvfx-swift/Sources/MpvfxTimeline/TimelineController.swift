@@ -40,7 +40,8 @@ public final class TimelineController {
     public var tool: Tool = .select { didSet { if tool != .razor { view.razorGuideX = nil }; needsDisplay?() } }
     public static let marqueeThresholdPx = 4.0
     public static let splitEpsilon = 1e-3
-    public internal(set) var clipboard: [TimelineEditor.ClipboardItem] = []
+    /// The last ⌘C / ⌘X. It outlives a project switch in the window, so clips paste into the other project.
+    public internal(set) var clipboard: TimelineClipboard?
     /// Timeline snapping (clip edges, playhead, beats) for moves and trims; N toggles it.
     public var snapEnabled = true { didSet { if snapEnabled != oldValue { onSnapChange?(snapEnabled) } } }
     /// Magnet toggled (N / toolbar); hosts persist it (studioUiPreferences timelineSnapEnabled).
@@ -90,8 +91,16 @@ public final class TimelineController {
     public enum NativeAudioAction: String, Sendable { case detach, reattach }
     /// Clip menu Detach / Reattach audio (timelineCallbacks onNativeAudioAction). Unset: the editor edits directly.
     public var onNativeAudioAction: ((_ clipId: String, _ action: NativeAudioAction) -> Void)?
+    /// Paste from another project: copies `paths` (absolute media and LUT files outside this project) into it and
+    /// calls `done` with each path's copy (project-relative), or nil when any of them could not be brought in (the
+    /// host says why); the paste then goes ahead with the copies, or not at all. Unset: the paste keeps the
+    /// absolute paths, which preview can play but export refuses.
+    public var importForPaste: ((_ paths: [String], _ done: @escaping ([String: String]?) -> Void) -> Void)?
     /// T: put a text layer at the playhead (the host adds it and opens its Text section). Unset: T does nothing.
     public var onAddText: ((_ time: Double) -> Void)?
+    /// Keyframe menu "Edit Easing…": show the inspector's easing editor on these keys of the clip. Unset: the item is
+    /// disabled.
+    public var onEditKeyframeEasing: ((_ clipId: String, _ refs: Set<TimelineKeyframeRef>) -> Void)?
 
     func reload(from e: TimelineEditor) {
         let all = e.tracks
@@ -461,12 +470,30 @@ public final class TimelineController {
 
     // MARK: Clipboard (⌘C / ⌘X / ⌘V)
     @discardableResult public func copySelection() -> Bool {
-        guard let editor, !view.selection.isEmpty else { return false }
-        clipboard = editor.copyClips(view.selection); return !clipboard.isEmpty
+        guard let editor, !view.selection.isEmpty, let board = editor.copyClips(view.selection) else { return false }
+        clipboard = board; return true
     }
-    @discardableResult public func pasteClipboard() -> Bool {
-        guard let editor, !clipboard.isEmpty else { return false }
-        let ids = editor.paste(clipboard, at: playback.currentTime)
+
+    /// Pastes at the playhead onto `trackId`; nil = onto the track of the topmost selected clip, or with nothing
+    /// selected back onto the tracks the clips came from (TimelineEditor.paste).
+    @discardableResult public func pasteClipboard(onto trackId: String? = nil) -> Bool {
+        guard let editor, let clipboard else { return false }
+        let target = trackId ?? view.tracks.first { t in t.clips.contains { view.selection.contains($0.id) } }?.id
+        let time = playback.currentTime
+        let files = editor.filesToImport(clipboard)
+        guard let importForPaste, !files.isEmpty else { return paste(clipboard, at: time, onto: target) }
+        let projectId = editor.document.id, dir = editor.projectDirectory
+        importForPaste(files) { [weak self] copies in
+            // The project may have been switched while the files were copied: paste only into the same one.
+            guard let self, let copies, let editor = self.editor, editor.document.id == projectId, editor.projectDirectory == dir else { return }
+            self.paste(clipboard.rebased(copies), at: time, onto: target)
+        }
+        return true
+    }
+
+    @discardableResult private func paste(_ board: TimelineClipboard, at time: Double, onto target: String?) -> Bool {
+        guard let editor else { return false }
+        let ids = editor.paste(board, at: time, onto: target)
         if !ids.isEmpty { view.selection = Set(ids) }
         needsDisplay?(); return !ids.isEmpty
     }

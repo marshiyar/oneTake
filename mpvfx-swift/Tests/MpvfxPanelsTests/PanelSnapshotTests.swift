@@ -169,7 +169,7 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let insp = InspectorPanel()
             let seg = InspectorRow.Segmented(key: "k", label: "Ease", options: [(key: "a", label: "Linear", active: true), (key: "b", label: "Ease", active: false)], select: { _ in })
-            let kf = InspectorRow.Keyframe(state: .onKey, toggle: {}, prev: nil, next: nil)
+            let kf = InspectorRow.Keyframe(state: .onKey, toggle: {}, stopwatch: {}, prev: nil, next: nil)
             let t = snapshot("inspector-controls", w: 240, h: 64, scale: scale, background: PanelTheme.panelBgInset) { c in
                 insp.drawSegmented(c, CanvasRect(x: 0, y: 0, width: 240, height: 32), seg)
                 insp.drawKeyframeNav(c, right: 240, midY: 48, key: "x", kf)

@@ -62,12 +62,13 @@ public func detachNativeVideoAudio(_ source: NativeProjectDocument, videoClipId:
         allClips(d).contains(where: { $0.id == ids.clipId }) {
         throw fail("Detached audio IDs already exist in this project")
     }
-    let audioClip = NativeProjectClip(id: ids.clipId, assetId: ids.assetId,
+    var audioClip = NativeProjectClip(id: ids.clipId, assetId: ids.assetId,
         audioGroupId: video.audioGroupId?.nilIfEmpty, audioFxChain: video.audioFxChain?.nilIfEmpty, audioAutomation: video.audioAutomation?.nilIfEmpty,
         audioDetachedFrom: video.id, binding: nil, startFrame: video.startFrame, durationFrames: video.durationFrames,
         sourceInFrame: video.sourceInFrame, sourceInFraction: video.sourceInFraction, playbackRate: video.playbackRate, muted: video.muted,
         staticParameters: (video.staticParameters ?? [:]).filter { $0.key.hasPrefix("audio.") }, cropPivotSegments: nil, effects: [],
         parameterTracks: video.parameterTracks.filter { $0.parameterId.hasPrefix("audio.") })
+    audioClip.preservesPitch = video.preservesPitch
     var v = video
     v.muted = true; v.audioGroupId = nil; v.audioFxChain = nil; v.audioAutomation = nil
     v.parameterTracks = video.parameterTracks.filter { !$0.parameterId.hasPrefix("audio.") }
@@ -115,6 +116,7 @@ public func reattachNativeVideoAudio(_ source: NativeProjectDocument, audioClipI
     v.audioGroupId = audio.audioGroupId?.nilIfEmpty
     v.audioFxChain = audio.audioFxChain?.nilIfEmpty
     v.audioAutomation = audio.audioAutomation?.nilIfEmpty
+    v.preservesPitch = audio.preservesPitch
     d.sequence.tracks[vt].clips[vc] = v
     d.sequence.tracks[audioTrackIndex].clips.removeAll { $0.id == audio.id }
     if d.sequence.tracks[audioTrackIndex].clips.isEmpty { d.sequence.tracks.remove(at: audioTrackIndex) }
