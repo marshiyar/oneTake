@@ -68,7 +68,8 @@ public struct TimelineKeyframeMenu: Equatable, Sendable {
     }
 
     /// `current`: the ease every target key shares (nil when they differ), checked in the list. `canEditEasing`: the
-    /// host shows the easing editor (TimelineController.onEditKeyframeEasing is set).
+    /// host shows the easing editor (TimelineController.onEditKeyframeEasing is set) and a target key has one
+    /// (TimelineEditor.keyframeEasingGroup).
     public static func entries(count: Int, canMoveToPlayhead: Bool, current: NativeInterpolation?, canEditEasing: Bool) -> [Entry] {
         var e: [Entry] = [.item(Item(action: .moveToPlayhead, label: "Move to Playhead", enabled: canMoveToPlayhead)), .divider]
         for ease in eases { e.append(.item(Item(action: ease.action, label: ease.label, checked: current == ease.value))) }
@@ -105,7 +106,7 @@ extension TimelineController {
         let current = outs.allSatisfy { $0 == outs.first } ? outs.first : nil
         let group = hit.lane.flatMap { lane in clip(hit.clipId).flatMap { $0.1.lanes.indices.contains(lane) ? $0.1.lanes[lane].group : nil } }
         let entries = TimelineKeyframeMenu.entries(count: Set(refs.map(\.frame)).count, canMoveToPlayhead: playheadMoveDelta(refs) != nil,
-                                                   current: current, canEditEasing: onEditKeyframeEasing != nil)
+                                                   current: current, canEditEasing: onEditKeyframeEasing != nil && refs.contains { TimelineEditor.keyframeEasingGroup($0.parameterId) != nil })
         var m = TimelineKeyframeMenu(x: x, y: y, refs: refs, clipId: hit.clipId, group: group, entries: entries)
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
         if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }

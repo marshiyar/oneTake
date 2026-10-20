@@ -130,4 +130,63 @@ extension InspectorRenderAuditTests {
         _ = inspector.pointerDown(p); inspector.pointerUp(p)
         XCTAssertTrue(editor.isAnimated(clipId: "V", TimelineEditor.rotationId))
     }
+
+    func upsert(_ pid: String, frame: Double, _ value: NativeParameterValue, clip id: String = "V") -> Bool {
+        guard let track = editor.clip(id)?.track.id else { return false }
+        let type: NativeValueType
+        switch value { case .number: type = .number; case .vec2: type = .vec2; case .rgba: type = .rgba }
+        let a = NativeProjectParameterAddress(sequenceId: editor.sequenceId, trackId: track, clipId: id, parameterId: pid)
+        return editor.applyProperty(.atomic(.keyframe(.upsert(address: a, valueType: type, frame: frame, value: value, baselineValue: value))))
+    }
+
+    func testPositionControlsCoverScalarPositionTracks() {
+        // Scalar x/y tracks (older and recorded projects), which preview and export read before the vec2 track.
+        for (pid, a, b) in [(POSITION_X_PARAMETER_ID, 0.0, 100.0), (POSITION_Y_PARAMETER_ID, 0, 40)] {
+            XCTAssertTrue(upsert(pid, frame: 0, .number(a))); XCTAssertTrue(upsert(pid, frame: 20, .number(b)))
+        }
+        select("V", time: 1)
+        guard let kf = keyframeControl("x") else { return XCTFail("position has no keyframe controls") }
+        XCTAssertEqual(kf.state, .animated, "scalar position keys read as animated")
+        XCTAssertNotNil(kf.prev); XCTAssertNotNil(kf.next)
+        kf.stopwatch()
+        XCTAssertEqual(animated, [], "the stopwatch drops the scalar tracks too")
+        XCTAssertEqual(previewFrame(at: 2.5).images.first?.rect.x ?? 0, 100, accuracy: 1, "the held x 50 canvas px")
+        XCTAssertEqual(keyframeControl("x")?.state, InspectorRow.KeyframeState.none)
+    }
+
+    func testStoppingRotationDropsCropPivotMarkersOnItsKeys() {
+        XCTAssertTrue(upsert(TimelineEditor.rotationId, frame: 0, .number(0))); XCTAssertTrue(upsert(TimelineEditor.rotationId, frame: 20, .number(90)))
+        guard let keys = editor.clip("V")?.clip.parameterTracks.first(where: { $0.parameterId == TimelineEditor.rotationId })?.keyframes,
+              keys.count == 2 else { return XCTFail("no rotation keys") }
+        let json = #"{"startRotationKeyId":"\#(keys[0].id)","endRotationKeyId":"\#(keys[1].id)","offsetFraction":{"x":0.1,"y":0}}"#
+        guard let marker = try? JSONDecoder().decode(NativeCropPivotSegment.self, from: Data(json.utf8)) else { return XCTFail("bad marker") }
+        XCTAssertTrue(editor.editClip("V") { c in c.cropPivotSegments = [marker]; return true })
+        XCTAssertEqual(editor.clip("V")?.clip.cropPivotSegments?.count, 1)
+        select("V", time: 1)
+        keyframeControl("rotation")?.stopwatch()
+        XCTAssertFalse(editor.isAnimated(clipId: "V", TimelineEditor.rotationId))
+        XCTAssertEqual(editor.clip("V")?.clip.cropPivotSegments ?? [], [], "no marker left on the removed keys")
+    }
+
+    func testShowKeyframeEasingScrollsAnOpenGroupToItsEasingRows() {
+        XCTAssertTrue(upsert(TimelineEditor.rotationId, frame: 0, .number(0))); XCTAssertTrue(upsert(TimelineEditor.rotationId, frame: 20, .number(90)))
+        inspector.openGroupId = "layout"
+        let c = AuditCanvas(), box = CanvasRect(x: 0, y: 0, width: 300, height: 320)
+        inspector.draw(c, in: box)
+        XCTAssertEqual(inspector.bodyScroll, 0)
+        let easing: (InspectorPanel.Hit) -> Bool = { if case .segment("easing", _) = $0 { return true }; return false }
+        func easingVisible() -> Bool { inspector.hits.rect(where: easing).map { $0.y >= 0 && $0.maxY <= box.height } ?? false }
+        XCTAssertFalse(easingVisible(), "the easing rows start below a short panel")
+        XCTAssertTrue(inspector.showKeyframeEasing(clipId: "V", refs: [TimelineKeyframeRef(clipId: "V", parameterId: TimelineEditor.rotationId, frame: 0)]))
+        inspector.draw(c, in: box); inspector.draw(c, in: box)
+        XCTAssertGreaterThan(inspector.bodyScroll, 0)
+        XCTAssertTrue(easingVisible(), "Edit Easing scrolls the already open group to its easing rows")
+    }
+
+    func testShowKeyframeEasingSkipsKeysWithoutAnEditor() {
+        let zIndex = TimelineKeyframeRef(clipId: "V", parameterId: "layout.zIndex", frame: 0)
+        let rotation = TimelineKeyframeRef(clipId: "V", parameterId: TimelineEditor.rotationId, frame: 10)
+        XCTAssertTrue(inspector.showKeyframeEasing(clipId: "V", refs: [zIndex, rotation]))
+        XCTAssertEqual(inspector.openGroupId, "layout")
+    }
 }

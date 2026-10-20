@@ -90,6 +90,30 @@ extension InspectorPanel {
             next: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: true) : nil).map { v in { [weak self] in self?.onSeek?(v) } })
     }
 
+    /// Position's controls cover the vec2 track and the scalar x/y tracks (older and recorded projects), which preview
+    /// and export prefer: any of them keyed reads as animated, ‹ › step through all their keys, ◆ on a key removes the
+    /// keys there, and the stopwatch off drops all of them. Starting animation keys the vec2 track.
+    func positionKeyframe(_ editor: TimelineEditor, _ s: Selected, x: Double, y: Double) -> InspectorRow.Keyframe {
+        let pos = TimelineEditor.positionId
+        let base = keyframe(editor, s, pos, fallback: .vec2(Vec2Value(x: x, y: y)))
+        let scalar: [(id: String, fallback: NativeParameterValue)] = [(POSITION_X_PARAMETER_ID, .number(x)), (POSITION_Y_PARAMETER_ID, .number(y))]
+            .filter { editor.isAnimated(clipId: s.id, $0.id) }
+        guard !scalar.isEmpty else { return base }
+        let t = time
+        let keyed = (editor.isAnimated(clipId: s.id, pos) ? [(id: pos, fallback: NativeParameterValue.vec2(Vec2Value(x: x, y: y)))] : []) + scalar
+        let here = keyed.filter { editor.hasKeyframe(clipId: s.id, $0.id, time: t) }
+        let prev = keyed.compactMap { editor.adjacentKeyframeTime(clipId: s.id, $0.id, time: t, forward: false) }.max()
+        let next = keyed.compactMap { editor.adjacentKeyframeTime(clipId: s.id, $0.id, time: t, forward: true) }.min()
+        return InspectorRow.Keyframe(
+            state: here.isEmpty ? .animated : .onKey,
+            toggle: here.isEmpty ? base.toggle : { [weak self] in
+                self?.edited(here.reduce(false) { editor.toggleKeyframe(clipId: s.id, $1.id, time: t, fallback: $1.fallback) || $0 }, label: "Edit transform")
+            },
+            stopwatch: { [weak self] in self?.edited(editor.setAnimated(clipId: s.id, keyed, false, time: t)) },
+            prev: prev.map { v in { [weak self] in self?.onSeek?(v) } },
+            next: next.map { v in { [weak self] in self?.onSeek?(v) } })
+    }
+
     func tier(_ editor: TimelineEditor, _ s: Selected, _ pid: String, isDefault: Bool) -> PropertyValueTier {
         guard editor.isExplicit(clipId: s.id, pid) else { return .default }
         return isDefault ? .explicitDefault : .explicitCustom
@@ -121,7 +145,7 @@ extension InspectorPanel {
         else if case .number(let v)? = editor.parameterValue(clipId: s.id, parameterId: TimelineEditor.scaleId, time: t) { scale = v }
         let pos = TimelineEditor.positionId
         let posTier = tier(editor, s, pos, isDefault: x == 0 && y == 0)
-        let posKf = keyframe(editor, s, pos, fallback: .vec2(Vec2Value(x: x, y: y)))
+        let posKf = positionKeyframe(editor, s, x: x, y: y)
         let px = numberRow(key: "x", label: "X", value: x, decimals: 0, suffix: "px", tier: posTier, step: 1,
                            apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(x: $0, y: y)) },
                            reset: { editor.clearStaticParameter(clipId: s.id, pos) }, keyframe: posKf)
@@ -172,7 +196,7 @@ extension InspectorPanel {
         ]
         rows += transform3DRows(editor, s)
         // Keyframe easing (NativeInterpolationEditor) for the eased channels: the selected keys, else the playhead's.
-        let channels = Self.transformEasedChannels.filter { editor.isAnimated(clipId: s.id, $0) }
+        let channels = TimelineEditor.transformEasedParameterIds.filter { editor.isAnimated(clipId: s.id, $0) }
         if !channels.isEmpty { rows += easingRows(editor, s, channels: channels) }
         rows += arcMotionRows(editor, s)
         return InspectorGroup(id: "layout", title: "Transform",

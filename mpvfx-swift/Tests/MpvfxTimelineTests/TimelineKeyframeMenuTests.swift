@@ -154,6 +154,21 @@ final class TimelineKeyframeMenuTests: XCTestCase {
         XCTAssertEqual(e.undoStack.count, undo, "opening the editor edits nothing")
     }
 
+    func testEditEasingIsDisabledOnKeysWithoutAnEasingEditor() throws {
+        let (c, e) = try make()
+        c.onEditKeyframeEasing = { _, _ in XCTFail("no editor for these keys") }
+        let a = NativeProjectParameterAddress(sequenceId: e.sequenceId, trackId: try XCTUnwrap(e.clip("clip:a")).track.id,
+                                              clipId: "clip:a", parameterId: "layout.zIndex")
+        XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.upsert(address: a, valueType: .number, frame: 90, value: .number(1), baselineValue: .number(0))))))
+        c.syncFromPlayback()
+        c.secondaryClick(x: x(c, 3), y: barY(c))
+        let m = try XCTUnwrap(c.view.keyframeMenu)
+        XCTAssertEqual(m.refs.map(\.parameterId), ["layout.zIndex"])
+        XCTAssertFalse(try item(m, .editEasing).enabled)
+        try click(c, m, .editEasing)
+        XCTAssertNotNil(c.view.keyframeMenu, "a disabled item does nothing")
+    }
+
     func testDeleteAndDeleteAll() throws {
         let (c, e) = try make()
         c.secondaryClick(x: x(c, 2), y: barY(c))

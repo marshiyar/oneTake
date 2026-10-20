@@ -18,8 +18,6 @@ import MpvfxTimeline
 /// Document edits behind the inspector and the media bin. Each is one undo step on the shared TimelineEditor
 /// history (the same history the timeline, canvas and Cmd+Z use); none keeps state of its own.
 public extension TimelineEditor {
-    static let scaleId = "transform.scale", opacityId = "visual.opacity", volumeId = "audio.volume"
-
     func isAnimated(clipId: String, _ parameterId: String) -> Bool {
         clip(clipId)?.clip.parameterTracks.contains { $0.parameterId == parameterId && !$0.keyframes.isEmpty } ?? false
     }
@@ -123,7 +121,11 @@ public extension TimelineEditor {
         }
         return withHistory("Stop animating property") {
             editClip(clipId) { c in
+                let before = c.parameterTracks
                 c.parameterTracks.removeAll { held[$0.parameterId] != nil }
+                // As replaceParameterTracks: no crop pivot marker on a removed rotation key, no stale geometry snapshot.
+                c.cropPivotSegments = currentNativeCropPivotReferences(validNativeCropPivotSegments(c.cropPivotSegments, tracks: c.parameterTracks),
+                                                                       before: before, after: c.parameterTracks)
                 var sp = c.staticParameters ?? [:]
                 for (pid, v) in held { sp[pid] = v }
                 c.staticParameters = sp

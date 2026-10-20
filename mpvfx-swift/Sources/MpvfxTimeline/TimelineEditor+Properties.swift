@@ -26,6 +26,19 @@ public struct ClipTransform: Equatable, Sendable {
 public extension TimelineEditor {
     static let positionId = "transform.position", rotationId = "transform.rotation"
     static let widthId = "layout.width", heightId = "layout.height"
+    static let scaleId = "transform.scale", opacityId = "visual.opacity", volumeId = "audio.volume"
+
+    /// The parameters whose keys the inspector's Transform easing rows edit (scalar position tracks included);
+    /// keyed volume is eased in the Media group.
+    static let transformEasedParameterIds = [positionId, POSITION_X_PARAMETER_ID, POSITION_Y_PARAMETER_ID, widthId, heightId,
+                                             rotationId, scaleId, opacityId] + NativeTransform3D.parameterIds
+
+    /// The inspector group whose easing rows edit keys of `parameterId` ("layout" or "media"), nil when none does.
+    static func keyframeEasingGroup(_ parameterId: String) -> String? {
+        if transformEasedParameterIds.contains(parameterId) { return "layout" }
+        if parameterId == volumeId { return "media" }
+        return nil
+    }
 
     func clip(_ id: String) -> (track: NativeProjectTrack, clip: NativeProjectClip)? {
         for t in document.sequence.tracks { if let c = t.clips.first(where: { $0.id == id }) { return (t, c) } }

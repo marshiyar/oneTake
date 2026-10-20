@@ -27,29 +27,18 @@ extension InspectorPanel {
     public static let defaultCubic = CubicBezierControlPoints(x1: 0.33, y1: 0, x2: 0.67, y2: 1)
     public static let cubicYRange: ClosedRange<Double> = -1...2
 
-    /// The parameters whose keys the Transform group's easing rows edit; keyed volume is eased in the Media group.
-    static let transformEasedChannels = [TimelineEditor.positionId, TimelineEditor.widthId, TimelineEditor.heightId,
-                                         TimelineEditor.rotationId, TimelineEditor.scaleId, TimelineEditor.opacityId]
-        + NativeTransform3D.parameterIds
-
-    /// The group whose easing rows edit keys of `parameterId`, nil for a parameter without an easing editor.
-    static func easingGroupId(_ parameterId: String) -> String? {
-        if transformEasedChannels.contains(parameterId) { return "layout" }
-        if parameterId == TimelineEditor.volumeId { return "media" }
-        return nil
-    }
-
     /// The keyframe menu's "Edit Easing…": selects the clip, makes `refs` the keys the easing rows edit and opens the
-    /// group holding them, scrolled to its start. False when the keys have no easing editor (the panel is unchanged).
+    /// group holding them, scrolled to its easing rows. False when no key has an easing editor (the panel is unchanged).
     @discardableResult
     public func showKeyframeEasing(clipId: String, refs: Set<TimelineKeyframeRef>) -> Bool {
         let keys = refs.filter { $0.clipId == clipId }
-        guard let first = keys.sorted(by: { ($0.frame, $0.parameterId) < ($1.frame, $1.parameterId) }).first,
-              let group = Self.easingGroupId(first.parameterId) else { return false }
+        guard let group = keys.sorted(by: { ($0.frame, $0.parameterId) < ($1.frame, $1.parameterId) })
+            .lazy.compactMap({ TimelineEditor.keyframeEasingGroup($0.parameterId) }).first else { return false }
         audioGroupId = nil
         selection = [clipId]
         selectedKeyframes = keys
-        if openGroupId != group { openGroupId = group; scrollOpenGroupToStart = true }
+        openGroupId = group
+        revealEasingRows = true   // also when the group is already open: its easing rows sit at its end
         return true
     }
 
