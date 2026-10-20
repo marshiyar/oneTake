@@ -20,6 +20,9 @@ on:
   push:
     branches: [main]
     paths-ignore: ['**/*.md', '**/docs/**', '.gitignore']
+  # The merge queue tests each queued pull request on top of the ones ahead of it; ci-ok is the check it waits for.
+  merge_group:
+    types: [checks_requested]
   schedule:
     - cron: '17 6 * * *'   # nightly, 06:17 UTC: catches runner image and toolchain drift on an unchanged main
   workflow_dispatch:
@@ -505,7 +508,7 @@ jobs:
   publish:
     needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
     if: >-
-      always() && github.event_name != 'pull_request' && needs.plan.result == 'success' && needs.checks.result == 'success'
+      always() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && needs.plan.result == 'success' && needs.checks.result == 'success'
       && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
       && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
       && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
