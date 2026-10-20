@@ -75,7 +75,7 @@ final class LibraryServiceTests: XCTestCase {
         func u16(_ v: Int, _ at: Int) { withUnsafeBytes(of: UInt16(v).littleEndian) { header.replaceSubrange(at..<at + 2, with: $0) } }
         put("RIFF", 0); u32(size - 8, 4); put("WAVEfmt ", 8); u32(16, 16); u16(1, 20); u16(2, 22); u32(48000, 24)
         u32(192000, 28); u16(4, 32); u16(16, 34); put("data", 36); u32(size - 44, 40)
-        FileManager.default.createFile(atPath: source, contents: nil)
+        _ = FileManager.default.createFile(atPath: source, contents: nil)
         let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: source))
         try handle.truncate(atOffset: UInt64(size)); try handle.seek(toOffset: 0); try handle.write(contentsOf: header); try handle.close()
         let result = try await f.engine.importForProject(f.first, [source])

@@ -234,7 +234,7 @@ jobs:
       - name: Toolchain version
         run: swift --version
       - name: Release build (static Swift runtime)
-        run: swift build -c release --static-swift-stdlib
+        run: swift build -c release --static-swift-stdlib -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Package
         run: |
           short=${GITHUB_SHA::7}; name=mpvfx-linux-x64-$short; out="$GITHUB_WORKSPACE/dist/$name"
@@ -344,7 +344,7 @@ jobs:
             linux-debug-${{ github.ref_name }}-
             linux-debug-
       - name: Build
-        run: swift --version && swift build --build-tests
+        run: swift --version && swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           FILTER: ${{ matrix.filter }}
@@ -393,7 +393,7 @@ jobs:
       - name: Toolchain version
         run: swift --version
       - name: Release build, linked without debug data (strip-check.yml verifies the shipped exe)
-        run: swift build -c release -Xlinker -debug:none
+        run: swift build -c release -Xlinker -debug:none -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Package (portable zip)
         shell: pwsh
         run: |
@@ -503,7 +503,7 @@ jobs:
           key: windows-debug-${{ github.sha }}
           restore-keys: windows-debug-
       - name: Build
-        run: swift --version && swift build --build-tests
+        run: swift --version && swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
       - name: Test
         env:
           FILTER: ${{ matrix.filter }}
