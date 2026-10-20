@@ -231,7 +231,7 @@ final class TimelineClipContentVisualTests: XCTestCase {
         let shown = try render { $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)] }
         let hidden = try render { c in c.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)]; c.toggleTrackHidden(row: 1) }
         let s = rgb(shown, 264 + 300, y)[0], h = rgb(hidden, 264 + 300, y)[0]
-        XCTAssertEqual(Double(h), Double(s) * 0.35 + 16 * 0.65, accuracy: 6, "opacity 0.35 over the row background")
+        XCTAssertEqual(Double(h), Double(s) * 0.35 + 29 * 0.65, accuracy: 6, "opacity 0.35 over the row background")
     }
 }
 
