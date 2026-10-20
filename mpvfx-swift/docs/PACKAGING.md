@@ -46,7 +46,25 @@ Xcode pinned (`XCODE_VERSION` in `mpvfx-macos.yml`). Each job installs its insta
 installed app with a hidden window (the `*-smoke.png` snapshot) with the build tree and the fetched libraries moved
 away, and, on Windows and Linux, uninstalls it again.
 
-## Releases: nightly and official
+## Symbols: stripped before packaging, verified after
+
+No installer or portable archive carries symbols. The Linux portable binary and the Debian package's are stripped
+(`strip --strip-unneeded`), the macOS binary is stripped before it is signed (`strip -S -x` in
+`packaging/macos/package.sh`), and the Windows executable is linked without debug data (`-Xlinker /DEBUG:NONE`: no
+`.pdb` record, no COFF symbol table). The debug symbols of the Linux and macOS builds are kept for 90 days as the CI
+artifacts `symbols-linux` (`.debug`) and `symbols-macos` (`.dSYM.tar.gz`) of the run that built the release, for
+symbolicating a crash report; they are never a release asset.
+
+`.github/workflows/strip-check.yml` verifies it separately: after every `mpvfx-ci` run that built installers (or by
+hand with a run id) it downloads that run's `linux`, `windows` and `macos` artifacts, unpacks each the way a user would
+(tar, dpkg, zip and the IExpress setup.exe, the mounted disk image) and reads every binary's own headers with
+`.github/ci/strip-check.py`: no ELF `.symtab` or `.debug_*` section, no PE symbol table or CodeView record, no Mach-O
+stab or local symbol. The engine libraries pinned in `binaries.lock` are held to the same rule; the Swift and MSVC
+runtime DLLs the Windows build redistributes are reported, not judged. The table of every binary is in the run's
+summary. The check is not required for merging: it reports on what was published.
+
+No repository secret is needed to build and test. The optional secrets below sign the macOS disk image and approve
+pull requests.
 
 When every platform is green, one publish job (`.github/ci/publish.sh`) uploads all installers to a single GitHub
 release:

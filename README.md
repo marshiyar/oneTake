@@ -99,6 +99,10 @@ stripped, and [`bench.yml`](.github/workflows/bench.yml) benchmarks startup, the
 GPU) and preview playback on all three platforms. How the installers are built and signed:
 [`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+CI ([`.github/workflows/mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests and packages the app on Linux,
+Windows and macOS with the engine libraries pinned in [`binaries.lock`](mpvfx-swift/binaries.lock); `ci-ok` is the
+required check. [`strip-check.yml`](.github/workflows/strip-check.yml) then verifies that every published binary is stripped
+([`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), "Symbols"). Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
 Benchmarks ([`.github/workflows/bench.yml`](.github/workflows/bench.yml)) run from a release build on Linux, Windows and
 macOS after every green run on `main`, weekly, and by hand: startup to the first painted frame, the audio graph
 (`MpvfxAudioBench`), the colour grade on the CPU and the GPU (`MpvfxColorBench`) and preview playback
