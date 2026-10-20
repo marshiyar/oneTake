@@ -63,8 +63,7 @@ stab or local symbol. The engine libraries pinned in `binaries.lock` are held to
 runtime DLLs the Windows build redistributes are reported, not judged. The table of every binary is in the run's
 summary. The check is not required for merging: it reports on what was published.
 
-No repository secret is needed to build and test. The optional secrets below sign the macOS disk image and approve
-pull requests.
+## Releases: nightly and official
 
 When every platform is green, one publish job (`.github/ci/publish.sh`) uploads all installers to a single GitHub
 release:
