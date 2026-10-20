@@ -177,7 +177,7 @@ their shape (`PlayerView+Outlines.swift`).
 | Volume automation lanes, automation selection menu (Simplify), value input | partial: automation plays and exports; lane editing UI partial |
 | Filmstrips and waveforms from the shared media cache, Show thumbnails toggle (314d72a, 71fdbd6) | done |
 | Undo history persists across sessions per project (751c6c7) | done |
-| Clip context menu, track gap context menu | done |
+| Clip context menu (split, cut, copy, paste, duplicate, thumbnails, mute, keep audio pitch, detach / reattach audio, delete), track gap context menu | done |
 
 The timeline lane's 314d72a added its own filmstrip cache; 71fdbd6 moved strips and peaks onto the session's one
 `MediaThumbnails` cache.

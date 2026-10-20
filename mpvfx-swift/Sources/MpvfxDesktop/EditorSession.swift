@@ -55,7 +55,7 @@ final class EditorSession {
     /// Timeline card content (toolbar + tracks); set by installShell.
     var timelineRegion: TimelineRegion?
     var volumeAnimating = false
-    private(set) var projectDir: URL?
+    private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
     var desktopPreferences: DesktopPreferences?
@@ -97,6 +97,7 @@ final class EditorSession {
             projectDir = nil
         }
         self.backend = backend
+        editor.projectDirectory = projectDir   // didSet does not run in init
         savedDocument = editor.document
         playback = PlaybackState(duration: editor.duration, fps: editor.fps)
         let tv = TimelineView(tracks: [], duration: editor.duration)
