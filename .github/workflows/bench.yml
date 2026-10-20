@@ -81,9 +81,7 @@ jobs:
             xvfb xauth dbus-x11 python3 libvulkan-dev mesa-vulkan-drivers
       # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
       # never a pull request head). Other events check out their own commit.
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/checkout@v4   # main's head: after CI on main this is the commit just tested, or a newer one
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore the release build cache
@@ -130,9 +128,7 @@ jobs:
     steps:
       # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
       # never a pull request head). Other events check out their own commit.
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/checkout@v4   # main's head: after CI on main this is the commit just tested, or a newer one
       - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
         with:
           swift-version: swift-6.3.3-release
@@ -182,9 +178,7 @@ jobs:
     steps:
       # workflow_run's GITHUB_SHA is the newest main commit, not the one mpvfx-ci passed: measure that one (main only,
       # never a pull request head). Other events check out their own commit.
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/checkout@v4   # main's head: after CI on main this is the commit just tested, or a newer one
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app
