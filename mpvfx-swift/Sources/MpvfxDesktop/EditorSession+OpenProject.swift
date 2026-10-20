@@ -48,7 +48,7 @@ extension EditorSession {
     /// File > Open Recent > Clear Menu.
     func clearRecentProjects() {
         guard let backend else { return }
-        do { for p in backend.recentProjects() { try backend.forgetRecentProject(directory: p.directory) } }
+        do { try backend.clearRecentProjects() }
         catch { onError("Could not clear the recent projects", "\(error)") }
         panels?.refreshRecents()
     }

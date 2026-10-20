@@ -290,7 +290,8 @@ final class SessionPanels {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let recent = EditorSession.recents(backend, excluding: open).map { LibraryNavModel.RecentProject(path: $0.directory, name: $0.title) }
             post {
-                guard let self, recent != self.left.library.recentProjects else { return }
+                // A refresh started before a project switch was filtered for the project open then: drop it.
+                guard let self, self.session.project?.directory == open, recent != self.left.library.recentProjects else { return }
                 self.left.library.recentProjects = recent
                 self.redraw()
             }

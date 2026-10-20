@@ -91,6 +91,28 @@ final class OpenProjectTests: XCTestCase {
         XCTAssertEqual(session.recentProjects, [])
     }
 
+    /// A recent-list refresh started before a switch arrives after it: it was filtered for the project open then, so it is
+    /// dropped instead of listing the project now open.
+    func testAStaleRecentRefreshIsDropped() throws {
+        let userData = try temporaryDirectory(), root = try temporaryDirectory()
+        let setup = RuntimeDesktopBackend(userData: userData)
+        let alpha = try setup.createProject(name: "Alpha", directory: root + "/Alpha")
+        let beta = try setup.createProject(name: "Beta", directory: root + "/Beta")
+        let session = try launch(userData: userData, projectDirectory: alpha.directory, dialogs: nil)
+        var held: [() -> Void] = []
+        let lock = NSLock()
+        session.postToUI = { body in lock.withLock { held.append(body) } }
+        session.panels?.refreshRecents()   // filtered for Alpha: lists Beta
+        waitUntil("the refresh finished in the background") { lock.withLock { !held.isEmpty } }
+        let stale = lock.withLock { held.removeFirst() }
+
+        session.postToUI = { body in DispatchQueue.main.async(execute: body) }
+        session.openProject(path: beta.directory)
+        waitUntil("the switch lists Alpha") { session.panels?.left.library.recentProjects.map(\.name) == ["Alpha"] }
+        stale()
+        XCTAssertEqual(session.panels?.left.library.recentProjects.map(\.name), ["Alpha"], "the open project is never listed")
+    }
+
     func testCtrlOIsNotTakenWithoutADialog() throws {
         let userData = try temporaryDirectory(), root = try temporaryDirectory()
         let alpha = try RuntimeDesktopBackend(userData: userData).createProject(name: "Alpha", directory: root + "/Alpha")
