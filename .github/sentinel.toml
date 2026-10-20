@@ -1,0 +1,91 @@
+# Allow list for .github/ci/sentinel.py: each entry names one rule at one place with the reason it is legitimate.
+# A new entry is reviewed like code. `path` is an fnmatch glob over the repository path (repo) or the unpacked file
+# (artifact); `match` narrows it to a symbol or detail text.
+
+[repo]
+# Data the text rules do not read: generated shader words, media and audio fixtures, images; and the scanner itself,
+# whose patterns and tests spell out what it looks for (a change to these three files is reviewed as the policy).
+skip = [
+    ".github/ci/sentinel.py", ".github/ci/test_sentinel.py", ".github/sentinel.toml",
+    "mpvfx-swift/scripts/gpu/generated/**",
+    "mpvfx-swift/Tests/EngineFixtures/**",
+    "mpvfx-swift/Tests/MpvfxAudioGraphTests/Fixtures/**",
+    "**/*.png", "**/*.ico", "**/*.mp4", "**/*.mov", "**/*.mkv", "**/*.webp", "**/*.flac", "**/*.f32", "**/*.fnv",
+    "**/*.mxf",
+]
+
+[[repo.allow]]
+rule = "dynamic-load"
+path = "mpvfx-swift/Sources/CMpvfxVulkan/vk_device.c"
+reason = "opens the system Vulkan loader (libvulkan.so.1) so the app has no link-time dependency on it"
+
+[[repo.allow]]
+rule = "dynamic-load"
+path = "mpvfx-swift/Sources/CMpvfxWin32/d3d11_grade.cpp"
+reason = "loads d3dcompiler_47.dll (part of Windows) to compile the grade's HLSL"
+
+[[repo.allow]]
+rule = "dynamic-load"
+path = "mpvfx-swift/Sources/MpvfxDesktop/AudioFxStress.swift"
+reason = "looks up backtrace() in the running process to dump thread stacks in the audio stress smoke"
+
+[[repo.allow]]
+rule = "process"
+path = "mpvfx-swift/Sources/CMpvfxWin32/shell.cpp"
+match = "ShellExecuteW"
+reason = "shell.openPath: opens a folder in Explorer or a file in its default app, on the user's click"
+
+[[repo.allow]]
+rule = "process"
+path = "mpvfx-swift/Sources/MpvfxDesktop/MacDialogs.swift"
+match = "NSWorkspace.shared.open"
+reason = "shell.openPath: opens a folder in Finder or a file in its default app, on the user's click"
+
+[[repo.allow]]
+rule = "process"
+path = "mpvfx-swift/Sources/MpvfxBackend/InstalledFonts.swift"
+reason = "runs fc-list to list the installed fonts on Linux"
+
+[[repo.allow]]
+rule = "process"
+path = "mpvfx-swift/Tests/**"
+reason = "tests run the app and its tools as subprocesses"
+
+[[repo.allow]]
+rule = "trojan-source"
+path = "mpvfx-swift/Tests/MpvfxSharedTests/Export/Fixtures/exportParity.json"
+reason = "export parity fixture: text layer cases that contain a byte-order mark"
+
+[artifact]
+# Redistributed runtimes this project does not build: the Swift runtime and the MSVC runtime on Windows.
+skip = ["swift*.dll", "Foundation*.dll", "_FoundationICU.dll", "dispatch.dll", "BlocksRuntime.dll",
+        "vcruntime*.dll", "msvcp*.dll", "concrt140.dll", "vccorlib140.dll"]
+
+[[artifact.allow]]
+rule = "import-network"
+path = "*MpVFX"
+reason = "Linux: swift-corelibs-foundation is linked statically and references the socket API; the app's sources hold no network call (repo rule network)"
+
+[[artifact.allow]]
+rule = "import-spawn"
+path = "*MpVFX"
+match = "posix_spawn"
+reason = "Linux: Foundation's Process, used for fc-list (InstalledFonts.swift)"
+
+[[artifact.allow]]
+rule = "import-spawn"
+path = "*MpVFX.exe"
+match = "ShellExecuteW"
+reason = "shell.openPath (shell.cpp)"
+
+[[artifact.allow]]
+rule = "import-anti-debug"
+path = "*.exe"
+match = "IsDebuggerPresent"
+reason = "MSVC runtime start-up code (__scrt) in every image built with the Microsoft toolchain"
+
+[[artifact.allow]]
+rule = "import-anti-debug"
+path = "*.dll"
+match = "IsDebuggerPresent"
+reason = "MSVC runtime start-up code (__scrt) in every image built with the Microsoft toolchain"

@@ -59,10 +59,10 @@ public struct TimelineTheme: Sendable {
     public var tickText: CanvasColor { ink.withAlpha(Theme.mode == .light ? 0.45 : 0.34) }
     public var tickMajor: CanvasColor { ink.withAlpha(0.10) }
     public var tickMinor: CanvasColor { ink.withAlpha(0.06) }
-    public var clip: CanvasColor { ink.withAlpha(0.055) }              // TRACK_STYLE.clip
+    public var clip: CanvasColor { CanvasColor(ThemeTokens.clipVideoPair.now) }
     public var clipActive: CanvasColor { accent.withAlpha(0.16) }      // TRACK_STYLE.clipActive
     public var trackLabel: CanvasColor { ink.withAlpha(Theme.mode == .light ? 0.6 : 0.5) }   // TRACK_STYLE.label
-    public var accent: CanvasColor { CanvasColor(ThemeTokens.mint) }   // --hf-accent
+    public var accent: CanvasColor { CanvasColor(ThemeTokens.mint) }   // the accent's line form
     public var preRoll: CanvasColor { CanvasColor(ThemeTokens.preRoll) }   // preRollBackground
     public var clipRadius = 3.0
     public init() {}
@@ -443,11 +443,11 @@ public final class TimelineView {
     public static let uiFontFamily = "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
     public static let clipMonoFamily = "SF Mono, Fira Code, monospace"
 
-    /// studio.css .timeline-clip background by state (no box-shadow: the theme shadow tokens are unused).
+    /// Clip fill by media kind and state (docs/DESIGN.md): opaque, so a clip reads as a block of its kind.
     static func clipBackground(audio: Bool, hovered: Bool, dragging: Bool) -> CanvasColor {
         if dragging { return CanvasColor((audio ? ThemeTokens.clipDragAudioPair : ThemeTokens.clipDragPair).now) }
-        if audio { return CanvasColor(ThemeTokens.violet400.alpha(hovered ? 0.24 : 0.16)) }
-        return CanvasColor(ThemeTokens.white.alpha(hovered ? 0.09 : 0.055))
+        if audio { return CanvasColor((hovered ? ThemeTokens.clipAudioHoverPair : ThemeTokens.clipAudioPair).now) }
+        return CanvasColor((hovered ? ThemeTokens.clipVideoHoverPair : ThemeTokens.clipVideoPair).now)
     }
 
     /// text-overflow: ellipsis within `maxWidth`.
@@ -485,23 +485,26 @@ public final class TimelineView {
                 Self.drawWaveform(c, peaks, in: r, startFraction: clip.sourceStartFraction, endFraction: clip.sourceEndFraction)
             } else if thumbnailsEnabled, clip.kind == .video || clip.kind == .image, let id = clip.assetId, let strip = thumbnails[id], !strip.frames.isEmpty {
                 Self.drawFilmstrip(c, strip, in: r)
+                // The name sits on a strip of the clip's kind colour, so kind, hover and the label survive thumbnails.
+                c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: min(ThemeTokens.clipHeaderHeight, r.height / 2)),
+                           Self.clipBackground(audio: false, hovered: hovered, dragging: dragging))
             }
         }
         c.withState {
             c.clip(r)
             // Keyframe diamonds (TimelineClipDiamonds), drawn when the bar is at least 20 px wide.
             if r.width >= 20 { drawDiamonds(c, clip, group: nil, barX: r.x, cy: r.y + r.height / 2) }
-            // .timeline-clip__label: top 6, left 12, right 10, rgba(255,255,255,.5), 10px/500, line-height 1, ellipsis.
+            // Clip name: top 6, left 12, right 10, 10px/500, ellipsis; on the opaque kind fill at clipNameAlpha.
             if r.width >= 40 || selected {
                 let f = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .medium)
                 if let label = Self.ellipsize(c, clip.name, font: f, maxWidth: r.width - 22) {
-                    c.drawText(label, at: .init(r.x + 12, r.y + 6), font: f, color: CanvasColor(ThemeTokens.white.alpha(0.5)))
+                    c.drawText(label, at: .init(r.x + 12, r.y + 6), font: f, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipNameAlpha)))
                 }
-                // .timeline-clip__timecode: bottom 6, left 12, rgba(255,255,255,.34), mono 9px, "start-ends".
+                // Timecode: bottom 6, left 12, mono 9px, "start-ends", at clipTimecodeAlpha.
                 let tf = CanvasFont(family: Self.clipMonoFamily, size: 9)
                 let tc = String(format: "%.1f-%.1fs", clip.start, clip.end)
                 if let tcs = Self.ellipsize(c, tc, font: tf, maxWidth: r.width - 12) {
-                    c.drawText(tcs, at: .init(r.x + 12, r.maxY - 6 - 9), font: tf, color: CanvasColor(ThemeTokens.white.alpha(0.34)))
+                    c.drawText(tcs, at: .init(r.x + 12, r.maxY - 6 - 9), font: tf, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipTimecodeAlpha)))
                 }
             }
             if clip.effectCount > 0 {
