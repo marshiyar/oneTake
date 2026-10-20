@@ -19,7 +19,7 @@ import Foundation
 /// `time` is the composition time in seconds (the shader's `u_effectTime`); the grain seed is the clip's seed plus
 /// `floor(time * 60)`. The frame's size is the shader's resolution: effects measured
 /// in pixels (grain, print screens, engraving lines) follow the size the clip is drawn at.
-public final class ColorGradeRenderer: Equatable, @unchecked Sendable {
+public final class ColorGradeRenderer: Equatable, Sendable {
     public let params: ColorGradeParams
     public let lut: CubeLUT?
     public let seed: Int
@@ -55,7 +55,7 @@ public final class ColorGradeRenderer: Equatable, @unchecked Sendable {
     /// Grades `rgba` (width * height * 4 bytes, rows top first) in place.
     public func apply(_ rgba: inout [UInt8], width: Int, height: Int, time: Double) {
         guard params.isActive, width > 0, height > 0, rgba.count >= width * height * 4 else { return }
-        let p = base.copy()
+        var p = base.copy()
         p.u.resolution = V2(Float(width), Float(height))
         p.u.effectTime = Float(Swift.max(0, time))
         p.u.grainSeed = Float(seed) + Float((Swift.max(0, time) * 60).rounded(.down))
@@ -76,17 +76,22 @@ public final class ColorGradeRenderer: Equatable, @unchecked Sendable {
         if p.blurAmount > 0 { p.prepareBlur(blur: p.blurAmount) }
         if p.bloomAmount > 0 { p.prepareBloom(radius: p.ef(.bloomRadius)) }
         if p.kuwaharaAmount > 0 { p.prepareKuwahara(radius: p.ef(.kuwaharaRadius), sharpness: p.ef(.kuwaharaSharpness), saturation: p.ef(.kuwaharaSaturation)) }
-        rgba.withUnsafeMutableBufferPointer { out in
-            concurrentRows(height) { gy in
-                let row = (height - 1 - gy) * width * 4
+        let prepared = p
+        let graded: [UInt8] = concurrentRows(height) { rows in
+            var out = [UInt8](repeating: 0, count: rows.count * width * 4)
+            for y in rows {
+                let gy = height - 1 - y
+                let row = (y - rows.lowerBound) * width * 4
                 for x in 0..<width {
-                    let c = p.shade(V2(Float(x) + 0.5, Float(gy) + 0.5))
+                    let c = prepared.shade(V2(Float(x) + 0.5, Float(gy) + 0.5))
                     let q = (simdClamp4(c) * 255).rounded(.toNearestOrAwayFromZero)
                     let i = row + x * 4
                     out[i] = UInt8(q.x); out[i + 1] = UInt8(q.y); out[i + 2] = UInt8(q.z); out[i + 3] = UInt8(q.w)
                 }
             }
+            return out
         }
+        rgba.replaceSubrange(0..<(width * height * 4), with: graded)
     }
 
     /// The grade of one colour, without the spatial effects (scopes, swatches, tests): primary, wheels, curves,
@@ -104,7 +109,7 @@ public final class ColorGradeRenderer: Equatable, @unchecked Sendable {
     }
 
     static func program(_ g: ColorGradeParams, lut: CubeLUT?, interpolation: CubeLUT.Interpolation) -> GradeProgram {
-        let p = GradeProgram()
+        var p = GradeProgram()
         var u = GradeUniforms()
         func f(_ d: Double) -> Float { Float(d) }
         u.exposure = f(g.adjust("exposure")); u.contrast = f(g.adjust("contrast")); u.highlights = f(g.adjust("highlights"))
@@ -166,7 +171,7 @@ func hexColor(_ s: String) -> V3 {
 }
 
 extension GradeProgram {
-    func readAmounts() {
+    mutating func readAmounts() {
         func c(_ k: EK) -> Float { clampf(ef(k), 0, 1) }
         pixelate = c(.pixelate); tapeDamage = c(.tapeDamage); tapeTracking = c(.tapeTracking); tapeNoise = c(.tapeNoise); tapeSpeed = c(.tapeSpeed)
         chromaBleed = c(.chromaBleed); blurAmount = c(.blur); kuwaharaAmount = c(.kuwahara)
@@ -178,7 +183,7 @@ extension GradeProgram {
 
     /// A program sharing the read-only tables, with its own per-frame state.
     func copy() -> GradeProgram {
-        let p = GradeProgram()
+        var p = GradeProgram()
         p.u = u; p.curveRows = curveRows; p.hueRows = hueRows; p.secondaryTexels = secondaryTexels
         p.lut = lut; p.interpolation = interpolation
         p.readAmounts()

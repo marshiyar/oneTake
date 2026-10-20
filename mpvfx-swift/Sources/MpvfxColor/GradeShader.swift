@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import Synchronization
 
 // The grading shader on the CPU (grading engine 0.8.20: the
 // fragment program, plus its blur/bloom and Kuwahara passes). Preview and export both run
@@ -46,7 +47,7 @@ typealias V4 = SIMD4<Float>
 let PI: Float = 3.14159265359
 
 /// An RGBA texture in GL orientation (row 0 is the bottom), sampled with clamp-to-edge like WebGL.
-struct GLTexture {
+struct GLTexture: Sendable {
     var width: Int, height: Int
     var px: [V4]
     var linear = true
@@ -78,7 +79,7 @@ enum EK: Int, CaseIterable {
 }
 
 /// The shader's uniforms, read once from the normalized grade.
-struct GradeUniforms {
+struct GradeUniforms: Sendable {
     var resolution = V2(1, 1)
     var exposure: Float = 0, contrast: Float = 0, highlights: Float = 0, shadows: Float = 0, whites: Float = 0, blacks: Float = 0
     var temperature: Float = 0, tint: Float = 0, vibrance: Float = 0, saturation: Float = 0
@@ -94,7 +95,7 @@ struct GradeUniforms {
 }
 
 /// One grade bound to one frame size and time: the uniforms, curve tables, LUT and multipass textures.
-final class GradeProgram {
+struct GradeProgram: Sendable {
     var u = GradeUniforms()
     // Advanced texture (`u_advanced`, 1024 x 3 RGBA8): row 0 RGB curves (r, g, b, master), row 1 hue curves,
     // row 2 secondary qualifier/correction texels. Stored as byte/255.
@@ -838,8 +839,7 @@ final class GradeProgram {
     /// luminance threshold). Renders `src` into a `width` x `height` RGBA8 target along `direction`.
     static func blurPass(_ src: GLTexture, width: Int, height: Int, direction: V2, radius: Float, bloomPass: Bool, threshold: Float) -> GLTexture {
         let res = V2(Float(width), Float(height))
-        var out = [V4](repeating: .zero, count: width * height)
-        @inline(__always) func read(_ uv: V2) -> V4 {
+        @Sendable @inline(__always) func read(_ uv: V2) -> V4 {
             var c = src.sample(clampUv(uv))
             if bloomPass {
                 let lum = c.x * 0.299 + c.y * 0.587 + c.z * 0.114
@@ -854,22 +854,26 @@ final class GradeProgram {
         let r = Swift.max(radius, 0)
         let stepUv = V2(direction.x * r / Swift.max(res.x, 1), direction.y * r / Swift.max(res.y, 1)) * (bloomPass ? 0.5 : 1.0 / 12.0)
         let weights = bloomPass ? bloomWeights : blurWeights
-        out.withUnsafeMutableBufferPointer { buf in concurrentRows(height) { y in
-            for x in 0..<width {
-                let vuv = V2((Float(x) + 0.5) / res.x, (Float(y) + 0.5) / res.y)
-                var c = read(vuv) * weights[0]
-                for k in 1..<weights.count {
-                    c += read(vuv + stepUv * Float(k)) * weights[k]
-                    c += read(vuv - stepUv * Float(k)) * weights[k]
+        let out: [V4] = concurrentRows(height) { rows in
+            var buf = [V4](repeating: .zero, count: rows.count * width)
+            for y in rows {
+                for x in 0..<width {
+                    let vuv = V2((Float(x) + 0.5) / res.x, (Float(y) + 0.5) / res.y)
+                    var c = read(vuv) * weights[0]
+                    for k in 1..<weights.count {
+                        c += read(vuv + stepUv * Float(k)) * weights[k]
+                        c += read(vuv - stepUv * Float(k)) * weights[k]
+                    }
+                    if !bloomPass && c.w > 0.0001 { c = V4(c.x / c.w, c.y / c.w, c.z / c.w, c.w) }
+                    buf[(y - rows.lowerBound) * width + x] = (simdClamp4(c) * 255).rounded(.toNearestOrAwayFromZero) / 255
                 }
-                if !bloomPass && c.w > 0.0001 { c = V4(c.x / c.w, c.y / c.w, c.z / c.w, c.w) }
-                buf[y * width + x] = (simdClamp4(c) * 255).rounded(.toNearestOrAwayFromZero) / 255
             }
-        } }
+            return buf
+        }
         return GLTexture(width: width, height: height, px: out)
     }
 
-    func prepareBlur(blur amount: Float) {
+    mutating func prepareBlur(blur amount: Float) {
         guard amount > 0 else { return }
         let w = source.width, h = source.height
         let radius = 0.75 + pow(amount, 1.35) * 32
@@ -882,78 +886,92 @@ final class GradeProgram {
         blur = current
     }
 
-    func prepareBloom(radius bloomRadius: Float) {
+    mutating func prepareBloom(radius bloomRadius: Float) {
         let w = Swift.max(1, Int((Float(source.width) / 2).rounded(.up))), h = Swift.max(1, Int((Float(source.height) / 2).rounded(.up)))
         let s = bloomRadius / 2
         let a = Self.blurPass(source, width: w, height: h, direction: V2(1, 0), radius: s, bloomPass: true, threshold: 0.5)
         bloom = Self.blurPass(a, width: w, height: h, direction: V2(0, 1), radius: s, bloomPass: true, threshold: -1)
     }
 
-    func prepareKuwahara(radius kr: Float, sharpness: Float, saturation: Float) {
+    mutating func prepareKuwahara(radius kr: Float, sharpness: Float, saturation: Float) {
         let w = source.width, h = source.height
         let texel = V2(1 / Float(w), 1 / Float(h))
         let radius = Int((mixf(2, 16, clampf(kr, 0, 1)) + 0.5).rounded(.down))
         // Horizontal moments (half-float target, NEAREST): mean colour and mean squared magnitude / 3 over x..x+radius.
-        var moments = [V4](repeating: .zero, count: w * h)
-        moments.withUnsafeMutableBufferPointer { buf in concurrentRows(h) { y in
-            for x in 0..<w {
-                var sum = V3.zero, sq: Float = 0
-                for o in 0...radius {
-                    let uv = V2((Float(x) + 0.5) / Float(w) + Float(o) * texel.x, (Float(y) + 0.5) / Float(h))
-                    var c = self.source.sample(clampUv(uv))
-                    if self.blurAmount > 0, let b = self.blur { c = c + (b.sample(clampUv(uv)) - c) * self.blurAmount }
-                    let rgb = V3(c.x, c.y, c.z)
-                    sum += rgb; sq += dot3(rgb, rgb) / 3
+        let source = source, blur = blur, blurAmount = blurAmount
+        let moments: [V4] = concurrentRows(h) { rows in
+            var buf = [V4](repeating: .zero, count: rows.count * w)
+            for y in rows {
+                for x in 0..<w {
+                    var sum = V3.zero, sq: Float = 0
+                    for o in 0...radius {
+                        let uv = V2((Float(x) + 0.5) / Float(w) + Float(o) * texel.x, (Float(y) + 0.5) / Float(h))
+                        var c = source.sample(clampUv(uv))
+                        if blurAmount > 0, let b = blur { c = c + (b.sample(clampUv(uv)) - c) * blurAmount }
+                        let rgb = V3(c.x, c.y, c.z)
+                        sum += rgb; sq += dot3(rgb, rgb) / 3
+                    }
+                    let n = Float(radius + 1)
+                    buf[(y - rows.lowerBound) * w + x] = V4(sum.x / n, sum.y / n, sum.z / n, sq / n)
                 }
-                let n = Float(radius + 1)
-                buf[y * w + x] = V4(sum.x / n, sum.y / n, sum.z / n, sq / n)
             }
-        } }
+            return buf
+        }
         let m = GLTexture(width: w, height: h, px: moments, linear: false)
-        var out = [V4](repeating: .zero, count: w * h)
         let exponent = 1 + clampf(sharpness, 0, 1) * 8
         let satAmount = clampf(saturation, 0, 1) * 2
         let origins: [V2] = [V2(Float(-radius), Float(-radius)), V2(0, Float(-radius)), V2(Float(-radius), 0), V2(0, 0)]
-        out.withUnsafeMutableBufferPointer { buf in concurrentRows(h) { y in
-            for x in 0..<w {
-                let vuv = V2((Float(x) + 0.5) / Float(w), (Float(y) + 0.5) / Float(h))
-                var means = [V3](repeating: .zero, count: 4), variances = [Float](repeating: 0, count: 4)
-                var minVariance: Float = 1
-                for q in 0..<4 {
-                    var moment = V4.zero
-                    for o in 0...radius {
-                        let off = origins[q] + V2(0, Float(o))
-                        moment += m.sample(clampUv(vuv + off * texel))
+        let out: [V4] = concurrentRows(h) { rows in
+            var buf = [V4](repeating: .zero, count: rows.count * w)
+            for y in rows {
+                for x in 0..<w {
+                    let vuv = V2((Float(x) + 0.5) / Float(w), (Float(y) + 0.5) / Float(h))
+                    var means = [V3](repeating: .zero, count: 4), variances = [Float](repeating: 0, count: 4)
+                    var minVariance: Float = 1
+                    for q in 0..<4 {
+                        var moment = V4.zero
+                        for o in 0...radius {
+                            let off = origins[q] + V2(0, Float(o))
+                            moment += m.sample(clampUv(vuv + off * texel))
+                        }
+                        moment /= Float(radius + 1)
+                        let mean = V3(moment.x, moment.y, moment.z)
+                        let variance = Swift.max(moment.w * 3 - dot3(mean, mean), 0)
+                        means[q] = mean; variances[q] = variance
+                        minVariance = Swift.min(minVariance, variance)
                     }
-                    moment /= Float(radius + 1)
-                    let mean = V3(moment.x, moment.y, moment.z)
-                    let variance = Swift.max(moment.w * 3 - dot3(mean, mean), 0)
-                    means[q] = mean; variances[q] = variance
-                    minVariance = Swift.min(minVariance, variance)
+                    var result = V3.zero, total: Float = 0
+                    for q in 0..<4 {
+                        let weight = pow((minVariance + 0.0001) / (variances[q] + 0.0001), exponent)
+                        result += means[q] * weight; total += weight
+                    }
+                    result /= Swift.max(total, 0.0001)
+                    let l = lumaOf(result)
+                    let c = clamp3(mix(V3(repeating: l), result, satAmount), 0, 1)
+                    buf[(y - rows.lowerBound) * w + x] = (V4(c.x, c.y, c.z, 1) * 255).rounded(.toNearestOrAwayFromZero) / 255
                 }
-                var result = V3.zero, total: Float = 0
-                for q in 0..<4 {
-                    let weight = pow((minVariance + 0.0001) / (variances[q] + 0.0001), exponent)
-                    result += means[q] * weight; total += weight
-                }
-                result /= Swift.max(total, 0.0001)
-                let l = lumaOf(result)
-                let c = clamp3(mix(V3(repeating: l), result, satAmount), 0, 1)
-                buf[y * w + x] = (V4(c.x, c.y, c.z, 1) * 255).rounded(.toNearestOrAwayFromZero) / 255
             }
-        } }
+            return buf
+        }
         kuwahara = GLTexture(width: w, height: h, px: out)
     }
 }
 
-/// Runs `body(row)` for every row, spread over the cores.
-func concurrentRows(_ count: Int, _ body: (Int) -> Void) {
-    guard count > 0 else { return }
+/// Computes contiguous row chunks in parallel and joins their values in row order.
+/// Each worker owns its output array; only immutable, Sendable inputs cross the dispatch boundary.
+/// The mutex protects publication of completed chunks, never the pixel work. concurrentPerform joins
+/// every worker before the result is read, so no borrowed output storage escapes or aliases a writer.
+func concurrentRows<Element: Sendable>(_ count: Int, _ body: @Sendable (Range<Int>) -> [Element]) -> [Element] {
+    guard count > 0 else { return [] }
     let workers = Swift.max(1, Swift.min(ProcessInfo.processInfo.activeProcessorCount, count))
-    if workers == 1 || count < 16 { for r in 0..<count { body(r) }; return }
+    if workers == 1 || count < 16 { return body(0..<count) }
     let chunk = (count + workers - 1) / workers
+    let results = Mutex([[Element]](repeating: [], count: workers))
     DispatchQueue.concurrentPerform(iterations: workers) { w in
         let lo = w * chunk, hi = Swift.min(count, lo + chunk)
-        if lo < hi { for r in lo..<hi { body(r) } }
+        guard lo < hi else { return }
+        let values = body(lo..<hi)
+        results.withLock { $0[w] = values }
     }
+    return results.withLock { $0.flatMap { $0 } }
 }
