@@ -211,7 +211,6 @@ def scan_workflow(path, text, f):
             if action.startswith("./") or action.startswith("docker://"):
                 continue
             ref = action.split("@", 1)[1] if "@" in action else ""
-            owner = action.split("/", 1)[0]
             if not re.fullmatch(r"[0-9a-f]{40}", ref):
                 f.add(path, "workflow-unpinned-action", f"line {i}", f"action not pinned to a commit: `{action}`")
             if not ref:

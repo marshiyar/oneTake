@@ -198,7 +198,7 @@ public final class PreviewCompositor: FrameSource {
         let bytes = videos.reduce(0) { acc, l in let d = decodeSize(l, scale: s, backing: backing); return acc + d.width * d.height * 4 }
         let byBudget = cache.budgetBytes / 2 / max(bytes, 1)
         let byTime = Int((comp.fps / 3 * max(1, speed)).rounded(.up))
-        return max(2, min(maxLookahead, byTime, byBudget))
+        return max(0, min(maxLookahead, byTime, byBudget))
     }
 
     /// Frames per reverse chunk: about two thirds of a second of playback, bounded by the cache budget.
@@ -208,7 +208,7 @@ public final class PreviewCompositor: FrameSource {
         let bytes = videos.reduce(0) { acc, l in let d = decodeSize(l, scale: s, backing: backing); return acc + d.width * d.height * 4 }
         let byBudget = cache.budgetBytes / 3 / max(bytes, 1)
         let byTime = Int((comp.fps * 2 / 3 * max(1, speed)).rounded(.up))
-        return max(2, min(maxReverseChunk, byTime, byBudget))
+        return max(0, min(maxReverseChunk, byTime, byBudget))
     }
     /// Upper bound for one reverse chunk per clip.
     public var maxReverseChunk = 48

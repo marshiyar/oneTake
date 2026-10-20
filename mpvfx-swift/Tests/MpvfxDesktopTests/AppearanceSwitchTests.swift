@@ -107,8 +107,8 @@ final class AppearanceSwitchTests: XCTestCase {
 
     func testDarkRenderIsTheRecordedPaletteAndLightDiffers() throws {
         let dark = try reference(.dark, cardOpen: false)
-        // The shell background (#232323, docs/DESIGN.md) shows in the window's top-left corner.
-        XCTAssertEqual([dark[0], dark[1], dark[2]], [0x23, 0x23, 0x23])
+        // The left panel (panelBg #1D1D1D, docs/DESIGN.md) reaches the window's top-left corner.
+        XCTAssertEqual([dark[0], dark[1], dark[2]], [0x1D, 0x1D, 0x1D])
         let light = try reference(.light, cardOpen: false)
         XCTAssertGreaterThan(differing(dark, light), 0.5, "light mode repaints most of the window")
         XCTAssertGreaterThan(meanLuma(light), meanLuma(dark) + 80)
