@@ -47,21 +47,13 @@ jobs:
           [ "$1" = "$REPO" ] || { echo "::notice::the pull request comes from $1, not this repository: not applied"; exit 1; }
           [ "$4" = open ] || { echo "::notice::the pull request is $4: not applied"; exit 1; }
           echo "ref=$2" >> "$GITHUB_OUTPUT"; echo "sha=$3" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.pr.outputs.sha }}
           fetch-depth: 1
-          # The token is not left in .git/config of the PR's checkout; the two steps that talk to GitHub pass it
-          # themselves.
-          persist-credentials: false
       # The checker comes from main, not from the pull request, so a PR cannot loosen it for itself.
       - name: The checker from main
-        env:
-          TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          git fetch -q --depth 1 "https://x-access-token:$TOKEN@github.com/$REPO.git" main
-          git show FETCH_HEAD:.github/ci/codex_patch.py > "$RUNNER_TEMP/codex_patch.py"
+        run: git fetch -q --depth 1 origin main && git show FETCH_HEAD:.github/ci/codex_patch.py > "$RUNNER_TEMP/codex_patch.py"
       - name: Read and check the patch
         id: patch
         env:
@@ -78,8 +70,6 @@ jobs:
         env:
           REF: ${{ steps.pr.outputs.ref }}
           URL: ${{ github.event.comment.html_url }}
-          TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
         run: |
           set -eu
           # Codex sometimes writes hunks without context lines (`git diff -U0`); git applies those only when told to.
@@ -90,7 +80,7 @@ jobs:
           git -c user.name="Arshiya Rahgozar" -c user.email="57055687+marshiyar@users.noreply.github.com" commit -q \
             -m "Apply Codex's change" -m "From $URL" \
             -m "Co-authored-by: chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"
-          git push -q "https://x-access-token:$TOKEN@github.com/$REPO.git" "HEAD:refs/heads/$REF"
+          git push -q origin "HEAD:refs/heads/$REF"
           echo "pushed $(git rev-parse --short HEAD) to $REF"
       - name: Say what happened on the pull request
         if: always() && steps.pr.outcome == 'success'

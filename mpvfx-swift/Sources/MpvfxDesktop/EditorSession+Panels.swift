@@ -308,7 +308,10 @@ final class SessionPanels {
         case .createProject(let l, let e, let name): command = ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
-            if left.library.currentProjectId != nil, let id = projectId { command["projectId"] = .string(id) }
+            if left.library.currentProjectId != nil, let id = projectId,
+               libraryViews.first(where: { $0.id == l })?.projects.contains(where: { $0.id == id }) == true {
+                command["projectId"] = .string(id)
+            }
         case .attach(let l, let a):
             guard let id = projectId else { return }
             command = ["type": .string("attach"), "libraryId": .string(l), "projectId": .string(id), "assetId": .string(a)]

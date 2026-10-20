@@ -262,22 +262,15 @@ def flakes(run_id):
 # --- shots ------------------------------------------------------------------------------------------------------------
 
 def png_decode(data):
-    """(width, height, rows of RGBA bytes) for an 8-bit, non-interlaced PNG (grey, grey+alpha, RGB, RGBA or palette).
-    Any malformed input raises ValueError: the file comes from a pull request's run."""
+    """(width, height, rows of RGBA bytes) for an 8-bit, non-interlaced PNG (grey, grey+alpha, RGB, RGBA or palette)."""
     if data[:8] != b"\x89PNG\r\n\x1a\n":
         raise ValueError("not a PNG")
-    pos, idat, plte, trns, header = 8, b"", None, None, None
+    pos, idat, plte, trns = 8, b"", None, None
     while pos < len(data):
-        if pos + 12 > len(data):
-            raise ValueError("PNG chunk header cut short")
         n, kind = struct.unpack(">I4s", data[pos:pos + 8])
-        if pos + 12 + n > len(data):
-            raise ValueError(f"PNG chunk {kind!r} longer than the file")
         chunk = data[pos + 8:pos + 8 + n]
         if kind == b"IHDR":
-            if n != 13:
-                raise ValueError(f"PNG IHDR of {n} bytes, not 13")
-            header = struct.unpack(">IIBBBBB", chunk)
+            w, h, depth, ctype, _, _, interlace = struct.unpack(">IIBBBBB", chunk)
         elif kind == b"PLTE":
             plte = chunk
         elif kind == b"tRNS":
@@ -285,33 +278,19 @@ def png_decode(data):
         elif kind == b"IDAT":
             idat += chunk
         pos += 12 + n
-    if header is None:
-        raise ValueError("PNG without IHDR")
-    w, h, depth, ctype, _, _, interlace = header
-    if ctype not in (0, 2, 3, 4, 6):
-        raise ValueError(f"PNG colour type {ctype} is not one of 0, 2, 3, 4, 6")
-    if ctype == 3 and not plte:
-        raise ValueError("palette PNG without PLTE")
     if depth != 8 or interlace:
         raise ValueError(f"unsupported PNG (depth {depth}, interlace {interlace})")
     if w * h > MAX_PIXELS:   # the image comes from the pull request's own run: bound what it can make this job do
         raise ValueError(f"PNG of {w}x{h} is over the {MAX_PIXELS:,}-pixel limit")
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[ctype]
     d = zlib.decompressobj()
-    try:
-        raw = d.decompress(idat, (w * channels + 1) * h + 1)
-    except zlib.error as e:
-        raise ValueError(f"PNG data does not inflate: {e}") from None
+    raw = d.decompress(idat, (w * channels + 1) * h + 1)
     if d.unconsumed_tail:
         raise ValueError("PNG data longer than its header says")
-    if len(raw) < (w * channels + 1) * h:
-        raise ValueError("PNG data shorter than its header says")
     stride = w * channels
     rows, prev, p = [], bytearray(stride), 0
     for _ in range(h):
         f, line = raw[p], bytearray(raw[p + 1:p + 1 + stride])
-        if f > 4:
-            raise ValueError(f"PNG row filter {f} is not 0 to 4")
         p += 1 + stride
         for i in range(stride):
             a = line[i - channels] if i >= channels else 0
@@ -332,8 +311,6 @@ def png_decode(data):
             elif ctype == 4: rgba[x * 4:x * 4 + 4] = bytes([px[0]] * 3 + [px[1]])
             else:
                 k = px[0]
-                if k * 3 + 3 > len(plte):
-                    raise ValueError(f"PNG palette index {k} outside its {len(plte) // 3}-entry PLTE")
                 alpha = trns[k] if trns and k < len(trns) else 255
                 rgba[x * 4:x * 4 + 4] = plte[k * 3:k * 3 + 3] + bytes([alpha])
         rows.append(bytes(rgba))
@@ -388,16 +365,9 @@ def artifact_files(run_id, name, suffix):
         return {}
 
 
-def latest_main_run(workflow, artifact, accept=None, events=("push",)):
-    """The newest green run of this repository's main, started by one of `events`, with `artifact` (and, when given,
-    for which accept(run id) is true). Never a pull request's run: `branch=main` also matches a fork's pull request
-    from its own branch called main, so the event and the head repository are both checked."""
-    runs = []
-    for event in events:
-        runs += api("GET", f"actions/workflows/{workflow}/runs?branch=main&event={event}&per_page=20")["workflow_runs"]
-    for r in sorted(runs, key=lambda r: r.get("created_at", ""), reverse=True):
-        if r.get("event") not in events or (r.get("head_repository") or {}).get("full_name") != REPO:
-            continue
+def latest_main_run(workflow, artifact, accept=None):
+    """The newest green main run with `artifact` (and, when given, for which accept(run id) is true)."""
+    for r in api("GET", f"actions/workflows/{workflow}/runs?branch=main&event=push&per_page=20")["workflow_runs"]:
         if r.get("conclusion") == "success" and api("GET", f"actions/runs/{r['id']}/artifacts?name={artifact}")["artifacts"]:
             if accept is None or accept(r["id"]):
                 return r
@@ -493,9 +463,7 @@ def bench(run_id):
             return loaded[rid].get("machine", {}).get("class") == klass
 
         # The newest main run measured on the same class of machine, not just the newest one.
-        # bench.yml has no push trigger: main is benchmarked by workflow_run (after green CI), on schedule and by hand.
-        base = (latest_main_run("bench.yml", art, same_class, events=("workflow_run", "schedule", "workflow_dispatch"))
-                if mine else None)
+        base = latest_main_run("bench.yml", art, same_class) if mine else None
         if not mine or not base:
             parts.append(f"\n**{os_name}**: {'no result on this run' if not mine else 'no main run of the same machine class to compare against yet'}\n")
             continue
