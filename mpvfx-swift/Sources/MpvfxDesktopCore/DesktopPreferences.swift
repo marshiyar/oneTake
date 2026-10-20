@@ -109,7 +109,11 @@ public final class DesktopPreferences: @unchecked Sendable {
 
     static func absoluteFolder(_ s: String) -> String? {
         #if os(Windows)
-        let absolute = (s.count >= 3 && s.dropFirst().hasPrefix(":")) || s.hasPrefix("\\\\")
+        // `C:\x` or `C:/x`, or a UNC path; `C:x` is relative to drive C's current folder, so it is not absolute.
+        let u = Array(s.utf16)
+        let drive = u.count >= 3 && u[1] == 0x3A && (u[2] == 0x5C || u[2] == 0x2F)
+            && ((0x41...0x5A).contains(u[0]) || (0x61...0x7A).contains(u[0]))
+        let absolute = drive || s.hasPrefix("\\\\")
         #else
         let absolute = s.hasPrefix("/")
         #endif

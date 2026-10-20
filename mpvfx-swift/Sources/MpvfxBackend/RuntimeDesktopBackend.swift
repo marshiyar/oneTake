@@ -36,6 +36,9 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     private var closed = false
     private let bridge: LibraryBridge
     public let preferences: DesktopPreferences?
+    /// The folder each render of this run was written to (job id → folder), so deleting it later finds it even after
+    /// Settings changed the default export folder. Guarded by `lock`.
+    private var renderDirs: [String: String] = [:]
 
     public init(userData: String, durableWrite: DurableWrite = NativeDurableWrite()) {
         projectsDir = PosixPath.join(userData, "projects")
@@ -311,7 +314,9 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
 
     public func renderOutputPath(projectId: String, jobId: String, format: String) throws -> String {
         let dir = try rendersDirectory(projectId: projectId)
-        return try mapErrors { try ProjectRenders.outputPath(dir, jobId: jobId, format: format) }
+        let path = try mapErrors { try ProjectRenders.outputPath(dir, jobId: jobId, format: format) }
+        lock.withLock { renderDirs[jobId] = dir }
+        return path
     }
 
     public func recordRender(projectId: String, jobId: String, failed: Bool, durationMs: Double?) throws {
@@ -320,7 +325,7 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     }
 
     public func deleteRender(projectId: String, id: String) throws {
-        let dir = try rendersDirectory(projectId: projectId)
+        let dir = try lock.withLock({ renderDirs[id] }) ?? rendersDirectory(projectId: projectId)
         _ = try mapErrors { try ProjectRenders.delete(dir, id: id) }
     }
 

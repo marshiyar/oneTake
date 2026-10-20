@@ -277,6 +277,8 @@ public final class SettingsPanel {
     /// Escape closes the open list, then the card. Command shortcuts (save, quit, Cmd/Ctrl+, to close) pass through.
     public func keyDown(_ k: EditorKey) -> Bool {
         guard isOpen else { return false }
+        // A command shortcut closes an open list and goes on to the editor and menus (Cmd/Ctrl+, closes the card).
+        if dropdown.isOpen, k.command { dropdown.close(); return false }
         if dropdown.isOpen { _ = dropdown.key(k); return true }   // arrows, Enter, Escape closes the list
         if case .escape = k.code { close(); return true }
         return !k.command

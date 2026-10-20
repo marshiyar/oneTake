@@ -64,6 +64,15 @@ final class SettingsPanelTests: XCTestCase {
         XCTAssertEqual(changes.count, 5)
         XCTAssertEqual(s.values, SettingsPanel.Values(appearance: .light, audioDevice: "sink.b", previewCacheMB: 2048, exportFolder: nil))
 
+        // An open list hands command shortcuts on (and closes); plain keys stay with it.
+        s.draw(c, size: size)
+        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .cache }))))
+        XCTAssertTrue(s.dropdown.isOpen)
+        XCTAssertTrue(s.keyDown(EditorKey(.char("j"))))
+        XCTAssertFalse(s.keyDown(EditorKey(.char(","), ctrl: true)), "Ctrl+, reaches the editor to close the card")
+        XCTAssertFalse(s.dropdown.isOpen)
+        XCTAssertTrue(s.isOpen)
+
         // Keys: plain keys stay with the card, command shortcuts pass through, Escape closes.
         XCTAssertTrue(s.keyDown(EditorKey(.char("j"))))
         XCTAssertFalse(s.keyDown(EditorKey(.char("s"), ctrl: true)))

@@ -78,6 +78,21 @@ final class DesktopPreferencesTests: XCTestCase {
         XCTAssertEqual(DesktopPreferences(userData: dir).previewCacheMB, 512)
     }
 
+    /// Only an absolute export folder is kept; on Windows `C:x` is relative to drive C's current folder.
+    func testOnlyAbsoluteExportFoldersAreKept() {
+        #if os(Windows)
+        XCTAssertEqual(DesktopPreferences.absoluteFolder(#"C:\Exports"#), #"C:\Exports"#)
+        XCTAssertEqual(DesktopPreferences.absoluteFolder("d:/Exports"), "d:/Exports")
+        XCTAssertEqual(DesktopPreferences.absoluteFolder(#"\\server\share"#), #"\\server\share"#)
+        XCTAssertNil(DesktopPreferences.absoluteFolder("C:exports"))
+        XCTAssertNil(DesktopPreferences.absoluteFolder("/home/me"))
+        #else
+        XCTAssertEqual(DesktopPreferences.absoluteFolder("/home/me/Exports"), "/home/me/Exports")
+        XCTAssertNil(DesktopPreferences.absoluteFolder("C:exports"))
+        #endif
+        XCTAssertNil(DesktopPreferences.absoluteFolder("relative/dir"))
+    }
+
     /// Issue #32: every change goes through the durable write (temp file in the same folder, then rename): the file
     /// always holds a whole snapshot and no temp file is left behind.
     func testWritesAreDurableAndLeaveNoTempFile() throws {

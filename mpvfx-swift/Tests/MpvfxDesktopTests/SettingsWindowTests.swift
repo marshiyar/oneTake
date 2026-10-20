@@ -67,6 +67,22 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertTrue(done(), what)
     }
 
+    /// A render keeps its folder: deleting it after Settings changed the export folder removes it where it was written.
+    func testDeletingARenderAfterTheExportFolderChangedFindsItsFile() throws {
+        let userData = try temporaryDirectory(), root = try temporaryDirectory()
+        let first = try temporaryDirectory(), second = try temporaryDirectory()
+        let backend = RuntimeDesktopBackend(userData: userData)
+        let project = try backend.createProject(name: "Alpha", directory: root + "/Alpha")
+        backend.preferences?.defaultExportFolder = first
+        let jobId = "render-" + UUID().uuidString.lowercased()
+        let output = try backend.renderOutputPath(projectId: project.id, jobId: jobId, format: "mp4")
+        XCTAssertTrue(output.hasPrefix(first))
+        XCTAssertTrue(FileManager.default.createFile(atPath: output, contents: Data([0])))
+        backend.preferences?.defaultExportFolder = second
+        try backend.deleteRender(projectId: project.id, id: jobId)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output), "deleted from the folder it was written to")
+    }
+
     /// Choosing a device while playing restarts the sound on it at the same position; playback keeps going.
     func testChoosingADeviceMovesPlayingAudioToIt() throws {
         let session = try EditorSession(projectPath: nil, demo: true)
@@ -147,9 +163,12 @@ final class SettingsWindowTests: XCTestCase {
 
         // The chosen folder's own videos are not taken for renders.
         XCTAssertTrue(FileManager.default.createFile(atPath: exports + "/holiday.mp4", contents: Data([0])))
+        XCTAssertTrue(FileManager.default.createFile(atPath: exports + "/render-final.mp4", contents: Data([0])),
+                      "named like a render, but not render-<uuid>: the user's file")
         XCTAssertEqual(try backend.renders(projectId: projectId), [])
-        XCTAssertTrue(FileManager.default.createFile(atPath: exports + "/render-1234.mp4", contents: Data([0])))
-        XCTAssertEqual(try backend.renders(projectId: projectId).map(\.filename), ["render-1234.mp4"])
+        let renderName = "render-0b9e7c1a-5f3d-4c2e-9a8b-7d6c5e4f3a2b.mp4"
+        XCTAssertTrue(FileManager.default.createFile(atPath: exports + "/" + renderName, contents: Data([0])))
+        XCTAssertEqual(try backend.renders(projectId: projectId).map(\.filename), [renderName])
 
         let stored = DesktopPreferences(userData: userData)
         XCTAssertEqual(stored.previewCacheMB, 1024)

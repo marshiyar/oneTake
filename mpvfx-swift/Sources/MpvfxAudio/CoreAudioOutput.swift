@@ -56,7 +56,7 @@ public final class CoreAudioOutput: AudioOutput, AudioDeviceSelecting {
 
     public func start() throws {
         let wanted = device
-        if let u = unit, unitDevice != wanted {
+        if unitIsStale(wanted), let u = unit {
             lock.lock(); let wasRunning = running; running = false; lock.unlock()
             if wasRunning { AudioOutputUnitStop(u) }   // synchronous: no render callback runs after it returns
             AudioUnitUninitialize(u); AudioComponentInstanceDispose(u)
@@ -79,6 +79,15 @@ public final class CoreAudioOutput: AudioOutput, AudioDeviceSelecting {
             lock.lock(); running = false; lock.unlock()
             throw AudioOutputError.deviceError("AudioOutputUnitStart failed (\(status))")
         }
+    }
+
+    /// The unit must be rebuilt: the choice changed, or the chosen device it plays through is gone (unplugged), so the
+    /// next start plays on the default output.
+    func unitIsStale(_ wanted: String?) -> Bool {
+        guard unit != nil else { return false }
+        if unitDevice != wanted { return true }
+        guard let playing = unitDevice else { return false }
+        return Self.deviceID(uid: playing) == nil
     }
 
     func makeUnit(device uid: String?) throws -> AudioUnit {
