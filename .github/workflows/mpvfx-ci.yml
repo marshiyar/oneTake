@@ -307,7 +307,7 @@ jobs:
             dist/*.deb
             dist/linux-smoke.png
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: symbols-linux
@@ -400,9 +400,8 @@ jobs:
       - name: Toolchain version
         run: swift --version
       - name: Release build, linked without debug data (strip-check.yml verifies the shipped exe)
-        run: swift build -c release -Xlinker -debug:none
-      - name: Release build
-        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
+        # One build: a second release build without -debug:none would relink MpVFX.exe with debug data.
+        run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror -Xlinker -debug:none
       - name: Package (portable zip)
         shell: pwsh
         run: |
@@ -580,7 +579,7 @@ jobs:
           sparse-checkout: |
             .github
             mpvfx-swift/packaging
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           pattern: '{linux,windows,macos}'   # the installers; the symbols-* artifacts stay in CI
