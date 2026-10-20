@@ -1,0 +1,4 @@
+# actionlint (run by pre-commit.ci): runner labels this repository uses that are not GitHub's standard hosted images.
+self-hosted-runner:
+  labels:
+    - xcode-27
