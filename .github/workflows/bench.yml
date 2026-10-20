@@ -80,6 +80,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false   # read-only token, and nothing here uses git against origin
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore the release build cache
@@ -125,6 +126,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false   # read-only token, and nothing here uses git against origin
       - uses: compnerd/gha-setup-swift@775d3f4111c5be58a0f62f2efdd353bb8fac15c7
         with:
           swift-version: swift-6.3.3-release
@@ -173,6 +175,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false   # read-only token, and nothing here uses git against origin
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app
