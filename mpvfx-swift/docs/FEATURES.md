@@ -68,7 +68,7 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Asset context menu: Add at playhead, Copy path, Rename, Delete (+ remove placements, undoable) | done | exact |
 | Double-click / Enter adds asset to timeline | done | n/a |
 | Scenes tab: list compositions, select, add, render, delete | partial: the native document has one sequence; the tab lists it | close |
-| Elements (blocks) tab, block search/categories, add at current time, block params | dropped: no native equivalent planned | n/a |
+| Elements (blocks) tab, block search/categories, add at current time, block params | dropped: no native equivalent | n/a |
 | Empty state "Drop media files here" | done | exact |
 
 ## 3. Right panel (inspector + renders)
@@ -89,8 +89,8 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Transform: flex align/justify/direction/gap | dropped: flex layout of web containers has no native counterpart | n/a |
 | Keyframe diamond and prev/next per property | done | close |
 | Keyframe easing presets (hold / linear / ease in/out) | done (setOutgoing) | close |
-| Keyframe easing custom curve handles, per-segment ease list, apply to all | missing (panels) | n/a |
-| Ease curve editor (cubic bezier handles, spring, bounce params) | missing (panels) | n/a |
+| Keyframe easing custom curve handles, per-segment ease list, apply to all | partial: custom curve handles work; per-segment ease lists and apply to all are missing (panels) | close |
+| Ease curve editor (cubic bezier handles, spring, bounce params) | partial: cubic bezier handles work; spring and bounce parameters are missing (panels) | close |
 | Arc motion (needs 2+ position keyframes; auto-rotate; reset control points) | done: Transform group rows (the note under 2 keyframes, Arc Motion switch, Auto-Rotate, curviness 0-3 per segment) write `setMotionPath` / `setAutoRotate`; preview and export draw the same curved path, and export now adds the auto-rotate tangent like the preview (it ignored it before); one audit test per control. Not ported: Reset of hand-placed bezier control points (no stage handles for them) | close |
 | 3D transform: tilt X/Y, roll, depth, perspective, scale; cube widget; keyframe; reset orientation | missing (panels; recording writes 3D rotation, the inspector has no rows) | n/a |
 | Style: opacity | done | exact |
@@ -110,7 +110,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
 | Grade: copy grade to current file media / all project media | done | close |
-| Grade: scopes (histogram, RGB parade, vectorscope, refresh) | missing (panels) | n/a |
+| Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma histogram, luma waveform, RGB parade and vectorscope work for the selected clip; program scopes, RGB histogram, RGB overlay waveform, CIE diagram, false colour and full-size view are missing | close |
 | Grade: hold to show original; captured-frame preset preview thumbnails | missing (panels) | n/a |
 | Effects: amount per stylize effect (18), reset effects | done; renders in preview and export (Metal kernels on macOS, incl. blur/bloom/Kuwahara passes) (schema in `docs/EFFECTS.md`) | close |
 | Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | missing (panels; the renderer already reads every setting and the palette) | n/a |
@@ -122,7 +122,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Audio group volume | done | exact |
 | Renders tab: format / output size / frame rate / quality, custom width, Export | done (settings in `preferences.json`; export through `RenderRun`, 38d06b3). Output size scales the composition with its aspect kept: "Composition" (its own size), 720p … 8K by the short edge (720p of a 9:16 composition is 720×1280), or a custom width with the height following (`CompositionRenderResolution.swift`); a fixed preset saved earlier reads as its short edge. Formats are the media engine's: MP4 and MOV (PNG, alpha); WebM is not offered (a saved WebM setting shows "WebM (not supported yet)" and Export refuses it) | close |
 | Render list: progress, stage, cancel, delete, reveal, retry, hide finished, history across launches, thumbnails | done (38d06b3; real-render test) | close |
-| Render list: ETA; publish (Crosspost) | ETA missing (panels); publish dropped from the desktop app (backend says NotSupported) | n/a |
+| Render list: ETA | missing (panels) | n/a |
 | Caption property panel (style, animation entrance/exit/highlight, transform) | missing (unowned) | n/a |
 | Classic inspector (Layout, Stacking, Z-index, classic style/media/text sections) | dropped: the flat inspector is the product | n/a |
 
@@ -135,7 +135,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Snap guides & toolbar, grid overlay (thirds/quarters/center, snap to grid) | done (player) |
 | Arrow-key nudge (1 / 10 px, one commit per burst), Esc cancels a drag | done (player) |
 | Gesture recording (position, rotation, 3D rotation, opacity, scale, depth) with trail, auto-stop, one undo step | done (player; `GestureRecording.swift`) |
-| Canvas context menu (z-order, delete) with the crossed-sibling flash | done (player); copy / paste missing |
+| Canvas context menu (z-order, delete) with the crossed-sibling flash | partial: z-order and delete work; copy and paste are missing |
 | Asset drop on the stage (insert at playhead) | done: bin cards drag into it (`EditorSession+AssetDrag.swift`) |
 | Preview zoom / pan (wheel, pinch, middle-button drag), zoom readout, fit button | done (player, hosts forward the middle button) |
 | Stage frame at the composition size (landscape, portrait, square, custom), letterboxed in the viewport; follows a size change at once | done (player; `PortraitPreviewTests`) |
@@ -167,11 +167,11 @@ their shape (`PlayerView+Outlines.swift`).
 | --- | --- |
 | Move, trim, split, multi-select, marquee, razor (⇧ splits all tracks), delete | done |
 | Ripple edits, close gap / close all gaps, track add/remove/reorder, snapping, copy/paste | done |
-| Toolbar: tools, snap, keyframe, auto-keyframe, split, remove silence, add beat, track height 32–96, zoom slider/in/out/percent (1e3a90f) | done; Add beat (`onAddBeat`) stays disabled on purpose until beat analysis exists |
+| Toolbar: tools, snap, keyframe, auto-keyframe, split, remove silence, add beat, track height 32–96, zoom slider/in/out/percent (1e3a90f) | partial: everything works except Add beat, which stays disabled until beat analysis exists |
 | Remove silence (backend silence detection → one undo step, result toast) | done (de10f47) |
 | Add beat at playhead, beat strip (drag to move, ⌥-click delete), music beat analysis, beat edits persisted | missing (unowned: needs a native beat analysis and the beat file) |
 | Keyframe lanes, keyframe navigation in lane headers, group keyframe toggle (6671f11) | done |
-| Keyframe diamond context menu (delete, delete all, ease presets) | done: right-click a diamond for Move to Playhead, Linear / Ease In / Ease Out / Ease In-Out / Hold (checked when every target key shares it), Delete Keyframe(s) and Delete All Keyframes (the clip bar's channels, or the lane's group); it acts on the key selection when the diamond is part of it, each action one undo step (`TimelineKeyframeMenu.swift`); "Edit Incoming Segment Ease…" and Custom are not ported |
+| Keyframe diamond context menu (delete, delete all, ease presets) | partial: right-click a diamond for Move to Playhead, Linear / Ease In / Ease Out / Ease In-Out / Hold (checked when every target key shares it), Delete Keyframe(s) and Delete All Keyframes (the clip bar's channels, or the lane's group); it acts on the key selection when the diamond is part of it, each action one undo step (`TimelineKeyframeMenu.swift`); "Edit Incoming Segment Ease…" and Custom are not ported |
 | Audio groups: create, header FX count, FX button / name open the bus rack, detach/reattach audio, mute | done |
 | Detach / Reattach audio from the clip menu: offered on any video clip with a media file (native clips carry no preview binding); detach probes the file for an audio stream, puts a linked audio clip on a new audio row with the same timing, trim, rate, gain, group, FX and automation and mutes the video (its Mute row hidden); reattach refuses after a move / trim / retime or a broken link with a message naming why; one undo step each; preview and export play the sound once | done |
 | Volume automation lanes, automation selection menu (Simplify), value input | partial: automation plays and exports; lane editing UI partial |
@@ -224,9 +224,8 @@ The timeline lane's 314d72a added its own filmstrip cache; 71fdbd6 moved strips 
 | --- | --- |
 | Gesture recording (Record button, trail, auto-stop, one undo step) | done (preview) |
 | Captions: overlay, caption timeline, caption editing, caption property panel, Edit captions entry in the preview | missing (unowned) |
-| Telemetry, crash prompt, feedback card | dropped (see §10) |
-| Publishing (Crosspost Python uploader) | dropped from the desktop app (NotSupported) |
-| Packaging, installers (the media engine is linked in, nothing to bundle) | missing (see `STATUS.md`) |
+| Telemetry, crash prompt, feedback card | not part of the product |
+| Packaging and installers | partial: macOS disk image, Windows per-user setup.exe and Linux .deb; CI has built, installed and launched all three, and their smoke checks passed (see `STATUS.md`) |
 
 ## 10. Conditional features
 
@@ -238,7 +237,7 @@ Features that only show in some states, and what the editor does with each.
 | Timeline row virtualization | n/a: the canvas timeline draws visible rows only |
 | Show thumbnails toggle | done (toggle persisted) |
 | Test hooks | `MPVFX_SMOKE_*` environment hooks |
-| Feedback card, crash feedback prompt, telemetry | dropped |
+| Feedback card, crash feedback prompt, telemetry | not part of the product |
 | Scenes (sub-sequences) | partial (one sequence) |
 | Inline text toolbar (bold / italic / underline / colour) | missing |
 
@@ -258,9 +257,9 @@ Every item of the owner's screenshot review, with its status now.
 | Player top bar: Record, Crop, snap/magnet toggle, grid/guides dropdown | done (preview) |
 | Real decoded video frame | done (preview) |
 | Selection outline with corner handles | done (preview) |
-| Transport: timecode, play, volume, speed, loop, fullscreen, captions | done except the captions button (captions missing) |
+| Transport: timecode, play, volume, speed, loop, fullscreen, captions | partial: everything works except the captions button |
 | Right panel collapse toggle; Design / Renders (N) tabs | done |
-| Selected clip header: name, reset, visibility, close | done except visibility (missing, panels) |
+| Selected clip header: name, reset, visibility, close | partial: name, reset and close work; visibility is missing (panels) |
 | Color wheels Shadows / Midtones / Highlights with wheel, slider, Hue / Amount / Level, per-wheel reset | done |
 | Curves Master, R, G, B, Hue/Hue, Hue/Sat, Hue/Luma; editable graph; reset | done |
 | Secondary color: add / delete selection | done (eyedropper missing) |
@@ -276,10 +275,9 @@ Every item of the owner's screenshot review, with its status now.
 
 | Ability | Why |
 | --- | --- |
-| Elements/blocks registry tab and block params | No native equivalent planned |
+| Elements/blocks registry tab and block params | No native equivalent |
+| Telemetry and feedback card | Not part of the product |
 | Animation cards (tween presets) | Native keyframes cover animation |
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
-| Telemetry and feedback card | Not part of the product |
-| Publishing from the editor | Python uploader; not part of the desktop app |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |

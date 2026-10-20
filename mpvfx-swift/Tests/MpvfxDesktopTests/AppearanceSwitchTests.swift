@@ -107,8 +107,8 @@ final class AppearanceSwitchTests: XCTestCase {
 
     func testDarkRenderIsTheRecordedPaletteAndLightDiffers() throws {
         let dark = try reference(.dark, cardOpen: false)
-        // The shell background (bg-[#18181B]) shows in the window's top-left corner.
-        XCTAssertEqual([dark[0], dark[1], dark[2]], [0x18, 0x18, 0x1B])
+        // The shell background (#232323, docs/DESIGN.md) shows in the window's top-left corner.
+        XCTAssertEqual([dark[0], dark[1], dark[2]], [0x23, 0x23, 0x23])
         let light = try reference(.light, cardOpen: false)
         XCTAssertGreaterThan(differing(dark, light), 0.5, "light mode repaints most of the window")
         XCTAssertGreaterThan(meanLuma(light), meanLuma(dark) + 80)
@@ -143,7 +143,7 @@ final class AppearanceSwitchTests: XCTestCase {
         let ud = userData()
         var osDark = true
         let s = try makeSession(userData: ud, systemPrefersDark: { osDark })
-        XCTAssertEqual(s.appearance?.appearance, .system)
+        XCTAssertEqual(s.appearance?.appearance, .dark)
         XCTAssertEqual(differing(render(s), darkRef), 0)
         s.setAppearance(.light)
         XCTAssertEqual(differing(render(s), lightRef), 0, "menu Light repaints light")

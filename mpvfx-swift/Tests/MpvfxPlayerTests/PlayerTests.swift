@@ -73,11 +73,11 @@ final class PlayerRenderTests: XCTestCase {
         let t = CairoImageTarget(width: 1016, height: 592)
         v.draw(t.canvas, size: size)
         func rgb(_ x: Int, _ y: Int) -> [Int] { let p = t.pixel(x, y); return [Int(p.r), Int(p.g), Int(p.b)] }
-        XCTAssertEqual(rgb(5, 590), [10, 10, 11], "transport row on the shell surface")
-        XCTAssertEqual(rgb(5, 20), [10, 10, 10], "tools bar bg-neutral-950")
-        XCTAssertEqual(rgb(3, 300), [10, 10, 10], "viewport surface")
+        XCTAssertEqual(rgb(5, 590), [29, 29, 29], "transport row on the shell surface")
+        XCTAssertEqual(rgb(5, 20), [20, 20, 20], "tools bar on the viewport surface")
+        XCTAssertEqual(rgb(3, 300), [20, 20, 20], "viewport surface")
         XCTAssertEqual(rgb(8 + 100, 44 + 100), [255, 255, 255], "nw handle dot centre is white")
-        let border = rgb(8 + 200, 44 + 101); XCTAssertGreaterThan(border[1], 150, "accent selection border")
+        let border = rgb(8 + 200, 44 + 101); XCTAssertGreaterThan(border[2], 150, "accent (blue) selection border")
         let play = v.buttonRect(.play, in: size)
         XCTAssertEqual(rgb(Int(play.x) + 14, Int(play.y) + 16), [250, 250, 250], "play triangle #FAFAFA")
         // Pause: the morph runs 280 ms; once finished the bars have a gap in the middle.
@@ -86,7 +86,7 @@ final class PlayerRenderTests: XCTestCase {
         v.draw(t.canvas, size: size)
         pb.play(); v.draw(t.canvas, size: size)
         clock += 0.5; v.draw(t.canvas, size: size)
-        XCTAssertEqual(rgb(Int(play.x) + 15, Int(play.y) + 16), [10, 10, 11], "pause glyph has a gap in the middle")
+        XCTAssertEqual(rgb(Int(play.x) + 15, Int(play.y) + 16), [29, 29, 29], "pause glyph has a gap in the middle")
     }
 }
 #endif

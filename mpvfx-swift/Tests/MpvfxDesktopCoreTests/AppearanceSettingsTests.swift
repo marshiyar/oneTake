@@ -24,14 +24,18 @@ final class AppearanceSettingsTests: XCTestCase {
     }
     override func tearDown() { try? FileManager.default.removeItem(atPath: dir); Theme.setMode(.dark) }
 
-    func testDefaultIsSystemAndFollowsTheOS() {
+    func testDefaultIsDarkUntilTheUserPicks() {
         var osDark = false
         let s = AppearanceSettings(preferences: DesktopPreferences(userData: dir), systemPrefersDark: { osDark })
-        XCTAssertEqual(s.appearance, .system)
-        s.apply(); XCTAssertEqual(Theme.mode, .light)
+        XCTAssertEqual(s.appearance, .dark)
+        s.apply(); XCTAssertEqual(Theme.mode, .dark, "dark even when the OS is light")
         osDark = true; s.systemAppearanceChanged(); XCTAssertEqual(Theme.mode, .dark)
-        osDark = false; s.systemAppearanceChanged(); XCTAssertEqual(Theme.mode, .light)
-        // Nothing is written until the user picks.
+        osDark = false; s.systemAppearanceChanged(); XCTAssertEqual(Theme.mode, .dark)
+        s.set(.system); XCTAssertEqual(Theme.mode, .light, "System follows the OS once picked")
+    }
+
+    func testNothingIsWrittenUntilTheUserPicks() {
+        AppearanceSettings(preferences: DesktopPreferences(userData: dir), systemPrefersDark: { false }).apply()
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir + "/preferences.json"))
     }
 
@@ -65,7 +69,7 @@ final class AppearanceSettingsTests: XCTestCase {
         let bad = AppearanceSettings(preferences: prefs, override: "sepia", systemPrefersDark: { true })
         XCTAssertFalse(bad.isOverridden); XCTAssertEqual(bad.appearance, .dark)
         prefs.set(ThemeAppearance.preferenceKey, .string("sepia"))
-        XCTAssertEqual(AppearanceSettings(preferences: prefs, systemPrefersDark: { true }).appearance, .system)
-        XCTAssertEqual(AppearanceSettings(preferences: nil, systemPrefersDark: { false }).mode, .light)
+        XCTAssertEqual(AppearanceSettings(preferences: prefs, systemPrefersDark: { true }).appearance, .dark)
+        XCTAssertEqual(AppearanceSettings(preferences: nil, systemPrefersDark: { false }).mode, .dark)
     }
 }

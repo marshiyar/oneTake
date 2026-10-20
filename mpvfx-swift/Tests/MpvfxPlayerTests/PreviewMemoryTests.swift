@@ -62,7 +62,7 @@ final class PreviewMemoryTests: XCTestCase {
         XCTAssertNotNil(cache!.frame(lane: "a", frame: 99), "the most recent frames stay")
         monitor.simulate(.critical)
         XCTAssertEqual(cache!.bytes, 0); XCTAssertEqual(cache!.count, 0)
-        weak var gone = cache
+        weak let gone = cache
         XCTAssertEqual(monitor.observerCount, 1)
         cache = nil
         XCTAssertNil(gone, "the pressure observer does not retain the cache")
@@ -182,7 +182,7 @@ final class PreviewMemoryTests: XCTestCase {
         let (c, keep) = try canvas(); _ = keep
         for f in 0..<20 { draw(cx, c, Double(f) / 30, playing: true) }
         let laneB = try XCTUnwrap(cx.lanes.first { $0.value.layer.clipId == "clip:b" }?.key)
-        weak var decoderB = cx.lanes[laneB]
+        weak let decoderB = cx.lanes[laneB]
         XCTAssertNotNil(decoderB)
         XCTAssertTrue(cx.cache.laneKeys.contains(laneB))
         XCTAssertGreaterThan(cx.gradedMemoBytes, 0)

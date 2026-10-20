@@ -1,0 +1,104 @@
+name: codex-apply
+
+# Codex (the GitHub app `chatgpt-codex-connector`) answers an `@codex` task on a pull request inside its own sandbox and
+# never pushes. Asked to, it replies with its change as one unified diff; this workflow applies that diff to the pull
+# request's own branch as a commit by the owner with Codex as co-author, pushes it with the workflow's own token and
+# starts mpvfx-ci on the branch (a push with that token starts no workflow by itself; a dispatch does). Pushing as
+# github-actions, not as the review App, keeps the App's later approval valid under the ruleset's last-push rule; the
+# PR still needs that approval. Only the Codex app's comments on pull requests from
+# this repository are read; the patch is checked first (.github/ci/codex_patch.py: one text-only diff, size and file
+# limits, never workflows, token-holding scripts, security policy or the engine lock). Hand-off, in one comment:
+#   @codex <task: files, rules, evidence>. End your reply with the complete change as one unified diff
+#   (`git diff` against the PR head) in a single ```diff fenced block.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-apply-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+      contains(github.event.comment.body, '```diff')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write        # the push to the pull request's branch
+      actions: write         # starting mpvfx-ci on it
+      pull-requests: write   # the one comment saying what happened
+    steps:
+      - name: The pull request's branch, from this repository only
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          set -eu
+          set -- $(gh api "repos/$REPO/pulls/$PR" --jq '"\(.head.repo.full_name) \(.head.ref) \(.head.sha) \(.state)"')
+          [ "$1" = "$REPO" ] || { echo "::notice::the pull request comes from $1, not this repository: not applied"; exit 1; }
+          [ "$4" = open ] || { echo "::notice::the pull request is $4: not applied"; exit 1; }
+          echo "ref=$2" >> "$GITHUB_OUTPUT"; echo "sha=$3" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+          fetch-depth: 1
+      # The checker comes from main, not from the pull request, so a PR cannot loosen it for itself.
+      - name: The checker from main
+        run: git fetch -q --depth 1 origin main && git show FETCH_HEAD:.github/ci/codex_patch.py > "$RUNNER_TEMP/codex_patch.py"
+      - name: Read and check the patch
+        id: patch
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          printf '%s' "$BODY" > "$RUNNER_TEMP/comment.md"
+          if out=$(python3 -I -B "$RUNNER_TEMP/codex_patch.py" "$RUNNER_TEMP/comment.md" "$RUNNER_TEMP/change.patch"); then
+            echo "$out"; echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::not applied: $out"; echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=$out" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Apply, commit as the owner with Codex as co-author, push
+        if: steps.patch.outputs.ok == 'true'
+        env:
+          REF: ${{ steps.pr.outputs.ref }}
+          URL: ${{ github.event.comment.html_url }}
+        run: |
+          set -eu
+          # Codex sometimes writes hunks without context lines (`git diff -U0`); git applies those only when told to.
+          if git apply --check "$RUNNER_TEMP/change.patch" 2>/dev/null; then z=""; else z="--unidiff-zero"; fi
+          git apply $z --check "$RUNNER_TEMP/change.patch"
+          git apply $z "$RUNNER_TEMP/change.patch"
+          git add -A
+          git -c user.name="Arshiya Rahgozar" -c user.email="57055687+marshiyar@users.noreply.github.com" commit -q \
+            -m "Apply Codex's change" -m "From $URL" \
+            -m "Co-authored-by: chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"
+          git push -q origin "HEAD:refs/heads/$REF"
+          echo "pushed $(git rev-parse --short HEAD) to $REF"
+      - name: Say what happened on the pull request
+        if: always() && steps.pr.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          REF: ${{ steps.pr.outputs.ref }}
+          OK: ${{ steps.patch.outputs.ok }}
+          REASON: ${{ steps.patch.outputs.reason }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          if [ "$OK" = true ] && [ "$OUTCOME" = success ]; then
+            gh workflow run mpvfx-ci.yml --repo "$REPO" --ref "$REF" -f publish=false
+            msg="Codex's change is applied to this branch as $(git rev-parse --short HEAD); mpvfx-ci is started on it."
+          elif [ "$OK" = true ]; then
+            msg="Codex's change did not apply to the current head (it was made against another revision); not pushed."
+          else
+            msg="Codex's reply was not applied: $REASON."
+          fi
+          gh api -X POST "repos/$REPO/issues/$PR/comments" -f body="$msg" >/dev/null

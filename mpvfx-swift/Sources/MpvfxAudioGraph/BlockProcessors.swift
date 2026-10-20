@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 
-// The five AudioWorklet-style processors
+// The five block-based dynamics and sample processors
 // (compressor, limiter, gate, bitcrush, pitch shift). Numbers are Double; the I/O and the pitch
 // shifter's ring are Float32Array, so those stay Float.
 
@@ -23,7 +23,7 @@ private let ln10Over20 = 2.302585092994046 / 20
 @inline(__always) func dbToLinFast(_ db: Double) -> Double { exp(db * ln10Over20) }
 
 /// Per-channel one-pole envelope followers.
-struct EnvBank {
+struct EnvelopeFollowers {
     var a = 0.0, r = 0.0
     var values: [Double] = []
     let sampleRate: Double
@@ -52,19 +52,19 @@ func kneeGain(_ envDb: Double, _ thresholdDb: Double, _ ratio: Double, _ kneeDb:
     return over > 0 ? -(over * (1 - 1 / ratio)) : 0
 }
 
-/// A processor's `process(inputs, outputs)` for one render quantum.
-/// `input` is nil when the worklet input has no channels (nothing connected).
-protocol WorkletProcessor: AnyObject {
+/// Processes one fixed-size DSP block.
+/// `input` is empty when the processor has no connected channels.
+protocol BlockProcessor: AnyObject {
     func process(_ input: [[Float]], _ output: inout [[Float]])
     func post(_ params: FxParams)
 }
 
-final class HfCompressor: WorkletProcessor {
+final class CompressorProcessor: BlockProcessor {
     var p: FxParams
-    var env: EnvBank
+    var env: EnvelopeFollowers
     init(_ p: FxParams, sampleRate: Double) {
         self.p = p
-        env = EnvBank(p["attack"]?.number ?? 20, p["release"]?.number ?? 250, sampleRate: sampleRate)
+        env = EnvelopeFollowers(p["attack"]?.number ?? 20, p["release"]?.number ?? 250, sampleRate: sampleRate)
     }
     func post(_ params: FxParams) { for (k, v) in params.entries { p[k] = v }; env.set(p["attack"]?.number ?? 20, p["release"]?.number ?? 250) }
     func process(_ i: [[Float]], _ o: inout [[Float]]) {
@@ -90,12 +90,12 @@ final class HfCompressor: WorkletProcessor {
     }
 }
 
-final class HfLimiter: WorkletProcessor {
+final class LimiterProcessor: BlockProcessor {
     var p: FxParams
-    var env: EnvBank
+    var env: EnvelopeFollowers
     init(_ p: FxParams, sampleRate: Double) {
         self.p = p
-        env = EnvBank(p["attack"]?.number ?? 5, p["release"]?.number ?? 50, sampleRate: sampleRate)
+        env = EnvelopeFollowers(p["attack"]?.number ?? 5, p["release"]?.number ?? 50, sampleRate: sampleRate)
     }
     func post(_ params: FxParams) { for (k, v) in params.entries { p[k] = v }; env.set(p["attack"]?.number ?? 5, p["release"]?.number ?? 50) }
     func process(_ i: [[Float]], _ o: inout [[Float]]) {
@@ -114,13 +114,13 @@ final class HfLimiter: WorkletProcessor {
     }
 }
 
-final class HfGate: WorkletProcessor {
+final class GateProcessor: BlockProcessor {
     var p: FxParams
-    var env: EnvBank
+    var env: EnvelopeFollowers
     var gains: [Double] = []
     init(_ p: FxParams, sampleRate: Double) {
         self.p = p
-        env = EnvBank(p["attack"]?.number ?? 1, p["release"]?.number ?? 100, sampleRate: sampleRate)
+        env = EnvelopeFollowers(p["attack"]?.number ?? 1, p["release"]?.number ?? 100, sampleRate: sampleRate)
     }
     func post(_ params: FxParams) { for (k, v) in params.entries { p[k] = v }; env.set(p["attack"]?.number ?? 1, p["release"]?.number ?? 100) }
     func process(_ i: [[Float]], _ o: inout [[Float]]) {
@@ -152,7 +152,7 @@ final class HfGate: WorkletProcessor {
     }
 }
 
-final class HfBitcrush: WorkletProcessor {
+final class BitcrusherProcessor: BlockProcessor {
     var p: FxParams
     var holds: [Int] = []
     var held: [Double] = []
@@ -176,7 +176,7 @@ final class HfBitcrush: WorkletProcessor {
     }
 }
 
-final class HfPitchshift: WorkletProcessor {
+final class PitchShiftProcessor: BlockProcessor {
     var p: FxParams
     let grain: Int
     var buf: [[Float]] = []
@@ -238,7 +238,7 @@ final class HfPitchshift: WorkletProcessor {
                 let x = i[ch][s]
                 buf[ch][write] = x
                 let ring = buf[ch]
-                let w = HfPitchshift.readTap(ring, write, phase * Double(grain)) * gA + HfPitchshift.readTap(ring, write, phaseB * Double(grain)) * gB
+                let w = PitchShiftProcessor.readTap(ring, write, phase * Double(grain)) * gA + PitchShiftProcessor.readTap(ring, write, phaseB * Double(grain)) * gB
                 o[ch][s] = Float(Double(x) * (1 - wetMix) + w * wetMix)
             }
             write = (write + 1) % ringLen

@@ -16,13 +16,13 @@ import XCTest
 @testable import MpvfxAudioGraph
 
 /// Rendered-sample parity against references generated without Chrome:
-/// the worklet processors run from the shipped source in a Node shim, and the
+/// the reference processors ran from the shipped source in a Node shim, and the
 /// mix-stage references were recorded once from the original app's export path
 /// (see Fixtures/generate-reference.mjs); the tests read only the recorded files.
 final class RenderParityTests: XCTestCase {
     static let bar = -90.0
 
-    func testWorkletProcessorsMatchShippedSource() {
+    func testBlockProcessorsMatchShippedSource() {
         let input = Fixtures.planes(Fixtures.f32("worklet-input.f32"))
         for c in Fixtures.reference["worklets"]!.array {
             let type = c["type"]!.str
@@ -32,7 +32,7 @@ final class RenderParityTests: XCTestCase {
             let frames = Int(c["frames"]!.num)
             let out = renderChain(chain, input, frames: frames)
             let d = peakDiffDb(out, Fixtures.f32(c["file"]!.str))
-            parityLog("worklet \(c["file"]!.str) \(c["params"]!.json): peak diff \(fmtDb(d.db))")
+            parityLog("processor \(c["file"]!.str) \(c["params"]!.json): peak diff \(fmtDb(d.db))")
             XCTAssertLessThanOrEqual(d.db, Self.bar, "\(c["file"]!.str) at sample \(d.index)")
         }
     }
@@ -44,11 +44,11 @@ final class RenderParityTests: XCTestCase {
         var q = 0
         while q < frames {
             let block: [[Float]] = (0..<planes.count).map { (c: Int) -> [Float] in
-                (0..<renderQuantum).map { (i: Int) -> Float in q + i < planes[c].count ? planes[c][q + i] : 0 }
+                (0..<dspBlockSize).map { (i: Int) -> Float in q + i < planes[c].count ? planes[c][q + i] : 0 }
             }
             let y = proc.process(block, frame: q)
-            for i in 0..<min(renderQuantum, frames - q) { out[2 * (q + i)] = y[0][i]; out[2 * (q + i) + 1] = y[1][i] }
-            q += renderQuantum
+            for i in 0..<min(dspBlockSize, frames - q) { out[2 * (q + i)] = y[0][i]; out[2 * (q + i) + 1] = y[1][i] }
+            q += dspBlockSize
         }
         return out
     }

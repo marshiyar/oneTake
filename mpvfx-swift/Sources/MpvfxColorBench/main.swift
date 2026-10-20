@@ -14,8 +14,11 @@
 import Foundation
 import MpvfxColor
 import MpvfxShared
+#if canImport(Metal)
+import Metal
+#endif
 
-// Grade speed, CPU port vs the compute GPU renderer (Vulkan on Linux, Direct3D 11 on Windows), per frame size, end to
+// Grade speed, CPU port vs the GPU renderer (Vulkan on Linux, Direct3D 11 on Windows, Metal on macOS), per frame size, end to
 // end (upload, every pass, read-back), and the two outputs' difference at that size. Build with -c release:
 //   swift run -c release MpvfxColorBench [frames]        (default 5 timed frames after one warm-up)
 // MPVFX_GPU=software also benchmarks a software device (lavapipe, WARP): its numbers show correctness, not speed.
@@ -53,14 +56,31 @@ func median(_ r: ColorRenderer, _ g: ColorGradeRenderer, _ src: [UInt8], _ size:
     return (times.sorted()[times.count / 2], out)
 }
 
-func gpuRenderer() -> ComputeColorRenderer? {
+/// The GPU renderer under test, with what the report needs from it: Vulkan on Linux, Direct3D 11 on Windows, Metal
+/// on macOS (the system default device, the app's own `ColorRendering.shared` choice).
+struct GPU {
+    let renderer: any ColorRenderer
+    let backend: String
+    let deviceName: String
+    let isSoftware: Bool
+    let cpuFallbacks: () -> Int
+}
+
+func gpuRenderer() -> GPU? {
     let software = ProcessInfo.processInfo.environment["MPVFX_GPU"]?.lowercased() == "software"
     do {
         #if os(Linux)
-        return try VulkanColorRenderer(allowSoftware: software)
+        let r = try VulkanColorRenderer(allowSoftware: software)
+        return GPU(renderer: r, backend: r.backend, deviceName: r.deviceName, isSoftware: r.isSoftware, cpuFallbacks: { r.cpuFallbacks })
         #elseif os(Windows)
-        do { return try D3D11ColorRenderer(warp: false) } catch { if !software { throw error } }
-        return try D3D11ColorRenderer(warp: true)
+        let r: D3D11ColorRenderer
+        do { r = try D3D11ColorRenderer(warp: false) } catch { if !software { throw error }; r = try D3D11ColorRenderer(warp: true) }
+        return GPU(renderer: r, backend: r.backend, deviceName: r.deviceName, isSoftware: r.isSoftware, cpuFallbacks: { r.cpuFallbacks })
+        #elseif canImport(MpvfxMetal)
+        guard let r = MetalColorRenderer.makeDefault() else { print("GPU compute renderer unavailable: no Metal device or the kernels did not load"); return nil }
+        // GitHub's hosted macOS runners expose "Apple Paravirtual device": a virtual GPU, not the speed of a real one.
+        let name = r.device.name
+        return GPU(renderer: r, backend: r.backend, deviceName: name, isSoftware: name.contains("Paravirtual"), cpuFallbacks: { r.cpuFallbacks })
         #else
         return nil
         #endif
@@ -77,7 +97,7 @@ let cases: [(String, String)] = [
 ]
 let cpu = CPUColorRenderer()
 guard let gpu = gpuRenderer() else {
-    print("no GPU compute device (MPVFX_GPU=software accepts lavapipe / WARP)")
+    print("no GPU compute device (MPVFX_GPU=software accepts lavapipe / WARP; macOS needs a Metal device)")
     exit(1)
 }
 print("CPU port: \(ProcessInfo.processInfo.activeProcessorCount) cores; GPU: \(gpu.backend) on \(gpu.deviceName)\(gpu.isSoftware ? " (software device: correctness only, not GPU speed)" : ""); median of \(frames) frames")
@@ -87,10 +107,10 @@ for (w, h) in [(1920, 1080), (3840, 2160)] {
     let src = card(w, h)
     for (name, json) in cases {
         let g = ColorGradeRenderer(params: params(json), seedKey: "clip:bench")
-        let c = median(cpu, g, src, SIMD2(w, h)), q = median(gpu, g, src, SIMD2(w, h))
+        let c = median(cpu, g, src, SIMD2(w, h)), q = median(gpu.renderer, g, src, SIMD2(w, h))
         var maxDiff = 0, over1 = 0
         for i in 0..<c.out.count { let d = abs(Int(c.out[i]) - Int(q.out[i])); maxDiff = max(maxDiff, d); if d > 1 { over1 += 1 } }
         print(String(format: "| %dx%d | %@ | %.1f | %.1f | %.1fx | %d | %d |", w, h, name, c.ms, q.ms, c.ms / q.ms, maxDiff, over1))
     }
 }
-if gpu.cpuFallbacks > 0 { print("GPU frames that fell back to the CPU: \(gpu.cpuFallbacks)"); exit(1) }
+if gpu.cpuFallbacks() > 0 { print("GPU frames that fell back to the CPU: \(gpu.cpuFallbacks())"); exit(1) }

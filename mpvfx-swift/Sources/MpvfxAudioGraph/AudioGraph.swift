@@ -20,13 +20,13 @@ import Foundation
 //
 //   stem (stereo f32 @ 48k)
 //     -> pcm_s16le prepare            q = clip16(lrintf(x * 32768))
-//     -> track FX chain (Web Audio)   input q/32768, quanta aligned to stem frame 0,
+//     -> track FX chain (native DSP)   input q/32768, blocks aligned to stem frame 0,
 //                                     length N + ceil(tail * sr)
 //     -> envelope bake (float) + s16  round(clamp(y*g, -1, 1) * 32767)
 //        (or, with no chain, round(q * g) on the s16 file)
 //     -> track input filter           atrim, volume (float), adelay (ms), apad, atrim
 //     -> group sub-mix                amix normalize=0 (plain float sum) -> f32
-//     -> group FX chain + envelope    float in, float out, quanta aligned to comp 0
+//     -> group FX chain + envelope    float in, float out, blocks aligned to comp 0
 //     -> final amix                   Σ x_i * fl(1/N), then * N (float)
 //
 // Pan does not exist in the original; it is offered here as an opt-in
@@ -123,10 +123,10 @@ final class ChainStage {
         var written = 0
         while written < count {
             if head >= fifoL.count {
-                var a = [Float](repeating: 0, count: renderQuantum), b = a
-                upstream(renderQuantum, &a, &b)
+                var a = [Float](repeating: 0, count: dspBlockSize), b = a
+                upstream(dspBlockSize, &a, &b)
                 let y = chain.process([a, b], frame: frame)
-                frame += renderQuantum
+                frame += dspBlockSize
                 fifoL = y[0]; fifoR = y[1]; head = 0
             }
             let take = min(count - written, fifoL.count - head)
