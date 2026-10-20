@@ -90,7 +90,7 @@ final class StemDecoderTests: XCTestCase {
             #"{"id":"\#(id)","assetId":"asset:m","startFrame":0,"durationFrames":60,"sourceInFrame":0,"playbackRate":{"numerator":2,"denominator":1},"#
                 + extra + #""muted":false,"effects":[],"parameterTracks":[]}"#
         }
-        let json = #"{"schemaVersion":1,"id":"project:p","revision":1,"frameRate":{"numerator":30,"denominator":1},"canvas":{"width":640,"height":360,"background":"#000000"},"assets":[{"id":"asset:m","kind":"audio","name":"m.wav","source":"m.wav","durationFrames":300}],"sequence":{"id":"s","name":"S","tracks":[{"id":"a1","kind":"audio","clips":["#
+        let json = ##"{"schemaVersion":1,"id":"project:p","revision":1,"frameRate":{"numerator":30,"denominator":1},"canvas":{"width":640,"height":360,"background":"#000000"},"assets":[{"id":"asset:m","kind":"audio","name":"m.wav","source":"m.wav","durationFrames":300}],"sequence":{"id":"s","name":"S","tracks":[{"id":"a1","kind":"audio","clips":["##
             + clip("keeps", "") + "," + clip("follows", #""preservesPitch":false,"#) + "]}]}}"
         let doc = try parseNativeProjectDocument(try NativeJSONValue.parse(json))
         let inputs = DocumentAudioGraph.inputs(doc, duration: 2, projectDir: URL(fileURLWithPath: "/p"), fileExists: { _ in true })

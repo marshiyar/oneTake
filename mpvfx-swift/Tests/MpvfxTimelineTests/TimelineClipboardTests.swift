@@ -14,11 +14,13 @@
 import XCTest
 import MpvfxCanvas
 import MpvfxShared
+import OneTakeKeyframes
 @testable import MpvfxTimeline
 
 /// Copy/paste of clips (TimelineEditor+Clipboard): effects and keyframes travel with the clip, onto other tracks and
 /// into other projects; the clip menu's clipboard and pitch rows.
 final class TimelineClipboardTests: XCTestCase {
+    static let engine = try? KeyframeRuntime()
     // @30fps, display order v2, v1, a1. clip:a carries an effect, a rotation track, an audio group and a binding.
     static func json(id: String = "project:clip", fps: Int = 30, groups: String = #"[{"id":"dialogue","label":"Dialogue","volume":1,"muted":false}]"#) -> String {
         #"""
@@ -40,7 +42,7 @@ final class TimelineClipboardTests: XCTestCase {
     }
 
     func make(_ json: String = json(), dir: String = "/projects/one") throws -> (TimelineController, TimelineEditor) {
-        let e = try TimelineEditor(json: json)
+        let e = try TimelineEditor(json: json, engine: Self.engine)
         e.projectDirectory = URL(fileURLWithPath: dir)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
         c.viewport = CanvasSize(1200, 600)
@@ -118,16 +120,17 @@ final class TimelineClipboardTests: XCTestCase {
         let board = try XCTUnwrap(one.copyClips(["clip:a", "clip:m"]))
         XCTAssertEqual(board.assets.compactMap(\.source), ["/projects/one/media/a.mp4", "/projects/one/media/vo.wav"])
         // Project two already plays a.mp4 (by absolute path), has its own asset:m (another file) and no audio groups.
-        var other = try TimelineEditor(json: Self.json(id: "project:two", groups: "[]")).document
+        var other = try TimelineEditor(json: Self.json(id: "project:two", groups: "[]").replacingOccurrences(of: #""audioGroupId":"dialogue","#, with: ""),
+                                   engine: Self.engine).document
         other.assets[0].source = "/projects/one/media/a.mp4"
         other.assets[0].id = "asset:mine"
         for t in other.sequence.tracks.indices { for i in other.sequence.tracks[t].clips.indices where other.sequence.tracks[t].clips[i].assetId == "asset:a" {
-            other.sequence.tracks[t].clips[i].assetId = "asset:mine"; other.sequence.tracks[t].clips[i].audioGroupId = nil } }
-        let two = TimelineEditor(document: try parseNativeProjectDocument(other))
+            other.sequence.tracks[t].clips[i].assetId = "asset:mine" } }
+        let two = TimelineEditor(document: try parseNativeProjectDocument(other, engine: Self.engine), engine: Self.engine)
         two.projectDirectory = URL(fileURLWithPath: "/projects/two")
         let ids = two.paste(board, at: 2)
         XCTAssertEqual(ids.count, 2, two.lastFailure?.message ?? "")
-        XCTAssertEqual(ids.map { trackId(two, $0) }, ["track:v1", "track:a1"], "first track of the kind, rows kept")
+        XCTAssertEqual(ids.map { trackId(two, $0) }, ["track:v2", "track:a1"], "the first video track, then the next audio track below")
         let a = try XCTUnwrap(clip(two, ids[0])), m = try XCTUnwrap(clip(two, ids[1]))
         XCTAssertEqual(a.assetId, "asset:mine", "the asset playing the same file is reused")
         XCTAssertNil(a.audioGroupId, "project two has no Dialogue bus")
@@ -171,7 +174,7 @@ final class TimelineClipboardTests: XCTestCase {
         XCTAssertEqual(trackId(e, pasted), "track:a1", "the selected clip's track is a video track, so the next audio one")
         XCTAssertEqual(clip(e, pasted)?.startFrame, 90)
         // The clipboard is the controller's, so it outlives the document.
-        e.loadDocument(try TimelineEditor(json: Self.json(id: "project:other")).document)
+        e.loadDocument(try TimelineEditor(json: Self.json(id: "project:other"), engine: Self.engine).document)
         c.view.selection = []
         XCTAssertTrue(c.pasteClipboard())
         XCTAssertEqual(c.view.selection.compactMap { trackId(e, $0) }, ["track:a1"])
@@ -181,7 +184,7 @@ final class TimelineClipboardTests: XCTestCase {
         let (c, e) = try make()
         c.openClipMenu("clip:a", x: 10, y: 10)
         XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Duplicate", "—", "Show thumbnails", "—",
-                                                 "Mute", "Keep audio pitch", "—", "Delete"])
+                                                 "Mute", "Keep audio pitch", "—", "Detach audio", "—", "Delete"])
         func item(_ a: TimelineClipMenu.Action) -> TimelineClipMenu.Item? {
             c.view.clipMenu?.itemRects().map(\.0).first { $0.action == a }
         }
@@ -192,12 +195,12 @@ final class TimelineClipboardTests: XCTestCase {
         XCTAssertEqual(c.clipboard?.items.map(\.clip.id), ["clip:a"])
         c.openClipMenu("clip:a", x: 10, y: 10)
         XCTAssertEqual(item(.paste)?.enabled, true)
-        c.playback.seek(8)
+        c.playback.seek(5)   // seeking stops at the sequence end (6 s)
         c.view.selection = []
         XCTAssertTrue(c.runClipMenu(.paste, clipId: "clip:a"))
         let pasted = try XCTUnwrap(c.view.selection.first)
         XCTAssertEqual(trackId(e, pasted), "track:v1", "the menu pastes onto its clip's track")
-        XCTAssertEqual(clip(e, pasted)?.startFrame, 240)
+        XCTAssertEqual(clip(e, pasted)?.startFrame, 150)
         // Cut takes the clip off the timeline and keeps it.
         XCTAssertTrue(c.runClipMenu(.cut, clipId: "clip:m"))
         XCTAssertNil(clip(e, "clip:m")); XCTAssertEqual(c.clipboard?.items.map(\.clip.id), ["clip:m"])
@@ -223,12 +226,12 @@ final class TimelineClipboardTests: XCTestCase {
         XCTAssertEqual(e.undoLabel, "Pitch follows speed")
         c.openClipMenu("clip:m", x: 10, y: 10)
         XCTAssertEqual(c.view.clipMenu?.itemRects().map(\.0).first { $0.action == .keepPitch }?.checked, false)
-        let json = try serializeNativeProjectDocument(try NativeJSONValue.from(e.document))
-        XCTAssertEqual(try parseNativeProjectDocument(try NativeJSONValue.parse(json)).sequence.tracks[2].clips[0].preservesPitch, false)
+        let json = try serializeNativeProjectDocument(e.document, engine: Self.engine)
+        XCTAssertEqual(try parseNativeProjectDocument(try NativeJSONValue.parse(json), engine: Self.engine).sequence.tracks[2].clips[0].preservesPitch, false)
         var raw = try NativeJSONValue.parse(json)
         var seq = raw["sequence"]!; var tracks = seq["tracks"]!.arrayValue!; var clips = tracks[2]["clips"]!.arrayValue!
         clips[0]["preservesPitch"] = .string("no"); tracks[2]["clips"] = .array(clips); seq["tracks"] = .array(tracks); raw["sequence"] = seq
-        XCTAssertThrowsError(try parseNativeProjectDocument(raw), "a non-boolean is refused")
+        XCTAssertThrowsError(try parseNativeProjectDocument(raw, engine: Self.engine), "a non-boolean is refused")
         XCTAssertTrue(e.undo()); XCTAssertNil(clip(e, "clip:m")?.preservesPitch, "the default is stored as an absent key")
         XCTAssertFalse(e.setPreservesPitch(clipId: "clip:m", true), "already on")
         XCTAssertTrue(e.setTrackLocked("track:a1", true))

@@ -174,11 +174,11 @@ public extension TimelineEditor {
         }
         let groups = Set((d.sequence.audioGroups ?? []).map(\.id))
         for item in board.items {
-            guard let ti = d.sequence.tracks.firstIndex(where: { $0.id == destination[item.trackId] }) else { continue }
+            let ti = d.sequence.tracks.firstIndex { $0.id == destination[item.trackId] }!
             var c = item.clip
             c.id = newIds[item.clip.id]!
             c.startFrame = base + (item.clip.startFrame - first)
-            c.assetId = assetIds[item.clip.assetId] ?? item.clip.assetId
+            c.assetId = assetIds[item.clip.assetId]!
             c.binding = nil
             if let g = c.audioGroupId, !groups.contains(g) { c.audioGroupId = nil }
             c.audioDetachedFrom = c.audioDetachedFrom.flatMap { newIds[$0] }
@@ -186,7 +186,7 @@ public extension TimelineEditor {
             d.sequence.tracks[ti].clips.sort { $0.startFrame < $1.startFrame }
         }
         guard withHistory("Paste", { apply(.restoreDocument(d)) }) else { return [] }
-        return board.items.compactMap { newIds[$0.clip.id] }
+        return board.items.map { newIds[$0.clip.id]! }
     }
 }
 
