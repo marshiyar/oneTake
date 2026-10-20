@@ -12,7 +12,7 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for fetch-binaries.py against local archives (file:// URLs, no network): python3 scripts/test_fetch_binaries.py"""
-import contextlib, hashlib, importlib.util, io, pathlib, sys, tarfile, tempfile, unittest, zipfile
+import contextlib, hashlib, importlib.util, io, pathlib, tarfile, tempfile, unittest, zipfile
 
 spec = importlib.util.spec_from_file_location("fetch_binaries", pathlib.Path(__file__).with_name("fetch-binaries.py"))
 fb = importlib.util.module_from_spec(spec)
