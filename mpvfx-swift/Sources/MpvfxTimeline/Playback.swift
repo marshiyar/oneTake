@@ -36,7 +36,9 @@ public final class PlaybackState {
     public private(set) var playbackRate = 1.0
     /// The transport's loop toggle (loopEnabled): per session, off on open, never saved (it is
     /// kept in memory only).
-    public var loopEnabled = false
+    public var loopEnabled = false {
+        didSet { if loopEnabled != oldValue { onChange?() } }
+    }
     public var audioMuted = false
     /// Work-area in point (playerStore setInPoint): setting one turns loop on so playback respects it, and an out
     /// point at or before it is dropped.
@@ -148,7 +150,7 @@ public final class PlaybackState {
         if k.isRepeat { return false }
         switch k.letter {
         case "m": audioMuted.toggle(); onChange?(); return true
-        case "l" where k.shift: loopEnabled.toggle(); onChange?(); return true
+        case "l" where k.shift: loopEnabled.toggle(); return true
         case "k": pause(); return true
         case "j": if pressed.contains("k") { stepFrames(-1) } else { shuttle(-1) }; return true
         case "l": if pressed.contains("k") { stepFrames(1) } else { shuttle(1) }; return true
