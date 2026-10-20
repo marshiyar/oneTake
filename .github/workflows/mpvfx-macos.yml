@@ -10,8 +10,9 @@ name: mpvfx-macos
 # files change it is not run again. The nightly run and full_tests run every shard. Every job downloads the prebuilt
 # engine libraries pinned in binaries.lock; the disk image carries them in MpVFX.app/Contents/Frameworks.
 #
-# Secrets: pull requests use none and package an ad-hoc signed image for testing. Every other run signs the disk image
-# with the Developer ID and notarizes it, from the repository's signing secrets; without them that run fails.
+# Secrets: only runs of main and of v* tags use them: they sign the disk image with the Developer ID and notarize it,
+# and fail without them. Pull requests, the merge queue and every other branch (a dispatch on a pull request's branch
+# included) use none and package an ad-hoc signed image for testing.
 
 on:
   workflow_call:
@@ -178,7 +179,7 @@ jobs:
   signing-check:
     # Seconds on Linux, before any macOS runner is waited for: the certificate opens, holds its key, is a valid
     # Developer ID Application certificate of the configured team, and the notarization login has the right shape.
-    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+    if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -195,7 +196,7 @@ jobs:
   package:
     # Pull requests package ad-hoc and have no signing check; every other run packages only after it passed.
     needs: signing-check
-    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || needs.signing-check.result == 'success') }}
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) || needs.signing-check.result == 'success') }}
     runs-on: xcode-27
     timeout-minutes: 30
     defaults:
@@ -211,7 +212,7 @@ jobs:
           sudo xcode-select -s "$x/Contents/Developer"
           xcodebuild -version && swift --version
       - name: Signing certificate (Developer ID)
-        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         id: cert
         env:
           MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
@@ -221,7 +222,7 @@ jobs:
           identity=$(sh packaging/macos/import-cert.sh)
           echo "identity=$identity" >> "$GITHUB_OUTPUT"
       - name: Notarization login (before the build)
-        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
@@ -250,11 +251,11 @@ jobs:
           xcrun -sdk macosx metallib "$RUNNER_TEMP/MpvfxColor.air" -o "$RUNNER_TEMP/MpvfxColor.metallib"
       - name: Release build
         run: swift build -c release -Xswiftc -warnings-as-errors -Xcc -Werror
-      # Two separate paths, never a fallback from one to the other: pull requests get no secrets and package an ad-hoc
-      # signed image for testing; every other run (main, tags, nightly, by hand) signs with the Developer ID, notarizes
-      # and staples, and fails if any part of that is missing or refused.
+      # Two separate paths, never a fallback from one to the other: main and v* tags sign with the Developer ID, notarize
+      # and staple, and fail if any part of that is missing or refused; pull requests, the merge queue and other branches
+      # get no secrets and package an ad-hoc signed image for testing.
       - name: Package, signed and notarized (disk image with the engine libraries in Contents/Frameworks)
-        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         env:
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -266,8 +267,8 @@ jobs:
           export MPVFX_BUILD=${MPVFX_BUILD::7}
           sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" developer-id | tee "$RUNNER_TEMP/package.log"
           ls -l "$GITHUB_WORKSPACE/dist"
-      - name: Package, ad-hoc signed for testing (pull request)
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+      - name: Package, ad-hoc signed for testing (pull requests and branches)
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         env:
           MPVFX_BUILD: ${{ github.sha }}
         run: |
@@ -277,7 +278,7 @@ jobs:
       - name: Launch smoke from the installed disk image
         timeout-minutes: 8
         env:
-          SIGNED: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
+          SIGNED: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
         run: |
           dmg=$(ls "$GITHUB_WORKSPACE"/dist/MpVFX-*.dmg)
           mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"

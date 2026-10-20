@@ -52,9 +52,10 @@ permissions:
 
 jobs:
   changes:
-    # A pull request that changes only documentation (Markdown anywhere, mpvfx-swift/docs/, the licence files) needs no
-    # build or test: every job below is skipped on purpose and ci-ok passes in about a minute. No test or build step
-    # reads those files (checked 2026-10-19). Any other event, or any other file, runs everything.
+    # A pull request that changes only text nothing builds from (Markdown anywhere, mpvfx-swift/docs/, the licence
+    # files, .gitignore, issue templates, CODEOWNERS, FUNDING.yml) needs no build or test: every job below is skipped on
+    # purpose and ci-ok passes in about a minute. The one exception is mpvfx-swift/docs/DESIGN.md, whose colour table
+    # VisualSpecTests reads: it counts as code. Any other event, or any other file, runs everything.
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
@@ -75,7 +76,8 @@ jobs:
           # Both sides of a rename count: code renamed to a .md name is still a code change.
           gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
           n=$(wc -l < "$RUNNER_TEMP/files.txt")
-          other=$(grep -vE '\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$' "$RUNNER_TEMP/files.txt" || true)
+          other=$( { grep -vE '\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$|(^|/)\.gitignore$|^\.github/(ISSUE_TEMPLATE/|CODEOWNERS$|FUNDING\.yml$)' "$RUNNER_TEMP/files.txt"
+                     grep -xF 'mpvfx-swift/docs/DESIGN.md' "$RUNNER_TEMP/files.txt"; } || true)
           if [ "$n" -gt 0 ] && [ "$n" -lt 3000 ] && [ -z "$other" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"; echo "documentation only ($n files): build and tests skipped"
           else
@@ -561,7 +563,8 @@ jobs:
     needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos]
     # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
     if: >-
-      always() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && inputs.publish != false
+      always() && github.event_name != 'pull_request' && github.event_name != 'merge_group'
+      && (github.event_name != 'workflow_dispatch' || inputs.publish)
       && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
       && needs.plan.result == 'success' && needs.checks.result == 'success'
       && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'

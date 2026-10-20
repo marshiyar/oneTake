@@ -365,9 +365,11 @@ def artifact_files(run_id, name, suffix):
         return {}
 
 
-def latest_main_run(workflow, artifact, accept=None):
-    """The newest green main run with `artifact` (and, when given, for which accept(run id) is true)."""
-    for r in api("GET", f"actions/workflows/{workflow}/runs?branch=main&event=push&per_page=20")["workflow_runs"]:
+def latest_main_run(workflow, artifact, accept=None, event="push"):
+    """The newest green main run of `event` with `artifact` (and, when given, for which accept(run id) is true); event
+    None takes runs of any event."""
+    query = "branch=main&per_page=20" + (f"&event={event}" if event else "")
+    for r in api("GET", f"actions/workflows/{workflow}/runs?{query}")["workflow_runs"]:
         if r.get("conclusion") == "success" and api("GET", f"actions/runs/{r['id']}/artifacts?name={artifact}")["artifacts"]:
             if accept is None or accept(r["id"]):
                 return r
@@ -463,7 +465,8 @@ def bench(run_id):
             return loaded[rid].get("machine", {}).get("class") == klass
 
         # The newest main run measured on the same class of machine, not just the newest one.
-        base = latest_main_run("bench.yml", art, same_class) if mine else None
+        # bench.yml has no push trigger: main is benchmarked by workflow_run (after green CI) and on schedule.
+        base = latest_main_run("bench.yml", art, same_class, event=None) if mine else None
         if not mine or not base:
             parts.append(f"\n**{os_name}**: {'no result on this run' if not mine else 'no main run of the same machine class to compare against yet'}\n")
             continue

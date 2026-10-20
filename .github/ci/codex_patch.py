@@ -27,7 +27,72 @@ REFUSED = re.compile(r"^(\.github/workflows/|\.github/ci/(agentbot|codex_patch|s
                      r"\.github/sentinel|\.github/dependabot\.yml$|\.github/CODEOWNERS$|\.codex/|\.claude/|"
                      r"mpvfx-swift/binaries\.lock$)")
 BLOCK = re.compile(r"```diff[ \t]*\n(.*?)\n```", re.S)
-HEADER = re.compile(r"^diff --git a/(\S+) b/(\S+)$", re.M)
+HEADER = re.compile(r"^diff --git a/(\S+) b/(\S+)$")
+HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+# Lines git writes between a `diff --git` header and its first hunk.
+EXTENDED = re.compile(r"^(index |old mode |new mode |deleted file mode |new file mode |similarity index |"
+                      r"dissimilarity index )")
+NAMED = re.compile(r"^(rename from|rename to|copy from|copy to) (\S+)$")
+
+
+def sections(patch):
+    """(paths, None) or (None, reason): every path the patch names, read the way `git apply` reads it. Each section
+    starts with `diff --git`; its `---`, `+++`, rename and copy lines must name that section's files; hunks are
+    consumed by their line counts. Any other line outside a hunk is refused, so no section can hide from the check."""
+    lines = patch.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    paths, current, i = set(), None, 0
+    while i < len(lines):
+        line = lines[i]
+        m = HEADER.match(line)
+        if m:
+            current = {m.group(1), m.group(2)}
+            paths |= current
+            i += 1
+            continue
+        if current is None:
+            return None, "no `diff --git` header: not a unified git diff"
+        if line.startswith(("--- ", "+++ ")):
+            name = line[4:]
+            if name != "/dev/null":
+                if not name.startswith(("a/", "b/")) or name[2:] not in current:
+                    return None, f"`{line}` is not the file its `diff --git` header names"
+            i += 1
+            continue
+        n = NAMED.match(line)
+        if n:
+            if n.group(2) not in current:
+                return None, f"`{line}` is not the file its `diff --git` header names"
+            i += 1
+            continue
+        if EXTENDED.match(line):
+            i += 1
+            continue
+        h = HUNK.match(line)
+        if not h:
+            return None, f"unexpected line outside a hunk: `{line[:80]}`"
+        old = int(h.group(1) or "1") if h.group(1) != "0" else 0
+        new = int(h.group(2) or "1") if h.group(2) != "0" else 0
+        i += 1
+        while (old > 0 or new > 0) and i < len(lines):
+            body = lines[i]
+            if body.startswith(" ") or body == "":
+                old, new = old - 1, new - 1
+            elif body.startswith("-"):
+                old -= 1
+            elif body.startswith("+"):
+                new -= 1
+            elif not body.startswith("\\"):
+                return None, f"a hunk ends early at `{body[:80]}`"
+            i += 1
+        if old != 0 or new != 0:
+            return None, "a hunk's line counts do not match its lines"
+        while i < len(lines) and lines[i].startswith("\\"):
+            i += 1
+    if not paths:
+        return None, "no `diff --git` header: not a unified git diff"
+    return paths, None
 
 
 def extract(body):
@@ -40,12 +105,12 @@ def extract(body):
         return None, f"the patch is over {MAX_BYTES:,} bytes"
     if "GIT binary patch" in patch or "\nBinary files " in patch:
         return None, "the patch changes a binary file"
-    paths = sorted({p for pair in HEADER.findall(patch) for p in pair})
-    if not paths:
-        return None, "no `diff --git` header: not a unified git diff"
+    paths, reason = sections(patch)
+    if reason:
+        return None, reason
     if len(paths) > MAX_FILES:
         return None, f"the patch touches {len(paths)} files (limit {MAX_FILES})"
-    for p in paths:
+    for p in sorted(paths):
         if p.startswith("/") or ".." in p.split("/"):
             return None, f"a path leaves the repository: {p}"
         if REFUSED.match(p):
@@ -64,7 +129,7 @@ def main(argv):
         return 1
     with open(argv[2], "w", encoding="utf-8") as f:
         f.write(patch)
-    print(f"patch: {len(patch.encode()):,} bytes, {len(set(HEADER.findall(patch)))} files")
+    print(f"patch: {len(patch.encode()):,} bytes, {len(sections(patch)[0])} files")
     return 0
 
 
