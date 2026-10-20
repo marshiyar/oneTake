@@ -89,9 +89,10 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                 switch item.command {
                 case .about: selector = #selector(NSApplication.orderFrontStandardAboutPanel(_:))
                 case .services, .openRecent: continue
-                case .openProject:
-                    let mi = NSMenuItem(title: item.label, action: #selector(openProject(_:)), keyEquivalent: item.key ?? "")
-                    mi.keyEquivalentModifierMask = .command
+                case .openProject, .settings:
+                    let action = item.command == .settings ? #selector(openSettings(_:)) : #selector(openProject(_:))
+                    let mi = NSMenuItem(title: item.label, action: action, keyEquivalent: item.key ?? "")
+                    mi.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
                     mi.target = self
                     sub.addItem(mi); continue
                 case .hide: selector = #selector(NSApplication.hide(_:))
@@ -119,12 +120,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                     sub.addItem(mi); continue
                 }
                 let mi = NSMenuItem(title: item.label, action: selector, keyEquivalent: item.key ?? "")
-                var mask: NSEvent.ModifierFlags = []
-                if item.modifiers.contains(.command) { mask.insert(.command) }
-                if item.modifiers.contains(.option) { mask.insert(.option) }
-                if item.modifiers.contains(.shift) { mask.insert(.shift) }
-                if item.modifiers.contains(.control) { mask.insert(.control) }
-                mi.keyEquivalentModifierMask = mask
+                mi.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
                 sub.addItem(mi)
             }
             top.submenu = sub
@@ -132,6 +128,18 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         }
         return main
     }
+
+    static func modifierMask(_ modifiers: Set<MenuItem.Modifier>) -> NSEvent.ModifierFlags {
+        var mask: NSEvent.ModifierFlags = []
+        if modifiers.contains(.command) { mask.insert(.command) }
+        if modifiers.contains(.option) { mask.insert(.option) }
+        if modifiers.contains(.shift) { mask.insert(.shift) }
+        if modifiers.contains(.control) { mask.insert(.control) }
+        return mask
+    }
+
+    /// MpVFX > Settings… (⌘, in the editor reaches the same card through EditorSession.commandKey).
+    @objc func openSettings(_ sender: NSMenuItem) { session?.showSettings() }
 
     /// File > Open…: the folder dialog (⌘O in the editor reaches the same call through EditorSession.commandKey).
     @objc func openProject(_ sender: NSMenuItem) { session?.requestOpenProject() }

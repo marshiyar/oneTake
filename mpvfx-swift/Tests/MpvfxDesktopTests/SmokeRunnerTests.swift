@@ -100,5 +100,13 @@ final class SmokeRunnerTests: XCTestCase {
         host.fireAll()
         XCTAssertEqual(session.panels?.right.layout.rightPanelTab, .renders)
     }
+
+    func testSettingsHookOpensTheSettingsCard() throws {
+        let session = try makeSession(), host = Host()
+        SmokeRunner(hooks: SmokeHooks(env: ["MPVFX_SMOKE_SNAPSHOT": "/tmp/s.png", "MPVFX_SMOKE_SETTINGS": "1"]), session: session, host: host).start()
+        XCTAssertFalse(session.settingsPanel.isOpen)
+        host.fireAll()
+        XCTAssertTrue(session.settingsPanel.isOpen)
+    }
 }
 #endif

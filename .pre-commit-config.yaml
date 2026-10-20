@@ -1,0 +1,54 @@
+# Checks pre-commit.ci (https://pre-commit.ci) runs on every pull request, and anyone can run locally with
+# `pre-commit run --all-files`. Fast, toolchain-free checks only: the Swift build and tests stay in mpvfx-ci.
+# Fixtures, golden files and generated shaders are left byte-for-byte as they are.
+exclude: |
+  (?x)^(
+    mpvfx-swift/Tests/EngineFixtures/.*|
+    mpvfx-swift/Tests/.*/Fixtures/.*|
+    mpvfx-swift/Tests/.*\.(json|txt|bin|png|wav|ogg|opus|mp4|mov|webm)|
+    mpvfx-swift/Sources/.*/Generated/.*
+  )$
+
+ci:
+  # pre-commit.ci never pushes commits to a pull request: commits here are authored by the owner only.
+  autofix_prs: false
+  autoupdate_schedule: quarterly
+  autoupdate_commit_msg: "pre-commit: update hook versions"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: mixed-line-ending
+        args: [--fix=no]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1
+    hooks:
+      # Pyflakes rules only (unused names, undefined names) over the CI and build scripts.
+      - id: ruff-check
+        args: [--select=F, --no-fix]
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      - id: copyright
+        name: every source file opens with the copyright block
+        entry: python3 -I -B mpvfx-swift/scripts/copyright.py
+        language: python
+        pass_filenames: false
+        always_run: true
