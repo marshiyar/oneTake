@@ -465,12 +465,17 @@ class Verify(World):
         _, problems = mt.verify(self.gh, self.git, t.head_ref, t.head_sha)
         self.assertEqual(len(problems), 2)
 
-    def test_app_fallback_says_so(self):
+    def test_app_fallback_asks_for_no_approval(self):
         self.gh.allow_actions_prs = False
         self.queue(1, "t1")
         self.step()
         t = self.open_train()
-        self.assertIn("cannot approve its own pull request", self.gh.bodies(t.number)[-1])
+        self.assertEqual(self.gh.bodies(t.number), [])
+        self.assertEqual(self.gh.auto_merge, [(t.number, t.head_sha)])
+
+    def test_body_promises_no_approval(self):
+        b = mt.render_body("train/4", "m" * 40, [mt.Queued(3, "a" * 40)], [])
+        self.assertNotIn("approve", b)
 
 
 class Body(unittest.TestCase):

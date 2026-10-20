@@ -46,16 +46,13 @@ Xcode pinned (`XCODE_VERSION` in `mpvfx-macos.yml`). Each job installs its insta
 installed app with a hidden window (the `*-smoke.png` snapshot) with the build tree and the fetched libraries moved
 away, and, on Windows and Linux, uninstalls it again. A green run on `main` publishes everything as the latest release.
 
-No repository secret is needed to build and test. The optional secrets below sign the macOS disk image and approve
-pull requests.
+No repository secret is needed to build and test. The optional secrets below sign the macOS disk image.
 
-## Approvals: the review App
+## Merging
 
-`main` requires `ci-ok` and one approving review. Approvals can come from the project's review GitHub App (installed
-on this repository only; Pull requests read and write, Contents read, Checks read, no webhook), whose App ID and
-private key are the repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`. After reviewing, the owner comments
-`/agent-approve <full head sha>` on the pull request; `.github/workflows/agent-approve.yml` posts the App's approval
-only when the comment comes from the owner's account, names the current head, and `ci-ok` passed on that commit.
+`main` requires `ci-ok` and nothing else: a pull request merges, or auto-merges, once it passes. The project's GitHub
+App (installed on this repository only; repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`) only writes the
+merge train's comments and labels and turns on auto-merge (`.github/workflows/merge-train.yml`); it approves nothing.
 
 ## macOS signing: one-time setup (owner)
 
