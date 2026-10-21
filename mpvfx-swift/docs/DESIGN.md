@@ -22,7 +22,8 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
 4. **Dense, not cramped.** 12 px body text, 11 px secondary text, 24–28 px rows. Empty space is a sign that a panel
    has nothing to show; show a short hint there instead.
 5. **Time is timecode.** Times read `HH:MM:SS:FF` (or `MM:SS:FF` under an hour) in tabular figures, in the accent
-   colour where the user can scrub them.
+   colour where the user can scrub them. The timeline ruler always reads `HH:MM:SS:FF`, so a minute never looks
+   like an hour ([TIMELINE.md](TIMELINE.md)).
 6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; muted text at least 3:1.
    Light mode keeps the same contrast; its structure is tuned separately (see "Light mode").
 
@@ -111,6 +112,24 @@ a new layout number is a new `PanelGrid` member, never a literal at the use site
 
 `PanelLayoutAuditTests` checks all four rules at 280 pt, 364 pt (the 1280 × 800 default) and 409 pt (1440 × 900), in
 dark and light.
+
+## Tabs
+
+Every tab row is `PanelTabBar` (`Sources/MpvfxPanels/PanelTabBar.swift`): the panel header strips (Design · Renders,
+Media) in the `.strip` style, and the tab rows inside a panel (curve modes, scope modes, effect families) in the
+`.inline` style on a 32 pt line over a hairline.
+
+- **Selected.** The selected tab is full ink, medium weight, on a 2 px accent underline. The others are `text2`
+  (at least 4.5:1 on the panel surfaces in both appearances), `text1` under the pointer. Selecting a tab never
+  reflows the bar: each tab is measured in the selected weight.
+- **Scales.** Tabs keep their natural width (label + 10 each side, at least 24) while they fit. When they do not, the
+  bar shows the tabs that fit, always with the selected one, and puts the rest behind a 24 pt chevron at the end,
+  whose menu lists them.
+- **Keyboard.** A bar is one Tab stop, the selected tab. Left and Right move to the previous and next tab and select
+  it (wrapping), Home and End go to the first and last. In the right panel the header (tab, hide, panel menu) comes
+  before the inspector in the Tab order. The focus ring is the 2 px accent.
+- **Close and drag.** A closable tab (`PanelTab.closable`, for dockable panels) carries a × with a 24 pt target inside
+  the tab. `PanelTabDrag` reports a drag that starts on a tab once the pointer has moved 4 pt, so a click never starts one.
 
 ## Checking a change
 

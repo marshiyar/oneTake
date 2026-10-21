@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxTimeline
 
 /// Row descriptors of the flat inspector. Rows are rebuilt from the document
 /// on every draw and event; they carry closures that edit through TimelineEditor, never state of their own.
@@ -161,6 +162,10 @@ public struct InspectorGroup {
     public var spacing: Double
     /// The open header's reset accessory (12px RotateCcw left of the caret, `gap-2.5`), when the group has one.
     public var reset: (() -> Void)?
+    /// Optional bypass in the header. The hit target is at least 24 points and is exposed by `accessibilityLabel`.
+    public var enabled: Bool?
+    public var accessibilityLabel: String?
+    public var setEnabled: ((Bool) -> Void)?
     public init(id: String, title: String, summary: String, rows: [InspectorRow], spacing: Double = 0) {
         self.id = id; self.title = title; self.summary = summary; self.rows = rows; self.spacing = spacing
     }
@@ -203,8 +208,11 @@ public struct InspectorCustomRow {
     public var draw: (CanvasContext, CanvasRect, InspectorPanel) -> Void
     /// (part, point, phase) — phase: 0 down, 1 drag, 2 up.
     public var pointer: (Int, CanvasPoint, Int) -> Void
+    /// Keys for a focused part (part, key) -> handled. A row with a handler is never "pressed" by Enter or Space:
+    /// a press replays a pointer at the part's centre, which on a wheel or graph is an edit (issue #171).
+    public var keyPress: ((Int, EditorKey) -> Bool)?
     public init(id: String, height: Double, draw: @escaping (CanvasContext, CanvasRect, InspectorPanel) -> Void,
-                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }) {
-        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer
+                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }, key: ((Int, EditorKey) -> Bool)? = nil) {
+        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer; self.keyPress = key
     }
 }

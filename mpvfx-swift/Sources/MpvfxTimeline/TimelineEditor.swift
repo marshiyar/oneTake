@@ -126,29 +126,20 @@ public final class TimelineEditor {
         return out.replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
     }
 
-    /// Native parameter -> timeline property group (one lane per group, in first-seen order).
+    /// Native parameter -> timeline property group (one lane per group, in first-seen order): TimelineKeyframeCatalog.
     static func propertyGroup(_ parameterId: String) -> (group: String, label: String) {
-        switch parameterId {
-        case "transform.position", "transform.position.x", "transform.position.y": return ("position", "Position")
-        case let p where p.hasPrefix("transform.scale"): return ("scale", "Scale")
-        case let p where p.hasPrefix("transform.rotation"): return ("rotation", "Rotation")
-        case let p where p.hasPrefix("layout."): return ("size", "Size")
-        case let p where p.contains("opacity"): return ("opacity", "Opacity")
-        case let p where p.hasPrefix("audio."): return ("audio", "Audio")
-        default:
-            let tail = parameterId.split(separator: ".").last.map(String.init) ?? parameterId
-            return (parameterId, titleCase(tail))
-        }
+        let p = TimelineKeyframeCatalog.property(parameterId)
+        return (p.group, p.label)
     }
 
     static func lanes(_ c: NativeProjectClip, fps: Double) -> [TimelineLaneModel] {
         var out: [TimelineLaneModel] = []
         for t in c.parameterTracks where !t.keyframes.isEmpty {
-            let g = propertyGroup(t.parameterId)
+            let g = TimelineKeyframeCatalog.property(t.parameterId)
             let times = t.keyframes.map { $0.frame / fps }
             if let i = out.firstIndex(where: { $0.group == g.group }) {
                 out[i].keyframes = Array(Set(out[i].keyframes + times)).sorted()
-            } else { out.append(TimelineLaneModel(group: g.group, label: g.label, keyframes: times.sorted())) }
+            } else { out.append(TimelineLaneModel(group: g.group, label: g.label, keyframes: times.sorted(), kind: g.kind)) }
         }
         return out
     }

@@ -22,7 +22,7 @@ public final class InspectorPanel {
     public enum Hit: Equatable {
         case group(String), field(String), scrub(String), keyframe(String), kfPrev(String), kfNext(String), stopwatch(String), reset(String)
         case slider(String), toggle(String), segment(String, String), button(String), fxToggle(String), fxRemove(String)
-        case headerClear, headerReset, body, groupReset(String), scrollbar
+        case headerClear, headerReset, body, groupReset(String), groupEnabled(String), scrollbar
         case custom(String, Int)
     }
 
@@ -44,11 +44,25 @@ public final class InspectorPanel {
     public var onEdited: (() -> Void)?
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
+    /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
+    public var onCopyGrade: (() -> Bool)?
+    public var onPasteGrade: (() -> Bool)?
+    /// Whether the timeline currently holds a copied grade. Selection compatibility is checked by the panel.
+    public var gradeClipboardAvailable = false
     /// Called after a header click opened or closed a group (the host redraws); saving is done by `openGroupId`.
     public var onOpenGroupChanged: ((String) -> Void)?
 
     // Interaction state
     public private(set) var hits = HitMap<Hit>()
+
+    /// Header bypasses exposed to the native canvas host after layout has populated `hits`.
+    public var accessibilityControls: [CanvasAccessibilityControl] {
+        buildGroups().compactMap { group in
+            guard let label = group.accessibilityLabel, let value = group.enabled,
+                  let frame = hits.rect(where: { $0 == .groupEnabled(group.id) }) else { return nil }
+            return CanvasAccessibilityControl(label: label, value: value, frame: frame) { group.setEnabled?(!value) }
+        }
+    }
     public var hovered: Hit?
     public private(set) var field: PanelTextField?
     /// The body's scroll (wheel glides, trackpad 1:1, clamped) and its scrollbar fade.
@@ -61,8 +75,6 @@ public final class InspectorPanel {
     /// Set when a group opens: the next layout scrolls the body so the open group's header sits at its top
     /// (`toggleOpen` → scroll the open group's header to the top), clamped to the end.
     var scrollOpenGroupToStart = false
-    /// Set by showKeyframeEasing: the next layout scrolls the open group's "Keyframe easing" rows into view.
-    var revealEasingRows = false
     var cropActive: String?
     var cropBefore: NativeClipCrop?
     var cropLinkAll = false
@@ -73,13 +85,11 @@ public final class InspectorPanel {
     var lastRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     /// Custom-row drag in flight (row id, part).
     var customDrag: (String, Int)?
-    /// Keyframes selected on the timeline (synced before each paint): the easing rows edit these when any are on the
-    /// selected clip's eased channels, else the keys at/before the playhead.
+    /// Keyframes selected on the timeline (synced before each paint): the easing block's "Easing…" opens the panel
+    /// on these when any are on the selected clip's eased channels, else on the keys at/before the playhead.
     public var selectedKeyframes: Set<TimelineKeyframeRef> = []
-    /// An ease-graph handle drag in flight (committed on release, one undo step).
-    public internal(set) var easeDrag: EaseDrag?
-    /// The ease graph's plot area and value range from the last draw.
-    public internal(set) var easeGraphBox: EaseGraphBox?
+    /// "Easing…": open the Keyframe Easing panel on these keys of this clip (RightPanel shows its Easing tab).
+    public var onOpenEasing: ((String, Set<TimelineKeyframeRef>) -> Void)?
     /// The Transform group's 3D transform disclosure (collapsed by default).
     public var transform3DOpen = false
     /// A 3D cube drag in flight (committed on release) and the cube's frame from the last draw.
@@ -114,6 +124,9 @@ public final class InspectorPanel {
     public var onImportLut: (() -> Void)?
     /// Host hook: the selected clip's current frame graded with a preset, for the Grade preset tiles (nil: no previews).
     public var presetPreview: ((PresetPreviewRequest) -> PresetPreviewState)?
+    /// Host hook: the built-in sample picture graded with a tile's look or effect, for the Effects catalog tiles and
+    /// for preset tiles whose clip has no picture (nil: those tiles show the "No preview renderer" placeholder).
+    public var effectPreview: ((EffectPreviewRequest) -> PresetPreviewState)?
     /// Whether the clip has a picture the preset tiles can show (nil: assume it does).
     public var presetPreviewsAvailable: ((String) -> Bool)?
     /// "Retry look previews" (the host drops what it holds and renders again).
@@ -126,6 +139,8 @@ public final class InspectorPanel {
                                  _ pick: @escaping (String) -> Void) -> Void)?
     /// The Composition section's preset select, from the last draw (the popover opens under it).
     var compositionPresetField: CanvasRect?
+    /// The inline tab bars of the last draw, by bespoke row id (InspectorPanel+Tabs.swift).
+    var tabBars: [String: InlineTabBar] = [:]
 
     public init() {}
 
@@ -186,7 +201,7 @@ public final class InspectorPanel {
 
     public func draw(_ c: CanvasContext, in r: CanvasRect) {
         lastRect = r
-        hits.reset()
+        hits.reset(); tabBars = [:]
         // The shelf went away (closed, the rack's owner changed, the selection or group moved on): the audition ends.
         defer { if let k = auditionKey, hits.rect(where: { $0 == .button(k) }) == nil { endAudition() } }
         c.fillRect(r, PanelTheme.panelBg)
@@ -226,22 +241,13 @@ public final class InspectorPanel {
         return nil
     }
 
-    /// The scroll a group opening or "Edit easing" asked for, applied once against this layout.
+    /// The scroll a group opening asked for, applied once against this layout.
     func scrollForOpenGroup(_ groups: [InspectorGroup], body: CanvasRect) {
         guard let i = groups.firstIndex(where: { $0.id == openGroupId }) else { return }
         if scrollOpenGroupToStart {
             bodyScroll = Double(i) * Self.groupHeaderHeight
             scrollOpenGroupToStart = false
         }
-        guard revealEasingRows else { return }
-        revealEasingRows = false
-        let g = groups[i]
-        guard let r = g.rows.firstIndex(where: { if case .heading("Keyframe easing", _) = $0.kind { return true }; return false }) else { return }
-        // Content y of the heading: the headers above, the open header, the body's top padding, the rows above.
-        let pad = PanelGrid.bodyPadding
-        let top = Double(i + 1) * Self.groupHeaderHeight + pad + g.rows[..<r].reduce(0) { $0 + $1.slotHeight + g.spacing }
-        let bottom = top + g.rows[r...].reduce(0) { $0 + $1.slotHeight + g.spacing }
-        if top < bodyScroll || bottom > bodyScroll + body.height { bodyScroll = min(bodyMaxScroll, max(0, min(top - pad, bottom - body.height + pad))) }
     }
 
     /// The column of group headers with the open group's body, scrolled, with the accordion entrance.
@@ -367,11 +373,24 @@ public final class InspectorPanel {
         c.fillRect(r.snapped, PanelTheme.panelBg)
         hits.add(r, .group(g.id))   // first, so header accessories added after it win the hit test
         let inner = CanvasRect(x: r.x + 16, y: r.y, width: r.width - 32, height: r.height)
+        if let on = g.enabled {
+            let target = CanvasRect(x: inner.maxX - 58, y: r.midY - 12, width: 28, height: 24)
+            let track = CanvasRect(x: target.x + 3, y: target.midY - 6, width: 22, height: 12)
+            c.fillRoundedRect(track, radius: 6, on ? PanelTheme.accent : PanelTheme.panelBorderInput)
+            c.fillRoundedRect(CanvasRect(x: on ? track.maxX - 10 : track.x + 2, y: track.y + 2, width: 8, height: 8), radius: 4, PanelTheme.white)
+            hits.add(target, .groupEnabled(g.id))
+        }
         if open {
-            PanelDraw.text(c, g.title, in: inner, font: PanelTheme.font(12, .semibold), color: PanelTheme.text0)
+            let t = PanelDraw.text(c, g.title, in: inner, font: PanelTheme.font(12, .semibold), color: PanelTheme.text0)
+            if g.enabled == false {   // a bypassed group says so beside its title, not only by the switch position
+                let x = inner.x + t.width + 8
+                PanelDraw.text(c, g.summary, in: CanvasRect(x: x, y: inner.y + 1, width: max(0, inner.maxX - 90 - x), height: inner.height),
+                               font: PanelTheme.mono(9), color: PanelTheme.text4)
+            }
             PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text3)
             if g.reset != nil {
-                let rr = CanvasRect(x: inner.maxX - 12 - 10 - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
+                let offset = g.enabled == nil ? 34.0 : 78.0
+                let rr = CanvasRect(x: inner.maxX - offset, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
                 PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.text3)
                 hits.add(Self.target(rr), .groupReset(g.id))
             }
@@ -495,6 +514,7 @@ public final class InspectorPanel {
         case .group(let id):
             toggleGroup(id)
         case .groupReset(let id): buildGroups().first { $0.id == id }?.reset?()
+        case .groupEnabled(let id): if let g = buildGroups().first(where: { $0.id == id }), let on = g.enabled { g.setEnabled?(!on) }
         case .field(let k): if let n = number(k) { field = PanelTextField(key: k, value: n.text) }
         case .scrub(let k): if let s = number(k)?.scrub { scrub = Scrub(key: k, startX: p.x, value: s.value, current: s.value, moved: false) }
         case .keyframe(let k): if let st = slider(k)?.settings { st.toggle() } else { keyframe(k)?.toggle() }
@@ -582,16 +602,19 @@ public final class InspectorPanel {
     public func keyDown(_ k: EditorKey) -> Bool {
         if k.code == .tab {   // Tab from a field commits it, then focus moves on
             if field != nil { commitField(); onEdited?() }
-            let moved = focus.move(hits, forward: !k.shift, Self.focusable)
+            let moved = focus.move(hits, forward: !k.shift) { [unowned self] in self.isFocusable($0) }
             if moved { revealFocus() }
             onEdited?(); return moved
         }
         guard var f = field else {
+            if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.keyPress {
+                if handler(part, k) { onEdited?(); return true }
+            }
             if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
                 if k.code == .escape { focus.visible = false; onEdited?(); return true }
                 return press(cur)
             }
-            return gradeKey(k)
+            return bodyKey(k)
         }
         switch f.key(k) {
         case .commit: field = f; commitField(); onEdited?(); return true
