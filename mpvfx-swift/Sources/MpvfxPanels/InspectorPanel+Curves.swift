@@ -32,27 +32,56 @@ extension InspectorPanel {
 
     // MARK: Curves (the curve modes and the curve graph)
 
-    /// Curve tabs (`flex flex-wrap gap-x-2 border-b border-panel-hairline`): `border-b-2 px-0.5 py-1 text-[9px]`,
-    /// active text-1 over the accent, the rest text-4 (hover text-2).
-    func curveTabsRow() -> InspectorCustomRow {
-        InspectorCustomRow(id: "grade:curvetabs", height: 24.5, draw: { [weak self] c, r, panel in
+    /// The height of one line of curve tabs (a pointer target tall).
+    static let curveTabHeight = 24.0
+    /// The tabs in their two lines: Master, R, G, B, then the hue-keyed curves.
+    static let curveTabLines: [[Int]] = [[0, 1, 2, 3], [4, 5, 6]]
+
+    /// Curve tabs: two lines of equal-width tabs, 11px text-2 (text-0 medium when open, text-1 on hover) over a
+    /// 2pt accent bar when open, with a dot in the tab's curve colour when its curve is edited. Every tab is a
+    /// pointer target the full line tall, and the text stays 4.5:1 on the panel in both modes (text-2).
+    func curveTabsRow(_ g: ColorGrading) -> InspectorCustomRow {
+        let lines = Double(Self.curveTabLines.count)
+        return InspectorCustomRow(id: "grade:curvetabs", height: lines * Self.curveTabHeight + 1, draw: { [weak self] c, r, panel in
             guard let self else { return }
-            var x = r.x
-            c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-            for (i, t) in Self.curveTabs.enumerated() {
-                let w = c.measureText(t.label, font: PanelTheme.font(9)).width + 4
-                let tr = CanvasRect(x: x, y: r.y, width: w, height: 23.5)
-                let on = self.grade.curveTab == t.key
-                PanelDraw.text(c, t.label, in: CanvasRect(x: tr.x, y: tr.y + 4, width: w, height: 13.5), font: PanelTheme.font(9),
-                               color: on ? PanelTheme.text1 : (panel.hovered == .custom("grade:curvetabs", i) ? PanelTheme.text2 : PanelTheme.text4), align: .center)
-                if on { c.fillRect(CanvasRect(x: tr.x, y: tr.maxY - 2, width: tr.width, height: 2), PanelTheme.accent) }
-                panel.addHit(tr, .custom("grade:curvetabs", i))
-                x = tr.maxX + 8
+            let edited = Set(self.editedCurveTabs(g))
+            for (line, tabs) in Self.curveTabLines.enumerated() {
+                let w = r.width / Double(tabs.count)
+                for (k, i) in tabs.enumerated() {
+                    let tr = CanvasRect(x: r.x + Double(k) * w, y: r.y + Double(line) * Self.curveTabHeight, width: w, height: Self.curveTabHeight)
+                    self.drawCurveTab(c, tr, i, panel, edited: edited.contains(Self.curveTabs[i].key))
+                }
             }
+            c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0, Self.curveTabs.indices.contains(part) else { return }
             self.grade.curveTab = Self.curveTabs[part].key; self.grade.selectedPoint = nil
         })
+    }
+
+    func drawCurveTab(_ c: CanvasContext, _ tr: CanvasRect, _ i: Int, _ panel: InspectorPanel, edited: Bool) {
+        let t = Self.curveTabs[i], on = openCurveTab.key == t.key
+        let font = PanelTheme.font(11, on ? .medium : .regular)
+        let tw = c.measureText(t.label, font: font).width, dot = edited ? 8.0 : 0
+        let x = tr.midX - (tw + dot) / 2
+        let color = on ? PanelTheme.text0 : (panel.hovered == .custom("grade:curvetabs", i) ? PanelTheme.text1 : PanelTheme.text2)
+        PanelDraw.text(c, t.label, in: CanvasRect(x: x, y: tr.midY - 8.25, width: tw + 1, height: 16.5), font: font, color: color)
+        if edited {   // the "edited" mark: a 5pt dot in the curve's colour
+            c.fill(.roundedRect(CanvasRect(x: x + tw + 3, y: tr.midY - 2.5, width: 5, height: 5), radius: 2.5), CanvasColor(t.color.now))
+        }
+        if on { c.fillRect(CanvasRect(x: tr.x + 4, y: tr.maxY - 2, width: tr.width - 8, height: 2), PanelTheme.accent) }
+        panel.addHit(tr, .custom("grade:curvetabs", i))
+    }
+
+    /// The tabs whose curve renders differently from the default (identity, or a flat hue curve).
+    func editedCurveTabs(_ g: ColorGrading) -> [String] {
+        Self.curveTabs.filter { Self.isCurveEdited(g, $0) }.map(\.key)
+    }
+
+    static func isCurveEdited(_ g: ColorGrading, _ t: CurveTab) -> Bool {
+        let edit = CurveEditing(hue: t.hue, limit: t.min...t.max)
+        if t.hue { return edit.displayed(g.hueCurve(t.key)).contains { abs($0[1]) > 1e-9 } }
+        return edit.displayed(g.curve(t.key)) != GradeCurve.identity
     }
 
     /// The open curve tab; a key that names no tab (the field is public) reads as Master.
@@ -94,12 +123,12 @@ extension InspectorPanel {
     }
 
     func curveGraph(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorCustomRow {
-        InspectorCustomRow(id: "grade:curve", height: 200, draw: { [weak self] c, r, panel in
+        InspectorCustomRow(id: "grade:curve", height: Self.curveGraphSize(bodyContentWidth), draw: { [weak self] c, r, panel in
             self?.drawCurveGraph(c, r, panel, g)
         }, pointer: { [weak self] _, p, phase in
             guard let self else { return }
             switch phase {
-            case 0: self.curvePress(g, p)
+            case 0: self.curvePress(g, p, commit: commit)
             case 1: self.curveDrag(p)
             default: self.curveRelease(g, commit: commit)
             }
@@ -143,12 +172,16 @@ extension InspectorPanel {
         editor.withHistory("Edit color grade", coalesceKey: "grade:curve:nudge:\(tab.key):\(i)") { commit(writeCurve(g, moved)) }
     }
 
-    /// CurveGraph: `max-w-[200px] rounded border border-panel-border-input bg-black/20`, view box 160 with the plot
-    /// area at 8…152. The line is the curve the grade applies (ColorCurveMath = the renderer's GradeCurve):
-    /// normalized, monotone and inside the range. Line and points are clipped to the graph.
+    /// The graph's side for a body `width`: square, as wide as the body, at least 160 pt (issue #177).
+    static func curveGraphSize(_ width: Double) -> Double { max(160, width) }
+
+    /// CurveGraph: `rounded border border-panel-border-input bg-black/20`, square at the row's height (the body
+    /// width), view box 160 with the plot area at 8…152, so strokes and points scale with it. The line is the curve
+    /// the grade applies (ColorCurveMath = the renderer's GradeCurve): normalized, monotone and inside the range.
+    /// Line, reference lines and points are clipped to the graph.
     func drawCurveGraph(_ c: CanvasContext, _ r: CanvasRect, _ panel: InspectorPanel, _ g: ColorGrading) {
         let tab = openCurveTab
-        let size = min(r.width, 200)
+        let size = r.height
         let frame = CanvasRect(x: r.x + (r.width - size) / 2, y: r.y, width: size, height: size)
         let u = (size - 2) / 160
         grade.curveBox = CanvasRect(x: frame.x + 1 + 8 * u, y: frame.y + 1 + 8 * u, width: 144 * u, height: 144 * u)
@@ -160,6 +193,7 @@ extension InspectorPanel {
         let color = CanvasColor(tab.color.now)
         c.save()
         c.clip(.roundedRect(frame.insetBy(1), radius: 3))
+        drawCurveReferences(c, g, tab, u: u)
         var path = CanvasPath()
         for (k, s) in ColorCurveMath.samples(pts, hue: tab.hue, limit: tab.min...tab.max, count: 144).enumerated() {
             let vp = curveToView([s.x, s.y])
@@ -177,6 +211,23 @@ extension InspectorPanel {
         c.restore()
         // The target reaches a point's full hit radius past the plot area, so the end points are as easy to grab.
         panel.addHit(grade.curveBox.insetBy(-Self.curvePointHitRadius), .custom("grade:curve", 0))
+    }
+
+    /// The default curve (the diagonal, or the zero line of a hue curve) as a faint guide; on Master, R, G and B also
+    /// every other edited RGB curve, faint (40%) in its own colour, under the open one (issue #177 A5).
+    func drawCurveReferences(_ c: CanvasContext, _ g: ColorGrading, _ tab: CurveTab, u: Double) {
+        var guide = CanvasPath()
+        guide.move(to: curveToView([0, 0])); guide.line(to: curveToView(tab.hue ? [360, 0] : [1, 1]))
+        c.stroke(guide, PanelTheme.white.withAlpha(0.16), StrokeStyle(width: 0.5 * u))
+        guard !tab.hue else { return }
+        for other in Self.curveTabs.prefix(4) where other.key != tab.key && Self.isCurveEdited(g, other) {
+            var path = CanvasPath()
+            for (k, s) in ColorCurveMath.samples(g.curve(other.key), hue: false, limit: 0...1, count: 144).enumerated() {
+                let vp = curveToView([s.x, s.y])
+                if k == 0 { path.move(to: vp) } else { path.line(to: vp) }
+            }
+            c.stroke(path, CanvasColor(other.color.now).withAlpha(0.4), StrokeStyle(width: u))
+        }
     }
 
     /// Quarter lines (rgba(255,255,255,.08), 0.5 wide) over the plot area of a graph `frame` at `u` per view unit.
@@ -211,14 +262,26 @@ extension InspectorPanel {
         return i
     }
 
-    /// A press selects the point under it, or adds one there (where the curve has room for it).
-    func curvePress(_ g: ColorGrading, _ p: CanvasPoint) {
+    /// Two presses on one point at most this far apart (seconds, on the editor's clock) are a double-click.
+    static let curveDoubleClickInterval = 0.4
+
+    /// A press selects the point under it (a second press on it within `curveDoubleClickInterval` deletes it), or
+    /// adds one there (where the curve has room for it).
+    func curvePress(_ g: ColorGrading, _ p: CanvasPoint, commit: (ColorGrading) -> Void) {
         grade.curveDraft = nil
-        let pts = currentCurvePoints(g)
+        let pts = currentCurvePoints(g), now = editor?.now() ?? 0
+        let previous = grade.curveClick
+        grade.curveClick = nil
         if let i = nearestCurvePoint(pts, to: p) {
+            if let last = previous, last.tab == openCurveTab.key, last.index == i, now - last.time <= Self.curveDoubleClickInterval,
+               let removed = curveEditing.removing(i, from: pts) {
+                grade.selectedPoint = nil; grade.curveGrab = nil
+                commit(writeCurve(g, removed)); return
+            }
             let v = curveToView(pts[i])
             grade.selectedPoint = i; grade.curveDraft = pts
             grade.curveGrab = (v.x - p.x, v.y - p.y, p, false)
+            grade.curveClick = (openCurveTab.key, i, now)
         } else if let added = curveEditing.inserting(curveFromView(p), into: pts) {
             grade.selectedPoint = added.index; grade.curveDraft = added.points
             grade.curveGrab = (0, 0, p, true)
@@ -263,32 +326,82 @@ extension InspectorPanel {
         return CanvasRect(x: x, y: y, width: w, height: h)
     }
 
-    /// Footer (`flex min-h-7 items-end gap-2`): the hint (9px text-5) or, with a removable point selected, a
-    /// `Delete` text button; the 11px reset at the right (`pb-0.5`).
+    /// Footer: three 11px text buttons, each a 24pt-tall target: Delete point (part 1), Reset curve (part 0, the open
+    /// tab) and Reset all (part 2, every curve, one undo step). Always drawn; a button with nothing to do is dimmed
+    /// and takes no press (issue #177 A3, A4).
     func curveFooter(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorCustomRow {
         InspectorCustomRow(id: "grade:curvefoot", height: 28, draw: { [weak self] c, r, panel in
             self?.drawCurveFooter(c, r, panel, g)
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
-            if part == 0 { self.grade.selectedPoint = nil; commit(self.writeCurve(g, self.openCurveTab.hue ? [] : GradeCurve.identity)) }
-            else { self.deleteSelectedCurvePoint(g, commit: commit) }
+            switch part {
+            case 0: self.grade.selectedPoint = nil; commit(self.writeCurve(g, self.openCurveTab.hue ? [] : GradeCurve.identity))
+            case 1: self.deleteSelectedCurvePoint(g, commit: commit)
+            default: var n = g; n.curves = [:]; n.hueCurves = [:]; self.grade.selectedPoint = nil; commit(n)
+            }
         })
     }
 
+    /// The footer's buttons in order: label, hit part, whether it has something to do.
+    func curveFooterButtons(_ g: ColorGrading) -> [(label: String, part: Int, enabled: Bool)] {
+        let canDelete = grade.selectedPoint.map { curveEditing.canRemove($0, in: currentCurvePoints(g)) } ?? false
+        return [("Delete point", 1, canDelete), ("Reset curve", 0, Self.isCurveEdited(g, openCurveTab)), ("Reset all", 2, !editedCurveTabs(g).isEmpty)]
+    }
+
     func drawCurveFooter(_ c: CanvasContext, _ r: CanvasRect, _ panel: InspectorPanel, _ g: ColorGrading) {
-        let line = CanvasRect(x: r.x, y: r.maxY - 13.5, width: r.width - 19, height: 13.5)
-        if let i = grade.selectedPoint, curveEditing.canRemove(i, in: currentCurvePoints(g)) {
-            let w = c.measureText("Delete", font: PanelTheme.font(9)).width
-            let del = CanvasRect(x: line.x, y: line.y - 2, width: w, height: 15.5)
-            PanelDraw.text(c, "Delete", in: CanvasRect(x: del.x, y: line.y - 2, width: w, height: 13.5), font: PanelTheme.font(9),
-                           color: panel.hovered == .custom("grade:curvefoot", 1) ? PanelTheme.text1 : PanelTheme.text4)
-            panel.addHit(Self.curveTarget(del, in: r), .custom("grade:curvefoot", 1))
-        } else {
-            PanelDraw.text(c, "Click the graph or press Enter to add a point", in: line, font: PanelTheme.font(9), color: PanelTheme.text5)
+        var x = r.x
+        for b in curveFooterButtons(g) {
+            let w = max(Self.curveMinTarget, c.measureText(b.label, font: PanelTheme.font(11)).width + 16)
+            let br = CanvasRect(x: x, y: r.y + 2, width: w, height: Self.curveMinTarget)
+            let hot = b.enabled && panel.hovered == .custom("grade:curvefoot", b.part)
+            c.strokeRoundedRect(br.insetBy(0.5), radius: PanelTheme.radius, b.enabled ? (hot ? PanelTheme.text3 : PanelTheme.panelBorderInput)
+                                : PanelTheme.panelBorderInput.withAlpha(0.5), width: 1)
+            PanelDraw.text(c, b.label, in: br, font: PanelTheme.font(11), color: b.enabled ? (hot ? PanelTheme.text0 : PanelTheme.text1) : PanelTheme.text4,
+                           align: .center)
+            if b.enabled { panel.addHit(br, .custom("grade:curvefoot", b.part)) }
+            x = br.maxX + 6
         }
-        let reset = CanvasRect(x: r.maxX - 11, y: r.maxY - 13, width: 11, height: 11)
-        PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("grade:curvefoot", 0) ? PanelTheme.text1 : PanelTheme.text4)
-        panel.addHit(Self.curveTarget(reset, in: r), .custom("grade:curvefoot", 0))
+    }
+
+    /// The editing hint under the footer (10px text-2: 4.5:1 on the panel in both modes).
+    func curveHintRow() -> InspectorCustomRow {
+        InspectorCustomRow(id: "grade:curvehint", height: 15, draw: { c, r, _ in
+            PanelDraw.text(c, "Click adds a point · drag moves it · double-click deletes it", in: r, font: PanelTheme.font(10), color: PanelTheme.text2)
+        })
+    }
+
+    /// Input and Output of the selected point: percent on Master/R/G/B; on hue curves degrees across and a degree
+    /// (Hue/Hue) or percent delta. A typed or scrubbed value is one undo step, kept inside the neighbours by
+    /// `CurveEditing.moving`. With no point selected both read "–" and are disabled; an RGB end point's Input too.
+    func curvePointRows(_ g: ColorGrading, set: @escaping (ColorGrading) -> Bool) -> [InspectorRow] {
+        let tab = openCurveTab, edit = curveEditing, pts = currentCurvePoints(g)
+        let sel = grade.selectedPoint.flatMap { pts.indices.contains($0) ? $0 : nil }
+        let rows: [InspectorRow] = [0, 1].map { axis in
+            let unit = Self.curveFieldUnit(tab, axis: axis)
+            var n = numberRow(key: axis == 0 ? "grade:curve:input" : "grade:curve:output", label: axis == 0 ? "Input" : "Output",
+                              value: sel.map { pts[$0][axis] * unit.scale } ?? 0, suffix: unit.suffix, tier: .default, step: unit.step,
+                              apply: { [weak self] v in self?.typedCurveValue(v / unit.scale, axis: axis, g, set: set) ?? false })
+            if sel == nil { n.text = "–"; n.scrub = nil }
+            n.disabled = sel == nil || (axis == 0 && sel.map { edit.isPinned($0, in: pts) } == true)
+            return .init(.number(n))
+        }
+        return [rows[0], .init(.spacer(2)), rows[1]]
+    }
+
+    /// A field's display scale, suffix and scrub step per point of drag.
+    static func curveFieldUnit(_ tab: CurveTab, axis: Int) -> (scale: Double, suffix: String, step: Double) {
+        if axis == 0 { return tab.hue ? (1, "°", 1) : (100, "%", 0.5) }
+        return tab.key == "hueVsHue" ? (1, "°", 1) : (100, "%", 0.5)
+    }
+
+    /// Sets the selected point's input (`axis` 0) or output (1) to `v` in curve units; false when nothing changed.
+    func typedCurveValue(_ v: Double, axis: Int, _ g: ColorGrading, set: (ColorGrading) -> Bool) -> Bool {
+        let pts = currentCurvePoints(g)
+        guard let i = grade.selectedPoint, pts.indices.contains(i), v.isFinite else { return false }
+        var p = pts[i]
+        p[axis] = v
+        let moved = curveEditing.moving(i, to: p, in: pts)
+        return moved != pts && set(writeCurve(g, moved))
     }
 
     func deleteSelectedCurvePoint(_ g: ColorGrading, commit: (ColorGrading) -> Void) {

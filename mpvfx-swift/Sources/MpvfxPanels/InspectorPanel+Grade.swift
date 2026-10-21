@@ -31,6 +31,8 @@ public struct GradeUIState: Equatable {
     /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
     /// past the drag threshold (a click that only selects a point never moves it).
     var curveGrab: (dx: Double, dy: Double, start: CanvasPoint, moved: Bool)?
+    /// The last press that selected a curve point (tab, index, editor clock), for double-click delete.
+    var curveClick: (tab: String, index: Int, time: Double)?
     /// Geometry from the last draw (rows are rebuilt per event, so it lives here).
     var wheelRects: [CanvasRect] = []
     var curveBox = CanvasRect(x: 0, y: 0, width: 1, height: 1)
@@ -103,11 +105,15 @@ extension InspectorPanel {
         gap(6)
         rows.append(.init(.section("Curves")))
         gap(6)
-        rows.append(.init(.custom(curveTabsRow())))
+        rows.append(.init(.custom(curveTabsRow(g))))
         gap(8)
         rows.append(.init(.custom(curveGraph(g, commit: commit))))
         gap(8)
+        rows.append(contentsOf: curvePointRows(g, set: { editor.setColorGrading(clipId: s.id, $0) }))
+        gap(6)
         rows.append(.init(.custom(curveFooter(g, commit: commit))))
+        gap(2)
+        rows.append(.init(.custom(curveHintRow())))
         gap(6)
         rows.append(contentsOf: secondaryRows(g, commit: commit))
         gap(6)
