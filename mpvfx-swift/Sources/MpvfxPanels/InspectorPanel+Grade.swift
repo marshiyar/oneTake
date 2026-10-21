@@ -22,7 +22,8 @@ public struct GradeUIState: Equatable {
     public var curveTab = "master"
     public var selectedPoint: Int?
     public var selectedSecondary = 0
-    public var lutOpen = false
+    /// The Custom LUT disclosure once the user opened or closed it; nil follows the clip (open while it has a LUT).
+    public var lutOpen: Bool?
     public var finishSettings: String?        // "vignette" | "grain"
     public var copyToProject = false
     /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
@@ -421,45 +422,6 @@ extension InspectorPanel {
         // The selection's controls sit `space-y-1.5` under the header.
         let tail = rows[headCount...].flatMap { [InspectorRow(.spacer(6)), $0] }
         return Array(rows[..<headCount]) + tail
-    }
-
-    // MARK: Custom LUT
-
-    func lutRows(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> [InspectorRow] {
-        // `border-t border-panel-hairline pt-1.5` over a `min-h-[30px]` button: 11px text-2 label, the 10px caret
-        // `M2 3l3 4 3-4z` in text-5 (turned 90° when open).
-        var rows: [InspectorRow] = [.init(.custom(InspectorCustomRow(id: "lut:toggle", height: 37, draw: { [weak self] c, r, panel in
-            c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-            let row = CanvasRect(x: r.x, y: r.y + 7, width: r.width, height: 30)
-            PanelDraw.text(c, "Custom LUT", in: CanvasRect(x: row.x, y: row.midY - 8.25, width: row.width - 16, height: 16.5), font: PanelTheme.font(11), color: PanelTheme.text2)
-            let caret = CanvasRect(x: row.maxX - 10, y: row.midY - 5, width: 10, height: 10)
-            c.withState {
-                if self?.grade.lutOpen == true { c.translate(caret.midX, caret.midY); c.rotate(.pi / 2); c.translate(-caret.midX, -caret.midY) }
-                c.fillSVG(["M2 3l3 4 3-4z"], viewBox: 10, in: caret, PanelTheme.text5)
-            }
-            panel.addHit(row, .custom("lut:toggle", 0))
-        }, pointer: { [weak self] _, _, phase in if phase == 0 { self?.grade.lutOpen.toggle() } })))]
-        guard grade.lutOpen else { return rows }
-        let assets = lutAssets()
-        let options = [""] + assets
-        let cur = g.lut?.src ?? ""
-        rows.append(.init(.segmented(.init(key: "lut:pick", label: g.lut.map { ($0.src as NSString).lastPathComponent } ?? "None",
-                                           options: [(key: "prev", label: "‹", active: false), (key: "next", label: "›", active: false), (key: "import", label: "+", active: false)],
-                                           select: { [weak self] k in
-            if k == "import" { self?.onImportLut?(); return }
-            guard let i = options.firstIndex(of: cur) ?? Optional(0) else { return }
-            let j = (i + (k == "next" ? 1 : options.count - 1)) % options.count
-            var n = g; n.lut = options[j].isEmpty ? nil : ColorGrading.Lut(src: options[j], intensity: g.lut?.intensity ?? 1); commit(n)
-        }))))
-        if let lut = g.lut {
-            rows.append(.init(.slider(.init(key: "lut:strength", label: "LUT strength", position: lut.intensity * 100, min: 0, max: 100,
-                                            display: "\(Int((lut.intensity * 100).rounded()))%", format: { "\(Int($0.rounded()))%" },
-                                            tier: lut.intensity == 1 ? .default : .explicitCustom,
-                                            commit: { v in var n = g; n.lut?.intensity = v / 100; commit(n) },
-                                            reset: { var n = g; n.lut?.intensity = 1; commit(n) }))))
-        }
-        if assets.isEmpty { rows.append(.init(.note("Import a .cube file with + to use it as a LUT."))) }
-        return rows
     }
 }
 
