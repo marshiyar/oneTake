@@ -160,8 +160,8 @@ public final class InspectorPanel {
     public var scopeSource: ColorScopes.Source = .clip {
         didSet { if scopeSource != oldValue, let layout { layout.update { $0.scopeSource = scopeSource } } }
     }
-    /// Analyses scope frames off the main thread (latest wins); the host sets its `onReady` to redraw.
-    public let scopeAnalyzer = ScopeAnalyzer()
+    /// Analyses scope frames off the draw thread; the host sets its `onReady` to redraw.
+    public let scopeWorker = ScopeWorker()
     public var lutAssets: () -> [String] = { [] }
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,
