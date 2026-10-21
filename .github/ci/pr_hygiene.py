@@ -28,7 +28,13 @@ writes a job summary ($GITHUB_STEP_SUMMARY, else stdout) and one `::warning::` a
 A slice that has to be bigger says why in its description; these are prompts for the reviewer, not gates.
 Exit 0 always; an API failure becomes a warning of its own.
 """
-import argparse, fnmatch, json, os, re, subprocess, sys
+import argparse
+import fnmatch
+import json
+import os
+import re
+import subprocess
+import sys
 
 MAX_LINES = 400
 MAX_FILES = 15
@@ -40,7 +46,7 @@ TEST_GLOBS = ["mpvfx-swift/Tests/*", ".github/ci/test_*.py"]
 FIXTURE_GLOBS = ["*/Fixtures/*", "*/fixtures/*", "*/EngineFixtures/*"]
 GENERATED_GLOBS = ["*/Generated/*", "*.generated.*", "*/Package.resolved", "Package.resolved",
                    ".github/sentinel-baseline/*", "*-baseline.json"]
-CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+(?:([\w.-]+/[\w.-]+))?#(\d+)\b", re.I)
+CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+(?:([\w.-]+/[\w.-]+))?#(\d+)\b", re.IGNORECASE)
 
 
 def matches(path, globs):

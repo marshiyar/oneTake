@@ -12,7 +12,14 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for crash_constructs.py: each construct is counted, each look-alike is not, the ratchet only goes down."""
-import contextlib, importlib.util, io, json, os, subprocess, tempfile, unittest
+import contextlib
+import importlib.util
+import io
+import json
+import os
+import subprocess
+import tempfile
+import unittest
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))

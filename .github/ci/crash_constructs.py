@@ -42,7 +42,13 @@ file that rose prints the occurrences that REV does not have (matched by kind an
 cannot be read, every occurrence of that kind in the file. Exit 0 within the baseline, 1 on a rise, 2 bad input or a
 refused --update/--init.
 """
-import argparse, bisect, json, os, re, subprocess, sys
+import argparse
+import bisect
+import json
+import os
+import re
+import subprocess
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -53,7 +59,7 @@ CALLS = {"fatalError": "fatalError", "precondition": "precondition", "preconditi
 IDENT_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$")  # $0 too
 # Keywords that can sit right before a prefix `!` with no space (`return!x` is legal Swift); `self` stays out, since
 # `self!` unwraps a weak capture.
-KEYWORDS = frozenset("if guard while return in case else where throw repeat is await switch let var".split())
+KEYWORDS = frozenset(["if", "guard", "while", "return", "in", "case", "else", "where", "throw", "repeat", "is", "await", "switch", "let", "var"])
 
 
 # ---- lexer: blank comments and string contents, keep code (interpolations included) ----
@@ -204,9 +210,7 @@ def _in_type_position(text, start):
     j = _skip_space_back(text, start)
     if j >= 2 and text[j - 2:j] == "->":
         return True
-    if j >= 1 and text[j - 1] == ":":
-        return True
-    return False
+    return j >= 1 and text[j - 1] == ":"
 
 
 def _is_iuo(text, bang):
@@ -324,10 +328,10 @@ def counts_of(occ):
 def baseline_counts(data):
     """Validate a decoded baseline and return its counts."""
     if not isinstance(data, dict):
-        raise ValueError("baseline is not an object")
+        raise TypeError("baseline is not an object")
     counts = data.get("counts")
     if not isinstance(counts, dict):
-        raise ValueError("no \"counts\" object")
+        raise TypeError("no \"counts\" object")
     for rel, c in counts.items():
         if not isinstance(c, dict) or any(k not in KINDS or not isinstance(v, int) or v < 0 for k, v in c.items()):
             raise ValueError(f"bad entry for {rel}: {c!r}")
@@ -472,7 +476,7 @@ def main(argv=None):
     try:
         baseline = load_baseline(baseline_path)
         base_baseline = baseline_at_revision(root, a.base) if a.base and not a.update else None
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, TypeError) as e:
         print(f"cannot read the baseline {baseline_path}: {e}", file=sys.stderr)
         return 2
     rises, falls = compare(baseline, current)
@@ -510,9 +514,9 @@ def main(argv=None):
                 report.append(f"  - `{rel}:{line}`: `{src_lines[line - 1].strip()[:160]}`")
                 notes.append(f"::error file={rel},line={line},title=crash construct ({kind})::{kind} above the "
                              f"baseline ({b} -> {c}); return a typed error instead")
-        report += ["", "Remove the new construct (handle the nil, `try` with a typed error, `as?`). The script never "
-                       "raises the baseline; a file that only moved carries its entry over by hand in the same pull "
-                       "request, where review sees it."]
+        report += ["", ("Remove the new construct (handle the nil, `try` with a typed error, `as?`). The script never "
+                        "raises the baseline; a file that only moved carries its entry over by hand in the same pull "
+                        "request, where review sees it.")]
     elif falls:
         report.append(f"Within the baseline; {len(falls)} count(s) went down. Lock the gain in this pull request: "
                       "`python3 -I -B .github/ci/crash_constructs.py --update`.")

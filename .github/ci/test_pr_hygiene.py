@@ -12,7 +12,12 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for pr_hygiene.py: each limit warns past its threshold only, exclusions apply, bug fixes need a test."""
-import contextlib, importlib.util, io, os, subprocess, unittest
+import contextlib
+import importlib.util
+import io
+import os
+import subprocess
+import unittest
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -76,7 +81,7 @@ class Areas(unittest.TestCase):
 
 
 class BugFix(unittest.TestCase):
-    SRC = [f("mpvfx-swift/Sources/MpvfxTimeline/A.swift", 3)]
+    SRC = (f("mpvfx-swift/Sources/MpvfxTimeline/A.swift", 3),)
 
     def test_closing_keywords(self):
         body = "Fixes #12. closes #13, Resolved: #14 and fix marshiyar/oneTake#15; other/repo#16; see #17; Closes #12"
@@ -84,18 +89,18 @@ class BugFix(unittest.TestCase):
         self.assertEqual(ph.closed_issues(None, REPO), [])
 
     def test_bug_without_test_warns(self):
-        w = warn(self.SRC, "Closes #5", {5: ["bug", "timeline"]})
+        w = warn(list(self.SRC), "Closes #5", {5: ["bug", "timeline"]})
         self.assertEqual(len(w), 1)
         self.assertIn("#5", w[0])
 
     def test_bug_with_test_is_fine(self):
-        self.assertEqual(warn(self.SRC + [f("mpvfx-swift/Tests/MpvfxTimelineTests/A.swift", 9)], "Closes #5",
+        self.assertEqual(warn([*self.SRC, f("mpvfx-swift/Tests/MpvfxTimelineTests/A.swift", 9)], "Closes #5",
                               {5: ["bug"]}), [])
 
     def test_not_a_bug_or_not_an_issue(self):
-        self.assertEqual(warn(self.SRC, "Closes #5", {5: ["enhancement"]}), [])
-        self.assertEqual(warn(self.SRC, "Closes #6", {}), [])      # a pull request or a missing issue: None
-        self.assertEqual(warn(self.SRC, "Refs #5", {5: ["bug"]}), [])
+        self.assertEqual(warn(list(self.SRC), "Closes #5", {5: ["enhancement"]}), [])
+        self.assertEqual(warn(list(self.SRC), "Closes #6", {}), [])      # a pull request or a missing issue: None
+        self.assertEqual(warn(list(self.SRC), "Refs #5", {5: ["bug"]}), [])
 
 
 class NeverFails(unittest.TestCase):
