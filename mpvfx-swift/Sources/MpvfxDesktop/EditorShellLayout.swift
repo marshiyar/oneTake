@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxPanels
+import MpvfxPlayer
 import MpvfxTimeline
 
 /// The editor window's regions. Panels sit edge to edge; the 1px seams between them are the black shell
@@ -127,6 +128,8 @@ final class EditorShellRouter: CanvasInput {
     var timelineHeight: Double
     var onTimelineHeightCommit: (Double) -> Void = { _ in }
     var isFullscreen: () -> Bool = { false }
+    /// What the preview stage asks for under the pointer (`PlayerController.stageCursor`).
+    var stageCursor: () -> StageCursor = { .arrow }
     var needsDisplay: () -> Void = {}
     /// Hovered seam/divider, for the hover tint and the host's resize cursor.
     private(set) var hoveredHandle: Drag?
@@ -245,11 +248,22 @@ final class EditorShellRouter: CanvasInput {
         return nil
     }
 
-    /// The cursor a host should show at a point: column resize over a seam, row resize over the divider.
-    enum Cursor { case arrow, columnResize, rowResize }
+    /// The cursor a host should show at a point: column resize over a seam, row resize over the divider, and over
+    /// the preview the stage's own (transform handles, move, rotate, anchor, locked: StageHostCursor.swift).
+    enum Cursor: Equatable { case arrow, columnResize, rowResize, move, resizeNWSE, resizeNESW, crosshair, notAllowed }
+    /// Order: the Settings card covers everything (arrow); a seam drag in progress; a pane holding the pointer keeps
+    /// its own cursor (the stage's, or the arrow) so a drag crossing a seam shows no resize arrow; then hover.
     func cursor(at x: Double, _ y: Double) -> Cursor {
-        if let d = drag ?? handle(at: x, y) { if case .timelineDivider = d { return .rowResize }; return .columnResize }
-        return .arrow
+        if modalOpen { return .arrow }
+        if let d = drag { return Self.seamCursor(d) }
+        if let c = captured { return c == .player ? Cursor(stage: stageCursor()) : .arrow }
+        if let d = handle(at: x, y) { return Self.seamCursor(d) }
+        return region(at: x, y) == .player ? Cursor(stage: stageCursor()) : .arrow
+    }
+
+    static func seamCursor(_ d: Drag) -> Cursor {
+        if case .timelineDivider = d { return .rowResize }
+        return .columnResize
     }
 
     /// The region under a window point and the point in that region's coordinates (file drops from the desktop).
@@ -400,6 +414,7 @@ extension EditorSession {
                                        timelineHeight: layout.prefs.timelineHeight ?? EditorShellFrames.defaultTimelineHeight)
         router.onTimelineHeightCommit = { [weak layout] h in layout?.update { $0.timelineHeight = h.rounded() } }
         router.isFullscreen = { [weak self] in self?.player.view.isFullscreen ?? false }
+        router.stageCursor = { [weak self] in self?.player.stageCursor ?? .arrow }
         installPreview(userData: userData)
         // Track height, zoom and the magnet persist with the UI preferences.
         let region = TimelineRegion(controller: timeline, preferences: FileTimelineUIPreferencesStore(

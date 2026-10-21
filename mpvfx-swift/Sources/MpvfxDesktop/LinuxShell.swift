@@ -121,6 +121,7 @@ final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
         }
         let host = GtkCanvasHost { [router] c, size in router.draw(c, size: size) }
         host.input = router
+        host.cursorAt = { [router] x, y in router.cursor(at: x, y) }
         host.onFilesDragged = { [weak session] p in session?.panels?.assetDrag?.filesDragged(over: p) }
         host.onFilesDropped = { [weak session] paths, p in session?.panels?.assetDrag?.dropFiles(paths, at: p) }
         shellHost = host

@@ -25,7 +25,8 @@ extension PlayerController {
     public static let anchorSnapPx = 8.0
 
     /// Shape the host should show for the pointer.
-    public var stageCursor: StageCursor { view.transformChrome.cursor }
+    /// Read live from the gesture and hover state, so a press that starts a move or group drag shows at once.
+    public var stageCursor: StageCursor { currentCursor() }
 
     /// Every element a gesture changed, at once (one undo step for the host); nil: `onCommit` per element.
     public var onCommitGroup: (([StageElement]) -> Void)? {
@@ -304,6 +305,7 @@ extension PlayerController {
         let starts = unlockedElements(view.selectedIds)
         if starts.isEmpty { transformSession.lockedPress = view.selection; return }
         gesture = .group(starts: starts, x: p.x, y: p.y)
+        updateCursor()
     }
 
     /// The listed elements a nudge or drag may move (locked ones left out).
