@@ -320,12 +320,15 @@ def budget_failures(report, budgets):
 
 
 def worse_by(m, t, kind):
-    """How much worse m's p50 is than t's, as a fraction (negative when better); None when not comparable."""
+    """How much worse m's p50 is than t's, as a fraction (negative when better); None when not comparable. A ceiling
+    metric that was 0 on main and is above 0 now (a skipped frame, a stage that now does work) is infinitely worse."""
     if not (isinstance(m, dict) and isinstance(t, dict)) or m.get("unit") != t.get("unit"):
         return None
     a, b = m.get("p50"), t.get("p50")
-    if not (number(a) and number(b)) or b == 0:
+    if not (number(a) and number(b)):
         return None
+    if b == 0:
+        return math.inf if kind == "max" and a > 0 else None
     return (a - b) / b if kind == "max" else (b - a) / b
 
 
@@ -336,14 +339,17 @@ def regression_failures(report, base, budgets, pct):
         kind, _ = budget_entry(name, e)
         worse = None if e.get("noisy") else worse_by(mine.get(name), theirs.get(name), kind)
         if worse is not None and worse > pct / 100:
-            rows.append((name, e["unit"], mine[name]["p50"], f"main {theirs[name]['p50']:g}", f"{worse * 100:.0f}% worse than main"))
+            why = "above main's 0" if math.isinf(worse) else f"{worse * 100:.0f}% worse than main"
+            rows.append((name, e["unit"], mine[name]["p50"], f"main {theirs[name]['p50']:g}", why))
     return rows
 
 
 def os_budgets(budgets, report):
     """(OS key, the file's block for the report's OS)."""
-    key = os_key(report)
-    block = (budgets.get("os") or {}).get(key) if key else None
+    key, by_os = os_key(report), budgets.get("os")
+    if not isinstance(by_os, dict):
+        raise BudgetError('the budget file\'s "os" is not an object')
+    block = by_os.get(key) if key else None
     if not isinstance(block, dict) or not isinstance(block.get("metrics"), dict):
         raise BudgetError(f"the budget file has no block for OS {machine_of(report).get('os')!r}")
     return key, block
@@ -362,14 +368,25 @@ def regression_rows(report, base, budgets, block):
     return regression_failures(report, base, block["metrics"], pct), note
 
 
-def check_budgets(report, budgets, base=None):
+def runner_class(report, budgets, strict):
+    """The report's machine class; BudgetError when it or the file's is not a string, or (strict) they differ."""
+    klass, wanted = machine_of(report).get("class"), budgets.get("class")
+    if not isinstance(klass, str) or not isinstance(wanted, str):
+        raise BudgetError("the report and the budget file each need a machine class")
+    if strict and klass != wanted:
+        raise BudgetError(f"--strict: the budgets are for a {wanted!r}, this report is from a {klass!r}")
+    return klass
+
+
+def check_budgets(report, budgets, base=None, strict=False):
     """(failed rows, notes) of `report` against the budget file `budgets` and, when given, main's report `base`.
-    Only a report of the file's runner class is checked, and an OS marked pending is not."""
+    Only a report of the file's runner class is checked (with strict, another class is an error), and an OS marked
+    pending is not."""
     if not isinstance(report.get("metrics"), dict) or not isinstance(report.get("benchmarks"), list):
         raise BudgetError("the report has no metrics object or benchmarks list")
-    klass = machine_of(report).get("class")
-    if klass != budgets.get("class"):
-        return [], [f"the budgets are for a {budgets.get('class')!r}, this is a {klass!r}: not checked"]
+    klass = runner_class(report, budgets, strict)
+    if klass != budgets["class"]:
+        return [], [f"the budgets are for a {budgets['class']!r}, this is a {klass!r}: not checked"]
     key, block = os_budgets(budgets, report)
     if block.get("pending"):
         return [], [f"{key}: budgets pending, not checked ({block['pending']})"]
@@ -388,13 +405,13 @@ def budget_table(rows, notes):
     return "\n".join(lines)
 
 
-def apply_budgets(report, budgets_path, baseline_path=None):
+def apply_budgets(report, budgets_path, baseline_path=None, strict=False):
     """Prints the budget check of `report`. Exit code: 1 when a metric failed, 2 when an input is unusable, else 0. A
     baseline path that does not exist means main has no report yet (the regression rule is skipped, with a note)."""
     try:
         budgets = load_json(budgets_path, "budget file")
         base = load_json(baseline_path, "baseline") if baseline_path and os.path.exists(baseline_path) else None
-        rows, notes = check_budgets(report, budgets, base)
+        rows, notes = check_budgets(report, budgets, base, strict)
     except BudgetError as e:
         print(f"::error::bench budgets: {e}")
         return 2
@@ -415,6 +432,7 @@ def parse_args(argv=None):
     ap.add_argument("--skip", default="", help="comma list of benchmarks to leave out")
     ap.add_argument("--budgets", help="budget file (.github/ci/bench-budgets.json): exit 1 with a table of failed metrics")
     ap.add_argument("--baseline", help="main's latest bench-<os>.json for the regression rule (a missing file skips it)")
+    ap.add_argument("--strict", action="store_true", help="a report of another machine class than the budgets' is an error (CI)")
     ap.add_argument("--check", metavar="REPORT", help="check this bench-<os>.json against --budgets instead of running")
     args = ap.parse_args(argv)
     if args.check and not args.budgets:
@@ -475,7 +493,7 @@ def main(argv=None):
             return 2
     else:
         report = measure(args)
-    return apply_budgets(report, args.budgets, args.baseline) if args.budgets else 0
+    return apply_budgets(report, args.budgets, args.baseline, args.strict) if args.budgets else 0
 
 
 if __name__ == "__main__":

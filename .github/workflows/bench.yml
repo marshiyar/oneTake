@@ -137,7 +137,7 @@ jobs:
       - name: Budgets (.github/ci/bench-budgets.json)
         run: |
           set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
-          python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-linux.json" --budgets ../.github/ci/bench-budgets.json \
+          python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-linux.json" --budgets ../.github/ci/bench-budgets.json --strict \
             --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
           code=${PIPESTATUS[0]}
           set -e
@@ -205,7 +205,7 @@ jobs:
       - name: Budgets (.github/ci/bench-budgets.json)
         run: |
           set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
-          python -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-windows.json" --budgets ../.github/ci/bench-budgets.json \
+          python -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-windows.json" --budgets ../.github/ci/bench-budgets.json --strict \
             --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
           code=${PIPESTATUS[0]}
           set -e
@@ -279,7 +279,7 @@ jobs:
       - name: Budgets (.github/ci/bench-budgets.json)
         run: |
           set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
-          python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-darwin.json" --budgets ../.github/ci/bench-budgets.json \
+          python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-darwin.json" --budgets ../.github/ci/bench-budgets.json --strict \
             --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
           code=${PIPESTATUS[0]}
           set -e

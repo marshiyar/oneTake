@@ -114,6 +114,21 @@ class Budgets(unittest.TestCase):
         self.assertEqual(rows, [])
         self.assertIn("not checked", notes[0])
 
+    def test_a_missing_class_is_an_error_and_strict_refuses_another_class(self):
+        for klass in (None, 7, ["x"]):
+            with self.assertRaises(bench.BudgetError, msg=klass):
+                bench.check_budgets(report(klass=klass), BUDGETS)
+        with self.assertRaises(bench.BudgetError):
+            bench.check_budgets(report(), dict(BUDGETS, **{"class": None}))
+        with self.assertRaises(bench.BudgetError):
+            bench.check_budgets(report(klass="local machine"), BUDGETS, strict=True)
+        self.assertEqual(bench.check_budgets(report(), BUDGETS, strict=True)[0], [])
+
+    def test_an_os_map_that_is_not_an_object_is_an_error(self):
+        for by_os in (["bad"], "linux", 1, None):
+            with self.assertRaises(bench.BudgetError, msg=by_os):
+                bench.check_budgets(report(), dict(BUDGETS, os=by_os))
+
     def test_an_os_without_a_block_is_an_error(self):
         with self.assertRaises(bench.BudgetError):
             bench.check_budgets(report(os_name="Darwin 25.0"), BUDGETS)
@@ -152,10 +167,18 @@ class RegressionAgainstMain(unittest.TestCase):
         mine = report(startup__launch_to_first_frame_ms=metric("ms", 3001))
         self.assertEqual(failed(bench.check_budgets(mine, BUDGETS, main)[0]), {"startup.launch_to_first_frame_ms": "over the ceiling"})
 
-    def test_a_zero_or_missing_main_value_or_a_changed_unit_is_not_compared(self):
-        main = report(preview__scrub__peak_rss_mib=metric("MiB", 0), preview__scrub__seek_p95_ms=None,
-                      preview__1080p__realtime_new_frames_per_s=metric("fps", 60))
+    def test_a_missing_main_value_a_changed_unit_or_a_zero_main_floor_is_not_compared(self):
+        main = report(preview__scrub__seek_p95_ms=None, preview__1080p__realtime_new_frames_per_s=metric("fps", 60))
         self.assertEqual(bench.check_budgets(report(), BUDGETS, main)[0], [])
+        main = report(preview__1080p__realtime_new_frames_per_s=metric("", 0))
+        self.assertEqual(bench.check_budgets(report(), BUDGETS, main)[0], [])
+
+    def test_a_ceiling_metric_above_a_zero_main_value_fails(self):
+        main = report(preview__scrub__peak_rss_mib=metric("MiB", 0))
+        rows = bench.check_budgets(report(), BUDGETS, main)[0]
+        self.assertEqual(failed(rows), {"preview.scrub.peak_rss_mib": "above main's 0"})
+        both_zero = report(preview__scrub__peak_rss_mib=metric("MiB", 0))
+        self.assertEqual(bench.check_budgets(both_zero, BUDGETS, main)[0], [])
 
     def test_a_main_report_of_another_class_or_os_is_not_used(self):
         for main in (report(klass="local machine", preview__scrub__peak_rss_mib=metric("MiB", 100)),
@@ -217,7 +240,8 @@ class CommandLine(unittest.TestCase):
             for argv in (("--check", self.write(d, "bad.json", "{not json"), "--budgets", budgets),
                          ("--check", good, "--budgets", self.write(d, "list.json", "[]")),
                          ("--check", good, "--budgets", os.path.join(d, "absent.json")),
-                         ("--check", good, "--budgets", budgets, "--baseline", self.write(d, "cut.json", '{"metrics": '))):
+                         ("--check", good, "--budgets", budgets, "--baseline", self.write(d, "cut.json", '{"metrics": ')),
+                         ("--check", self.write(d, "local.json", report(klass="local machine")), "--budgets", budgets, "--strict")):
                 code, out = self.run_main(*argv)
                 self.assertEqual(code, 2, argv)
                 self.assertIn("::error::bench budgets:", out)
@@ -274,23 +298,39 @@ class MainBaseline(unittest.TestCase):
         self.assertEqual(bench_base.report_in({"preview.jsonl": b"{}", "bench-linux.json": json.dumps(doc).encode()}), doc)
         self.assertIsNone(bench_base.report_in({"bench.log": b""}))
 
-    def test_the_newest_main_run_of_the_same_class_is_chosen(self):
-        artifacts = {1: {"bench-linux.json": json.dumps({"machine": {"class": "local machine"}}).encode()},
-                     2: {"bench-linux.json": json.dumps({"commit": "b", "machine": {"class": HOSTED}}).encode()}}
-        saved = bench_base.bot.artifact_files, bench_base.bot.latest_main_run
+    def test_the_newest_full_main_run_of_the_same_class_is_chosen_from_every_event(self):
+        full = list(bench_base.ALL_BENCHMARKS)
 
-        def latest(workflow, artifact, accept, events):
-            self.assertEqual((workflow, artifact, events), ("bench.yml", "bench-linux", bench_base.EVENTS))
-            return next(({"id": rid} for rid in (1, 2) if accept(rid)), None)
+        def art(commit, klass=HOSTED, benchmarks=full):
+            return {"bench-linux.json": json.dumps({"commit": commit, "benchmarks": benchmarks,
+                                                    "machine": {"class": klass}}).encode()}
 
+        own = {"full_name": "o/r"}
+        runs = {"workflow_run": [{"id": 5, "event": "workflow_run", "created_at": "2026-10-25", "head_repository": {"full_name": "fork/r"}},
+                                 {"id": 4, "event": "workflow_run", "created_at": "2026-10-24", "head_repository": own},
+                                 {"id": 1, "event": "workflow_run", "created_at": "2026-10-21", "head_repository": own}],
+                "schedule": [{"id": 3, "event": "schedule", "created_at": "2026-10-23", "head_repository": own}],
+                "workflow_dispatch": [{"id": 2, "event": "workflow_dispatch", "created_at": "2026-10-22", "head_repository": own}]}
+        artifacts = {5: art("fork"), 4: art("laptop", klass="local machine"), 3: art("partial", benchmarks=["audio"]),
+                     2: art("dispatch-full"), 1: art("older")}
+        asked = []
+
+        def pages(path, key):
+            asked.append(path)
+            self.assertEqual(key, "workflow_runs")
+            return runs[path.split("event=")[1].split("&")[0]]
+
+        saved = bench_base.bot.artifact_files, bench_base.bot.pages, bench_base.bot.REPO
         bench_base.bot.artifact_files = lambda rid, name, suffix: artifacts[rid]
-        bench_base.bot.latest_main_run = latest
+        bench_base.bot.pages, bench_base.bot.REPO = pages, "o/r"
         try:
             run, doc = bench_base.main_report("bench-linux", HOSTED)
-            self.assertEqual((run["id"], doc["commit"]), (2, "b"))
+            self.assertEqual((run["id"], doc["commit"]), (2, "dispatch-full"))
             self.assertEqual(bench_base.main_report("bench-linux", "a laptop"), (None, None))
         finally:
-            bench_base.bot.artifact_files, bench_base.bot.latest_main_run = saved
+            bench_base.bot.artifact_files, bench_base.bot.pages, bench_base.bot.REPO = saved
+        self.assertTrue(all("branch=main" in p and "status=success" in p for p in asked))
+        self.assertEqual({p.split("event=")[1].split("&")[0] for p in asked}, set(bench_base.EVENTS))
 
 
 if __name__ == "__main__":

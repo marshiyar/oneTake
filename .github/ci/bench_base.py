@@ -17,9 +17,10 @@
   python3 .github/ci/bench_base.py <artifact> <this run's bench-<os>.json> <out file>
 
 Finds the newest green bench run of this repository's main (bench.yml has no push trigger: workflow_run after green
-CI, schedule and workflow_dispatch) whose artifact <artifact> holds a report measured on the same machine class as this
-run's, and writes that report to <out file>. Writes nothing when main has none yet; bench.py then skips the regression
-rule and says so. Talks to the REST API through agentbot.py's helpers ($GITHUB_TOKEN with actions: read,
+CI, schedule and workflow_dispatch), searching every page, whose artifact <artifact> holds a full report (every
+benchmark, so a workflow_dispatch with `only` is passed over) measured on the same machine class as this run's, and
+writes that report to <out file>. Writes nothing when main has none yet; bench.py then skips the regression rule and
+says so. Talks to the REST API through agentbot.py's helpers ($GITHUB_TOKEN with actions: read,
 $GITHUB_REPOSITORY); stdlib only. Never fails the job over an API problem (exit 0 with a ::warning::); exit 2 on bad
 arguments.
 """
@@ -35,6 +36,7 @@ bot = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bot)
 
 EVENTS = ("workflow_run", "schedule", "workflow_dispatch")
+ALL_BENCHMARKS = ("startup", "audio", "grade", "preview")  # bench.py's full set
 
 
 def report_in(files):
@@ -45,16 +47,29 @@ def report_in(files):
     return None
 
 
+def usable(report, klass):
+    """A baseline is a full run (every benchmark: a workflow_dispatch with `only` is partial) on the same class."""
+    return (isinstance(report, dict) and (report.get("machine") or {}).get("class") == klass
+            and set(ALL_BENCHMARKS) <= set(report.get("benchmarks") or ()))
+
+
+def green_main_runs():
+    """This repository's own green bench runs on main, newest first, every page (status=success leaves out the many
+    skipped workflow_run runs). `branch=main` also matches a fork's branch called main: the head repository is checked."""
+    runs = []
+    for event in EVENTS:
+        runs += bot.pages(f"actions/workflows/bench.yml/runs?branch=main&event={event}&status=success", "workflow_runs")
+    runs = [r for r in runs if r.get("event") in EVENTS and (r.get("head_repository") or {}).get("full_name") == bot.REPO]
+    return sorted(runs, key=lambda r: r.get("created_at", ""), reverse=True)
+
+
 def main_report(artifact, klass):
-    """(main's run, its report) for the newest green main run of `artifact` measured on `klass`; (None, None)."""
-    loaded = {}
-
-    def same_class(run_id):
-        loaded[run_id] = report_in(bot.artifact_files(run_id, artifact, ".json"))
-        return isinstance(loaded[run_id], dict) and (loaded[run_id].get("machine") or {}).get("class") == klass
-
-    run = bot.latest_main_run("bench.yml", artifact, same_class, events=EVENTS)
-    return (run, loaded[run["id"]]) if run else (None, None)
+    """(main's run, its report) for the newest green main run whose `artifact` is a usable baseline; (None, None)."""
+    for run in green_main_runs():
+        report = report_in(bot.artifact_files(run["id"], artifact, ".json"))
+        if usable(report, klass):
+            return run, report
+    return None, None
 
 
 def fetch(artifact, mine_path, out_path):
