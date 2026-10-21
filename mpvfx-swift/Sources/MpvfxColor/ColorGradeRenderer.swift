@@ -122,6 +122,11 @@ public final class ColorGradeRenderer: Equatable, Sendable {
         for k in EK.allCases { u.e[k.rawValue] = f(g.effect(k.key)) }
         u.intensity = f(g.intensity)
         u.whiteBalanceGains = g.whiteBalanceGains
+        if let key = g.colorKey {
+            u.keyEnabled = true
+            u.keyColor = V3(f(key.color.x), f(key.color.y), f(key.color.z))
+            u.keySimilarity = f(key.similarity); u.keySmoothness = f(key.smoothness); u.keySpill = f(key.spill)
+        }
         let pal = g.resolvedPalette
         let last = pal.last ?? "#ffffff"
         u.paletteSize = Float(pal.count)
@@ -200,6 +205,6 @@ extension ColorGradeParams {
         let c = ColorGradeParams.curveKeys.map { "\(curves[$0] ?? [])" }.joined(separator: ";")
         let h = ColorGradeParams.hueCurveKeys.map { "\(hueCurves[$0] ?? [])" }.joined(separator: ";")
         let s = secondaries.map { "\($0)" }.joined(separator: ";")
-        return "v\(version)|\(intensity)|\(d(adjust))|\(d(details))|\(d(effects))|\(w)|\(c)|\(h)|\(s)|\(palette ?? [])|\(lut.map { "\($0.src)@\($0.intensity)" } ?? "")"
+        return "v\(version)|\(intensity)|\(d(adjust))|\(d(details))|\(d(effects))|\(w)|\(c)|\(h)|\(s)|\(palette ?? [])|\(lut.map { "\($0.src)@\($0.intensity)" } ?? "")|\(String(describing: colorKey))"
     }
 }

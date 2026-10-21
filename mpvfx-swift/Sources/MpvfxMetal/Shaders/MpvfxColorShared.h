@@ -31,7 +31,7 @@ enum MpvfxGU {
     GU_p1r, GU_p1g, GU_p1b, GU_p2r, GU_p2g, GU_p2b,
     GU_p3r, GU_p3g, GU_p3b, GU_p4r, GU_p4g, GU_p4b,
     GU_p5r, GU_p5g, GU_p5b, GU_blurOn, GU_bloomOn, GU_kuwaharaOn,
-    GU_whiteBalanceGains,
+    GU_whiteBalanceGains, GU_keyEnabled, GU_keyR, GU_keyG, GU_keyB, GU_keySimilarity, GU_keySmoothness, GU_keySpill,
     GU_COUNT
 };
 
