@@ -148,6 +148,18 @@ public final class LeftSidebarPanel {
 
     /// Tabs shown (getSidebarTabs): Media always; Scenes with sub-compositions; Elements with blocks (none natively).
     public var availableTabs: [LeftSidebarTab] { [.assets] }
+    /// In the dock: the dock's tab bar names the panel and its × closes it, so the strip keeps only Import media and
+    /// the panel menu (no Media tab, no hide button).
+    public var docked = false
+    /// The strip's tabs: none in the dock.
+    var stripTabs: [LeftSidebarTab] { docked ? [] : availableTabs }
+    /// Where Import media ends: the hide button, or the menu button when docked (no hide button).
+    func hideRect(_ strip: CanvasRect) -> CanvasRect { PanelTabStrip.buttonRect(strip, index: docked ? 0 : 1) }
+    func drawHideButton(_ c: CanvasContext, _ r: CanvasRect) {
+        guard !docked else { return }
+        PanelTabStrip.iconButton(c, r, icon: .sidebarHideLeft, hovered: hovered == .hideSidebar)
+        hits.add(r, .hideSidebar)
+    }
     public static let tabLabels: [LeftSidebarTab: String] = [.assets: "Media", .compositions: "Scenes", .blocks: "Elements"]
 
     /// What the status line says for the control under the pointer.
@@ -341,15 +353,14 @@ public final class LeftSidebarPanel {
 
     func drawTabStrip(_ c: CanvasContext, _ strip: CanvasRect) -> Double {
         PanelTabStrip.drawBackground(c, strip)
-        let tabs = availableTabs
+        let tabs = stripTabs
         let tabRects = PanelTabStrip.tabRects(c, strip, labels: tabs.map { Self.tabLabels[$0]! })
         for (rect, t) in zip(tabRects, tabs) {
             PanelTabStrip.tab(c, rect, label: Self.tabLabels[t]!, active: tab == t, hovered: hovered == .tab(t))
             hits.add(rect, .tab(t))
         }
-        let hide = PanelTabStrip.buttonRect(strip, index: 1), menu = PanelTabStrip.buttonRect(strip, index: 0)
-        PanelTabStrip.iconButton(c, hide, icon: .sidebarHideLeft, hovered: hovered == .hideSidebar)
-        hits.add(hide, .hideSidebar)
+        let hide = hideRect(strip), menu = PanelTabStrip.buttonRect(strip, index: 0)
+        drawHideButton(c, hide)
         PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == "\(Hit.panelMenu)")
         hits.add(menu, .panelMenu)
         // Import media: plus and label (px-2, gap 6) before the icons; only the plus when the strip has no room for the label.

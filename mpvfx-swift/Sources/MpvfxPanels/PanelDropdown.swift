@@ -24,6 +24,9 @@ public final class PanelDropdown {
     public private(set) var key: String?
     public private(set) var options: [Option] = []
     public private(set) var selected: String?
+    /// Options shown with a checkmark besides the selected one (a menu of toggles, like the dock's panel list); set it
+    /// before `open`; `close` clears it.
+    public var checked: Set<String> = []
     var anchor = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     var bounds = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     var hovered: Int?
@@ -38,7 +41,7 @@ public final class PanelDropdown {
         self.key = key; self.options = options; self.selected = selected; self.anchor = anchor; self.bounds = bounds
         self.onPick = onPick; hovered = nil; scroll = 0
     }
-    public func close() { key = nil; onPick = nil }
+    public func close() { key = nil; onPick = nil; checked = [] }
     /// Highlights the selected option, as a native list opened from the keyboard does: the arrows move from it and
     /// Enter keeps it. The list scrolls so the highlighted row shows.
     public func highlightSelected() {
@@ -98,7 +101,7 @@ public final class PanelDropdown {
                     else if o.value == selected { c.fillRoundedRect(rr, radius: PanelTheme.radius, PanelStyle.menuItemCurrent) }
                     PanelDraw.text(c, o.label, in: CanvasRect(x: rr.x + 8, y: rr.y, width: rr.width - 26, height: rr.height),
                                    font: PanelTheme.font(11), color: o.value == selected ? PanelTheme.text0 : PanelTheme.text1)
-                    if o.value == selected {
+                    if o.value == selected || checked.contains(o.value) {
                         PanelIcon.check.draw(c, in: CanvasRect(x: rr.maxX - 16, y: rr.y + 6, width: 12, height: 12), color: PanelTheme.accent, lineWidth: 2)
                     }
                 }
