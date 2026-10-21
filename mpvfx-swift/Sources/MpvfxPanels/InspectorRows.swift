@@ -156,6 +156,10 @@ public struct InspectorGroup {
     public var spacing: Double
     /// The open header's reset accessory (12px RotateCcw left of the caret, `gap-2.5`), when the group has one.
     public var reset: (() -> Void)?
+    /// Optional bypass in the header. The hit target is at least 24 points and is exposed by `accessibilityLabel`.
+    public var enabled: Bool?
+    public var accessibilityLabel: String?
+    public var setEnabled: ((Bool) -> Void)?
     public init(id: String, title: String, summary: String, rows: [InspectorRow], spacing: Double = 4) {
         self.id = id; self.title = title; self.summary = summary; self.rows = rows; self.spacing = spacing
     }

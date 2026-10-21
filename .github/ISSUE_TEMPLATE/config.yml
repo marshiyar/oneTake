@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/marshiyar/oneTake/security/advisories/new
+    about: Report it privately, never in a public issue. How reports are handled is in .github/SECURITY.md.
+  - name: Security policy
+    url: https://github.com/marshiyar/oneTake/blob/main/.github/SECURITY.md
+    about: What is checked on every change, and what the app does not do.
