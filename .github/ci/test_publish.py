@@ -53,6 +53,7 @@ class Decide(Base):
         r, d = self.decide("main", "branch")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual((d["mode"], d["channel"], d["tag"]), ("nightly", "nightly", "nightly-0123456"))
+        self.assertRegex(d["title"], r"^oneTake nightly \d{4}-\d{2}-\d{2} \(0123456\), development build$")
         self.assertIn("--prerelease", d["flags"])
         self.assertIn("--latest=false", d["flags"])
         self.assertIn(f"--target {SHA}", d["flags"])
@@ -111,43 +112,179 @@ class Decide(Base):
         self.assertEqual(d["mode"], "none")
 
 
+ASSETS = ["MpVFX-0.1.0-macos-arm64.dmg", "mpvfx_0.1.0_amd64.deb", "MpVFX-0.1.0-setup.exe",
+          "MpVFX-0.1.0-linux-x86_64.tar.gz", "MpVFX-0.1.0-windows-x64.zip", "mac-smoke.png", "linux-smoke.png",
+          "windows-smoke.png"]
+NOT_NOTARIZED = "macOS: right-click → Open the first time; this build isn't notarized."
+
+
 class Notes(Base):
-    def notes(self, ref, ref_type="tag", marker=None):
+    def notes(self, ref, ref_type="tag", marker=None, hidden_marker=False, assets=ASSETS, changes="- x"):
+        if marker is not None or hidden_marker:
+            os.makedirs(os.path.join(self.dir, "dist"), exist_ok=True)
         if marker is not None:
-            os.makedirs(os.path.join(self.dir, "dist"))
             with open(os.path.join(self.dir, "dist", "macos-notarization.txt"), "w") as f:
                 f.write(marker + "\n")
-        r = self.bash("decide >/dev/null; notes", ref_type, ref)
+        if hidden_marker:
+            open(os.path.join(self.dir, "dist", ".not-notarized"), "w").close()
+        words = " ".join(f"'{a}'" for a in assets)
+        r = self.bash(f"decide >/dev/null; assets=({words}); changes_md='{changes}'; notes", ref_type, ref)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout
 
-    def test_prerelease_notes_name_the_channel_and_say_test_build(self):
-        for ref, words in (("v0.1.0-alpha.1", "Alpha channel"), ("v0.1.0-beta.2", "Beta channel"),
-                           ("v0.1.0-rc.1", "Release-candidate channel")):
+    def test_banner_is_the_first_line_and_distinct_per_channel(self):
+        cases = (("main", "branch", "> [!WARNING]", "> **Nightly**:"),
+                 ("v0.1.0-alpha.1", "tag", "> [!WARNING]",
+                  "> **Alpha**: early test build for testers; expect bugs. Not for real projects."),
+                 ("v0.1.0-beta.2", "tag", "> [!NOTE]", "> **Beta**:"),
+                 ("v0.1.0-rc.1", "tag", "> [!NOTE]", "> **Release candidate**: this build becomes v0.1.0 unless"),
+                 ("v0.1.0", "tag", "> **Stable**: the official oneTake 0.1.0 release.", None))
+        seen = set()
+        for ref, ref_type, first, second in cases:
             with self.subTest(ref=ref):
-                text = self.notes(ref, marker="notarized")
-                self.assertIn("This is a test build, not a stable release", text)
-                self.assertIn(words, text)
-                self.assertIn(f"https://github.com/o/r/commit/{SHA}", text)
-                self.assertNotIn("not notarized", text)
-                shutil.rmtree(os.path.join(self.dir, "dist"))
+                lines = self.notes(ref, ref_type, marker="notarized").splitlines()
+                self.assertEqual(lines[0], first)
+                if second:
+                    self.assertTrue(lines[1].startswith(second), lines[1])
+                seen.add(lines[1] if second else lines[0])
+        self.assertEqual(len(seen), len(cases))
 
-    def test_rc_notes_name_the_stable_version(self):
-        self.assertIn("becomes v0.1.0 unless", self.notes("v0.1.0-rc.1", marker="notarized"))
+    def test_prereleases_say_test_build(self):
+        for ref in ("v0.1.0-alpha.1", "v0.1.0-beta.2", "v0.1.0-rc.1"):
+            with self.subTest(ref=ref):
+                self.assertIn("This is a test build, not a stable release", self.notes(ref, marker="notarized"))
+        self.assertNotIn("test build", self.notes("v0.1.0", marker="notarized"))
 
-    def test_unnotarized_build_says_how_to_open(self):
-        text = self.notes("v0.1.0-beta.1", marker="not-notarized")
-        self.assertIn("not notarized", text)
-        self.assertIn("right-click", text)
-        self.assertIn("Open", text)
+    def test_screenshots_embedded_per_os(self):
+        text = self.notes("v0.1.0-beta.1", marker="notarized")
+        base = "https://github.com/o/r/releases/download/v0.1.0-beta.1"
+        for os_name, png in (("macOS", "mac-smoke.png"), ("Linux", "linux-smoke.png"), ("Windows", "windows-smoke.png")):
+            self.assertIn(f"![{os_name}]({base}/{png})", text)
+        self.assertEqual(text.count("!["), 3)
 
-    def test_missing_marker_counts_as_unnotarized(self):
-        self.assertIn("not notarized", self.notes("main", "branch"))
+    def test_download_table_one_row_per_os(self):
+        text = self.notes("main", "branch", marker="notarized")
+        base = "https://github.com/o/r/releases/download/nightly-0123456"
+        self.assertIn("| OS | File | Install |", text)
+        rows = [line for line in text.splitlines() if line.startswith(("| macOS |", "| Windows |", "| Linux |"))]
+        self.assertEqual(len(rows), 3, text)
+        mac, win, linux = rows
+        self.assertIn(f"[`MpVFX-0.1.0-macos-arm64.dmg`]({base}/MpVFX-0.1.0-macos-arm64.dmg) disk image", mac)
+        self.assertIn("`MpVFX-0.1.0-setup.exe`", win)
+        self.assertIn("installer", win)
+        self.assertIn("portable zip", win)
+        self.assertIn("Unsigned", win)
+        self.assertIn(f"https://github.com/o/r/blob/{SHA}/README.md#download", win)
+        self.assertIn("Debian package", linux)
+        self.assertIn("portable archive", linux)
+        self.assertNotIn("isn't notarized", text)
 
-    def test_notarized_stable_notes_have_no_gatekeeper_hint(self):
-        text = self.notes("v0.1.0", marker="notarized")
-        self.assertIn("oneTake 0.1.0, built from", text)
-        self.assertNotIn("not notarized", text)
+    def test_missing_installer_is_said(self):
+        text = self.notes("v0.1.0", marker="notarized", assets=["mpvfx_0.1.0_amd64.deb"])
+        self.assertIn("| macOS | not in this build |", text)
+        self.assertNotIn("![", text)
+
+    def test_not_notarized_line(self):
+        for kwargs in ({"marker": "not-notarized"}, {}, {"marker": "notarized", "hidden_marker": True}):
+            with self.subTest(**kwargs):
+                text = self.notes("v0.1.0-alpha.1", **kwargs)
+                self.assertIn(NOT_NOTARIZED, text)
+                mac = next(line for line in text.splitlines() if line.startswith("| macOS |"))
+                self.assertIn("isn't notarized", mac)
+                shutil.rmtree(os.path.join(self.dir, "dist"), ignore_errors=True)
+
+    def test_what_changed_and_links(self):
+        text = self.notes("v0.1.0-beta.1", marker="notarized", changes="- Fix export (#12)")
+        self.assertIn("## What changed\n\n- Fix export (#12)", text)
+        self.assertIn(f"Commit: https://github.com/o/r/commit/{SHA}", text)
+        self.assertIn("Run: https://github.com/o/r/actions/runs/42", text)
+
+
+class Changes(Base):
+    def test_channel_of(self):
+        r = self.bash('for t in nightly-abc1234 v0.1.0-alpha.1 v0.1.0-beta.2 v0.1.0-rc.1 v0.1.0 build-main-7 v0.1.0-foo;'
+                      ' do printf "%s=%s\\n" "$t" "$(channel_of "$t")"; done')
+        self.assertEqual(r.stdout.split(), ["nightly-abc1234=nightly", "v0.1.0-alpha.1=alpha", "v0.1.0-beta.2=beta",
+                                            "v0.1.0-rc.1=rc", "v0.1.0=stable", "build-main-7=", "v0.1.0-foo="])
+
+    def previous(self, tag, channel, tags):
+        listing = "\\n".join(tags)
+        r = self.bash(f'printf "{listing}\\n" | previous_release {tag} {channel}')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout.strip()
+
+    def test_previous_release_of_same_or_higher_channel(self):
+        newest_first = ["nightly-ccccccc", "v0.1.0-beta.2", "nightly-bbbbbbb", "v0.1.0-alpha.1", "build-main-9",
+                        "v0.0.9"]
+        self.assertEqual(self.previous("v0.1.0-beta.3", "beta", newest_first), "v0.1.0-beta.2")
+        self.assertEqual(self.previous("v0.1.0-alpha.2", "alpha", newest_first), "v0.1.0-beta.2")
+        self.assertEqual(self.previous("v0.1.0-rc.1", "rc", newest_first), "v0.0.9")
+        self.assertEqual(self.previous("v0.1.0", "stable", newest_first), "v0.0.9")
+        self.assertEqual(self.previous("nightly-ddddddd", "nightly", newest_first), "nightly-ccccccc")
+        self.assertEqual(self.previous("nightly-ccccccc", "nightly", newest_first), "v0.1.0-beta.2")
+        self.assertEqual(self.previous("v0.1.0", "stable", ["v0.1.0", "v0.1.0-rc.1"]), "")
+
+    def fmt(self, subjects, total):
+        listing = "\\n".join(subjects)
+        r = self.bash(f'printf "{listing}\\n" | format_changes v0.1.0-beta.1 {total}')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout.splitlines()
+
+    def test_pull_request_numbers_are_linked(self):
+        self.assertEqual(self.fmt(["Open recent projects (#76)", "plain subject"], 2),
+                         ["- Open recent projects ([#76](https://github.com/o/r/pull/76))", "- plain subject"])
+
+    def test_list_is_bounded_to_50(self):
+        lines = self.fmt([f"change {i} (#{i})" for i in range(60)], 300)
+        self.assertEqual(len(lines), 51)
+        self.assertTrue(lines[-1].startswith("- ... and 250 more: [all changes since v0.1.0-beta.1]"
+                                             "(https://github.com/o/r/compare/v0.1.0-beta.1..."), lines[-1])
+
+    def test_no_changes(self):
+        self.assertEqual(self.fmt([], 0), ["No changes since v0.1.0-beta.1."])
+
+
+class Main(Base):
+    """main() against a stand-in gh: the order of the calls and the notes it writes."""
+
+    def test_beta_publish_creates_uploads_then_edits_notes(self):
+        bindir = os.path.join(self.dir, "bin")
+        os.makedirs(bindir)
+        os.makedirs(os.path.join(self.dir, "dist"))
+        for a in ("MpVFX-0.1.0-macos-arm64.dmg", "mac-smoke.png"):
+            open(os.path.join(self.dir, "dist", a), "w").close()
+        log = os.path.join(self.dir, "gh.log")
+        notes_copy = os.path.join(self.dir, "notes.md")
+        with open(os.path.join(bindir, "gh"), "w") as f:
+            f.write('#!/bin/bash\n'
+                    'echo "$*" >> "$GH_LOG"\n'
+                    'case "$1 $2" in\n'
+                    '  "release view") [[ " $* " == *" --json "* ]] && exit 0; exit 1 ;;\n'
+                    '  "release list") printf "%s\\n" nightly-aaaaaaa v0.1.0-beta.1 v0.1.0-alpha.1 ;;\n'
+                    '  "release edit") while [ $# -gt 0 ]; do [ "$1" = --notes-file ] && cp "$2" "$NOTES_COPY";'
+                    ' shift; done ;;\n'
+                    '  "api repos/o/r/compare/v0.1.0-beta.1..."*) printf "2\\nFix export (#12)\\nAdd beta channel (#11)\\n" ;;\n'
+                    'esac\n')
+        os.chmod(os.path.join(bindir, "gh"), 0o755)
+        r = self.bash('main dist/*.dmg dist/*.deb dist/*-smoke.png', "tag", "v0.1.0-beta.2",
+                      {"PATH": bindir + os.pathsep + os.environ.get("PATH", ""), "GH_LOG": log,
+                       "NOTES_COPY": notes_copy})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(log) as f:
+            calls = [line.split()[:2] for line in f]
+        verbs = [" ".join(c) for c in calls if c[0] == "release"]
+        self.assertEqual(verbs[-4:-1], ["release create", "release upload", "release edit"])
+        with open(log) as f:
+            create = next(line for line in f if line.startswith("release create"))
+        self.assertIn("--prerelease --latest=false", create)
+        self.assertIn("--title oneTake 0.1.0 beta 2", create)
+        with open(notes_copy) as f:
+            text = f.read()
+        self.assertTrue(text.startswith("> [!NOTE]\n> **Beta**:"), text)
+        self.assertIn("Since [v0.1.0-beta.1](https://github.com/o/r/releases/tag/v0.1.0-beta.1):", text)
+        self.assertIn("- Fix export ([#12](https://github.com/o/r/pull/12))", text)
+        self.assertIn("![macOS](https://github.com/o/r/releases/download/v0.1.0-beta.2/mac-smoke.png)", text)
+        self.assertIn(NOT_NOTARIZED, text)
 
 
 class Prune(Base):

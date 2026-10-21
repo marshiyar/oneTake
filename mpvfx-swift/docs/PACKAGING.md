@@ -70,7 +70,7 @@ release. Which release, and what it promises, follows from the ref the run is fo
 
 | Channel | Made by | Release tag and title | Marked | Kept | macOS notarization | Promise |
 |---|---|---|---|---|---|---|
-| nightly | every green run of `main` | `nightly-<commit>`, "oneTake nightly <date> (<commit>)" | pre-release | newest 7 | warns when it fails | untested development build |
+| nightly | every green run of `main` | `nightly-<commit>`, "oneTake nightly <date> (<commit>), development build" | pre-release | newest 7 | warns when it fails | untested development build |
 | alpha | tag `v<X.Y.Z>-alpha.<N>` | that tag, "oneTake X.Y.Z alpha N" | pre-release | always | warns when it fails | early test build: features may be missing or change, projects may not open in later builds |
 | beta | tag `v<X.Y.Z>-beta.<N>` | that tag, "oneTake X.Y.Z beta N" | pre-release | always | warns when it fails | feature-complete test build for wider testing; expect bugs |
 | rc | tag `v<X.Y.Z>-rc.<N>` | that tag, "oneTake X.Y.Z RC N" | pre-release | always | required | becomes `vX.Y.Z` unless a blocking bug is found |
@@ -87,9 +87,33 @@ release. Which release, and what it promises, follows from the ref the run is fo
   credentials) fails the macOS job, so nothing is published. On `main`, alpha and beta it is a warning: the disk image
   ships Developer ID signed but not notarized, and the release notes tell users that macOS will ask them to approve
   the app the first time they open it (right-click > Open). The macos job records the outcome in
-  `dist/macos-notarization.txt` (in the `macos` artifact, never a release asset), which `publish.sh` reads.
-- The notes of an alpha, beta or rc release say which channel it is and that it is a test build, not a stable
-  release. `.github/ci/test_publish.py` checks every one of these decisions.
+  `dist/macos-notarization.txt` (in the `macos` artifact, never a release asset), which `publish.sh` reads; a
+  missing marker, or a `dist/.not-notarized` beside it, counts as not notarized.
+
+**Release notes.** Testers download from the Releases page, so every release describes itself. `publish.sh` creates
+the release, uploads the files, then writes the notes with `gh release edit --notes-file` (a rerun rewrites them).
+They are, in order:
+
+1. **Channel banner**, the first line, one distinct sentence per channel: a `> [!WARNING]` alert for nightly
+   ("**Nightly**: automatic development build of main ...") and alpha ("**Alpha**: early test build for testers;
+   expect bugs. Not for real projects."), a `> [!NOTE]` alert for beta and rc, a plain `> **Stable**: ...` quote for a
+   stable release. Alpha, beta and rc add "This is a test build, not a stable release."
+2. **Screenshots**: each uploaded `*-smoke.png` (the launch smoke of every OS: `mac-smoke.png`, `linux-smoke.png`,
+   `windows-smoke.png`) embedded as `![macOS](https://github.com/<repo>/releases/download/<tag>/mac-smoke.png)`.
+3. **Download table**, one row per OS: the asset names linked (`.dmg` disk image; `-setup.exe` installer and
+   portable `.zip`; `.deb` package and portable `.tar.gz`), and a one-line install hint. The Windows row says the
+   build is unsigned and links the README's SmartScreen steps. When the macOS image is not notarized, the macOS row
+   and a line under the table say "macOS: right-click → Open the first time; this build isn't notarized."
+4. **What changed**: the commit subjects (squash-merged pull request titles, each `(#N)` linked) between the previous
+   release of the same or a higher channel and this commit (`gh api repos/<repo>/compare/<prev>...<sha>`), newest
+   first, at most 50 lines and then one line linking the full compare. Channels rank nightly < alpha < beta < rc <
+   stable: a beta lists changes since the last beta, rc or stable; a nightly since the newest release of any channel.
+   With no earlier release it links the history; a lookup error never fails the publish.
+5. A link to CHANGELOG.md when it exists (not on nightlies), the commit and the CI run.
+
+The notes are built by `notes()` from what `main()` gathered, with no network call, so
+`.github/ci/test_publish.py` checks every decision above offline (banners, image URLs, table, the not-notarized
+line, the bounded change list, which previous release is compared, and the create, upload, edit order).
 
 **Cutting a release.** Wait until the commit you want is green on `main` (its nightly is published), then tag that
 commit and push the tag; the tag's own run builds, tests and publishes everything again from it:
