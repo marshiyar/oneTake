@@ -233,7 +233,11 @@ final class WindowsCanvasHost {
         var screen = POINT()
         guard GetCursorPos(&screen), GetCapture() == hwnd || WindowFromPoint(screen) == hwnd else { return }
         var client = screen
-        ScreenToClient(hwnd, &client)
+        guard ScreenToClient(hwnd, &client) else { return }
+        let size = clientPixels()
+        guard HostCursorRefreshPolicy.shouldRefresh(ownsCapture: GetCapture() == hwnd,
+            ownsWindow: WindowFromPoint(screen) == hwnd, x: Double(client.x), y: Double(client.y),
+            width: Double(size.width), height: Double(size.height)) else { return }
         showCursor(at: (Double(client.x) / scale, Double(client.y) / scale))
     }
 
@@ -284,10 +288,9 @@ final class WindowsCanvasHost {
         case Int32(VK_LWIN), Int32(VK_RWIN): changed = .meta
         default: changed = nil
         }
-        if let changed, let p = lastPoint {
-            var m = Self.modifiers()
-            if down { m.insert(changed) } else { m.remove(changed) }
-            input?.pointerMove(x: p.x, y: p.y, modifiers: m)
+        if changed != nil, let p = lastPoint {
+            // GetKeyState reflects this queued message, including a still-held left/right counterpart.
+            input?.pointerMove(x: p.x, y: p.y, modifiers: Self.modifiers())
         }
         defer { refreshCursor() }
         guard let k = Self.editorKey(vk, lp), let input else { return nil }

@@ -49,9 +49,75 @@ final class StageHostCursorRefreshTests: XCTestCase {
         defer { gtk_widget_destroy(window) }
         while gtk_events_pending() != 0 { _ = gtk_main_iteration_do(0) }
         let native = try XCTUnwrap(gtk_widget_get_window(host.widget))
-        host.lastPoint = (20, 30)
+        try movePointer(window: native, x: 20, y: 30)
+        input.moves.removeAll()
         host.refreshCursor()
         try body(host, native, input)
+    }
+
+    func movePointer(window: OpaquePointer, x: Int32, y: Int32) throws {
+        let display = gdk_window_get_display(window)
+        let seat = try XCTUnwrap(gdk_display_get_default_seat(display))
+        let pointer = try XCTUnwrap(gdk_seat_get_pointer(seat))
+        var originX: gint = 0, originY: gint = 0
+        _ = gdk_window_get_origin(window, &originX, &originY)
+        gdk_device_warp(pointer, gdk_window_get_screen(window), originX + x, originY + y)
+        gdk_display_sync(display)
+        while gtk_events_pending() != 0 { _ = gtk_main_iteration_do(0) }
+    }
+
+    func testLeavingClearsHoverAndOutsideInvalidationDoesNotSetAStaleCursor() throws {
+        try withHost { host, window, input in
+            try movePointer(window: window, x: 500, y: 400)
+            XCTAssertNil(host.lastPoint)
+            XCTAssertNil(gdk_window_get_cursor(window))
+            input.shape = .notAllowed
+            var queried: [(Double, Double)] = []
+            host.cursorAt = { x, y in queried.append((x, y)); return input.shape }
+            host.invalidate()
+            XCTAssertTrue(queried.isEmpty, "redraw outside the canvas must not query the old point")
+            XCTAssertNil(gdk_window_get_cursor(window))
+            // Move the canvas under the stationary pointer: entry must work without a motion event.
+            var originX: gint = 0, originY: gint = 0
+            _ = gdk_window_get_origin(window, &originX, &originY)
+            let top = try XCTUnwrap(gtk_widget_get_toplevel(host.widget))
+            gtk_window_move(UnsafeMutableRawPointer(top).assumingMemoryBound(to: GtkWindow.self),
+                            originX + 430, originY + 320)
+            gdk_display_sync(gdk_window_get_display(window))
+            while gtk_events_pending() != 0 { _ = gtk_main_iteration_do(0) }
+            XCTAssertEqual(host.lastPoint?.x, 70)
+            XCTAssertEqual(host.lastPoint?.y, 80)
+            XCTAssertNotNil(gdk_window_get_cursor(window), "entry applies the current cursor without a later motion")
+            XCTAssertEqual(queried.last?.0, 70)
+            XCTAssertEqual(queried.last?.1, 80)
+        }
+    }
+
+    func testReleasingOneSidePreservesEveryHeldModifierCounterpart() throws {
+        try withHost { host, _, input in
+            let pairs: [(Int32, Int32, guint, PointerModifiers)] = [
+                (GDK_KEY_Shift_L, GDK_KEY_Shift_R, GDK_SHIFT_MASK.rawValue, .shift),
+                (GDK_KEY_Control_L, GDK_KEY_Control_R, GDK_CONTROL_MASK.rawValue, .ctrl),
+                (GDK_KEY_Alt_L, GDK_KEY_Alt_R, GDK_MOD1_MASK.rawValue, .alt),
+                (GDK_KEY_Meta_L, GDK_KEY_Meta_R, GDK_META_MASK.rawValue, .meta),
+                (GDK_KEY_Super_L, GDK_KEY_Super_R, GDK_SUPER_MASK.rawValue, .meta),
+            ]
+            for (left, right, mask, modifier) in pairs {
+                for (first, second) in [(left, right), (right, left)] {
+                    var event = GdkEventKey()
+                    event.keyval = guint(first)
+                    host.modifierChanged(event, pressed: true)
+                    event.keyval = guint(second); event.state = mask
+                    host.modifierChanged(event, pressed: true)
+                    event.keyval = guint(first)
+                    host.modifierChanged(event, pressed: false)
+                    XCTAssertEqual(input.moves.last?.2, modifier, "the counterpart remains down")
+                    event.keyval = guint(second)
+                    host.modifierChanged(event, pressed: false)
+                    XCTAssertEqual(input.moves.last?.2, [])
+                }
+            }
+        }
     }
 
     func testInvalidationChangesTheNativeCursorWithoutPointerMotion() throws {

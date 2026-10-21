@@ -33,7 +33,8 @@ final class GtkCanvasHost {
         widget = gtk_drawing_area_new()!
         gtk_widget_set_can_focus(widget, 1)
         let mask = GDK_BUTTON_PRESS_MASK.rawValue | GDK_BUTTON_RELEASE_MASK.rawValue | GDK_POINTER_MOTION_MASK.rawValue |
-            GDK_SCROLL_MASK.rawValue | GDK_SMOOTH_SCROLL_MASK.rawValue | GDK_KEY_PRESS_MASK.rawValue | GDK_KEY_RELEASE_MASK.rawValue
+            GDK_SCROLL_MASK.rawValue | GDK_SMOOTH_SCROLL_MASK.rawValue | GDK_KEY_PRESS_MASK.rawValue | GDK_KEY_RELEASE_MASK.rawValue |
+            GDK_ENTER_NOTIFY_MASK.rawValue | GDK_LEAVE_NOTIFY_MASK.rawValue | GDK_FOCUS_CHANGE_MASK.rawValue
         gtk_widget_add_events(widget, Int32(bitPattern: mask))
         let me = Unmanaged.passUnretained(self).toOpaque()   // host is kept alive by its owner
         func host(_ d: UnsafeMutableRawPointer?) -> GtkCanvasHost { Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue() }
@@ -81,6 +82,28 @@ final class GtkCanvasHost {
             h.input?.pointerMove(x: ev.x, y: ev.y, modifiers: GtkCanvasHost.modifiers(ev.state))
             h.updateCursor(ev.x, ev.y)
             return 1
+        } as EvCB, to: GCallback.self), me)
+        for signal in ["enter-notify-event", "leave-notify-event"] {
+            _ = mpvfx_connect(raw(widget), signal, unsafeBitCast({ (_, e, d) -> gboolean in
+                guard let e, let d else { return 0 }
+                let ev = e.assumingMemoryBound(to: GdkEventCrossing.self).pointee
+                let h = Unmanaged<GtkCanvasHost>.fromOpaque(d).takeUnretainedValue()
+                if ev.type == GDK_ENTER_NOTIFY {
+                    h.lastPoint = (ev.x, ev.y)
+                    h.input?.pointerMove(x: ev.x, y: ev.y, modifiers: GtkCanvasHost.modifiers(ev.state))
+                    h.updateCursor(ev.x, ev.y)
+                } else {
+                    h.lastPoint = nil
+                    h.shownCursor = .arrow
+                    if let window = gtk_widget_get_window(h.widget) { gdk_window_set_cursor(window, nil) }
+                }
+                return 0
+            } as EvCB, to: GCallback.self), me)
+        }
+        _ = mpvfx_connect(raw(widget), "focus-out-event", unsafeBitCast({ (_, _, d) -> gboolean in
+            guard let d else { return 0 }
+            Unmanaged<GtkCanvasHost>.fromOpaque(d).takeUnretainedValue().heldModifiers.removeAll()
+            return 0
         } as EvCB, to: GCallback.self), me)
         _ = mpvfx_connect(raw(widget), "scroll-event", unsafeBitCast({ (_, e, d) -> gboolean in
             let ev = e!.assumingMemoryBound(to: GdkEventScroll.self).pointee
@@ -178,6 +201,7 @@ final class GtkCanvasHost {
 
     /// Last pointer position over the canvas (a modifier change re-sends it).
     var lastPoint: (x: Double, y: Double)?
+    private var heldModifiers: [guint: PointerModifiers] = [:]
     /// A modifier transition re-sends the stationary pointer. GDK's event state is from before the key,
     /// so the changed bit comes from the key itself, for both press and release.
     func modifierChanged(_ ev: GdkEventKey, pressed: Bool) {
@@ -189,9 +213,10 @@ final class GtkCanvasHost {
         case GDK_KEY_Meta_L, GDK_KEY_Meta_R, GDK_KEY_Super_L, GDK_KEY_Super_R: modifier = .meta
         default: return
         }
+        if pressed { heldModifiers[ev.keyval] = modifier } else { heldModifiers.removeValue(forKey: ev.keyval) }
         guard let p = lastPoint else { return }
         var m = Self.modifiers(ev.state)
-        if pressed { m.insert(modifier) } else { m.remove(modifier) }
+        if pressed || heldModifiers.values.contains(modifier) { m.insert(modifier) } else { m.remove(modifier) }
         input?.pointerMove(x: p.x, y: p.y, modifiers: m)
         refreshCursor()
     }
@@ -221,7 +246,14 @@ final class GtkCanvasHost {
     }
 
     /// The router can change under a stationary pointer (Settings, selection or pointer capture).
-    func refreshCursor() { if let p = lastPoint { updateCursor(p.x, p.y) } }
+    func refreshCursor() {
+        guard let window = gtk_widget_get_window(widget),
+              let seat = gdk_display_get_default_seat(gdk_window_get_display(window)),
+              let pointer = gdk_seat_get_pointer(seat) else { return }
+        var x: gint = 0, y: gint = 0
+        guard gdk_device_get_window_at_position(pointer, &x, &y) == window else { return }
+        updateCursor(Double(x), Double(y))
+    }
 
     func setMinimumSize(width: Int32, height: Int32) { gtk_widget_set_size_request(widget, width, height) }
     func invalidate() { refreshCursor(); gtk_widget_queue_draw(widget) }
