@@ -17,13 +17,14 @@
 Run: python3 -I -B .github/ci/test_stale_in_progress.py
 """
 import datetime
+import importlib
 import json
 import os
 import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import stale_in_progress as sip  # noqa: E402
+sip = importlib.import_module("stale_in_progress")
 
 REPO = "owner/app"
 NOW = datetime.datetime(2026, 10, 21, 12, 0, tzinfo=datetime.timezone.utc)
@@ -148,59 +149,71 @@ class Running(unittest.TestCase):
 
 
 class GitHubCalls(unittest.TestCase):
-    """The REST calls the real client makes, through a fake gh."""
+    """The REST calls the real client makes, through a fake transport."""
 
-    def make(self, replies):
+    def make(self, replies=None, fail=None):
         calls = []
 
-        def run(args):
-            calls.append(args)
-            for key, out in replies.items():
-                if key in " ".join(args):
-                    return 0, out, ""
-            return 0, "", ""
-        return sip.GitHub(REPO, run), calls
+        def send(method, path, payload=None):
+            calls.append((method, path, payload))
+            if fail and fail(method, path):
+                return 502, "bad gateway", ""
+            for key, (text, link) in (replies or {}).items():
+                if key in path:
+                    return 200, text, link
+            return 200, "", ""
+        return sip.GitHub(REPO, send), calls
 
-    def test_reads(self):
-        rows = [{"number": 7, "created_at": OLD, "labels": ["in-progress"]}]
-        events = f"{OLD}\n{RECENT}\n2026-10-19T00:00:00Z\n"
-        pulls = [{"number": 1, "title": "t", "body": None, "head": "ci/7-x"}]
-        gh, calls = self.make({"/issues?": "\n".join(json.dumps(r) for r in rows),
-                               "/events": events, "/pulls?": json.dumps(pulls[0])})
-        self.assertEqual(gh.in_progress_issues(), [sip.Issue(7, {"in-progress"}, OLD)])
+    def test_reads_follow_pages(self):
+        nxt = '<https://api.github.com/repositories/1/issues?page=2>; rel="next", <https://x>; rel="last"'
+        issues = [{"number": 7, "created_at": OLD, "labels": [{"name": "in-progress"}]},
+                  {"number": 8, "created_at": OLD, "labels": [], "pull_request": {}}]
+        page2 = [{"number": 9, "created_at": RECENT, "labels": [{"name": "in-progress"}]}]
+        events = [{"event": "labeled", "created_at": OLD}, {"event": "unlabeled", "created_at": RECENT},
+                  {"event": "commented", "created_at": "2026-10-21T00:00:00Z"}]
+        pulls = [{"number": 1, "title": "t", "body": None, "head": {"ref": "ci/7-x"}}]
+        gh, calls = self.make({"state=open&labels": (json.dumps(issues), nxt), "page=2": (json.dumps(page2), ""),
+                               "/events": (json.dumps(events), ""), "/pulls?": (json.dumps(pulls), "")})
+        self.assertEqual(gh.in_progress_issues(), [sip.Issue(7, {"in-progress"}, OLD),
+                                                   sip.Issue(9, {"in-progress"}, RECENT)])
+        self.assertEqual(calls[1][1], "/repositories/1/issues?page=2")
         self.assertEqual(gh.last_label_change(7), RECENT)
         self.assertEqual(gh.open_pulls(), [sip.Pull(1, "t", "", "ci/7-x")])
-        self.assertTrue(all(c[:4] == ["gh", "api", "-X", "GET"] for c in calls))
+        self.assertTrue(all(c[0] == "GET" and c[2] is None for c in calls))
+
+    def test_next_page_only_follows_the_api_host(self):
+        self.assertEqual(sip.next_page('<https://evil.example/x?page=2>; rel="next"'), "")
+        self.assertEqual(sip.next_page('<http://api.github.com/x>; rel="next"'), "")
+        self.assertEqual(sip.next_page(""), "")
 
     def test_apply_adds_comments_then_removes_in_progress_last(self):
-        gh, calls = self.make({})
+        gh, calls = self.make()
         gh.apply(sip.Action(7, (sip.IN_PROGRESS,), sip.BUILDABLE, "why"))
-        self.assertEqual([c[3:5] for c in calls], [["POST", f"repos/{REPO}/issues/7/labels"],
-                                                   ["POST", f"repos/{REPO}/issues/7/comments"],
-                                                   ["DELETE", f"repos/{REPO}/issues/7/labels/in-progress"]])
-        self.assertIn("labels[]=buildable", calls[0])
-        self.assertIn("body=why", calls[1])
+        self.assertEqual(calls, [("POST", f"/repos/{REPO}/issues/7/labels", {"labels": ["buildable"]}),
+                                 ("POST", f"/repos/{REPO}/issues/7/comments", {"body": "why"}),
+                                 ("DELETE", f"/repos/{REPO}/issues/7/labels/in-progress", None)])
 
     def test_apply_without_add_skips_the_label_post(self):
-        gh, calls = self.make({})
+        gh, calls = self.make()
         gh.apply(sip.Action(7, (sip.BUILDABLE, sip.IN_PROGRESS), "", "why"))
-        self.assertEqual([c[3] for c in calls], ["POST", "DELETE", "DELETE"])
-        self.assertTrue(calls[-1][4].endswith("/labels/in-progress"))
+        self.assertEqual([c[0] for c in calls], ["POST", "DELETE", "DELETE"])
+        self.assertTrue(calls[-1][1].endswith("/labels/in-progress"))
 
     def test_failed_write_leaves_in_progress_in_place(self):
-        calls = []
-
-        def run(args):
-            calls.append(args)
-            return (1, "", "HTTP 502") if args[-1].startswith("body=") else (0, "", "")
+        gh, calls = self.make(fail=lambda method, path: path.endswith("/comments"))
         with self.assertRaises(sip.Error):
-            sip.GitHub(REPO, run).apply(sip.Action(7, (sip.IN_PROGRESS,), sip.BUILDABLE, "why"))
-        self.assertNotIn("DELETE", [c[3] for c in calls])
+            gh.apply(sip.Action(7, (sip.IN_PROGRESS,), sip.BUILDABLE, "why"))
+        self.assertNotIn("DELETE", [c[0] for c in calls])
 
     def test_failed_call_raises(self):
-        gh = sip.GitHub(REPO, lambda args: (1, "", "HTTP 403"))
+        gh, _ = self.make(fail=lambda method, path: True)
         with self.assertRaises(sip.Error):
             gh.open_pulls()
+
+    def test_bad_repository_name_is_refused(self):
+        for repo in ("", "a", "a/b/c", "a/b?x=1", "../x", "a/.."):
+            with self.assertRaises(sip.Error):
+                sip.GitHub(repo, None)
 
     def test_bad_arguments_exit(self):
         for argv in (["--repo", "not a repo"], ["--repo", REPO, "--hours", "0"]):

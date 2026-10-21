@@ -20,18 +20,21 @@ issue's URL, closing keyword or not; owner and repository in any case) or its he
 `<n>-...`, `.../<n>` or `.../<n>-...`).
 
 For each stale issue: `buildable` is added unless `blocked` is set (a `blocked` issue loses `buildable` instead), one
-comment says why, and `in-progress` is removed last, so a failed call leaves the issue in progress to retry. Issues labelled `launch-blocker` or `needs-owner` are never touched. With --dry-run (or DRY_RUN=true) it prints
-what it would change and writes nothing.
+comment says why, and `in-progress` is removed last, so a failed call leaves the issue in progress to retry. Issues
+labelled `launch-blocker` or `needs-owner` are never touched. With --dry-run (or DRY_RUN=true) it prints what it
+would change and writes nothing.
 
-Standard library only; GitHub is reached through the `gh` CLI via `Runner`, which tests replace.
+Standard library only; it talks to the GitHub REST API at api.github.com (token in GH_TOKEN or GITHUB_TOKEN) through
+`Transport`, which tests replace. No subprocess is run.
 """
 import argparse
 import dataclasses
 import datetime
+import http.client
 import json
 import os
 import re
-import subprocess
+import ssl
 import sys
 import urllib.parse
 
@@ -39,6 +42,8 @@ IN_PROGRESS, BUILDABLE, BLOCKED = "in-progress", "buildable", "blocked"
 SKIP = frozenset({"launch-blocker", "needs-owner"})
 HOURS = 48
 MARKER = "<!-- stale-in-progress -->"
+API_HOST = "api.github.com"
+REPO_RE = re.compile(r"[A-Za-z0-9-]+/(?!\.\.?$)[A-Za-z0-9_.-]+")   # owner/name; never . or ..
 
 
 class Error(Exception):
@@ -131,59 +136,90 @@ def plan(issues, pulls, last_change, now, hours=HOURS, repo=""):
 
 # ---- GitHub ----------------------------------------------------------------------------------------------------
 
-class Runner:
-    """Runs a command; returns (returncode, stdout, stderr). Tests pass their own callable instead."""
+class Transport:
+    """One HTTPS request to api.github.com (through HTTPS_PROXY when it is set); returns (status, text, Link).
+    Tests pass their own callable instead."""
 
-    def __call__(self, args):
-        p = subprocess.run(args, capture_output=True, text=True, check=False)
-        return p.returncode, p.stdout, p.stderr
+    def __init__(self, token):
+        self.token = token
+
+    def _connect(self):
+        ctx = ssl.create_default_context()
+        proxy = urllib.parse.urlsplit(os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or "")
+        if not proxy.hostname:
+            return http.client.HTTPSConnection(API_HOST, 443, timeout=60, context=ctx)
+        conn = http.client.HTTPSConnection(proxy.hostname, proxy.port or 80, timeout=60, context=ctx)
+        conn.set_tunnel(API_HOST, 443)
+        return conn
+
+    def __call__(self, method, path, payload=None):
+        headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {self.token}",
+                   "User-Agent": "stale-in-progress", "X-GitHub-Api-Version": "2022-11-28"}
+        body = None if payload is None else json.dumps(payload).encode()
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        conn = self._connect()
+        try:
+            conn.request(method, path, body=body, headers=headers)
+            r = conn.getresponse()
+            return r.status, r.read().decode("utf-8", "replace"), r.getheader("Link") or ""
+        finally:
+            conn.close()
+
+
+def next_page(link):
+    """The path of the rel="next" page in a Link header, or "" (only api.github.com pages are followed)."""
+    for part in link.split(","):
+        m = re.fullmatch(r'\s*<([^>]+)>\s*;\s*rel="next"\s*', part)
+        if m:
+            u = urllib.parse.urlsplit(m.group(1))
+            if u.scheme == "https" and u.hostname == API_HOST:
+                return u.path + (f"?{u.query}" if u.query else "")
+    return ""
 
 
 class GitHub:
-    def __init__(self, repo, run=None):
-        self.repo, self.run = repo, run or Runner()
+    def __init__(self, repo, send):
+        if not REPO_RE.fullmatch(repo or ""):
+            raise Error(f"not a repository name: {repo!r}")
+        self.repo, self.send = repo, send
 
-    def _api(self, path, method="GET", fields=(), paginate=False, jq=None):
-        args = ["gh", "api", "-X", method, path]
-        for k, v in fields:
-            args += ["-f", f"{k}={v}"]
-        if paginate:
-            args.append("--paginate")
-        if jq:
-            args += ["--jq", jq]
-        rc, out, err = self.run(args)
-        if rc != 0:
-            raise Error(f"gh api {method} {path}: {err.strip()[:500]}")
-        return out
+    def _call(self, method, path, payload=None):
+        status, text, link = self.send(method, path, payload)
+        if not 200 <= status < 300:
+            raise Error(f"{method} {path}: HTTP {status}: {text.strip()[:500]}")
+        return (json.loads(text) if text.strip() else None), link
 
-    def _lines(self, path, jq):
-        out = self._api(path, paginate=True, jq=jq)
-        return [json.loads(line) for line in out.splitlines() if line.strip()]
+    def _pages(self, path):
+        rows = []
+        while path:
+            page, link = self._call("GET", path)
+            rows += page or []
+            path = next_page(link)
+        return rows
 
     def in_progress_issues(self):
-        jq = ".[] | select(.pull_request == null) | {number, created_at, labels: [.labels[].name]}"
-        rows = self._lines(f"repos/{self.repo}/issues?state=open&labels={IN_PROGRESS}&per_page=100", jq)
-        return [Issue(r["number"], set(r["labels"]), r["created_at"]) for r in rows]
+        rows = self._pages(f"/repos/{self.repo}/issues?state=open&labels={IN_PROGRESS}&per_page=100")
+        return [Issue(r["number"], {lb["name"] for lb in r.get("labels", [])}, r["created_at"])
+                for r in rows if "pull_request" not in r]
 
     def open_pulls(self):
-        jq = ".[] | {number, title, body, head: .head.ref}"
-        rows = self._lines(f"repos/{self.repo}/pulls?state=open&per_page=100", jq)
-        return [Pull(r["number"], r["title"] or "", r["body"] or "", r["head"] or "") for r in rows]
+        rows = self._pages(f"/repos/{self.repo}/pulls?state=open&per_page=100")
+        return [Pull(r["number"], r.get("title") or "", r.get("body") or "", r["head"]["ref"] or "") for r in rows]
 
     def last_label_change(self, number):
-        jq = '.[] | select(.event == "labeled" or .event == "unlabeled") | .created_at'
-        out = self._api(f"repos/{self.repo}/issues/{number}/events?per_page=100", paginate=True, jq=jq)
-        times = [t.strip() for t in out.splitlines() if t.strip()]
+        rows = self._pages(f"/repos/{self.repo}/issues/{int(number)}/events?per_page=100")
+        times = [r["created_at"] for r in rows if r.get("event") in ("labeled", "unlabeled")]
         return max(times, key=parse_time) if times else ""
 
     def apply(self, action):
         """Add first, then comment, then remove (in-progress last): a failure part way leaves it in progress."""
-        base = f"repos/{self.repo}/issues/{action.issue}"
+        base = f"/repos/{self.repo}/issues/{int(action.issue)}"
         if action.add:
-            self._api(f"{base}/labels", method="POST", fields=[("labels[]", action.add)])
-        self._api(f"{base}/comments", method="POST", fields=[("body", action.comment)])
+            self._call("POST", f"{base}/labels", {"labels": [action.add]})
+        self._call("POST", f"{base}/comments", {"body": action.comment})
         for label in action.remove:
-            self._api(f"{base}/labels/{urllib.parse.quote(label, safe='')}", method="DELETE")
+            self._call("DELETE", f"{base}/labels/{urllib.parse.quote(label, safe='')}")
 
 
 def describe(action):
@@ -214,14 +250,17 @@ def main(argv=None):
     ap.add_argument("--hours", type=int, default=HOURS, help="hours without a label change (default 48)")
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""), help="owner/name")
     a = ap.parse_args(argv)
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", a.repo or ""):
+    if not REPO_RE.fullmatch(a.repo or ""):
         raise SystemExit("--repo (or GITHUB_REPOSITORY) must be owner/name")
     if a.hours < 1:
         raise SystemExit("--hours must be at least 1")
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    if not token:
+        raise SystemExit("GH_TOKEN (or GITHUB_TOKEN) must hold a token")
     dry = a.dry_run or os.environ.get("DRY_RUN", "").lower() == "true"
     now = datetime.datetime.now(datetime.timezone.utc)
     print(("dry run: " if dry else "") + f"{a.repo}, stale after {a.hours} h")
-    print("\n".join(run(GitHub(a.repo), now, a.hours, dry)))
+    print("\n".join(run(GitHub(a.repo, Transport(token)), now, a.hours, dry)))
     return 0
 
 

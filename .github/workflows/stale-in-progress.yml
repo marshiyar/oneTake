@@ -3,21 +3,15 @@
 # not changed for 48 hours gains `buildable` (a `blocked` one loses it instead), gets one comment saying why, and
 # loses `in-progress` last. Issues labelled `launch-blocker` or `needs-owner` are never touched.
 #
-# Run by hand (workflow_dispatch) it is a dry run unless dry_run is turned off: it lists what it would change and
-# writes nothing. Nothing from a pull request runs here: main is checked out, without credentials, and pull requests
+# Run by hand (workflow_dispatch, which takes no inputs) it is always a dry run: it lists what it would change and
+# writes nothing; only the schedule writes. Nothing from a pull request runs here: main is checked out, without credentials, and pull requests
 # are only read through the API.
 name: stale-in-progress
 
 on:
   schedule:
     - cron: '17 6 * * *'
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: List what would change; write nothing
-        required: false
-        type: boolean
-        default: true
+  workflow_dispatch: {}   # always a dry run
 
 permissions: {}
 
@@ -44,7 +38,7 @@ jobs:
       - name: Return stale in-progress issues to the queue
         env:
           GH_TOKEN: ${{ github.token }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          DRY_RUN: ${{ github.event_name != 'schedule' }}
         run: |
           set -o pipefail
           python3 -I -B .github/ci/stale_in_progress.py | tee -a "$GITHUB_STEP_SUMMARY"
