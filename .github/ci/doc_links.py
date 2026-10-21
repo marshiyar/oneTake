@@ -31,14 +31,17 @@ import re
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
+import urllib.parse
 
 TITLE = "Dead documentation links"
 TIMEOUT = 10
 ATTEMPTS = 3
 BACKOFF = 5  # seconds before the second attempt, doubled before each later one
 RETRIED = {429, 500, 502, 503, 504}
+REDIRECTS = {301, 302, 303, 307, 308}
+MAX_REDIRECTS = 5
+# http.client, not urllib: it speaks HTTP and HTTPS only, so a link can never make the checker open a file:// path.
+CONNECTIONS = {"https": http.client.HTTPSConnection, "http": http.client.HTTPConnection}
 USER_AGENT = "MpVFX-doc-links/1 (+https://github.com/marshiyar/oneTake)"
 URL = re.compile(r"https://[^\s<>()\[\]{}\"'`|\\]+")
 CODE_SPAN = re.compile(r"`[^`]*`")
@@ -70,14 +73,30 @@ def links(root):
     return found
 
 
-def status_of(url, method, timeout):
-    """The HTTP status of one request (redirects followed); network failures raise."""
-    req = urllib.request.Request(url, method=method, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
+def request(url, method, timeout):
+    """(status, Location header) of one request, without following redirects; network failures raise."""
+    parts = urllib.parse.urlsplit(url)
+    connection = CONNECTIONS.get(parts.scheme)
+    if connection is None:
+        raise http.client.InvalidURL(f"not http(s): {url}")
+    conn = connection(parts.netloc, timeout=timeout)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status
-    except urllib.error.HTTPError as e:
-        return e.code
+        target = urllib.parse.urlunsplit(("", "", parts.path or "/", parts.query, ""))
+        conn.request(method, target, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
+        response = conn.getresponse()
+        return response.status, response.getheader("Location")
+    finally:
+        conn.close()
+
+
+def status_of(url, method, timeout):
+    """The HTTP status of url, redirects followed (at most MAX_REDIRECTS); network failures raise."""
+    for _ in range(MAX_REDIRECTS + 1):
+        status, location = request(url, method, timeout)
+        if status not in REDIRECTS or not location:
+            return status
+        url = urllib.parse.urljoin(url, location)
+    raise http.client.HTTPException(f"more than {MAX_REDIRECTS} redirects")
 
 
 def check(url, sleep=time.sleep, timeout=TIMEOUT):
@@ -90,8 +109,8 @@ def check(url, sleep=time.sleep, timeout=TIMEOUT):
             status = status_of(url, "HEAD", timeout)
             if status >= 400:
                 status = status_of(url, "GET", timeout)
-        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
-            reason = f"unreachable: {getattr(e, 'reason', e)}"
+        except (OSError, http.client.HTTPException) as e:
+            reason = f"unreachable: {e}"
             continue
         if status < 400:
             return None
@@ -109,7 +128,7 @@ def check_all(found, workers=8):
 
 
 def report(dead, checked=None):
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
     head = f"Weekly check of the https:// links in the tracked Markdown files ({today}"
     head += f", {checked} links)" if checked is not None else ")"
     if not dead:
@@ -117,8 +136,8 @@ def report(dead, checked=None):
     rows = [f"| {url} | {reason} | {', '.join(places)} |" for url, (reason, places) in dead.items()]
     return "\n".join([head + f": {len(dead)} dead, after {ATTEMPTS} attempts each.", "",
                       "| Link | Result | Where |", "|---|---|---|", *rows, "",
-                      "Fix or remove each link; this issue is edited by `.github/workflows/doc-links.yml` and closes "
-                      "itself when the list is empty.", ""])
+                      ("Fix or remove each link; this issue is edited by `.github/workflows/doc-links.yml` and closes "
+                       "itself when the list is empty."), ""])
 
 
 def sync_issue(dead, api, checked=None):
@@ -136,13 +155,20 @@ def sync_issue(dead, api, checked=None):
 
 
 def github_api(method, path, body=None):
-    url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/{path}"
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={
-        "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json",
-        "User-Agent": USER_AGENT, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+    conn = http.client.HTTPSConnection("api.github.com", timeout=30)
+    try:
+        conn.request(method, f"/repos/{os.environ['GITHUB_REPOSITORY']}/{path}",
+                     body=json.dumps(body) if body is not None else None, headers={
+                         "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                         "Accept": "application/vnd.github+json", "User-Agent": USER_AGENT,
+                         "Content-Type": "application/json"})
+        response = conn.getresponse()
+        data = response.read()
+    finally:
+        conn.close()
+    if response.status >= 400:
+        raise RuntimeError(f"GitHub API {method} {path}: HTTP {response.status} {data[:300]!r}")
+    return json.loads(data)
 
 
 def main(argv):

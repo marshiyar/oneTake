@@ -29,19 +29,29 @@ doc_links = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(doc_links)
 
 
+CALLS = {}  # (method, path) -> requests the test server answered
+DEAD = {"https://example.org/gone": ("HTTP 404", ["README.md:3"])}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
-    """/ok answers both; /no-head refuses HEAD (405) and answers GET; /gone is 404; /flaky fails twice with 503."""
-    calls = {}
+    """/ok answers both; /no-head refuses HEAD (405) and answers GET; /gone is 404; /flaky fails twice with 503;
+    /moved redirects to /ok."""
 
     def answer(self, body):
         key = (self.command, self.path)
-        Handler.calls[key] = Handler.calls.get(key, 0) + 1
+        CALLS[key] = CALLS.get(key, 0) + 1
+        if self.path == "/moved":
+            self.send_response(301)
+            self.send_header("Location", "/ok")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if self.path == "/ok" or (self.path == "/no-head" and self.command == "GET"):
             code = 200
         elif self.path == "/no-head":
             code = 405
         elif self.path == "/flaky":
-            code = 503 if Handler.calls[key] <= 2 else 200
+            code = 503 if CALLS[key] <= 2 else 200
         else:
             code = 404
         self.send_response(code)
@@ -72,7 +82,7 @@ class Server(unittest.TestCase):
         cls.httpd.shutdown()
 
     def setUp(self):
-        Handler.calls = {}
+        CALLS.clear()
         self.slept = []
 
     def check(self, path):
@@ -80,11 +90,18 @@ class Server(unittest.TestCase):
 
     def test_head_ok_is_alive_without_get(self):
         self.assertIsNone(self.check("/ok"))
-        self.assertNotIn(("GET", "/ok"), Handler.calls)
+        self.assertNotIn(("GET", "/ok"), CALLS)
 
     def test_head_refused_falls_back_to_get(self):
         self.assertIsNone(self.check("/no-head"))
-        self.assertEqual(Handler.calls[("GET", "/no-head")], 1)
+        self.assertEqual(CALLS[("GET", "/no-head")], 1)
+
+    def test_redirects_are_followed(self):
+        self.assertIsNone(self.check("/moved"))
+        self.assertEqual(CALLS[("HEAD", "/ok")], 1)
+
+    def test_only_http_and_https_are_fetched(self):
+        self.assertTrue(doc_links.check("file:///etc/passwd", sleep=self.slept.append).startswith("unreachable"))
 
     def test_not_found_is_dead_with_its_status(self):
         self.assertEqual(self.check("/gone"), "HTTP 404")
@@ -150,11 +167,10 @@ class FakeAPI:
 
 class Issue(unittest.TestCase):
     """Acceptance: results go into one issue, "Dead documentation links", edited in place, closed when empty."""
-    DEAD = {"https://example.org/gone": ("HTTP 404", ["README.md:3"])}
 
     def test_dead_links_open_the_issue(self):
         api = FakeAPI()
-        doc_links.sync_issue(self.DEAD, api)
+        doc_links.sync_issue(DEAD, api)
         self.assertEqual(len(api.issues), 1)
         self.assertEqual(api.issues[0]["state"], "open")
         self.assertIn("https://example.org/gone", api.issues[0]["body"])
@@ -162,7 +178,7 @@ class Issue(unittest.TestCase):
 
     def test_open_issue_is_edited_in_place(self):
         api = FakeAPI([{"number": 7, "title": doc_links.TITLE, "state": "open", "body": "old"}])
-        doc_links.sync_issue(self.DEAD, api)
+        doc_links.sync_issue(DEAD, api)
         self.assertEqual(len(api.issues), 1)
         self.assertIn("HTTP 404", api.issues[0]["body"])
         self.assertNotIn("POST", [c[0] for c in api.calls])
@@ -174,7 +190,7 @@ class Issue(unittest.TestCase):
 
     def test_closed_issue_is_reopened_not_duplicated(self):
         api = FakeAPI([{"number": 7, "title": doc_links.TITLE, "state": "closed", "body": "old"}])
-        doc_links.sync_issue(self.DEAD, api)
+        doc_links.sync_issue(DEAD, api)
         self.assertEqual(len(api.issues), 1)
         self.assertEqual(api.issues[0]["state"], "open")
 
