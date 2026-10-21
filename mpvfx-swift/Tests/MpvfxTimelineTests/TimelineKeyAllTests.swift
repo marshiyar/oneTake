@@ -158,10 +158,10 @@ final class TimelineKeyAllTests: XCTestCase {
 
     func testCmdKKeysTheScalarPositionTracksWhenTheyCarryTheAnimation() throws {
         let (c, e) = try make()
-        for pid in [POSITION_X_PARAMETER_ID, POSITION_Y_PARAMETER_ID] {
-            let a = try XCTUnwrap(e.parameterAddress(clipId: "clip:a", pid))
-            XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.upsert(address: a, valueType: .number, frame: 0, value: .number(10), baselineValue: .number(10))))))
-        }
+        let ax = try XCTUnwrap(e.parameterAddress(clipId: "clip:a", POSITION_X_PARAMETER_ID))
+        let ay = try XCTUnwrap(e.parameterAddress(clipId: "clip:a", POSITION_Y_PARAMETER_ID))
+        XCTAssertTrue(e.applyProperty(.batch([.keyframe(.upsert(address: ax, valueType: .number, frame: 0, value: .number(10), baselineValue: .number(10))),
+                                             .keyframe(.upsert(address: ay, valueType: .number, frame: 0, value: .number(10), baselineValue: .number(10)))])))
         XCTAssertTrue(c.keyDown(Self.cmdK))
         let keyed = try keyedIds(e, "clip:a", frame: 60)
         XCTAssertTrue(keyed.isSuperset(of: [POSITION_X_PARAMETER_ID, POSITION_Y_PARAMETER_ID]))
@@ -204,9 +204,8 @@ final class TimelineKeyAllTests: XCTestCase {
             ("grade.intensity", "grade.intensity", "Grade Amount", .color), ("grade.wheels.shadows.hue", "grade.wheels.shadows.hue", "Shadows Hue", .color),
             ("grade.effects.chromaticAberration", "grade.effects.chromaticAberration", "Chromatic Aberration", .effect),
         ]
-        for (pid, group, label, kind) in expected {
-            XCTAssertEqual(TimelineKeyframeCatalog.property(pid), TimelineKeyframeProperty(group: group, label: label, kind: kind), pid)
-            XCTAssertEqual(TimelineKeyframeCatalog.kind(ofGroup: group), kind, group)
-        }
+        XCTAssertEqual(expected.map { TimelineKeyframeCatalog.property($0.0) },
+                       expected.map { TimelineKeyframeProperty(group: $0.1, label: $0.2, kind: $0.3) })
+        XCTAssertEqual(expected.map { TimelineKeyframeCatalog.kind(ofGroup: $0.1) }, expected.map(\.3), "a lane's group gives back its kind")
     }
 }

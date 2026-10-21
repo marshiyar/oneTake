@@ -32,6 +32,12 @@ public extension TimelineController {
         return true
     }
 
+    /// ⌘= / ⌘+ zoom in, ⌘- out, ⌘0 fit.
+    internal func zoomKey(_ ch: Character) -> Bool {
+        if ch == "0" { zoomToFit() } else { zoom(in: ch != "-") }
+        return true
+    }
+
     func toggleGroup(_ id: String) {
         if view.collapsedGroups.contains(id) { view.collapsedGroups.remove(id) } else { view.collapsedGroups.insert(id) }
         if let e = editor { reload(from: e) }
