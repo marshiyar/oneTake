@@ -78,12 +78,8 @@ extension InspectorPanel {
                 let ok = k == "normal" || k == "italic" ? editor.setTextFontStyle(clipId: id, k) : editor.setTextTransform(clipId: id, k)
                 self?.edited(ok, label: "Edit text")
             }))))
-        rows.append(field("textColor", "Color", t.resolvedColor, explicit: t.color != nil,
-                          commit: { v in
-                              let c = v.trimmingCharacters(in: .whitespaces).lowercased()
-                              return normalizedHexColor(c).map { editor.setTextColor(clipId: id, $0) } ?? false
-                          },
-                          reset: { editor.setTextColor(clipId: id, nil) }))
+        rows += colorRows(ColorFieldSpec(key: "textColor", label: "Color", value: t.color, placeholder: t.resolvedColor, allowAlpha: false,
+                                         historyLabel: "Edit text") { editor.setTextColor(clipId: id, $0) }, clipId: id)
         let preview = t.preview
         return InspectorGroup(id: "text", title: "Text", summary: preview.isEmpty ? "empty" : preview, rows: rows)
     }
