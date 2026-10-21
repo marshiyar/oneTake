@@ -181,8 +181,8 @@ extension PlayerController {
         default: return false
         }
         let ids = view.selectedIds
-        let targets = view.elements.filter { ids.contains($0.id) }
-        guard !targets.isEmpty else { return false }
+        let targets = unlockedElements(ids)
+        guard !targets.isEmpty else { return refuseLockedNudge(ids) }
         for e in targets where !nudgeStarts.contains(where: { $0.id == e.id }) { nudgeStarts.append(e) }
         for e in targets { update(e.id) { $0.rect.x += dx; $0.rect.y += dy } }
         nudgeAt = view.now()
@@ -196,8 +196,7 @@ extension PlayerController {
         guard !nudgeStarts.isEmpty else { nudgeAt = nil; return }
         let starts = nudgeStarts
         nudgeStarts = []; nudgeAt = nil
-        let changed = starts.compactMap { st in view.elements.first { $0.id == st.id && $0 != st } }
-        for e in changed { onCommit?(e) }
+        commitAll(starts.compactMap { st in view.elements.first { $0.id == st.id && $0 != st } })
         needsDisplay?()
     }
 
@@ -205,7 +204,7 @@ extension PlayerController {
     func cancelGesture() -> Bool {
         guard let g = gesture else { return false }
         gesture = nil
-        view.snapGuides = []; view.spacingGuides = []
+        view.snapGuides = []; view.spacingGuides = []; endTransformGesture()
         switch g {
         case let .move(id, start, _, _), let .resize(id, _, start, _), let .rotate(id, start, _), let .crop(id, _, start):
             update(id) { $0 = start }
@@ -213,7 +212,7 @@ extension PlayerController {
             for st in starts { update(st.id) { $0 = st } }
         case .marquee:
             view.marquee = nil; view.marqueeCandidates = []
-        case .pan: break
+        case .pan, .anchor: break
         }
         needsDisplay?()
         return true
