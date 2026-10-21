@@ -38,6 +38,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var sourceIn: Double
     /// Source seconds per timeline second.
     public var rate: Double
+    /// Optional clip-local nonlinear map; export and preview share this exact layer path.
+    public var speedRamp: NativeSpeedRamp?
     /// Timeline frames the clip covers, [startFrame, endFrame).
     public var startFrame: Int, endFrame: Int
     public var box: CanvasRect
@@ -73,7 +75,10 @@ public struct PreviewLayer: Equatable, Sendable {
     }
 
     /// Source seconds shown at timeline `time`.
-    public func sourceTime(at time: Double) -> Double { sourceIn + (time - start) * rate }
+    public func sourceTime(at time: Double) -> Double {
+        sourceIn + (speedRamp?.sourcePosition(atClipFrame: max(0, (time - start) * timelineFPS)) ?? ((time - start) * rate * timelineFPS)) / timelineFPS
+    }
+    public var timelineFPS = 1.0
 
     /// Nothing would reach the screen (zero area, zero scale, fully transparent, or cropped away).
     public var isVisible: Bool {
@@ -139,7 +144,7 @@ public struct PreviewComposition {
         for (index, track) in document.sequence.tracks.enumerated() {
             for clip in track.clips {
                 n += 1
-                guard !Self.isHidden(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
+                guard !Self.isLeftOut(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
                 let layer = Self.stackingLayer(clip, track: trackLayers[index])
                 if asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
@@ -222,7 +227,7 @@ public struct PreviewComposition {
         var media = MediaEntries(document: document, projectDir: projectDir, naturalSize: { _ in nil }, sizePending: { _ in false },
                                  fileExists: fileExists)
         for track in document.sequence.tracks {
-            for clip in track.clips where !isHidden(track: track, clip: clip) {
+            for clip in track.clips where !isLeftOut(track: track, clip: clip) {
                 if let asset = assets[clip.assetId] { _ = media.check(asset) }
             }
         }
@@ -231,6 +236,11 @@ public struct PreviewComposition {
 
     /// Hidden tracks and hidden clips (the timeline eye toggle) are left out of the picture, as export leaves them out.
     static func isHidden(track: NativeProjectTrack, clip: NativeProjectClip) -> Bool { track.hidden == true || clip.hidden == true }
+
+    /// Clips the composition does not draw: hidden ones, and those whose speed ramp this build cannot play.
+    static func isLeftOut(track: NativeProjectTrack, clip: NativeProjectClip) -> Bool {
+        isHidden(track: track, clip: clip) || clip.speedRamp?.isSupported == false
+    }
 
     /// Timeline frame shown at `time` (a frame is shown from its start time until the next).
     public func frameIndex(at time: Double) -> Int { Int((time * fps + 1e-6).rounded(.down)) }
@@ -300,6 +310,8 @@ public struct PreviewComposition {
                             startFrame: Int(c.startFrame.rounded()), endFrame: Int((c.startFrame + c.durationFrames).rounded()),
                             box: box, scaleX: sx, scaleY: sy,
                             rotation: (num("transform.rotation") ?? 0) + autoRotate, opacity: opacity, crop: crop)
+        out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
+        out.timelineFPS = fps
         out.motionRotation = autoRotate
         out.grade = e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style

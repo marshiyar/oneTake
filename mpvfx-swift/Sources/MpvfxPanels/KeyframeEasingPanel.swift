@@ -85,7 +85,11 @@ public final class KeyframeEasingPanel {
     /// The keys the panel edits now; nil when the clip has no easable keys.
     public var target: KeyframeEasingTarget? {
         guard let editor else { return nil }
-        return KeyframeEasingTarget.resolve(editor, clipId: clipId, selected: selectedKeyframes, time: time, chosen: state.chosenProperty)
+        var selected = selectedKeyframes
+        if let chosen = state.chosenProperty, state.pinnedSelection == selectedKeyframes, !selected.contains(where: { $0.parameterId == chosen }) {
+            selected = []   // the user picked another property for this selection: edit its key at the playhead
+        }
+        return KeyframeEasingTarget.resolve(editor, clipId: clipId, selected: selected, time: time, chosen: state.chosenProperty)
     }
 
     /// Wide enough for the graph beside the controls (docked under the timeline).
