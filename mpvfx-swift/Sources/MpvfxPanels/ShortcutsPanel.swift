@@ -24,7 +24,9 @@ public let shortcutSections: [ShortcutSection] = {
     return [
         s("Playback", [("Space", "Play / Pause"), ("J", "Play backward"), ("K", "Stop"), ("L", "Play forward"), ("M", "Toggle mute"),
                        ("⇧L", "Toggle loop"), ("←/→", "Step 1 frame"), ("⇧←/⇧→", "Step 10 frames"), ("F", "Toggle fullscreen")]),
-        s("Keyframes (when an element is selected)", [("K", "Add keyframe at playhead"), ("Del", "Delete selected keyframe"),
+        s("Keyframes (when an element is selected)", [("K", "Toggle position keyframe at playhead"),
+                       ("⌘K", "Key every property at playhead"), ("⇧⌘K", "Key animated properties at playhead"),
+                       ("Del", "Delete selected keyframe"),
                        (", / .", "Move selected keyframes 1 frame"), ("⇧, / ⇧.", "Move selected keyframes 10 frames"),
                        ("H", "Toggle hold / bezier"), ("F9", "Easy ease selected keyframes"),
                        ("⇧F9", "Easy ease in"), ("⌘⇧F9", "Easy ease out"), ("U", "Expand / collapse properties"), ("R", "Arm Record motion")]),

@@ -50,7 +50,7 @@ final class SessionPanels {
     private(set) var presetPreviews: PresetPreviewRenderer?
     /// Effects catalog and look tile demos on the built-in sample picture.
     private(set) var effectPreviews: EffectPreviewRenderer?
-    private var presetPreviewTime = 0.0
+    private(set) var presetPreviewTime = 0.0
     private var panelsAnimating = false
 
     init(session: EditorSession, layout: PanelLayoutState, userData: String) {
@@ -455,7 +455,7 @@ final class SessionPanels {
         _ = schedule(1.0 / 60, step)
     }
 
-    /// Grade preset tiles and scopes: the selected clip's frame graded with each preset, or its own grade (PresetPreviewRenderer). While playing
+    /// Grade preset tiles: the selected clip's frame graded with each preset (PresetPreviewRenderer). While playing
     /// the tiles keep the frame they showed when playback started, so playback does not re-grade 18 thumbnails a frame.
     private func wirePresetPreviews(_ inspector: InspectorPanel) {
         let renderer = PresetPreviewRenderer(compositor: session.compositor)
@@ -475,15 +475,7 @@ final class SessionPanels {
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
-        inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
-            guard let self, let inspector else { return .unavailable }
-            let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
-            switch renderer.gradedFrame(clipId: clipId, time: t, pixelWidth: w, pixelHeight: h) {
-            case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
-            case .unavailable: return .unavailable
-            }
-        }
+        wireScopes(inspector, clip: renderer)
     }
 
     /// Effects catalog tiles: the selected clip's frame with its grade plus each effect or look (the preset tiles'

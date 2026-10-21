@@ -28,13 +28,16 @@ public struct GradeUIState: Equatable {
     /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
+    /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
+    /// past the drag threshold (a click that only selects a point never moves it).
+    var curveGrab: (dx: Double, dy: Double, start: CanvasPoint, moved: Bool)?
+    /// The last press that selected a curve point (tab, index, editor clock), for double-click delete.
+    var curveClick: (tab: String, index: Int, time: Double)?
     /// Geometry from the last draw (rows are rebuilt per event, so it lives here).
     var curveBox = CanvasRect(x: 0, y: 0, width: 1, height: 1)
     /// Scopes disclosure (closed by default) and its mode (waveform first).
     public var scopesOpen = false
     public var scopeMode = ColorScopes.Mode.waveform
-    /// The last scope bitmap and what it was drawn from (mode + frame fingerprint).
-    var scopeMemo: (key: String, image: CanvasImage)?
     /// The secondary eyedropper: the captured frame, whether a capture is still
     /// rendering or failed, Source / Selection matte view, and where the frame was drawn last.
     public internal(set) var sampleFrame: CanvasImage?
@@ -62,18 +65,10 @@ extension InspectorPanel {
         }
     }
 
-    /// Curve tabs; `color` is the tab's line/point token (ThemeTokens.curve*Pair), so light mode draws dark ink.
-    static let curveTabs: [(key: String, label: String, color: ThemePair, hue: Bool, min: Double, max: Double)] = [
-        ("master", "Master", ThemeTokens.curveMasterPair, false, 0, 1), ("red", "R", ThemeTokens.curveRedPair, false, 0, 1),
-        ("green", "G", ThemeTokens.curveGreenPair, false, 0, 1), ("blue", "B", ThemeTokens.curveBluePair, false, 0, 1),
-        ("hueVsHue", "Hue/Hue", ThemeTokens.curveHueHuePair, true, -180, 180),
-        ("hueVsSaturation", "Hue/Sat", ThemeTokens.curveHueSatPair, true, -1, 1),
-        ("hueVsLuma", "Hue/Luma", ThemeTokens.curveHueLumaPair, true, -1, 1),
-    ]
-
     func gradeGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
-        let g = editor.colorGrading(clipId: s.id) ?? ColorGrading()
-        let commit: (ColorGrading) -> Void = { [weak self] next in self?.edited(editor.setColorGrading(clipId: s.id, next)) }
+        // Animated values (issue #179) show their value at the playhead, and an edit of one keys it there.
+        let t = time, g = editor.gradeShown(clipId: s.id, time: t)
+        let commit: (ColorGrading) -> Void = { [weak self] next in self?.edited(editor.commitGrade(clipId: s.id, time: t, shown: g, next: next)) }
         // Sections `space-y-1.5` apart; slider lists `space-y-0.5`.
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
@@ -96,40 +91,33 @@ extension InspectorPanel {
                                         display: "\(Int((g.intensity * 100).rounded()))%", format: { "\(Int($0.rounded()))%" },
                                         tier: g.intensity == 1 ? .default : .explicitCustom,
                                         commit: { v in var n = g; n.intensity = max(0, min(1, v / 100)); commit(n) },
-                                        reset: { var n = g; n.intensity = 1; commit(n) }))))
+                                        reset: { var n = g; n.intensity = 1; commit(n) },
+                                        keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.intensityId], shown: g)))))
         gap(6)
         rows.append(.init(.section("Primary")))
         gap(4)
-        for (i, a) in ColorGrading.adjustSliders.enumerated() {
-            if i > 0 { gap(2) }
-            let v = g.adjustValue(a.key) * a.scale
-            let fmt: (Double) -> String = { x in a.key == "exposure" ? String(format: "%+.2f", x / 100) : "\(Int(x.rounded()))\(a.suffix)" }
-            rows.append(.init(.slider(.init(key: "grade:adj:\(a.key)", label: a.label, position: v, min: a.min, max: a.max, display: fmt(v), format: fmt,
-                                            tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
-                                            commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
-                                            reset: { var n = g; n.adjust[a.key] = 0; commit(n) }))))   // 0, not nil: a missing key reads the preset's value
-            if a.key == "contrast" { gap(2); rows.append(pivotSlider(g, commit: commit)) }
-        }
+        rows += primaryRows(editor, s, g, commit: commit)
         gap(6)
         rows.append(.init(.section("Color wheels")))
         gap(6)
         rows.append(.init(.custom(colorWheels(g, .balance, commit: commit)), controls: wheelFieldControls(g, .balance, commit: commit)))
-        if g.showsTonalWheels {   // a contract 2 grade's Shadows / Midtones / Highlights stay editable
-            gap(12)
-            rows.append(.init(.heading("Tonal wheels", trailing: nil)))
-            rows.append(.init(.custom(colorWheels(g, .tonal, commit: commit)), controls: wheelFieldControls(g, .tonal, commit: commit)))
-        }
+        // Keep tonal wheels available so a neutral grade can start a wheel animation.
+        gap(12)
+        rows.append(.init(.heading("Tonal wheels", trailing: nil)))
+        rows.append(.init(.custom(colorWheels(g, .tonal, commit: commit)), controls: wheelFieldControls(g, .tonal, commit: commit)))
+        rows.append(wheelKeyframesRow(editor, s, shown: g))
         gap(6)
         rows.append(.init(.section("Curves")))
         gap(6)
-        rows.append(.init(.custom(curveTabsRow())))
+        rows.append(.init(.custom(curveTabsRow(g))))
         gap(8)
-        var graph = curveGraph(g, commit: commit)
-        // Enter on the focused graph adds the midpoint (as with no focus); Space never adds a point (issue #171).
-        graph.keyPress = { [weak self] _, k in k.code == .space || (k.code == .enter && (self?.gradeKey(k) ?? true)) }
-        rows.append(.init(.custom(graph)))
+        rows.append(.init(.custom(curveGraph(g, commit: commit))))
         gap(8)
+        rows.append(contentsOf: curvePointRows(g, set: { editor.setColorGrading(clipId: s.id, $0) }))
+        gap(6)
         rows.append(.init(.custom(curveFooter(g, commit: commit))))
+        gap(2)
+        rows.append(.init(.custom(curveHintRow())))
         gap(6)
         rows.append(contentsOf: secondaryRows(g, commit: commit))
         gap(6)
@@ -139,7 +127,8 @@ extension InspectorPanel {
         gap(6)
         for (i, key) in ["vignette", "grain"].enumerated() {
             if i > 0 { gap(6) }
-            rows.append(detailSlider(g, key, commit: commit, gear: true))
+            rows.append(detailSlider(g, key, commit: commit, gear: true,
+                                     keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.detailId(key)], shown: g)))
             if grade.finishSettings == key {
                 let tune = key == "vignette" ? ["vignetteMidpoint", "vignetteRoundness", "vignetteFeather"] : ["grainSize", "grainRoughness"]
                 for t in tune { gap(2); rows.append(detailSlider(g, t, commit: commit, gear: false)) }
@@ -163,6 +152,23 @@ extension InspectorPanel {
         // not drawn: the native preview has no compare bypass or runtime handshake yet.
         group.reset = g.isAuthored ? { commit(ColorGrading()) } : nil
         return group
+    }
+
+    /// The ten Primary sliders, `space-y-0.5`, each keyframeable (issue #179).
+    func primaryRows(_ editor: TimelineEditor, _ s: Selected, _ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> [InspectorRow] {
+        var rows: [InspectorRow] = []
+        for (i, a) in ColorGrading.adjustSliders.enumerated() {
+            if i > 0 { rows.append(.init(.spacer(2))) }
+            let v = g.adjustValue(a.key) * a.scale
+            let fmt: (Double) -> String = { x in a.key == "exposure" ? String(format: "%+.2f", x / 100) : "\(Int(x.rounded()))\(a.suffix)" }
+            rows.append(.init(.slider(.init(key: "grade:adj:\(a.key)", label: a.label, position: v, min: a.min, max: a.max, display: fmt(v), format: fmt,
+                                            tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
+                                            commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
+                                            reset: { var n = g; n.adjust[a.key] = 0; commit(n) },   // 0, not nil: a missing key reads the preset's value
+                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g)))))
+            if a.key == "contrast" { rows.append(.init(.spacer(2))); rows.append(pivotSlider(g, commit: commit)) }
+        }
+        return rows
     }
 
     /// Contrast's pivot (issue #176): the luma that contrast leaves unchanged, 50% by default (how older grades draw).
@@ -226,7 +232,8 @@ extension InspectorPanel {
         })
     }
 
-    func detailSlider(_ g: ColorGrading, _ key: String, commit: @escaping (ColorGrading) -> Void, gear: Bool) -> InspectorRow {
+    func detailSlider(_ g: ColorGrading, _ key: String, commit: @escaping (ColorGrading) -> Void, gear: Bool,
+                      keyframe: InspectorRow.Keyframe? = nil) -> InspectorRow {
         let spec = ColorGrading.detailSliders.first { $0.key == key }!
         let v = g.detail(key) * 100, def = (ColorGrading.detailDefaults[key] ?? 0) * 100
         var row = InspectorRow.Slider(key: "grade:det:\(key)", label: spec.label, position: v, min: spec.min, max: spec.max,
@@ -234,6 +241,7 @@ extension InspectorPanel {
                                       tier: abs(v - def) > 1e-6 ? .explicitCustom : .default,
                                       commit: { x in var n = g; n.details[key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
                                       reset: { var n = g; n.details[key] = ColorGrading.defaultDetail(key); commit(n) })   // explicit, as above
+        row.keyframe = keyframe
         if gear {   // Vignette settings / Grain settings
             row.settings = (grade.finishSettings == key, { [weak self] in
                 guard let self else { return }
@@ -246,93 +254,129 @@ extension InspectorPanel {
     // MARK: Scopes
 
     /// Closed: `min-h-7` "Scopes" (11px text-2) / "Off" (9px text-5) over `pb-1.5` and a hairline (35pt). Open: the
-    /// status instead of Off with a RotateCw 10 refresh (`p-1`, text-4) `gap-2` right of it, the mode tabs (9px,
-    /// `py-1`, `border-b-2`, accent + text-1 when on, text-4 otherwise, `gap-2`), and the 320x144 scope bitmap at the
-    /// body width (`h-auto`, hairline border, black) `space-y-1.5` below.
+    /// Clip / Program switch and the status instead of Off, with a RotateCw 10 refresh (`p-1`, text-4) `gap-2` right
+    /// of it, the mode tabs (9px, `py-1`, `border-b-2`, accent + text-1 when on, text-4 otherwise, `gap-2`), and the
+    /// 320x144 scope bitmap at the body width (`h-auto`, hairline border, black) `space-y-1.5` below.
+    ///
+    /// Hit parts: 0 the header (open / close), 1 refresh, 2… the mode tabs, then the source switch's segments.
     func scopesRow(_ clipId: String) -> InspectorCustomRow {
         let open = grade.scopesOpen
         let canvasH = (bodyContentWidth - 2) * Double(ColorScopes.bitmapHeight) / Double(ColorScopes.bitmapWidth) + 2
         let height = open ? 28 + Self.scopeTabsHeight + 6 + canvasH + 7 : 35
-        return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, _ in
+        return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, panel in
             guard let self else { return }
-            let state: PresetPreviewState? = open ? (self.scopeFrame?(clipId, ColorScopes.bitmapWidth, ColorScopes.bitmapWidth) ?? .unavailable) : nil
+            let state: PresetPreviewState? = open ? self.scopeState(clipId) : nil
             let head = CanvasRect(x: r.x, y: r.y, width: r.width, height: 28)
-            self.drawScopesHead(c, head, status: Self.scopesStatus(state), open: open)
-            if open { self.drawScopesBody(c, CanvasRect(x: r.x, y: head.maxY, width: r.width, height: Self.scopeTabsHeight + 6 + canvasH), state) }
+            self.drawScopesHeader(c, head, state: state, panel)
+            if open {
+                self.drawScopeTabs(c, CanvasRect(x: r.x, y: head.maxY, width: r.width, height: Self.scopeTabsHeight), panel)
+                let box = CanvasRect(x: r.x, y: head.maxY + Self.scopeTabsHeight + 6, width: r.width, height: canvasH)
+                c.fillRect(box, PanelTheme.stageScrim)   // scopes draw on black in both modes
+                c.drawImage(self.scopeBitmap(state), in: box.insetBy(1))
+                c.strokeRect(box.insetBy(0.5), PanelTheme.panelHairline, width: 1)
+            }
             c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
-            self.scopesPressed(part)
+            self.scopesPointer(part)
             self.onEdited?()
         })
     }
 
-    static func scopesStatus(_ state: PresetPreviewState?) -> String {
-        switch state {
-        case nil: "Off"
-        case .ready?: "ready"
-        case .rendering?: "loading"
-        case .unavailable?, .failed?: "unavailable"
+    /// The empty grid (nothing to analyse yet); the same in every mode and both appearances.
+    static let emptyScope = ColorScopes.render(.waveform, nil)
+
+    /// Hit part of the source switch's first segment (after the refresh button and the mode tabs).
+    static var scopeSourcePart: Int { 3 + ColorScopes.Mode.allCases.count }
+    static var scopeTabs: [PanelTab] { ColorScopes.Mode.allCases.map { PanelTab(id: $0.label, label: $0.label) } }
+    static let scopeTabsHeight = PanelGrid.rowHeight
+
+    /// The frame the scopes analyse, from the host hook of the chosen source (no hook: unavailable).
+    func scopeState(_ clipId: String) -> PresetPreviewState {
+        let side = ColorScopes.analysisSide
+        switch scopeSource {
+        case .clip: return scopeFrame?(clipId, side, side) ?? .unavailable
+        case .program: return programScopeFrame?(side, side) ?? .unavailable
         }
     }
 
-    /// "Scopes" and its status (the toggle, part 0), and while open the refresh button (part 1).
-    func drawScopesHead(_ c: CanvasContext, _ head: CanvasRect, status: String, open: Bool) {
-        let refreshW = open ? 18.0 + 8 : 0
-        let toggle = CanvasRect(x: head.x, y: head.y, width: head.width - refreshW, height: head.height)
+    func scopesPointer(_ part: Int) {
+        let modes = ColorScopes.Mode.allCases, sources = ColorScopes.Source.allCases
+        switch part {
+        case 0: grade.scopesOpen.toggle(); scopeAnalyzer.reset()
+        case 1: scopeAnalyzer.reset()
+        case 2..<(2 + modes.count + 1):
+            let pick: (Int) -> Void = { [weak self] i in
+                if modes.indices.contains(i) { self?.grade.scopeMode = modes[i]; self?.onEdited?() }
+            }
+            if let i = inlineTab("grade:scopes", part: part, select: pick) { pick(i) }
+        default:
+            let i = part - Self.scopeSourcePart
+            if sources.indices.contains(i) { scopeSource = sources[i] }
+        }
+    }
+
+    /// "Scopes", the status (Off when closed) and, when open, the source switch left of it and the refresh button.
+    func drawScopesHeader(_ c: CanvasContext, _ head: CanvasRect, state: PresetPreviewState?, _ panel: InspectorPanel) {
+        let status: String
+        switch state {
+        case nil: status = "Off"
+        case .ready?: status = "ready"
+        case .rendering?: status = "loading"
+        case .unavailable?: status = "unavailable"
+        }
+        let refreshW = state == nil ? 0 : 18.0 + 8
+        let toggle = CanvasRect(x: head.x, y: head.y, width: head.width - refreshW, height: 28)
         PanelDraw.text(c, "Scopes", in: CanvasRect(x: toggle.x, y: toggle.midY - 8.25, width: 80, height: 16.5),
                        font: PanelTheme.font(11), color: PanelTheme.text2)
         let sw = c.measureText(status, font: PanelTheme.font(9)).width
         PanelDraw.text(c, status, in: CanvasRect(x: toggle.maxX - sw - 0.5, y: toggle.midY - 6.75, width: sw + 1, height: 13.5),
                        font: PanelTheme.font(9), color: PanelTheme.text5)
-        addHit(toggle, .custom("grade:scopes", 0))
-        guard open else { return }
+        panel.addHit(toggle, .custom("grade:scopes", 0))
+        guard state != nil else { return }
         let rb = CanvasRect(x: head.maxX - 18, y: head.midY - 9, width: 18, height: 18)
-        PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4), color: hovered == .custom("grade:scopes", 1) ? PanelTheme.text1 : PanelTheme.text4)
-        addHit(rb, .custom("grade:scopes", 1))
+        PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4), color: panel.hovered == .custom("grade:scopes", 1) ? PanelTheme.text1 : PanelTheme.text4)
+        panel.addHit(rb, .custom("grade:scopes", 1))
+        drawScopeSourceSwitch(c, maxX: toggle.maxX - sw - 8, midY: head.midY, panel)
     }
 
-    /// The mode tabs (parts 2…) and, 6 below them, the scope of the graded frame on black.
-    func drawScopesBody(_ c: CanvasContext, _ r: CanvasRect, _ state: PresetPreviewState?) {
-        drawInlineTabs(c, PanelTabBar(tabs: Self.scopeTabs, selected: grade.scopeMode.label, style: .inline), row: ("grade:scopes", base: 2),
-                       in: CanvasRect(x: r.x, y: r.y, width: r.width, height: Self.scopeTabsHeight))
-        let box = CanvasRect(x: r.x, y: r.y + Self.scopeTabsHeight + 6, width: r.width, height: r.height - Self.scopeTabsHeight - 6)
-        c.fillRect(box, PanelTheme.stageScrim)   // scopes draw on black in both modes
-        var frame: CanvasImage?
-        if case .ready(let img)? = state { frame = img }
-        c.drawImage(scopeBitmap(frame), in: box.insetBy(1))
-        c.strokeRect(box.insetBy(0.5), PanelTheme.panelHairline, width: 1)
-    }
-
-    func scopesPressed(_ part: Int) {
-        switch part {
-        case 0: grade.scopesOpen.toggle(); grade.scopeMemo = nil
-        case 1: grade.scopeMemo = nil
-        default:
-            let modes = ColorScopes.Mode.allCases
-            let pick: (Int) -> Void = { [weak self] i in if modes.indices.contains(i) { self?.grade.scopeMode = modes[i]; self?.onEdited?() } }
-            if let i = inlineTab("grade:scopes", part: part, select: pick) { pick(i) }
+    /// The Clip / Program switch: 9px segments in a hairline pill (`panelInput`), the chosen one on an accent wash in
+    /// text-0, the other text-4 (hover text-2). Its hits are added after the header's, so they win there.
+    func drawScopeSourceSwitch(_ c: CanvasContext, maxX: Double, midY: Double, _ panel: InspectorPanel) {
+        let font = PanelTheme.font(9), sources = ColorScopes.Source.allCases
+        let widths = sources.map { c.measureText($0.label, font: font).width + 12 }
+        let pill = CanvasRect(x: maxX - widths.reduce(0, +) - 2, y: midY - 9, width: widths.reduce(0, +) + 2, height: 18)
+        c.fillRoundedRect(pill, radius: PanelTheme.radiusMd, PanelTheme.panelInput)
+        c.strokeRoundedRect(pill.insetBy(0.5), radius: PanelTheme.radiusMd - 0.5, PanelTheme.panelBorderInput, width: 1)
+        var x = pill.x + 1
+        for (i, source) in sources.enumerated() {
+            let seg = CanvasRect(x: x, y: pill.y + 1, width: widths[i], height: 16)
+            let hit = InspectorPanel.Hit.custom("grade:scopes", Self.scopeSourcePart + i)
+            let on = scopeSource == source
+            if on { c.fillRoundedRect(seg, radius: PanelTheme.radiusMd - 1, PanelTheme.accent.withAlpha(0.18)) }
+            PanelDraw.text(c, source.label, in: CanvasRect(x: seg.x, y: seg.midY - 6.75, width: seg.width, height: 13.5), font: font,
+                           color: on ? PanelTheme.text0 : (panel.hovered == hit ? PanelTheme.text2 : PanelTheme.text4), align: .center)
+            panel.addHit(seg, hit)
+            x = seg.maxX
         }
     }
-    /// Keyed by label: the scope modes have no other stable string, and the label is what the overflow menu lists.
-    /// The scope mode tabs, by label (the mode's label is its tab id).
-    static var scopeTabs: [PanelTab] { ColorScopes.Mode.allCases.map { PanelTab(id: $0.label, label: $0.label) } }
-    static let scopeTabsHeight = PanelGrid.rowHeight
 
-    /// The scope bitmap for the current mode, redrawn only when the frame or the mode changed.
-    func scopeBitmap(_ frame: CanvasImage?) -> CanvasImage {
-        var fp = "none"
-        if let f = frame {
-            var h: UInt64 = 1469598103934665603
-            let step = max(1, f.rgba.count / 4096)
-            for i in stride(from: 0, to: f.rgba.count, by: step) { h = (h ^ UInt64(f.rgba[i])) &* 1099511628211 }
-            fp = "\(f.width)x\(f.height):\(h)"
+    /// The mode tabs under the header.
+    func drawScopeTabs(_ c: CanvasContext, _ row: CanvasRect, _ panel: InspectorPanel) {
+        drawInlineTabs(c, PanelTabBar(tabs: Self.scopeTabs, selected: grade.scopeMode.label, style: .inline), row: ("grade:scopes", base: 2), in: row)
+    }
+
+    /// The scope bitmap for the current mode. Never analyses on this thread: a ready frame is handed to
+    /// `scopeAnalyzer` (latest wins) and, until its bitmap is done, the last one of the mode stays on screen; with no
+    /// frame yet the last bitmap stays while loading, and the empty grid shows when nothing is available.
+    func scopeBitmap(_ state: PresetPreviewState?) -> CanvasImage {
+        let mode = grade.scopeMode
+        switch state {
+        case .ready(let frame)?:
+            return scopeAnalyzer.bitmap(mode, of: frame) ?? scopeAnalyzer.last(mode) ?? Self.emptyScope
+        case .rendering?: return scopeAnalyzer.last(mode) ?? Self.emptyScope
+        case .unavailable?, nil: return Self.emptyScope
         }
-        let key = "\(grade.scopeMode.rawValue)|\(fp)"
-        if let m = grade.scopeMemo, m.key == key { return m.image }
-        let img = ColorScopes.render(grade.scopeMode, frame.map(ColorScopes.analyze))
-        grade.scopeMemo = (key, img)
-        return img
     }
 
     /// "Retry look previews": 10px medium accent on the block's 18px line.
@@ -398,191 +442,6 @@ extension InspectorPanel {
                           width: Double(w) * s, height: Double(h) * s)
     }
 
-    // MARK: Curves (the curve modes and the curve graph)
-
-    /// The curve tabs on the shared inline tab bar (`PanelTabBar`): a 32 pt line over a hairline, overflow behind a
-    /// chevron when the panel is narrow, one Tab stop with arrow keys.
-    func curveTabsRow() -> InspectorCustomRow {
-        let tabs = Self.curveTabs.map { PanelTab(id: $0.key, label: $0.label) }
-        let pick: (Int) -> Void = { [weak self] i in
-            guard let self, Self.curveTabs.indices.contains(i) else { return }
-            self.grade.curveTab = Self.curveTabs[i].key; self.grade.selectedPoint = nil; self.onEdited?()
-        }
-        return InspectorCustomRow(id: "grade:curvetabs", height: PanelGrid.rowHeight, draw: { [weak self] c, r, _ in
-            guard let self else { return }
-            self.drawInlineTabs(c, PanelTabBar(tabs: tabs, selected: self.grade.curveTab, style: .inline), row: ("grade:curvetabs", base: 0), in: r)
-        }, pointer: { [weak self] part, _, phase in
-            guard let self, phase == 0, let i = self.inlineTab("grade:curvetabs", part: part, select: pick) else { return }
-            pick(i)
-        })
-    }
-
-    func currentCurvePoints(_ g: ColorGrading) -> [[Double]] {
-        if let d = grade.curveDraft { return d }
-        let tab = Self.curveTabs.first { $0.key == grade.curveTab }!
-        return tab.hue ? g.hueCurve(tab.key) : g.curve(tab.key)
-    }
-
-    func writeCurve(_ g: ColorGrading, _ pts: [[Double]]) -> ColorGrading {
-        var n = g
-        let tab = Self.curveTabs.first { $0.key == grade.curveTab }!
-        let sorted = pts.sorted { $0[0] < $1[0] }
-        if tab.hue { n.hueCurves[tab.key] = sorted.isEmpty ? nil : sorted }
-        else { n.curves[tab.key] = sorted == [[0, 0], [1, 1]] ? nil : sorted }
-        return n
-    }
-
-    func curveGraph(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorCustomRow {
-        let tab = Self.curveTabs.first { $0.key == grade.curveTab }!
-        var box: CanvasRect { grade.curveBox }   // the plot area: view box 8…152 of 160 over the svg's 198px content
-        func toView(_ pt: [Double]) -> CanvasPoint {   // clamped: a stored point outside the range sits on the edge
-            let nx = tab.hue ? pt[0] / 360 : pt[0], ny = (pt[1] - tab.min) / (tab.max - tab.min)
-            return CanvasPoint(box.x + max(0, min(1, nx)) * box.width, box.maxY - max(0, min(1, ny)) * box.height)
-        }
-        func fromView(_ p: CanvasPoint) -> [Double] {
-            let nx = max(0, min(1, (p.x - box.x) / box.width)), ny = max(0, min(1, (box.maxY - p.y) / box.height))
-            let x = tab.hue ? min(359.9, nx * 360) : nx
-            return [(x * 1000).rounded() / 1000, ((tab.min + ny * (tab.max - tab.min)) * 1000).rounded() / 1000]
-        }
-        return InspectorCustomRow(id: "grade:curve", height: 200, draw: { [weak self] c, r, panel in
-            guard let self else { return }
-            // CurveGraph: `max-w-[200px] rounded border border-panel-border-input bg-black/20`, view box 160.
-            let size = min(r.width, 200)
-            let frame = CanvasRect(x: r.x + (r.width - size) / 2, y: r.y, width: size, height: size)
-            let u = (size - 2) / 160
-            func v(_ x: Double, _ y: Double) -> CanvasPoint { CanvasPoint(frame.x + 1 + x * u, frame.y + 1 + y * u) }
-            self.grade.curveBox = CanvasRect(x: frame.x + 1 + 8 * u, y: frame.y + 1 + 8 * u, width: 144 * u, height: 144 * u)
-            c.fillRoundedRect(frame, radius: 4, PanelTheme.stageScrim.withAlpha(Theme.mode == .light ? 0.05 : 0.2))
-            c.strokeRoundedRect(frame.insetBy(0.5), radius: 3.5, PanelTheme.panelBorderInput, width: 1)
-            for ratio in [0.25, 0.5, 0.75] {   // rgba(255,255,255,.08), 0.5 wide
-                var h = CanvasPath(); h.move(to: v(8, 8 + ratio * 144)); h.line(to: v(152, 8 + ratio * 144))
-                var w = CanvasPath(); w.move(to: v(8 + ratio * 144, 8)); w.line(to: v(8 + ratio * 144, 152))
-                c.stroke(h, PanelTheme.white.withAlpha(0.08), StrokeStyle(width: 0.5 * u))
-                c.stroke(w, PanelTheme.white.withAlpha(0.08), StrokeStyle(width: 0.5 * u))
-            }
-            if tab.hue {   // hue axis: 3-unit line at y 157 through #f33 #ff3 #3f3 #3ff #33f #f3f #f33
-                let stops: [(Double, Double, Double)] = [(1, 0.2, 0.2), (1, 1, 0.2), (0.2, 1, 0.2), (0.2, 1, 1), (0.2, 0.2, 1), (1, 0.2, 1), (1, 0.2, 0.2)]
-                let n = 72
-                for k in 0..<n {
-                    let t = (Double(k) + 0.5) / Double(n) * 6, i = min(5, Int(t)), f = t - Double(i)
-                    let a = stops[i], b = stops[i + 1]
-                    let x0 = v(8 + 144 * Double(k) / Double(n), 155.5), x1 = v(8 + 144 * Double(k + 1) / Double(n), 158.5)
-                    c.fillRect(CanvasRect(x: x0.x, y: x0.y, width: x1.x - x0.x + 0.3, height: x1.y - x0.y),
-                               CanvasColor(r: a.0 + (b.0 - a.0) * f, g: a.1 + (b.1 - a.1) * f, b: a.2 + (b.2 - a.2) * f))
-                }
-            }
-            let pts = self.currentCurvePoints(g)
-            let color = CanvasColor(tab.color.now)
-            // The line is the curve the grade applies (ColorCurveMath = the renderer's GradeCurve): normalized,
-            // monotone and inside the range. Line and points are clipped to the graph so nothing reaches the rows around it.
-            c.save()
-            c.clip(.roundedRect(frame.insetBy(1), radius: 3))
-            var path = CanvasPath()
-            for (k, s) in ColorCurveMath.samples(pts, hue: tab.hue, limit: tab.min...tab.max, count: 144).enumerated() {
-                let vp = toView([s.x, s.y])
-                if k == 0 { path.move(to: vp) } else { path.line(to: vp) }
-            }
-            c.stroke(path, color, StrokeStyle(width: 1.5 * u))
-            for (i, pt) in pts.enumerated() {   // r 2.5 (selected 3.5 white), #111 1-unit outline
-                let vp = toView(pt)
-                let sel = self.grade.selectedPoint == i
-                let rad = (sel ? 3.5 : 2.5) * u
-                let dot = CanvasPath.roundedRect(CanvasRect(x: vp.x - rad, y: vp.y - rad, width: 2 * rad, height: 2 * rad), radius: rad)
-                c.fill(dot, sel ? PanelTheme.white : color)
-                c.stroke(dot, CanvasColor(ThemeTokens.curvePointOutlinePair.now), StrokeStyle(width: u))
-            }
-            c.restore()
-            panel.addHit(box.insetBy(-6), .custom("grade:curve", 0))
-        }, pointer: { [weak self] _, p, phase in
-            guard let self else { return }
-            var pts = self.currentCurvePoints(g)
-            if phase == 0 {
-                if let i = pts.indices.min(by: { hypot(toView(pts[$0]).x - p.x, toView(pts[$0]).y - p.y) < hypot(toView(pts[$1]).x - p.x, toView(pts[$1]).y - p.y) }),
-                   hypot(toView(pts[i]).x - p.x, toView(pts[i]).y - p.y) < 8 {
-                    self.grade.selectedPoint = i
-                } else if pts.count < ColorGrading.maxCurvePoints {
-                    pts.append(fromView(p)); pts.sort { $0[0] < $1[0] }
-                    let added = pts.firstIndex { $0 == fromView(p) }
-                    if let a = added { pts[a] = Self.draggedCurvePoint(pts[a], index: a, in: pts, hue: tab.hue) }   // not on a neighbour's input
-                    self.grade.selectedPoint = added
-                }
-                self.grade.curveDraft = pts
-            } else if let i = self.grade.selectedPoint, pts.indices.contains(i) {
-                pts[i] = Self.draggedCurvePoint(fromView(p), index: i, in: pts, hue: tab.hue)
-                self.grade.curveDraft = pts
-                if phase == 2 { self.grade.curveDraft = nil; commit(self.writeCurve(g, pts)) }
-            } else if phase == 2 { self.grade.curveDraft = nil; commit(self.writeCurve(g, pts)) }
-        })
-    }
-
-    /// The tab's curve at `x` as the grade applies it (an RGB curve, or a hue curve: flat below three points).
-    static func curveValue(hue: Bool, limit: ClosedRange<Double>, _ pts: [[Double]], at x: Double) -> Double {
-        hue ? ColorCurveMath.sampleHue(pts, at: x, limit: limit) : ColorCurveMath.sample(pts, at: x)
-    }
-
-    /// A dragged point keeps its place in the order: it stays at least 0.01 (RGB) / 1° (hue) inside its neighbours,
-    /// so no two points share an input (which the renderer rejects, dropping the whole curve) and the selection
-    /// index keeps naming the dragged point.
-    static func draggedCurvePoint(_ p: [Double], index i: Int, in pts: [[Double]], hue: Bool) -> [Double] {
-        let gap = hue ? 1.0 : 0.01
-        var x = p[0]
-        if i > 0 { x = max(x, pts[i - 1][0] + gap) }
-        if i < pts.count - 1 { x = min(x, pts[i + 1][0] - gap) }
-        return [(x * 1000).rounded() / 1000, p[1]]   // stored at fromView's 1/1000 precision
-    }
-
-    /// Footer (`flex min-h-7 items-end gap-2`): the hint (9px text-5) or, with a point selected, a `Delete` text
-    /// button; the 11px reset at the right (`pb-0.5`).
-    func curveFooter(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorCustomRow {
-        InspectorCustomRow(id: "grade:curvefoot", height: 28, draw: { [weak self] c, r, panel in
-            let line = CanvasRect(x: r.x, y: r.maxY - 13.5, width: r.width - 19, height: 13.5)
-            if self?.grade.selectedPoint != nil {
-                let w = c.measureText("Delete", font: PanelTheme.font(9)).width
-                let del = CanvasRect(x: line.x, y: line.y - 2, width: w, height: 15.5)
-                PanelDraw.text(c, "Delete", in: CanvasRect(x: del.x, y: line.y - 2, width: w, height: 13.5), font: PanelTheme.font(9),
-                               color: panel.hovered == .custom("grade:curvefoot", 1) ? PanelTheme.text1 : PanelTheme.text4)
-                panel.addHit(del.insetBy(-3), .custom("grade:curvefoot", 1))
-            } else {
-                PanelDraw.text(c, "Click the graph or press Enter to add a point", in: line, font: PanelTheme.font(9), color: PanelTheme.text5)
-            }
-            let reset = CanvasRect(x: r.maxX - 11, y: r.maxY - 13, width: 11, height: 11)
-            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("grade:curvefoot", 0) ? PanelTheme.text1 : PanelTheme.text4)
-            panel.addHit(reset.insetBy(-3), .custom("grade:curvefoot", 0))
-        }, pointer: { [weak self] part, _, phase in
-            guard let self, phase == 0 else { return }
-            if part == 0 { self.grade.selectedPoint = nil; commit(self.writeCurve(g, Self.curveTabs.first { $0.key == self.grade.curveTab }!.hue ? [] : [[0, 0], [1, 1]])) }
-            else { self.deleteSelectedCurvePoint(g, commit: commit) }
-        })
-    }
-
-    func deleteSelectedCurvePoint(_ g: ColorGrading, commit: (ColorGrading) -> Void) {
-        var pts = currentCurvePoints(g)
-        guard let i = grade.selectedPoint, pts.indices.contains(i) else { return }
-        let hue = Self.curveTabs.first { $0.key == grade.curveTab }!.hue
-        if !hue && pts.count <= 2 { return }
-        pts.remove(at: i); grade.selectedPoint = nil
-        commit(writeCurve(g, pts))
-    }
-
-    /// Keys with no text field focused: Delete/Backspace removes the selected curve point; Enter adds a midpoint.
-    func gradeKey(_ k: EditorKey) -> Bool {
-        guard openGroupId == "grade", let editor, let s = selected() else { return false }
-        let g = editor.colorGrading(clipId: s.id) ?? ColorGrading()
-        let commit: (ColorGrading) -> Void = { [weak self] n in self?.edited(editor.setColorGrading(clipId: s.id, n)) }
-        switch k.code {
-        case .delete, .backspace:
-            guard grade.selectedPoint != nil else { return false }
-            deleteSelectedCurvePoint(g, commit: commit); return true
-        case .enter:
-            var pts = currentCurvePoints(g)
-            guard pts.count < ColorGrading.maxCurvePoints else { return true }
-            let tab = Self.curveTabs.first { $0.key == grade.curveTab }!
-            let x = tab.hue ? 180.0 : 0.5
-            pts.append([x, Self.curveValue(hue: tab.hue, limit: tab.min...tab.max, pts, at: x)])
-            commit(writeCurve(g, pts)); return true
-        default: return false
-        }
-    }
 
     // MARK: Secondary color
 

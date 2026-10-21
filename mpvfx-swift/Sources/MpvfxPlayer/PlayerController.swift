@@ -17,8 +17,8 @@ import MpvfxTimeline
 import MpvfxShared
 
 /// Stage pointer logic for the tools bar, transport, selection
-/// (shift toggles, marquee on empty canvas), move with snapping, group move, corner resize (⇧ uniform), rotate
-/// (⇧ snaps to 15°), the crop tool (draft insets; Apply / Cancel / Reset), hover outline, canvas menu, and
+/// (shift toggles, marquee on empty canvas), move with snapping, group move, the transform box (eight handles,
+/// rotate, anchor: PlayerController+Transform.swift), the crop tool (draft insets; Apply / Cancel / Reset), hover outline, canvas menu, and
 /// preview zoom (ctrl/⌘ + wheel about the cursor) and pan (wheel, middle-button drag).
 /// Gestures edit `view.elements` live; `onCommit` fires once per changed element at pointer-up (crop: on Apply).
 public final class PlayerController {
@@ -45,8 +45,9 @@ public final class PlayerController {
     enum Gesture {
         case move(id: String, start: StageElement, x: Double, y: Double)
         case group(starts: [StageElement], x: Double, y: Double)
-        case resize(id: String, corner: PlayerView.HandleCorner, start: StageElement, uniform: Bool)
+        case resize(id: String, handle: TransformHandle, start: StageElement, uniform: Bool)
         case rotate(id: String, start: StageElement, startAngle: Double)
+        case anchor(id: String, start: StageElement)
         case crop(id: String, edge: CropEdge, start: StageElement)
         case marquee(x: Double, y: Double, additive: Bool)
         case pan(x: Double, y: Double, panX: Double, panY: Double)
@@ -64,6 +65,7 @@ public final class PlayerController {
     public var modifiers: PointerModifiers = []
     /// The element as it was when the crop tool opened (Cancel restores it).
     var cropOriginal: StageElement?
+    var transformSession = TransformSession()
 
     // Gesture recording (wired by `enableGestureRecording`).
     public var recordingDocument: (() -> NativeProjectDocument?)?
@@ -197,22 +199,12 @@ public final class PlayerController {
                 }
                 return   // crop mode: the stage only edits the crop
             }
-            let rh = view.rotateHandleCentre(ve)
-            if hypot(rh.x - x, rh.y - y) <= 11 {
-                gesture = .rotate(id: e.id, start: e, startAngle: atan2(y - ve.centre.y, x - ve.centre.x) * 180 / .pi); return
-            }
-            for h in PlayerView.HandleCorner.allCases {
-                let c = view.handleCentre(h, of: r)
-                if abs(c.x - lp.x) <= PlayerView.handleHit / 2 && abs(c.y - lp.y) <= PlayerView.handleHit / 2 {
-                    resizeGrab = CanvasPoint(lp.x - c.x, lp.y - c.y)
-                    gesture = .resize(id: e.id, corner: h, start: e, uniform: shift); return
-                }
-            }
+            if pressTransform(e, at: p) { return }
         }
         if view.cropActive { return }
         // Group box: dragging inside it moves every member.
         if view.selectedIds.count > 1, !shift, let gb = view.groupBounds(in: size), gb.contains(p) {
-            gesture = .group(starts: view.elements.filter { view.selectedIds.contains($0.id) }, x: x, y: y)
+            pressGroup(at: p)
             needsDisplay?(); return
         }
         let frame = view.frameRect(in: size)
@@ -223,7 +215,7 @@ public final class PlayerController {
                 setSelection(ids)
             } else {
                 setSelection([hit.id])
-                gesture = .move(id: hit.id, start: hit, x: x, y: y)
+                if hit.locked { transformSession.lockedPress = hit.id } else { gesture = .move(id: hit.id, start: hit, x: x, y: y) }
             }
         } else if frame.contains(p) {
             if !shift { setSelection([]) }
@@ -264,7 +256,7 @@ public final class PlayerController {
         if let shift { shiftHeld = shift }
         let p = CanvasPoint(x, y); lastPointer = p
         if recorder != nil { recordMove(p); return }   // only a held press on the layer drives it
-        guard let g = gesture else { hover(p); return }
+        guard let g = gesture else { idleMove(p); return }
         let s = max(view.scale(in: size), 1e-9)
         switch g {
         case .compare:
@@ -283,7 +275,7 @@ public final class PlayerController {
                 return b.x < m.maxX && b.maxX > m.x && b.y < m.maxY && b.maxY > m.y
             }.map(\.id)
             needsDisplay?()
-        case .move, .group, .resize:
+        case .move, .group, .resize, .anchor:
             // Under the threshold a press is a click: nothing moves. Past it, deltas run from the press point, so the
             // grab offset holds for the whole drag.
             if !dragEngaged {
@@ -297,50 +289,18 @@ public final class PlayerController {
     }
 
     func drag(_ g: Gesture, _ p: CanvasPoint, scale s: Double) {
-        let x = p.x, y = p.y
         switch g {
         case .pan, .marquee, .compare: break
         case let .move(id, start, x0, y0):
-            let d = snapped(moving: [start], dx: x - x0, dy: y - y0)
+            let d = moveDelta(x0: x0, y0: y0, to: p, moving: [start])
             update(id) { $0.rect.x = start.rect.x + d.dx / s; $0.rect.y = start.rect.y + d.dy / s }
+            moveReadout(id, at: p)
         case let .group(starts, x0, y0):
-            let d = snapped(moving: starts, dx: x - x0, dy: y - y0)
+            let d = moveDelta(x0: x0, y0: y0, to: p, moving: starts)
             for st in starts { update(st.id) { $0.rect.x = st.rect.x + d.dx / s; $0.rect.y = st.rect.y + d.dy / s } }
-        case let .resize(id, corner, start, uniform):
-            // Work in the element's unrotated frame (composition px); the opposite corner stays fixed on screen.
-            let vs = view.chromeElement(start, in: size), k = PlayerView.chromeScale(start)
-            let raw = local(p, vs), lp = CanvasPoint(raw.x - resizeGrab.x, raw.y - resizeGrab.y)
-            let r = vs.rect, f = view.frameRect(in: size)
-            var l = r.x, t = r.y, rr = r.maxX, b = r.maxY
-            switch corner { case .nw: l = lp.x; t = lp.y; case .ne: rr = lp.x; t = lp.y; case .sw: l = lp.x; b = lp.y; case .se: rr = lp.x; b = lp.y }
-            var w = max(1, rr - l), h = max(1, b - t)
-            // Media corners always scale proportionally ("Corner drag is ALWAYS
-            // proportional; there is no free-form stretch gesture"); other elements stay free unless ⇧.
-            if uniform || shiftHeld || start.kind == .video || start.kind == .image {
-                let q = max(w / r.width, h / r.height); w = r.width * q; h = r.height * q
-            }
-            if corner == .nw || corner == .sw { l = rr - w } else { rr = l + w }
-            if corner == .nw || corner == .ne { t = b - h } else { b = t + h }
-            let anchorLocal: CanvasPoint
-            switch corner { case .nw: anchorLocal = .init(r.maxX, r.maxY); case .ne: anchorLocal = .init(r.x, r.maxY)
-            case .sw: anchorLocal = .init(r.maxX, r.y); case .se: anchorLocal = .init(r.x, r.y) }
-            let anchorScreen = PlayerView.rotate(anchorLocal, about: vs.centre, vs.rotation)
-            let anchorNew = PlayerView.rotate(anchorLocal, about: CanvasPoint(l + w / 2, t + h / 2), vs.rotation)
-            let dx = anchorScreen.x - anchorNew.x, dy = anchorScreen.y - anchorNew.y
-            // Back to the unscaled box (the preview scales it about its centre by k), in composition px.
-            let cx = l + dx + w / 2, cy = t + dy + h / 2, bw = w / k, bh = h / k
-            let out = CanvasRect(x: (cx - bw / 2 - f.x) / s, y: (cy - bh / 2 - f.y) / s, width: bw / s, height: bh / s)
-            update(id) { e in
-                e.rect = out
-                e.crop = start.crop.scaled(from: CanvasSize(start.rect.width, start.rect.height), to: CanvasSize(out.width, out.height))
-            }
-        case let .rotate(id, start, a0):
-            let ve = view.chromeElement(start, in: size)
-            let a = atan2(y - ve.centre.y, x - ve.centre.x) * 180 / .pi
-            var delta = a - a0; while delta > 180 { delta -= 360 }; while delta < -180 { delta += 360 }
-            let angle = start.rotation + delta
-            let out = shiftHeld ? (angle / Self.rotationSnapDegrees).rounded() * Self.rotationSnapDegrees : (angle * 100).rounded() / 100
-            update(id) { $0.rotation = out }
+        case .resize: dragResize(g, to: p)
+        case .rotate: dragRotate(g, to: p)
+        case .anchor: dragAnchor(g, to: p)
         case let .crop(id, edge, start):
             let ve = view.chromeElement(start, in: size)
             let lp = local(p, ve)
@@ -361,7 +321,7 @@ public final class PlayerController {
     /// Snaps a move's delta (view px) against the other elements, the frame and the grid; publishes the guides.
     func snapped(moving starts: [StageElement], dx: Double, dy: Double) -> (dx: Double, dy: Double) {
         let tb = view.toolbar
-        guard tb.snapEnabled, SnapEngine.engaged(dx: dx, dy: dy) else { view.snapGuides = []; view.spacingGuides = []; return (dx, dy) }
+        guard tb.snapEnabled, !modifiers.command, SnapEngine.engaged(dx: dx, dy: dy) else { view.snapGuides = []; view.spacingGuides = []; return (dx, dy) }
         let ids = Set(starts.map(\.id))
         let rects = starts.map { PlayerView.bounds(view.chromeElement($0, in: size)) }
         var moving = rects[0]
@@ -369,17 +329,22 @@ public final class PlayerController {
             let minX = min(moving.x, r.x), minY = min(moving.y, r.y)
             moving = CanvasRect(x: minX, y: minY, width: max(moving.maxX, r.maxX) - minX, height: max(moving.maxY, r.maxY) - minY)
         }
-        let frame = view.frameRect(in: size)
-        var targets = view.elements.filter { !ids.contains($0.id) }.enumerated()
-            .map { SnapEngine.Target(PlayerView.bounds(view.chromeElement($0.element, in: size)), id: "snap-target-\($0.offset)") }
-        let others = targets
-        targets.append(SnapEngine.Target(frame, id: "composition"))
-        let grid = tb.snapToGrid ? SnapEngine.gridEdges(frame: frame, divisions: tb.gridDivisions) : nil
-        let r = SnapEngine.resolve(moving: moving, dx: dx, dy: dy, targets: targets, grid: grid)
+        let t = snapTargets(excluding: ids)
+        let r = SnapEngine.resolve(moving: moving, dx: dx, dy: dy, targets: t.all, grid: t.grid)
         view.snapGuides = r.guides
         let moved = CanvasRect(x: moving.x + r.dx, y: moving.y + r.dy, width: moving.width, height: moving.height)
-        view.spacingGuides = SnapEngine.equidistance(moving: moved, targets: others + [SnapEngine.Target(frame, id: "composition")])
+        view.spacingGuides = SnapEngine.equidistance(moving: moved, targets: t.all)
         return (r.dx, r.dy)
+    }
+
+    /// What a drag snaps to: the other elements' bounds, then the composition frame (edges and centre), and the
+    /// grid lines when snap-to-grid is on.
+    func snapTargets(excluding ids: Set<String>) -> (all: [SnapEngine.Target], grid: (x: [Double], y: [Double])?) {
+        let tb = view.toolbar, frame = view.frameRect(in: size)
+        var targets = view.elements.filter { !ids.contains($0.id) }.enumerated()
+            .map { SnapEngine.Target(PlayerView.bounds(view.chromeElement($0.element, in: size)), id: "snap-target-\($0.offset)") }
+        targets.append(SnapEngine.Target(frame, id: "composition"))
+        return (targets, tb.snapToGrid ? SnapEngine.gridEdges(frame: frame, divisions: tb.gridDivisions) : nil)
     }
 
     func hover(_ p: CanvasPoint) {
@@ -406,7 +371,7 @@ public final class PlayerController {
     }
 
     public func pointerUp(x: Double, y: Double) {
-        defer { gesture = nil; view.snapGuides = []; view.spacingGuides = [] }
+        defer { gesture = nil; view.snapGuides = []; view.spacingGuides = []; endTransformGesture() }
         guard recorder == nil, let g = gesture else { finishTake(); return }   // release ends a take
         switch g {
         case .compare: needsDisplay?()
@@ -420,16 +385,15 @@ public final class PlayerController {
                 setSelection(ids)
             }
             needsDisplay?()
-        case .crop:
-            needsDisplay?()   // crop edits stay a draft until Apply
+        case .crop, .anchor:
+            needsDisplay?()   // crop edits stay a draft until Apply; the anchor is stage state, not an edit
         case let .move(id, start, _, _), let .resize(id, _, start, _):
             if dragEngaged { commit(id, start) } else { needsDisplay?() }   // a click changes nothing
         case let .rotate(id, start, _): commit(id, start)
         case let .group(starts, _, _):
             guard dragEngaged else { needsDisplay?(); return }   // a click changes nothing
             // Collect first: committing one member may rebuild `view.elements` from the document.
-            let changed = starts.compactMap { st in view.elements.first { $0.id == st.id && $0 != st } }
-            for e in changed { onCommit?(e) }
+            commitAll(starts.compactMap { st in view.elements.first { $0.id == st.id && $0 != st } })
             needsDisplay?()
         }
     }

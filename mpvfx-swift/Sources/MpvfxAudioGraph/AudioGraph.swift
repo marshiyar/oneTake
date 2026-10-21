@@ -122,7 +122,10 @@ final class ChainStage {
     let upstream: (Int, inout [Float], inout [Float]) -> Void // fills exactly n frames
     var fifoL: [Float] = [], fifoR: [Float] = [], head = 0
     var frame = 0 // context frame of the next quantum
-    init(_ chain: FxChainProcessor, upstream: @escaping (Int, inout [Float], inout [Float]) -> Void) { self.chain = chain; self.upstream = upstream }
+    var skip: Int // latency frames still to drop from the start, so the output stays aligned with the input
+    init(_ chain: FxChainProcessor, upstream: @escaping (Int, inout [Float], inout [Float]) -> Void) {
+        self.chain = chain; self.upstream = upstream; skip = chain.latencyFrames
+    }
     func next(_ count: Int, _ l: inout [Float], _ r: inout [Float], _ offset: Int) {
         var written = 0
         while written < count {
@@ -132,6 +135,7 @@ final class ChainStage {
                 let y = chain.process([a, b], frame: frame)
                 frame += dspBlockSize
                 fifoL = y[0]; fifoR = y[1]; head = 0
+                if skip > 0 { let drop = min(skip, fifoL.count); head = drop; skip -= drop; continue }
             }
             let take = min(count - written, fifoL.count - head)
             for k in 0..<take { l[offset + written + k] = fifoL[head + k]; r[offset + written + k] = fifoR[head + k] }

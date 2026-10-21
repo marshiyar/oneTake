@@ -111,7 +111,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
 | Grade: copy grade to current file media / all project media | done | close |
-| Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma histogram, luma waveform, RGB parade and vectorscope work for the selected clip; program scopes, RGB histogram, RGB overlay waveform, CIE diagram, false colour and full-size view are missing | close |
+| Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma histogram, luma waveform, RGB parade and vectorscope work for the selected clip or the composited program (Clip / Program switch); RGB histogram, RGB overlay waveform, CIE diagram, false colour and full-size view are missing | close |
 | Grade: hold to show original; captured-frame preset preview thumbnails | missing (panels) | n/a |
 | Effects: amount per stylize effect (18), reset effects | done; renders in preview and export (Metal kernels on macOS, incl. blur/bloom/Kuwahara passes) (schema in `docs/EFFECTS.md`) | close |
 | Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | missing (panels; the renderer already reads every setting and the palette) | n/a |
@@ -132,7 +132,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Ability | Swift status |
 | --- | --- |
 | Multi-track composited preview with crop, transform, opacity; hidden tracks and hidden clips left out | done (player) |
-| Move / resize / rotate handles, crop handles, marquee, shift multi-select, group move | done (player) |
+| Move / resize / rotate handles, crop handles, marquee, shift multi-select, group move | done (player): the transform box has eight handles (edges stretch Size W or H; corners scale, keeping the aspect on images and video unless ⇧, free on text and shapes unless ⇧; ⌥ scales about the anchor), rotation by the chip or just outside a corner (⇧ 15° steps), a draggable anchor that scale and rotation pivot on (double-click recentres it; kept for the session, not saved: the document has no anchor parameter), ⇧ axis lock on moves, ⌘/Ctrl drags without snapping, resize snapping of the dragged side, a W × H / angle / X Y readout beside the cursor, one undo step per drag, keyframes at the playhead on animated properties, locked tracks refused; 24 pt targets at any zoom (`PlayerController+Transform.swift`, `TransformBox*Tests`). Not built: flip by dragging past the opposite side, skew (no document parameter) |
 | Snap guides & toolbar, grid overlay (thirds/quarters/center, snap to grid) | done (player) |
 | Arrow-key nudge (1 / 10 px, one commit per burst), Esc cancels a drag | done (player) |
 | Record motion (position, rotation, 3D rotation, opacity, scale, depth): Record or R arms; a press on the selected layer or a handle starts a take that plays from the playhead, the layer keeps its grab offset, release commits one "Record motion" undo step, Esc cancels or disarms; locked and hidden layers refused; one sample per frame, simplified | done (player; `PlayerController+Record.swift`, `GestureRecording.swift`; `RecordMotionTests`, `RecordMotionShellTests`) |
