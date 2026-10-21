@@ -19,13 +19,23 @@ import MpvfxPanels
 /// reads, through the same resolution and cache (`CubeLUTCache`), or why it cannot be read. The preview skips a LUT
 /// that fails to load, so the clip renders without it.
 public enum LutStatusReader {
-    public static func status(_ src: String, projectDir: String?, cache: CubeLUTCache = .shared) -> LutStatus {
-        guard let path = CubeLUTCache.resolve(src, projectDir: projectDir), FileManager.default.fileExists(atPath: path) else {
+    /// The status of the LUT at `src`, resolved against `projectDir` as the preview resolves it.
+    public static func status(
+        _ src: String,
+        projectDir: String?,
+        cache: CubeLUTCache = .shared
+    ) -> LutStatus {
+        guard let path = CubeLUTCache.resolve(src, projectDir: projectDir) else {
+            return .failed("the file is missing")
+        }
+        guard FileManager.default.fileExists(atPath: path) else {
             return .failed("the file is missing")
         }
         switch cache.load(path) {
-        case .success(let lut): return .loaded(size: lut.size)
-        case .failure(let e): return .failed(e.description)
+        case .success(let lut):
+            return .loaded(size: lut.size)
+        case .failure(let error):
+            return .failed(error.description)
         }
     }
 }
