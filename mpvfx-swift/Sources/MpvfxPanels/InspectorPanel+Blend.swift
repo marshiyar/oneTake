@@ -49,8 +49,8 @@ extension InspectorPanel {
                 InspectorCustomRow(
                     id: Self.blendRowId,
                     height: Self.blendRowHeight,
-                    draw: { c, r, panel in
-                        panel.drawBlend(c, r, mode: mode)
+                    draw: { canvas, rect, panel in
+                        panel.drawBlend(canvas, rect, mode: mode)
                     },
                     pointer: { [weak self] part, _, phase in
                         guard phase == 0, let self else { return }

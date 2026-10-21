@@ -99,11 +99,10 @@ internal final class InspectorCompositingCaptureTests: XCTestCase {
                     }
                     toolbar.draw(canvas, width: size.width, cropAvailable: true, cropActive: false)
                     XCTAssertNil(canvas.drawError)
-                    try save(
-                        canvas.image(),
-                        name:
-                            "design-\(Int(size.width))x\(Int(size.height))-\(light ? "light" : "dark")-\(keyed ? "keyed" : "static")"
-                    )
+                    let appearance = light ? "light" : "dark"
+                    let animation = keyed ? "keyed" : "static"
+                    let name = "design-\(Int(size.width))x\(Int(size.height))-\(appearance)-\(animation)"
+                    try save(canvas.image(), name: name)
                 }
             }
         }

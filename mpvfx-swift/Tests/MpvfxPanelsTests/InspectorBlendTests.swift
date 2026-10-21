@@ -14,7 +14,6 @@
 import MpvfxCanvas
 import MpvfxShared
 import OneTakeKeyframes
-
 import XCTest
 
 @testable import MpvfxPanels
@@ -73,7 +72,7 @@ final class InspectorBlendTests: XCTestCase {
         XCTAssertEqual(r.easing.selectedKeyframes, [ref])
         XCTAssertTrue(
             style.rows.contains {
-                if case .buttons(let bs) = $0.kind { return bs.contains { $0.key == "openEasing" } }
+                if case .buttons(let buttons) = $0.kind { return buttons.contains { $0.key == "openEasing" } }
                 return false
             }
         )
@@ -114,27 +113,7 @@ final class InspectorBlendTests: XCTestCase {
                 let value = try XCTUnwrap(c.texts.last { $0.0 == "100%" })
                 XCTAssertEqual(value.1.x + c.measureText(value.0, font: value.2).width, edge, accuracy: 0.001)
             }
-            for stacked in [false, true] {
-                let a = InspectorRow.Number(
-                    key: "x",
-                    label: "X",
-                    text: "12px",
-                    tier: .explicitCustom,
-                    commit: { _ in },
-                    reset: {}
-                )
-                let b = InspectorRow.Number(
-                    key: "y",
-                    label: "Y",
-                    text: "24px",
-                    tier: .explicitCustom,
-                    commit: { _ in },
-                    reset: {}
-                )
-                p.drawPair(PanelMeasureCanvas(), rect, label: "Position", a, b, stacked: stacked)
-                XCTAssertEqual(try XCTUnwrap(p.hits.rect { $0 == .field("y") }).maxX, edge)
-                XCTAssertNotNil(p.hits.rect { $0 == .reset("x") })
-            }
+            try assertPairValueEdges(p, rect: rect, edge: edge)
             let options = InspectorRow.Segmented(
                 key: "alignment",
                 label: "Alignment",
@@ -149,6 +128,30 @@ final class InspectorBlendTests: XCTestCase {
                 p.drawBlend(PanelMeasureCanvas(), rect, mode: mode)
                 XCTAssertEqual(try XCTUnwrap(p.hits.rect { $0 == .custom("blend", 0) }).maxX, edge)
             }
+        }
+    }
+
+    private func assertPairValueEdges(_ inspector: InspectorPanel, rect: CanvasRect, edge: Double) throws {
+        for stacked in [false, true] {
+            let a = InspectorRow.Number(
+                key: "x",
+                label: "X",
+                text: "12px",
+                tier: .explicitCustom,
+                commit: { _ in },
+                reset: {}
+            )
+            let b = InspectorRow.Number(
+                key: "y",
+                label: "Y",
+                text: "24px",
+                tier: .explicitCustom,
+                commit: { _ in },
+                reset: {}
+            )
+            inspector.drawPair(PanelMeasureCanvas(), rect, label: "Position", a, b, stacked: stacked)
+            XCTAssertEqual(try XCTUnwrap(inspector.hits.rect { $0 == .field("y") }).maxX, edge)
+            XCTAssertNotNil(inspector.hits.rect { $0 == .reset("x") })
         }
     }
 
