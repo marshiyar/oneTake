@@ -89,32 +89,36 @@ final class LibraryCommandsTests: XCTestCase {
         try await other.close()
     }
 
-    /// "Save to…" end to end (#40): a completed library export is copied to the path the save dialog returns; a
-    /// cancelled dialog writes nothing; a name typed without the extension gets it and never replaces a file there;
-    /// a path the dialog approved is replaced.
-    func testSaveToCopiesACompletedLibraryExportWhereTheUserChose() async throws {
+    /// A library whose project has one completed export (`render-1.mp4`, "encoded-fixture"), recorded as a library
+    /// render records it, reopened in a fresh backend; returns that backend and the saveOutput command for the export.
+    private func libraryWithACompletedExport(_ dialogs: ScriptedDialogs) async throws -> (RuntimeDesktopBackend, JSONObject) {
         let b = RuntimeDesktopBackend(userData: root + "/userData")
-        let dialogs = ScriptedDialogs()
         dialogs.saves = [root + "/Films"]
         let created = try await run(b, dialogs, ["type": .string("create")])
         let projectId = try XCTUnwrap(created["projectId"]?.string)
         let views = try await b.libraryViews()
         let library = try XCTUnwrap(views.first)
         try await b.close()
-        // A finished export as a library render records it: the file under renders/<project>/ and its catalog job.
         let jobId = UUID().uuidString.lowercased(), renders = library.path + "/renders/" + projectId
         try FileManager.default.createDirectory(atPath: renders, withIntermediateDirectories: true)
         try Data("encoded-fixture".utf8).write(to: URL(fileURLWithPath: renders + "/render-1.mp4"))
         let catalog = library.path + "/Catalog.sqlite"
         _ = try LibraryCatalog.command(catalog, "job", [jobId, projectId, "Snapshots/" + jobId])
         _ = try LibraryCatalog.command(catalog, "jobFinish", [jobId, "complete", "renders/\(projectId)/render-1.mp4", ""])
-
         let reopened = RuntimeDesktopBackend(userData: root + "/reopened")
         dialogs.opens = [[library.path]]
         _ = try await run(reopened, dialogs, ["type": .string("open")])
-        let save: JSONObject = ["type": .string("saveOutput"), "libraryId": .string(library.id), "jobId": .string(jobId)]
+        try FileManager.default.createDirectory(atPath: root + "/Out", withIntermediateDirectories: true)
+        return (reopened, ["type": .string("saveOutput"), "libraryId": .string(library.id), "jobId": .string(jobId)])
+    }
+
+    /// "Save to…" end to end (#40): a completed library export is copied to the path the save dialog returns; a
+    /// cancelled dialog writes nothing; a name typed without the extension gets it and never replaces a file there;
+    /// a path the dialog approved is replaced.
+    func testSaveToCopiesACompletedLibraryExportWhereTheUserChose() async throws {
+        let dialogs = ScriptedDialogs()
+        let (reopened, save) = try await libraryWithACompletedExport(dialogs)
         let out = root + "/Out", saved = out + "/Final cut.mp4"
-        try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
         dialogs.saves = [nil]
         _ = try await run(reopened, dialogs, save)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: out), [], "cancelled: nothing written")
@@ -138,19 +142,24 @@ final class LibraryCommandsTests: XCTestCase {
         _ = try await run(reopened, dialogs, save)
         XCTAssertEqual(try String(contentsOfFile: saved, encoding: .utf8), "encoded-fixture")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: out), ["Final cut.mp4"], "no staged copy left")
+        try await reopened.close()
+    }
 
-        // A file that appears at the extension-added path after the dialog closed was never approved: it is kept. (A
-        // name the dialog returned with its extension was approved by the user and is replaced, as every save dialog
-        // does.)
-        let late = out + "/Late.mp4"
+    /// A file that appears at the extension-added path after the dialog closed was never approved: it is kept. (A name
+    /// the dialog returned with its extension was approved by the user and is replaced, as every save dialog does.)
+    func testSaveToKeepsAFileCreatedAtTheExtensionAddedPathAfterTheDialogClosed() async throws {
+        let dialogs = ScriptedDialogs()
+        let (reopened, save) = try await libraryWithACompletedExport(dialogs)
+        let late = root + "/Out/Late.mp4"
         dialogs.whileSaving = { FileManager.default.createFile(atPath: late, contents: Data("written meanwhile".utf8)) }
-        dialogs.saves = [out + "/Late"]
+        dialogs.saves = [root + "/Out/Late"]
         do { _ = try await run(reopened, dialogs, save); XCTFail("expected an error") }
         catch {
             XCTAssertEqual((error as? DesktopError)?.message,
                            "A file named Late.mp4 already exists there. It was left unchanged; choose another name.")
         }
         XCTAssertEqual(try String(contentsOfFile: late, encoding: .utf8), "written meanwhile")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root + "/Out"), ["Late.mp4"], "no staged copy left")
         try await reopened.close()
     }
 }
