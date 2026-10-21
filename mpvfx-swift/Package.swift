@@ -142,6 +142,8 @@ let package = Package(
                 linkerSettings: [
                     .linkedLibrary("sqlite3", .when(platforms: [.linux, .macOS])),
                     .linkedLibrary("winsqlite3", .when(platforms: [.windows])),
+                    // The on-device speech recognizer behind speech to captions (MacSpeechTranscriptionService).
+                    .linkedFramework("Speech", .when(platforms: [.macOS])),
                 ]),
         // Host-independent desktop shell logic (app paths, save barrier, lifecycle, single instance, menu); unit-tested.
         .target(name: "MpvfxDesktopCore", dependencies: ["MpvfxTheme"]),
