@@ -43,9 +43,9 @@ final class ClipFadeOpacityTests: XCTestCase {
     }
 
     private static func composition(_ doc: NativeProjectDocument) -> PreviewComposition {
+        let dir = URL(fileURLWithPath: "/proj")
         // Labelled: a trailing closure would bind to `naturalSize`, the first closure parameter with a default.
-        PreviewComposition(document: doc, projectDir: URL(fileURLWithPath: "/proj"), engine: nil,
-                           fileExists: { _ in true })
+        return PreviewComposition(document: doc, projectDir: dir, engine: nil, fileExists: { _ in true })
     }
 
     /// Only V: the text and image clips hidden, so a pixel read sees V over the black canvas.
@@ -127,7 +127,7 @@ final class ClipFadeOpacityTests: XCTestCase {
         let layers: [PreviewLayer] = comp.layers(at: 0)
         XCTAssertEqual(layers.map(\.clipId), ["V"])
         XCTAssertFalse(layers[0].isVisible)
-        let compositor: PreviewCompositor = PreviewCompositor(decodesMedia: false, cacheBudgetBytes: 1 << 30)
+        let compositor = PreviewCompositor(decodesMedia: false, cacheBudgetBytes: 1 << 30)
         XCTAssertGreaterThan(compositor.lookahead(layers, comp: comp, scale: 1, backing: 1, speed: 1), 0)
         let chunk: Int = compositor.reverseChunk(layers, comp: comp, scale: 1, backing: 1, speed: 1)
         XCTAssertGreaterThan(chunk, 1, "1 means no video")
@@ -136,13 +136,13 @@ final class ClipFadeOpacityTests: XCTestCase {
     /// A live opacity gesture during a fade shows the gesture's value faded, as the committed take will play.
     func testALiveOpacityOverrideKeepsTheFade() throws {
         let comp: PreviewComposition = Self.videoOnly(try Self.document(fades: #","fadeInFrames":10"#))
-        let frame: CanvasRect = CanvasRect(x: 0, y: 0, width: 200, height: 100)
-        let element: StageElement = StageElement(id: "V", name: "V", rect: frame, kind: .video, opacity: 0.8)
-        let half: [PreviewLayer] = PreviewCompositor.applyStage([element], to: comp.layers(at: 0.5),
-                                                                 frame: frame, scale: 1)
+        let frame = CanvasRect(x: 0, y: 0, width: 200, height: 100)
+        let element = StageElement(id: "V", name: "V", rect: frame, kind: .video, opacity: 0.8)
+        let atHalf: [PreviewLayer] = comp.layers(at: 0.5)
+        let half: [PreviewLayer] = PreviewCompositor.applyStage([element], to: atHalf, frame: frame, scale: 1)
         XCTAssertEqual(half[0].opacity, 0.4, accuracy: 1e-9, "0.8 live × 0.5 fade")
-        let first: [PreviewLayer] = PreviewCompositor.applyStage([element], to: comp.layers(at: 0),
-                                                                  frame: frame, scale: 1)
+        let atStart: [PreviewLayer] = comp.layers(at: 0)
+        let first: [PreviewLayer] = PreviewCompositor.applyStage([element], to: atStart, frame: frame, scale: 1)
         XCTAssertEqual(first[0].opacity, 0)
         XCTAssertTrue(first[0].hiddenByFade)
     }
