@@ -1,4 +1,5 @@
 # Feature inventory
+Save frame (#293): File > Save frame… on macOS and ⇧⌘E (Ctrl+Shift+E on Linux/Windows) save the composited playhead frame at composition size as quality-95 JPEG. Uses the export painter and durable exclusive publication; existing files are never replaced. PNG awaits a still-image encoder in the pinned media engine. Covered by `SaveFrameTests`.
 
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript

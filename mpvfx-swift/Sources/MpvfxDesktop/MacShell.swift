@@ -84,10 +84,11 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                 switch item.command {
                 case .about: selector = #selector(NSApplication.orderFrontStandardAboutPanel(_:))
                 case .services, .openRecent, .panels: continue
-                case .openProject, .settings, .closePanel, .keyframeEasing:
+                case .openProject, .saveFrame, .settings, .closePanel, .keyframeEasing:
                     let action = item.command == .settings ? #selector(openSettings(_:))
                         : item.command == .closePanel ? #selector(closePanel(_:))
-                        : item.command == .keyframeEasing ? #selector(openKeyframeEasing(_:)) : #selector(openProject(_:))
+                        : item.command == .keyframeEasing ? #selector(openKeyframeEasing(_:))
+                        : item.command == .saveFrame ? #selector(saveFrame(_:)) : #selector(openProject(_:))
                     let mi = NSMenuItem(title: item.label, action: action, keyEquivalent: item.key ?? "")
                     mi.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
                     mi.target = self
@@ -152,6 +153,8 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
     /// View > Keyframe Easing: the Keyframe Easing panel.
     @objc func openKeyframeEasing(_ sender: NSMenuItem) { session?.showKeyframeEasingPanel() }
 
+    /// File > Save frame… and ⇧⌘E use the same snapshot command.
+    @objc func saveFrame(_ sender: NSMenuItem) { session?.requestSaveFrame() }
     /// File > Open…: the folder dialog (⌘O in the editor reaches the same call through EditorSession.commandKey).
     @objc func openProject(_ sender: NSMenuItem) { session?.requestOpenProject() }
 
