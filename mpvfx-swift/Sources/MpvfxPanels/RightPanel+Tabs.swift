@@ -43,7 +43,7 @@ extension RightPanel {
     func drawTabs(_ c: CanvasContext, strip: CanvasRect, end: Double) {
         let x = strip.x + PanelTabStrip.edgeInset
         let area = CanvasRect(x: x, y: strip.y, width: max(0, end - x), height: strip.height)
-        let bar = PanelTabBar(tabs: stripTabs, selected: layout.rightPanelTab.rawValue, style: .strip)
+        let bar = PanelTabBar(tabs: stripTabs, selected: shownTab.rawValue, style: .strip)
         tabLayout = bar.layout(c, in: area)
         bar.draw(c, tabLayout, hovered: tabHover)
         for (r, part) in PanelTabBar.hitRects(tabLayout) { if let h = Self.hit(part) { hits.add(r, h) } }
@@ -109,7 +109,7 @@ extension RightPanel {
     /// Left / Right / Home / End on the focused tab: switch to the next tab and keep focus on it.
     func tabArrow(_ k: EditorKey) -> Bool {
         guard focus.visible, let cur = focus.current, cur == .design || cur == .renders,
-              let next = PanelTabBar.tab(after: k, from: layout.rightPanelTab.rawValue, in: stripTabs), let tab = RightPanelTab(rawValue: next) else { return false }
+              let next = PanelTabBar.tab(after: k, from: shownTab.rawValue, in: stripTabs), let tab = RightPanelTab(rawValue: next) else { return false }
         layout.setRightTab(tab)
         focus.current = tab == .renders ? .renders : .design
         onChange?(); return true

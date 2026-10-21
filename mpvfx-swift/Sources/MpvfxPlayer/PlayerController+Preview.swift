@@ -213,7 +213,7 @@ extension PlayerController {
             for st in starts { update(st.id) { $0 = st } }
         case .marquee:
             view.marquee = nil; view.marqueeCandidates = []
-        case .pan: break
+        case .pan, .compare: break   // the compare divider is preview-only state; nothing to restore
         }
         needsDisplay?()
         return true

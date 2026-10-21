@@ -79,6 +79,11 @@ public final class RightPanel {
     public var onRender: ((RenderAction) -> Void)?
     public var onSettingsChanged: ((RenderSettingsModel) -> Void)?
     public var onChange: (() -> Void)?
+    /// In the dock, each tab is its own panel: this instance shows only that tab, over its whole rect, without the
+    /// strip (the dock's tab bar is its header). nil: the Design · Renders strip with both tabs.
+    public var dockedTab: RightPanelTab?
+    /// The tab on show: the docked one, else the strip's choice.
+    var shownTab: RightPanelTab { dockedTab ?? layout.rightPanelTab }
     /// The row whose × was pressed: it shows "Delete?" / "Keep" until answered or the pointer leaves it.
     public var confirmingDelete: String?
     /// Wall clock for "1h ago" (seconds since 1970); tests pin it.
@@ -132,6 +137,12 @@ public final class RightPanel {
         }
     }
 
+    /// Native controls currently visible in the custom-drawn Design panel.
+    public var accessibilityControls: [CanvasAccessibilityControl] {
+        guard !layout.effectiveRightCollapsed, layout.rightPanelTab == .design else { return [] }
+        return inspector.accessibilityControls
+    }
+
     /// The dropdown key of the panel menu.
     static let menuKey = "panel-menu"
 
@@ -148,6 +159,7 @@ public final class RightPanel {
         c.fillRect(r, PanelTheme.panelBg)
         c.withState {
             c.clip(r)
+            if dockedTab != nil { drawTab(c, r); return }
             let strip = CanvasRect(x: 0, y: 0, width: r.width, height: PanelTabStrip.height)
             PanelTabStrip.drawBackground(c, strip)
             let hide = PanelTabStrip.buttonRect(strip, index: 1), menu = PanelTabStrip.buttonRect(strip, index: 0)
@@ -156,21 +168,26 @@ public final class RightPanel {
             hits.add(hide, .hide)
             PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == Self.menuKey)
             hits.add(menu, .panelMenu)
-            contentRect = CanvasRect(x: 0, y: strip.maxY, width: r.width, height: max(0, r.height - strip.maxY))
-            if layout.rightPanelTab == .design {
-                inspector.draw(c, in: contentRect)
-            } else {
-                inspector.endAudition()   // the Design tab, and the shelf with it, is gone
-                drawRenders(c, contentRect)
-            }
+            drawTab(c, CanvasRect(x: 0, y: strip.maxY, width: r.width, height: max(0, r.height - strip.maxY)))
         }
         if let ring = focus.ringRect(hits) {
             c.withState {
-                if listRect.height > 0, ring.y >= listRect.y - 2, layout.rightPanelTab == .renders { c.clip(listRect) }
+                if listRect.height > 0, ring.y >= listRect.y - 2, shownTab == .renders { c.clip(listRect) }
                 PanelDraw.focusRing(c, ring, radius: PanelTheme.radiusMd)
             }
         }
         dropdown.draw(c)
+    }
+
+    /// The shown tab's content in `rect`.
+    func drawTab(_ c: CanvasContext, _ rect: CanvasRect) {
+        contentRect = rect
+        if shownTab == .design {
+            inspector.draw(c, in: contentRect)
+        } else {
+            inspector.endAudition()   // the Design tab, and the shelf with it, is gone
+            drawRenders(c, contentRect)
+        }
     }
 
     /// What Tab stops on in the header and the Renders tab.
@@ -536,7 +553,7 @@ public final class RightPanel {
     public func pointerDown(_ p: CanvasPoint) -> Bool {
         focus.pointerPressed()
         if dropdown.pointerDown(p) { onChange?(); return true }
-        if layout.rightPanelTab == .design, !layout.effectiveRightCollapsed, contentRect.contains(p) {
+        if shownTab == .design, !layout.effectiveRightCollapsed, contentRect.contains(p) {
             pressedInInspector = true
             let r = inspector.pointerDown(p); onChange?(); return r
         }
@@ -600,7 +617,7 @@ public final class RightPanel {
     public func pointerMove(_ p: CanvasPoint) -> Bool {
         if dropdown.isOpen { return dropdown.pointerMove(p) }
         var changed = false
-        if pressedInInspector || (layout.rightPanelTab == .design && contentRect.contains(p)) { changed = inspector.pointerMove(p) }
+        if pressedInInspector || (shownTab == .design && contentRect.contains(p)) { changed = inspector.pointerMove(p) }
         else if inspector.hovered != nil { inspector.hovered = nil; inspector.endAudition(); changed = true }
         let h = hits.hit(p)
         if h != hovered { hovered = h; changed = true }
@@ -615,7 +632,7 @@ public final class RightPanel {
     /// `dy` in points from the host: precise (trackpad) deltas move 1:1, wheel line steps glide (PanelScroller).
     public func scroll(_ p: CanvasPoint, dy: Double, precise: Bool = false) -> Bool {
         if dropdown.isOpen { dropdown.scrollBy(dy); return true }
-        if layout.rightPanelTab == .design { return inspector.scroll(p, dy: dy, precise: precise) }
+        if shownTab == .design { return inspector.scroll(p, dy: dy, precise: precise) }
         guard listRect.contains(p) else { return false }
         if listScroller.scroll(by: dy, precise: precise, max: listMax) { onAnimate?() }
         return true
@@ -636,7 +653,7 @@ public final class RightPanel {
     public func keyDown(_ k: EditorKey) -> Bool {
         if dropdown.key(k) { onChange?(); return true }
         if field != nil { return fieldKey(k) }
-        if layout.rightPanelTab == .design && !layout.effectiveRightCollapsed { return designKey(k) }
+        if shownTab == .design && !layout.effectiveRightCollapsed { return designKey(k) }
         return focusKey(k, forward: { [unowned self] in self.focus.move(self.hits, forward: $0) { self.isFocusable($0) } })
     }
 

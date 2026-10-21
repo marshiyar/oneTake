@@ -367,6 +367,29 @@ final class NativeProjectDocumentTests: XCTestCase {
         XCTAssertNil(try parse(validNativeDocument()).undrawnElementLayersNotice)
     }
 
+    func testColourKeyDiscriminatorsAndMultiplicityAreValidated() throws {
+        func document(_ effects: String) -> NativeJSONValue {
+            var value = validNativeDocument()
+            value["sequence"]?["tracks"]?[0]?["clips"]?[0]?["effects"] = J(effects)
+            return value
+        }
+        let malformed = issues(document(#"[{"id":"key","effectId":"color-key","enabled":true,"parameters":{"v":"1","kind":"chroma","similarity":2}}]"#))
+        XCTAssertTrue(malformed.contains { $0.path.hasSuffix("parameters.v") })
+        XCTAssertFalse(issues(document(#"[{"id":"key","effectId":"color-key","enabled":true,"parameters":{}}]"#)).isEmpty)
+        assertThrows(document(#"[{"id":"a","effectId":"color-key","enabled":true,"parameters":{"v":1,"kind":"chroma"}},{"id":"b","effectId":"color-key","enabled":true,"parameters":{"v":1,"kind":"chroma"}}]"#),
+                     "at most one enabled colour-key")
+    }
+
+    func testUnsupportedColourKeyIsPreservedAndProducesOneNotice() throws {
+        var value = validNativeDocument()
+        value["sequence"]?["tracks"]?[0]?["clips"]?[0]?["effects"] = J(#"[{"id":"key","effectId":"color-key","enabled":true,"parameters":{"v":2,"kind":"future","payload":42}}]"#)
+        let serialized = try serializeNativeProjectDocument(value)
+        let reopened = try parse(J(serialized))
+        XCTAssertEqual(try serializeNativeProjectDocument(reopened), serialized)
+        XCTAssertEqual(reopened.undrawnContentNotices,
+                       ["1 colour-key effect from a newer version of the editor is kept in the project but not drawn in preview or export."])
+    }
+
     func rotationTrack(_ id: String, _ keyId: String, _ frame: Double, _ value: Double = -180) -> NativeJSONValue {
         J(#"{"schemaVersion":1,"id":"\#(id)","parameterId":"transform.rotation","valueType":"number","frameRate":{"numerator":30000,"denominator":1001},"keyframes":[{"id":"\#(keyId)","frame":\#(jsNumberString(frame)),"value":\#(jsNumberString(value)),"outgoing":{"type":"linear"}}]}"#)
     }
