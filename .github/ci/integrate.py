@@ -24,10 +24,17 @@ Three steps, one per job of .github/workflows/integrate.yml (the job that builds
            gate for the whole batch (warnings-as-errors build, tests build, the CI scripts' unit tests); a build
            error is mapped to the pull requests that changed the failing files, those are dropped and the batch is
            rebuilt, at most 3 times. Writes result.json and a git bundle of the branch.
-  publish  with the review App's token: verify the bundle against live pull request state, push `integrate/batch`
-           (the bot's own branch; the only force push), open or update the one integration pull request, squash-merge
-           it when `merge` is on and the gate passed, close the included pull requests, drop their `merge-conflict`
-           label and label the skipped and dropped ones `needs-resolution`.
+  publish  with the review App's token: verify the bundle against live pull request state, build main + ONE squash
+           commit authored and committed as the owner (a squash merge is authored by whoever opened the pull request,
+           so the owner opens it) and push it as `integrate/batch` (the bot's own branch; the only force push). With
+           the optional secret OWNER_TOKEN (a fine-grained token of the owner: contents and pull-requests write on
+           this repository) it then opens or updates the one integration pull request, squash-merges it when `merge`
+           is on and the gate passed, closes the included pull requests, drops their `merge-conflict` label; without
+           it nothing is opened or merged and the summary says the branch is ready. Skipped and dropped pull requests
+           get `needs-resolution` either way.
+  land     a person runs it locally with their own `gh` login: opens the pull request from the pushed branch (body
+           from its commit message, plus the Skipped section when `--result result.json` is given), squash-merges it,
+           closes the pull requests named in the commit message and fixes the labels.
 
 Order: pull request B follows A when A's head is an ancestor of B's head, then by number. Pull request code is only
 ever merged by git here; the one scripts run are main's (shader generator, workflow generator), and only when the
@@ -127,7 +134,11 @@ def render_body(included, skipped, dropped, items_by_number):
     closes = closing_lines([items_by_number[i["number"]] for i in included if i["number"] in items_by_number])
     if closes:
         lines += [""] + closes
-    lines += ["", "## Skipped", ""]
+    return "\n".join(lines) + "\n\n" + skipped_section(skipped, dropped)
+
+
+def skipped_section(skipped, dropped):
+    lines = ["## Skipped", ""]
     rows = [(s["number"], s["reason"], s.get("files", [])) for s in skipped] + \
            [(d["number"], "dropped: the build failed (" + one_line(d["error"], 160) + ")", d.get("files", []))
             for d in dropped]
@@ -141,15 +152,34 @@ def render_body(included, skipped, dropped, items_by_number):
     return "\n".join(lines) + "\n"
 
 
-def commit_message(included, all_files):
-    """The squash-merge message: the included pull requests, the co-author line for audio/caption work, the role."""
+def commit_message(included, all_files, closes=()):
+    """The squash commit's message: the included pull requests, their `Closes #n` lines, the co-author line for
+    audio/caption work, the role."""
     lines = [pr_title([i["number"] for i in included]), ""]
     lines += [f"- #{i['number']} {one_line(i['title'])}" for i in included]
     lines += [""]
+    if closes:
+        lines += list(closes) + [""]
     if wants_zed(all_files):
         lines.append(f"Co-authored-by: {ZED}")
     lines.append(TRAILER)
     return "\n".join(lines)
+
+
+TRAILER_RE = re.compile(r"^(?:Agent-Role|Co-authored-by):", re.I)
+
+
+def parse_message(message):
+    """(title, included numbers, body lines without trailers) of a batch commit message made by commit_message."""
+    lines = message.strip().splitlines()
+    title = lines[0] if lines else ""
+    numbers = list(dict.fromkeys(int(n) for n in re.findall(r"#([0-9]+)", title)))
+    body = [l for l in lines[1:] if not TRAILER_RE.match(l)]
+    while body and not body[0].strip():
+        body.pop(0)
+    while body and not body[-1].strip():
+        body.pop()
+    return title, numbers, body
 
 
 def error_paths(output, root=""):
@@ -350,9 +380,22 @@ class Git(cf.Git):
         if got != tip:
             raise Error("the bundle's branch is not the commit result.json names")
 
+    def squash(self, base, tip, message):
+        """main + ONE commit with the batch's tree, authored and committed as the owner (IDENT)."""
+        tree = self._git("rev-parse", f"{tip}^{{tree}}")[1]
+        sha = self._git("commit-tree", tree, "-p", base, "-m", message)[1]
+        self._git("update-ref", "refs/integrate/squash", sha)
+        return sha
+
     def push_batch(self):
         """The bot's own branch: the one force push here."""
-        self._git("push", "-q", "--force", "origin", f"refs/integrate/tip:refs/heads/{BRANCH}", auth=True)
+        self._git("push", "-q", "--force", "origin", f"refs/integrate/squash:refs/heads/{BRANCH}", auth=True)
+
+    def fetch_batch(self):
+        """The pushed branch: (sha, commit message)."""
+        self._git("fetch", "-q", "--no-tags", "origin", f"+refs/heads/{BRANCH}:refs/integrate/tip")
+        return (self._git("rev-parse", "refs/integrate/tip")[1],
+                self._git("log", "-1", "--format=%B", "refs/integrate/tip")[1])
 
 
 # ---- the build gate --------------------------------------------------------------------------------------------
@@ -431,38 +474,74 @@ def summary(result, note=""):
 
 # ---- publish ---------------------------------------------------------------------------------------------------
 
-def publish(gh, git, plan, result, merge, bundle, log):
+def land_batch(owner, sha, number, included, merge_message, skipped_ids, contained, log):
+    """With the owner's identity: squash-merge, close the combined pull requests, fix labels. Returns the note."""
+    owner.squash_merge(number, sha, merge_message)
+    for n in included:
+        owner.close(n)
+        owner.remove_label(n)
+    for n in contained:
+        owner.remove_label(n)
+    for n in skipped_ids:
+        owner.add_needs_resolution(n)
+    return f"Squash-merged #{number}; closed {refs_text(included)}."
+
+
+def publish(gh, git, plan, result, merge, bundle, log, owner=None):
+    """Push main + one owner-authored squash commit. With `owner` (a GitHub client on the owner's token) also open the
+    pull request and squash-merge it; without, open and merge nothing: the branch is ready for `land`."""
     items = {i["number"]: Item(**i) for i in plan["prs"]}
     included, note = result["included"], ""
+    left_out = [s["number"] for s in result["skipped"]] + [d["number"] for d in result["dropped"]]
     if included:
         stale = [i["number"] for i in included if gh.live(i["number"]) != ("open", i["sha"])]
         git.unbundle(bundle, result["tip"])
         for i in included:
             if not git.is_ancestor(i["sha"], "refs/integrate/tip"):
                 raise Error(f"#{i['number']}'s head is not in the bundle")
-        git.push_batch()
         numbers = [i["number"] for i in included]
-        n = gh.upsert_pr(pr_title(numbers), render_body(included, result["skipped"], result["dropped"], items))
-        log.append(f"integration pull request #{n}")
-        if not merge:
-            note = f"Opened #{n}; merge is off."
-        elif result["gate"] != "passed":
-            note = f"Opened #{n}; not merged: build gate {result['gate']}."
-        elif stale:
-            note = f"Opened #{n}; not merged: {refs_text(stale)} changed since the build."
+        files = sorted({f for i in included for f in i["files"]})
+        message = commit_message(included, files, closing_lines([items[n] for n in numbers if n in items]))
+        sha = git.squash(result["base"], result["tip"], message)
+        git.push_batch()
+        log.append(f"pushed {BRANCH} at {sha[:12]}")
+        if owner is None:
+            note = (f"`{BRANCH}` is ready at `{sha[:12]}` ({refs_text(numbers)}). No OWNER_TOKEN is set, so no pull "
+                    f"request was opened or merged; run `integrate.py land` with your own gh login.")
         else:
-            files = sorted({f for i in included for f in i["files"]})
-            gh.squash_merge(n, result["tip"], commit_message(included, files))
-            for i in included:
-                gh.close(i["number"])
-                gh.remove_label(i["number"])
-            note = f"Squash-merged #{n}; closed {refs_text(numbers)}."
+            n = owner.upsert_pr(pr_title(numbers), render_body(included, result["skipped"], result["dropped"], items))
+            log.append(f"integration pull request #{n}")
+            if not merge:
+                note = f"Opened #{n}; merge is off."
+            elif result["gate"] != "passed":
+                note = f"Opened #{n}; not merged: build gate {result['gate']}."
+            elif stale:
+                note = f"Opened #{n}; not merged: {refs_text(stale)} changed since the build."
+            else:
+                note = land_batch(owner, sha, n, numbers, message, [], [], log)
+    else:
+        owner = None
     for n in result["contained"]:
-        gh.remove_label(n)
-    for n in [s["number"] for s in result["skipped"]] + [d["number"] for d in result["dropped"]]:
+        (owner or gh).remove_label(n)
+    for n in left_out:
         gh.add_needs_resolution(n)
     log.append(note or "nothing to integrate")
     return note
+
+
+def land(owner, git, result, log):
+    """A person's local run: open the pull request from the pushed branch, squash-merge it, close what it combines."""
+    sha, message = git.fetch_batch()
+    title, numbers, body = parse_message(message)
+    if not numbers:
+        raise Error(f"{BRANCH}'s commit message names no pull requests")
+    text = "\n".join(body) + "\n"
+    if result:
+        text += "\n" + skipped_section(result["skipped"], result["dropped"])
+    n = owner.upsert_pr(title, text)
+    log.append(f"integration pull request #{n}")
+    left = ([s["number"] for s in result["skipped"]] + [d["number"] for d in result["dropped"]]) if result else []
+    return land_batch(owner, sha, n, numbers, message, left, result["contained"] if result else [], log)
 
 
 # ---- commands --------------------------------------------------------------------------------------------------
@@ -507,20 +586,47 @@ def cmd_build(args, env):
         result = build_batch(git, Gate(os.getcwd()), items, plan["base"])
     if result["included"]:
         git.bundle(plan["base"], args.bundle)
+    else:
+        # Nothing to bundle; an empty placeholder keeps the artifact's layout (result.json at its root) the same.
+        open(args.bundle, "wb").close()
     write_json(args.out, result)
     append_env_file("GITHUB_STEP_SUMMARY", summary(result))
     print(summary(result))
     return 0
 
 
+class TokenRunner(cf.Runner):
+    """gh calls made with the owner's token."""
+
+    def __init__(self, token):
+        self.token = token
+
+    def __call__(self, args, env=None, cwd=None):
+        return super().__call__(args, env=dict(env or {}, GH_TOKEN=self.token), cwd=cwd)
+
+
 def cmd_publish(args, env):
     plan, result = read_json(args.plan), read_json(args.result)
-    gh = GitHub(env["GITHUB_REPOSITORY"])
+    repo = env["GITHUB_REPOSITORY"]
+    gh = GitHub(repo)
+    owner = GitHub(repo, run=TokenRunner(env["OWNER_TOKEN"])) if env.get("OWNER_TOKEN") else None
     git = Git(os.getcwd(), env["PUSH_TOKEN"])
     log = []
-    note = publish(gh, git, plan, result, env.get("INTEGRATE_MERGE", "true") == "true", args.bundle, log)
+    note = publish(gh, git, plan, result, env.get("INTEGRATE_MERGE", "true") == "true", args.bundle, log, owner)
     append_env_file("GITHUB_STEP_SUMMARY", summary(result, note))
     print("\n".join(log))
+    return 0
+
+
+def cmd_land(args, env):
+    """Run locally; `gh` and git use the person's own login."""
+    repo = args.repo or env.get("GITHUB_REPOSITORY")
+    if not repo:
+        raise Error("name the repository: --repo owner/name")
+    result = read_json(args.result) if args.result else None
+    log = []
+    note = land(GitHub(repo), Git(os.getcwd()), result, log)
+    print("\n".join(log + [note]))
     return 0
 
 
@@ -537,9 +643,12 @@ def main(argv=None):
     q.add_argument("--plan", required=True)
     q.add_argument("--result", required=True)
     q.add_argument("--bundle", required=True)
+    ld = sub.add_parser("land", help="open, squash-merge and close from the pushed branch, with your own gh login")
+    ld.add_argument("--repo", default="")
+    ld.add_argument("--result", default="")
     args = ap.parse_args(argv)
     try:
-        return {"plan": cmd_plan, "build": cmd_build, "publish": cmd_publish}[args.cmd](args, os.environ)
+        return {"plan": cmd_plan, "build": cmd_build, "publish": cmd_publish, "land": cmd_land}[args.cmd](args, os.environ)
     except Error as e:
         print(f"integrate: {e}", file=sys.stderr)
         return 1
