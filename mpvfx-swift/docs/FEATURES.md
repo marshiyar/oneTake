@@ -101,7 +101,8 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Mask inset rows | missing (panels) | n/a |
 | Clip timing: start, end, duration | removed on purpose (2026-10-13): the timeline rows move, trim and split clips; speed stays as Rate in Media (see §13) | n/a |
 | Media: volume, muted, rate, media start, play video sound | done | exact |
-| Media: loop, fit, object position | missing in the native document (panels + preview) | n/a |
+| Media: fit (Fit, Fill, Stretch) | done: the Media group's Fit select on video and image clips, one undo step, with the reset back to Fit; saved as `clip.fit` (absent = Fit, so older projects open and save unchanged). Fill covers the box keeping the aspect and clips the overflow; Stretch maps the picture onto the box; an untouched Fill or Stretch clip's box is the whole frame. Preview and export draw it with one painter (`NativeClipLayout.swift` `nativeMediaRect`, `PreviewComposition.swift`, `InspectorPanel+MediaFit.swift`) | close |
+| Media: loop, object position | missing in the native document (panels + preview) | n/a |
 | Text: content, multiple fields, font picker, size, weight, color, align, letter spacing, line height, case/style | partial: native text layers (`clip.text` on a Text element asset; T adds one at the playhead). The Text group comes first, in this order: Content (`\n` breaks a line), Font (family name), Size, Weight (number or label), Letter spacing (px/em), Line height (multiple, %, px, normal), Align L/C/R/J, Case · Style, Color (hex). Preview and export draw one layout (`TextLayout`: wrap at the box width, half-leading line boxes, justify, per-character spacing); export rasterizes it with the preview's renderer into a still the clip renders like an image, so transform, crop, style and opacity apply. Missing: several text fields per layer, the font picker popover, the colour picker | close |
 | Import local font files | partial: fonts import into the media bin (Fonts category); a text layer uses an installed family by name, not an imported file yet | n/a |
 | Grade: presets, intensity, primary adjust, color wheels (shadows/midtones/highlights with hue/amount/level and reset) | done; renders in preview and export (color-engine, 3fe63d2 / 5dbd897), on the GPU (Metal) on macOS, graded off the main thread at display size in preview | close |
@@ -134,7 +135,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Move / resize / rotate handles, crop handles, marquee, shift multi-select, group move | done (player) |
 | Snap guides & toolbar, grid overlay (thirds/quarters/center, snap to grid) | done (player) |
 | Arrow-key nudge (1 / 10 px, one commit per burst), Esc cancels a drag | done (player) |
-| Gesture recording (position, rotation, 3D rotation, opacity, scale, depth) with trail, auto-stop, one undo step | done (player; `GestureRecording.swift`) |
+| Record motion (position, rotation, 3D rotation, opacity, scale, depth): Record or R arms; a press on the selected layer or a handle starts a take that plays from the playhead, the layer keeps its grab offset, release commits one "Record motion" undo step, Esc cancels or disarms; locked and hidden layers refused; one sample per frame, simplified | done (player; `PlayerController+Record.swift`, `GestureRecording.swift`; `RecordMotionTests`, `RecordMotionShellTests`) |
 | Canvas context menu (z-order, delete) with the crossed-sibling flash | partial: z-order and delete work; copy and paste are missing |
 | Asset drop on the stage (insert at playhead) | done: bin cards drag into it (`EditorSession+AssetDrag.swift`) |
 | Preview zoom / pan (wheel, pinch, middle-button drag), zoom readout, fit button | done (player, hosts forward the middle button) |
@@ -223,7 +224,8 @@ The timeline lane's 314d72a added its own filmstrip cache; 71fdbd6 moved strips 
 
 | Ability | Swift status |
 | --- | --- |
-| Gesture recording (Record button, trail, auto-stop, one undo step) | done (preview) |
+| Record motion (Record control with armed and recording states, stage outline and banner, trail, auto-stop, one undo step) | done (preview) |
+| Captions: caption track in the document, SRT import and export (backend) | partial: no menu entry yet (see `STATUS.md`) |
 | Captions: overlay, caption timeline, caption editing, caption property panel, Edit captions entry in the preview | missing (unowned) |
 | Telemetry, crash prompt, feedback card | not part of the product |
 | Packaging and installers | partial: macOS disk image, Windows per-user setup.exe and Linux .deb; CI has built, installed and launched all three, and their smoke checks passed (see `STATUS.md`) |

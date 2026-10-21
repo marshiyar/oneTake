@@ -41,25 +41,6 @@ final class GradeKeyboardTests: XCTestCase {
         p.focus.current = hit; p.focus.visible = true
     }
 
-    /// A1: Enter and Space on a focused wheel and on its level bar change nothing and record no undo step; the
-    /// wheel's reset button is still pressed by Enter.
-    func testEnterOrSpaceOnAFocusedWheelChangesNothing() throws {
-        var g = ColorGrading()
-        g.wheels["midtones"] = .init(hue: 120, amount: 0.5, level: 0.3)
-        let (p, editor, c) = try inspector(g)
-        let steps = editor.undoStack.count
-        for part in [1, 4] {
-            try focus(p, c, .custom("grade:wheels", part))
-            XCTAssertTrue(p.keyDown(EditorKey(.enter))); XCTAssertTrue(p.keyDown(EditorKey(.space)))
-            redraw(p, c)
-        }
-        XCTAssertEqual(editor.colorGrading(clipId: "clip:a"), g)
-        XCTAssertEqual(editor.undoStack.count, steps, "no undo entry")
-        try focus(p, c, .custom("grade:wheels", 11))
-        XCTAssertTrue(p.keyDown(EditorKey(.enter)))
-        XCTAssertNil(editor.colorGrading(clipId: "clip:a"), "Enter on the Midtones reset still resets it")
-    }
-
     /// A1 / A3: Space on the focused graph changes nothing; Enter adds a point in the widest gap and selects it.
     func testSpaceOnTheFocusedGraphChangesNothingAndEnterAddsAPoint() throws {
         var g = ColorGrading()

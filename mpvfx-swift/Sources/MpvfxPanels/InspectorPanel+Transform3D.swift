@@ -42,7 +42,7 @@ extension InspectorPanel {
         let rx = value(NativeTransform3D.rotationXId), ry = value(NativeTransform3D.rotationYId)
         let z = value(NativeTransform3D.zId), lens = value(NativeTransform3D.perspectiveId)
         let roll = value(TimelineEditor.rotationId)
-        var rows: [InspectorRow] = [.init(.spacer(6)), .init(.custom(transform3DHeader()))]
+        var rows: [InspectorRow] = [.init(.spacer(PanelGrid.unit)), .init(.custom(transform3DHeader()))]
         guard transform3DOpen else { return rows }
         rows.append(.init(.custom(cubeRow(editor, s, pose: (rx, ry, roll), z: z, lens: lens))))
         rows.append(.init(.note("Drag to tilt · the ↺ under the cube resets to flat")))
