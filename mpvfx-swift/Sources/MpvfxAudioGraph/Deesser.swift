@@ -41,13 +41,16 @@ final class DeesserProcessor: BlockProcessor {
     private var coefficients: [BiquadCoefficients] = []
     private var filters: [[DeesserFilter]] = []
     init(_ p: FxParams, sampleRate: Double) {
-        self.p = p; self.sampleRate = sampleRate
+        self.p = p
+        self.sampleRate = sampleRate
         envelope = EnvelopeFollowers(p.num("attack"), p.num("release"), sampleRate: sampleRate)
         configure()
     }
     private func configure() {
-        let f = p.num("frequency"), nyquist = sampleRate / 2
-        coefficients = [(BiquadType.highpass, f * 4 / 6.5), (.lowpass, f * 10 / 6.5), (.lowpass, f / 2)].flatMap { type, cutoff in
+        let f = p.num("frequency")
+        let nyquist = sampleRate / 2
+        coefficients = [(BiquadType.highpass, f * 4 / 6.5), (.lowpass, f * 10 / 6.5), (.lowpass, f / 2)].flatMap {
+            type, cutoff in
             [0.541196100146197, 1.306562964876377].map { q in
                 BiquadCoefficients.make(type, frequency: min(0.95, cutoff / nyquist), q: q, gain: 0, linearPassQ: true)
             }
@@ -66,21 +69,32 @@ final class DeesserProcessor: BlockProcessor {
         guard let first = input.first else { return }
         while filters.count < input.count { filters.append(coefficients.map { DeesserFilter(c: $0) }) }
         // Use the already-sized output as detector scratch, avoiding per-frame allocation.
-        for n in first.indices {
-            var peak = 0.0
-            for ch in input.indices {
-                var detector = Double(input[ch][n])
-                for k in 0..<4 { detector = filters[ch][k].push(detector) }
-                peak = max(peak, abs(detector))
-                output[ch][n] = Float(detector)
-            }
+        for frame in first.indices {
+            let peak = detectorPeak(input, frame: frame, scratch: &output)
             let level = 20 * log10(max(1e-12, envelope.push(0, peak)))
             let gain = dbToLin(deesserReduction(level, threshold: p.num("threshold"), range: p.num("range")))
-            for ch in input.indices {
-                let x = Double(input[ch][n])
-                var low = x
-                for k in 4..<6 { low = filters[ch][k].push(low) }
-                if p["listen"]?.string != "on" { output[ch][n] = gain == 1 ? input[ch][n] : Float(low + (x - low) * gain) }
+            applyGain(input, frame: frame, gain: gain, output: &output)
+        }
+    }
+
+    private func detectorPeak(_ input: [[Float]], frame: Int, scratch: inout [[Float]]) -> Double {
+        var peak = 0.0
+        for channel in input.indices {
+            var detector = Double(input[channel][frame])
+            for section in 0..<4 { detector = filters[channel][section].push(detector) }
+            peak = max(peak, abs(detector))
+            scratch[channel][frame] = Float(detector)
+        }
+        return peak
+    }
+
+    private func applyGain(_ input: [[Float]], frame: Int, gain: Double, output: inout [[Float]]) {
+        for channel in input.indices {
+            let sample = Double(input[channel][frame])
+            var low = sample
+            for section in 4..<6 { low = filters[channel][section].push(low) }
+            if p["listen"]?.string != "on" {
+                output[channel][frame] = gain == 1 ? input[channel][frame] : Float(low + (sample - low) * gain)
             }
         }
     }
