@@ -13,7 +13,9 @@ name: mpvfx-macos
 # Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
 # are optional (outside pull requests only): set, the disk image is signed with a Developer ID and notarized; unset, it
 # is ad-hoc signed. A call naming source_ref (from OneTake-actionRunners-1) never gets them: it builds code this
-# repository's event did not choose, so it is always ad-hoc signed.
+# repository's event did not choose, so it is always ad-hoc signed. It also restores and saves no cache: those runs
+# share the runners repository's default-branch cache scope, so a labelled pull request could otherwise plant a build
+# cache that a later nightly, whose disk image is published, would restore.
 
 on:
   workflow_call:
@@ -73,6 +75,7 @@ jobs:
           swift package dump-package > "$RUNNER_TEMP/package.json"
           echo "all=$(python3 -I -B ../.github/ci/test-shards.py --os macos "$RUNNER_TEMP/package.json")" >> "$GITHUB_OUTPUT"
       - name: Pass recorded for library?
+        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         id: c0
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -80,6 +83,7 @@ jobs:
           key: macos-pass-library-${{ fromJSON(steps.keys.outputs.all)[0].key }}
           lookup-only: true
       - name: Pass recorded for audio-presets?
+        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         id: c1
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -87,6 +91,7 @@ jobs:
           key: macos-pass-audio-presets-${{ fromJSON(steps.keys.outputs.all)[1].key }}
           lookup-only: true
       - name: Pass recorded for audio-live?
+        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         id: c2
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -94,6 +99,7 @@ jobs:
           key: macos-pass-audio-live-${{ fromJSON(steps.keys.outputs.all)[2].key }}
           lookup-only: true
       - name: Pass recorded for rest?
+        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         id: c3
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -150,6 +156,7 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
+        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
@@ -185,11 +192,12 @@ jobs:
       - name: Record the pass for these inputs
         run: cp "$RUNNER_TEMP/test.log" .test-pass
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-${{ matrix.shard }}-${{ matrix.key }}
       - name: Save caches
-        if: always() && matrix.shard == 'rest'
+        if: inputs.source_ref == '' && (always() && matrix.shard == 'rest')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
@@ -218,6 +226,7 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
+        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
@@ -294,7 +303,7 @@ jobs:
             echo "::error::the installed app could not load its Metal kernels"; exit 1
           fi
       - name: Save caches
-        if: always()
+        if: inputs.source_ref == '' && (always())
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build

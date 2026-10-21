@@ -87,6 +87,15 @@ class Inputs(unittest.TestCase):
         for value in secret:
             self.assertIn("inputs.source_ref == '' && secrets.", value)
 
+    def test_a_call_naming_a_source_never_restores_or_saves_a_cache(self):
+        # Runs from OneTake-actionRunners-1 share its default-branch cache scope; a labelled PR's code must not be able
+        # to plant a build cache that a later nightly (whose disk image is published) restores.
+        steps = [s for j in workflow("mpvfx-macos.yml")["jobs"].values() for s in j.get("steps", [])]
+        caches = [s for s in steps if "actions/cache" in s.get("uses", "")]
+        self.assertEqual(len(caches), 9)
+        for s in caches:
+            self.assertTrue(s["if"].startswith("inputs.source_ref == ''"), s)
+
     def test_cache_keys_follow_the_source_commit(self):
         steps = [s for j in workflow("mpvfx-macos.yml")["jobs"].values() for s in j.get("steps", [])]
         # The build caches (macos27-*); the test-pass records are keyed by their inputs' hash instead.
