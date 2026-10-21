@@ -126,16 +126,35 @@ public struct DockLayout: Equatable, Sendable {
         return .split(DockSplit(axis: s.axis, children: kids, weights: fixedWeights(weights, count: kids.count)))
     }
 
+    /// The smallest share a child keeps (a child that cannot be seen cannot be dragged back).
+    static let minShare = 0.01
+
     /// `count` shares summing to 1: a missing, non-finite or non-positive share becomes the mean of the valid ones,
-    /// and no share is smaller than 1% (a child that cannot be seen cannot be dragged back).
+    /// and none is below `minShare` (below `1 / count` when there are more than 100 children).
     static func fixedWeights(_ raw: [Double], count: Int) -> [Double] {
         guard count > 0 else { return [] }
-        let valid = raw.prefix(count).filter { $0.isFinite && $0 > 0 }
-        let mean = valid.isEmpty ? 1 : valid.reduce(0, +) / Double(valid.count)
-        var w = (0..<count).map { i in i < raw.count && raw[i].isFinite && raw[i] > 0 ? raw[i] : mean }
-        let total = w.reduce(0, +)
-        w = w.map { max(0.01, $0 / total) }
-        let again = w.reduce(0, +)
-        return w.map { $0 / again }
+        let given = (0..<count).map { i in i < raw.count && raw[i].isFinite && raw[i] > 0 ? raw[i] : nil }
+        // Scaled by the largest first, so huge values cannot overflow the sum.
+        let top = given.compactMap { $0 }.max() ?? 1
+        let known = given.compactMap { $0.map { $0 / top } }
+        let mean = known.isEmpty ? 1 : known.reduce(0, +) / Double(known.count)
+        return floored(given.map { $0.map { $0 / top } ?? mean }, minimum: min(minShare, 1 / Double(count)))
+    }
+
+    /// Shares summing to 1 with none below `m`: a share under it is raised to it and the others share what is left
+    /// in proportion, repeated until none falls below (`m × count ≤ 1`).
+    static func floored(_ w: [Double], minimum m: Double) -> [Double] {
+        var fixed = Set<Int>(), out = w
+        for _ in 0...w.count {
+            let free = w.indices.filter { !fixed.contains($0) }
+            let freeSum = free.map { w[$0] }.reduce(0, +), rest = 1 - m * Double(fixed.count)
+            var changed = false
+            for i in free {
+                out[i] = freeSum > 0 ? w[i] / freeSum * rest : rest / Double(free.count)
+                if out[i] < m { out[i] = m; fixed.insert(i); changed = true }
+            }
+            if !changed { break }
+        }
+        return out
     }
 }
