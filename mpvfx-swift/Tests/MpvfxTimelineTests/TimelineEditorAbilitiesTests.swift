@@ -73,6 +73,16 @@ final class TimelineEditorAbilitiesTests: XCTestCase {
         XCTAssertEqual(e.document, before)
     }
 
+    func testLoudnessMatchAppliesEveryGainInOneUndoStep() throws {
+        let e = try editor(); let before = e.document
+        XCTAssertTrue(e.applyLoudnessMatch(["clip:a": 0.5, "clip:b": 1.25, "clip:music": 4.5]))
+        XCTAssertEqual(e.clipVolume(clipId: "clip:a"), 0.5)
+        XCTAssertEqual(e.clipVolume(clipId: "clip:b"), 1.25)
+        XCTAssertEqual(e.clipVolume(clipId: "clip:music"), 4.5, "matching is not limited by the interactive +12 dB fader")
+        XCTAssertEqual(e.undoStack.count, 1); XCTAssertEqual(e.undoLabel, "Match loudness")
+        XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
+    }
+
     func testAudioGroupLifecycle() throws {
         let e = try editor(); let before = e.document
         XCTAssertNil(e.createAudioGroup(clipIds: ["clip:music"]), "needs two clips")

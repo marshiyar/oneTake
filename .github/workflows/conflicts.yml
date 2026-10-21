@@ -1,0 +1,51 @@
+# The conflicts bot (.github/ci/conflicts.py): every open, ready pull request from a branch of this repository into
+# main (without the label `hold`) is checked for a merge conflict. A conflicted one gets main merged into its branch
+# when every conflict has a safe automatic resolution (Markdown union, regenerated GPU shader files); otherwise it is
+# labelled `merge-conflict` and gets one comment per head commit listing the files. The label comes off when the pull
+# request merges cleanly again.
+#
+# Nothing from a pull request runs: the job checks out main, and pull request commits are only fetched and merged with
+# git (hooks off). The one script that runs is main's own shader generator. The review App's token (secrets
+# AGENT_APP_ID, AGENT_APP_PRIVATE_KEY) pushes the merge commit (a normal push, never forced), labels and comments;
+# a push that GitHub refuses (for example a merge that changes workflow files) is reported like a conflict.
+name: conflicts
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: conflicts
+  cancel-in-progress: false
+
+jobs:
+  conflicts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions: {}   # the App token below does the writing; the workflow token only reads main
+    steps:
+      - name: Token for the review App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          permission-contents: write        # push the merge commit to the pull request branch
+          permission-pull-requests: write   # read pull requests and their mergeability
+          permission-issues: write          # label and comment
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Merge main into conflicted pull requests, or label them
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PUSH_TOKEN: ${{ steps.app.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 -I -B .github/ci/conflicts.py
