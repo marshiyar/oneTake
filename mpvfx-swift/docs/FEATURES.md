@@ -287,3 +287,5 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+- Design inspector legibility (#173): labels, hints, state tags and summaries use AA secondary ink in both appearances; text/values are at least 11 px, section headings 11.5 px below 12 px group titles, and essential slider/field edges reach 3:1.

@@ -20,11 +20,13 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
    colour, which also carries the hover state. The name is drawn at 92% ink (4.5:1 on the fill), the timecode at
    72% (3:1).
 4. **Dense, not cramped.** 12 px body text, 11 px secondary text, 24–28 px rows. Empty space is a sign that a panel
-   has nothing to show; show a short hint there instead.
+   has nothing to show; show a short hint there instead. Design inspector values and hints have an 11 px floor;
+   section headings are 11.5 px below 12 px group titles. Essential slider tracks/thumbs and field underlines use
+   `inspectorControl` (dark #85858D, light #72727A); secondary text uses `inspectorText` (#A1A1AA / #4A4A52).
 5. **Time is timecode.** Times read `HH:MM:SS:FF` (or `MM:SS:FF` under an hour) in tabular figures, in the accent
    colour where the user can scrub them. The timeline ruler always reads `HH:MM:SS:FF`, so a minute never looks
    like an hour ([TIMELINE.md](TIMELINE.md)).
-6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; muted text at least 3:1.
+6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; all required secondary text (labels, hints, status and summaries) also reaches 4.5:1. Disabled text is exempt.
    Light mode keeps the same contrast; its structure is tuned separately (see "Light mode").
 
 ## Colour tokens (dark mode)

@@ -86,9 +86,9 @@ extension InspectorPanel {
             guard let self else { return }
             let hot = panel.hovered == .custom("3d:toggle", 0)
             PanelDraw.text(c, "3D TRANSFORM", in: CanvasRect(x: r.x, y: r.y, width: r.width - 16, height: r.height),
-                           font: PanelTheme.font(10, .medium), color: hot ? PanelTheme.text2 : PanelTheme.text4)
+                           font: PanelTheme.font(11, .medium), color: hot ? PanelTheme.text2 : PanelTheme.inspectorText)
             let caret = CanvasRect(x: r.maxX - 9, y: r.y + (r.height - 9) / 2, width: 9, height: 9)
-            (self.transform3DOpen ? PanelIcon.groupCaretDown : PanelIcon.groupCaretRight).draw(c, in: caret, color: hot ? PanelTheme.text2 : PanelTheme.text4)
+            (self.transform3DOpen ? PanelIcon.groupCaretDown : PanelIcon.groupCaretRight).draw(c, in: caret, color: hot ? PanelTheme.text2 : PanelTheme.inspectorText)
             panel.addHit(r, .custom("3d:toggle", 0))
         }, pointer: { [weak self] _, _, phase in
             guard let self, phase == 0 else { return }
@@ -142,7 +142,7 @@ extension InspectorPanel {
             }
             panel.addHit(frame, .custom(id, 0))
             let reset = CanvasRect(x: frame.x + frame.width / 2 - 6, y: frame.maxY + 3, width: 12, height: 12)
-            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom(id, 1) ? PanelTheme.text1 : PanelTheme.text4)
+            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom(id, 1) ? PanelTheme.text1 : PanelTheme.inspectorText)
             panel.addHit(reset.insetBy(-3), .custom(id, 1))
         }, pointer: { [weak self] part, p, phase in
             guard let self else { return }

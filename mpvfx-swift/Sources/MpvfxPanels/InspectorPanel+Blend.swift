@@ -52,7 +52,7 @@ extension InspectorPanel {
         if tier != .default {
             let reset = CanvasRect(x: right - 11, y: r.midY - 5.5, width: 11, height: 11)
             let hot = hovered == .custom(Self.blendRowId, 1)
-            PanelIcon.reset.draw(c, in: reset, color: hot ? PanelTheme.text1 : PanelTheme.text3)
+            PanelIcon.reset.draw(c, in: reset, color: hot ? PanelTheme.text1 : PanelTheme.inspectorText)
             addHit(reset.insetBy(-3), .custom(Self.blendRowId, 1))
             right = reset.x - 6
         }

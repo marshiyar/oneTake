@@ -68,7 +68,7 @@ extension InspectorPanel {
 
     func colorHintRow(_ key: String) -> InspectorRow {
         InspectorRow(.custom(InspectorCustomRow(id: "colorHint:\(key)", height: 16, draw: { c, r, _ in
-            PanelDraw.text(c, Self.colorFormatHint, in: r, font: PanelTheme.font(10), color: PanelTheme.red400, align: .right)
+            PanelDraw.text(c, Self.colorFormatHint, in: r, font: PanelTheme.font(11), color: PanelTheme.red400, align: .right)
         })))
     }
 

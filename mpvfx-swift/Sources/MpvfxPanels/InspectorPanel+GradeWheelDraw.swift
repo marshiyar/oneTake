@@ -22,10 +22,10 @@ extension InspectorPanel {
                        wheel w: ColorGrading.Wheel, _ panel: InspectorPanel) {
         let id = set.id
         PanelDraw.text(c, set.labels[i], in: CanvasRect(x: cell.x, y: cell.y, width: cell.width - 24, height: GradeWheelLayout.labelH),
-                       font: PanelTheme.font(10, .medium), color: PanelTheme.text2)
+                       font: PanelTheme.font(11, .medium), color: PanelTheme.text2)
         // The reset glyph (10 px) at the cell's top right, inside a 24 pt target that stays out of the wheel.
         let reset = CanvasRect(x: cell.maxX - 10, y: cell.y + 2.5, width: 10, height: 10)
-        PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom(id, 20 + i) ? PanelTheme.text1 : (w.isNeutral ? PanelTheme.text5 : PanelTheme.text4))
+        PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom(id, 20 + i) ? PanelTheme.text1 : (w.isNeutral ? PanelTheme.inspectorText : PanelTheme.inspectorText))
         panel.addHit(CanvasRect(x: cell.maxX - 24, y: cell.y - 4.5, width: 24, height: 24), .custom(id, 20 + i))
         let wr = l.wheelRect(cell)
         drawWheel(c, wr, w)
@@ -58,30 +58,29 @@ extension InspectorPanel {
     /// knob (8 px white off zero, 7 px text-4 at zero).
     static func drawLevel(_ c: CanvasContext, _ r: CanvasRect, level: Double) {
         let lineY = r.midY - 1, f = (max(-1, min(1, level)) + 1) / 2
-        c.fillRoundedRect(CanvasRect(x: r.x, y: lineY, width: r.width, height: 2), radius: 1, PanelTheme.panelHover)
-        c.fillRect(CanvasRect(x: r.midX - 0.5, y: lineY - 1, width: 1, height: 4), PanelTheme.text5)
+        c.fillRoundedRect(CanvasRect(x: r.x, y: lineY, width: r.width, height: 2), radius: 1, PanelTheme.inspectorControl)
+        c.fillRect(CanvasRect(x: r.midX - 0.5, y: lineY - 1, width: 1, height: 4), PanelTheme.inspectorText)
         let x = r.x + r.width * f, custom = abs(level) > 1e-9
-        if custom { c.fillRect(CanvasRect(x: min(x, r.midX), y: lineY, width: abs(x - r.midX), height: 2), PanelTheme.text5) }
+        if custom { c.fillRect(CanvasRect(x: min(x, r.midX), y: lineY, width: abs(x - r.midX), height: 2), PanelTheme.inspectorText) }
         let k = custom ? 8.0 : 7.0
-        c.fill(.roundedRect(CanvasRect(x: x - k / 2, y: r.midY - k / 2, width: k, height: k), radius: k / 2), custom ? PanelTheme.white : PanelTheme.text4)
+        c.fill(.roundedRect(CanvasRect(x: x - k / 2, y: r.midY - k / 2, width: k, height: k), radius: k / 2), custom ? PanelTheme.white : PanelTheme.inspectorText)
     }
 
     /// A number field: its 10 px label (scrubs the value when dragged) over the mono value on an underline; a click on
     /// the value types into it.
     func drawWheelField(_ c: CanvasContext, _ r: CanvasRect, key: String, label: String, text: String, _ panel: InspectorPanel) {
         let labelRect = CanvasRect(x: r.x, y: r.y, width: r.width, height: GradeWheelLayout.fieldLabelH)
-        PanelDraw.text(c, label, in: labelRect, font: PanelTheme.font(10), color: PanelTheme.text5)
+        PanelDraw.text(c, label, in: labelRect, font: PanelTheme.font(11), color: PanelTheme.inspectorText)
         panel.addHit(labelRect, .scrub(key))
         let box = CanvasRect(x: r.x, y: labelRect.maxY, width: r.width, height: GradeWheelLayout.fieldH)
         let editing = panel.field?.key == key
         var shown = editing ? (panel.field?.draft ?? text) : text
         if let s = panel.scrub, s.key == key, let fmt = panel.number(key)?.scrub?.format { shown = fmt(s.current) }
         if editing { c.fillRect(CanvasRect(x: box.x, y: box.y + 2, width: box.width, height: box.height - 4), PanelTheme.panelInput) }
-        PanelDraw.text(c, shown, in: CanvasRect(x: box.x, y: box.midY - 7, width: box.width - 2, height: 14), font: PanelTheme.mono(10),
+        PanelDraw.text(c, shown, in: CanvasRect(x: box.x, y: box.midY - 7, width: box.width - 2, height: 14), font: PanelTheme.mono(11),
                        color: editing ? PanelTheme.text0 : PanelTheme.text2, align: .right)
-        let hot = panel.hovered == .field(key)
         c.fillRect(CanvasRect(x: box.x, y: box.maxY - 3, width: box.width, height: 1).snapped,
-                   editing ? PanelTheme.accent : PanelTheme.panelBorderInput.withAlpha(hot ? 1 : 0.5))
+                   editing ? PanelTheme.accent : PanelTheme.inspectorControl)
         panel.addHit(box, .field(key))
     }
 }
