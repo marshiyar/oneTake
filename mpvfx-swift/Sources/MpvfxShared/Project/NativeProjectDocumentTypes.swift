@@ -184,6 +184,10 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var text: NativeClipText? = nil
     /// A held source frame (`NativeClipHold`): the clip shows that one frame for its whole length; absent plays the source.
     public var holdSourceFrame: NativeClipHold? = nil
+    /// Fade-in length in project frames from the clip start (`NativeClipFade`); absent means none.
+    public var fadeInFrames: Double? = nil
+    /// Fade-out length in project frames up to the clip end; absent means none.
+    public var fadeOutFrames: Double? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -291,6 +295,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidPlaybackRate = "invalid-playback-rate", invalidBinding = "invalid-binding", duplicateBinding = "duplicate-binding"
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
+    case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {

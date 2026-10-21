@@ -14,12 +14,15 @@
 import Foundation
 import MpvfxShared
 
-/// The color-grading model (color-grading contract v2) as a native
+/// The color-grading model (color-grading contract v3) as a native
 /// value type. Stored on the clip as an effect (`effectId: "color-grading"`, parameters = this object in its
 /// JSON shape), so it rides the existing document schema, undo and save paths.
 public struct ColorGrading: Equatable, Sendable {
     public static let effectId = "color-grading"
-    public static let contractVersion = 2
+    /// Contract 3 (2026-10-21): Warmth and Tint scale the channels instead of offsetting them (issue #172). A new
+    /// grade is written as 3; a stored grade keeps the contract it was graded under (no `version` = 2), so an old
+    /// project's look does not change when one of its grades is edited. Resetting the whole grade starts a new one.
+    public static let contractVersion = 3
     public static let maxCurvePoints = 16, maxSecondaries = 4
     public static let adjustKeys = ["exposure", "contrast", "highlights", "shadows", "whites", "blacks", "temperature", "tint", "vibrance", "saturation"]
     public static let wheelKeys = ["shadows", "midtones", "highlights"]
@@ -45,6 +48,8 @@ public struct ColorGrading: Equatable, Sendable {
         public init(src: String, intensity: Double = 1) { self.src = src; self.intensity = intensity } }
 
     public var enabled = true
+    /// The contract this grade is written under (see `contractVersion`).
+    public var version = ColorGrading.contractVersion
     public var preset: String? = nil
     public var intensity = 1.0
     public var adjust: [String: Double] = [:]
@@ -61,9 +66,15 @@ public struct ColorGrading: Equatable, Sendable {
 
     public init() {}
 
-    public func adjustValue(_ k: String) -> Double { adjust[k] ?? 0 }
-    public func detail(_ k: String) -> Double { details[k] ?? Self.detailDefaults[k] ?? 0 }
+    /// The value the renderer draws: the stored one, else the named preset's, else the contract default
+    /// (`ColorGradeParams` reads a missing key the same way).
+    public func adjustValue(_ k: String) -> Double { adjust[k] ?? presetValues?.adjust[k] ?? 0 }
+    public func detail(_ k: String) -> Double { details[k] ?? presetValues?.details[k] ?? Self.detailDefaults[k] ?? 0 }
     public func wheel(_ k: String) -> Wheel { wheels[k] ?? Wheel() }
+    /// The named preset's values, which fill the keys the grade leaves out; nil for no preset or an unknown name.
+    var presetValues: Preset? { preset.flatMap(Self.preset) }
+    /// A control's own default (what a reset writes): 0 for an adjust key, the contract default for a detail.
+    public static func defaultDetail(_ k: String) -> Double { detailDefaults[k] ?? 0 }
     public func curve(_ k: String) -> [[Double]] { let c = curves[k] ?? []; return c.isEmpty ? [[0, 0], [1, 1]] : c }
     public func hueCurve(_ k: String) -> [[Double]] { hueCurves[k] ?? [] }
 
@@ -93,6 +104,7 @@ public struct ColorGrading: Equatable, Sendable {
         }
         func pts(_ p: [[Double]]) -> NativeJSONValue { .array(p.map { .array($0.map { .number($0) }) }) }
         o["enabled"] = .bool(enabled)
+        o["version"] = .number(Double(version))
         o["preset"] = preset.map { .string($0) } ?? .null
         o["intensity"] = .number(intensity)
         o["adjust"] = num(adjust, keys: Self.adjustKeys)
@@ -134,10 +146,22 @@ public struct ColorGrading: Equatable, Sendable {
             return a.compactMap { p in if case .array(let xy) = p, xy.count == 2, let x = n(xy[0]), let y = n(xy[1]) { return [x, y] }; return nil }
         }
         if case .bool(let b)? = o["enabled"] { enabled = b }
-        if case .string(let s)? = o["preset"] { preset = s }
-        intensity = n(o["intensity"]) ?? 1
-        adjust = nums(o["adjust"])
-        if let w = obj(o["wheels"]) { for k in w.keys { if let x = obj(w[k]) { wheels[k] = Wheel(hue: n(x["hue"]) ?? 0, amount: n(x["amount"]) ?? 0, level: n(x["level"]) ?? 0) } } }
+        // As the renderer reads it (ColorGradeParams): 3 or more is contract 3, anything else (or none) is 2.
+        let v = GradeValues.number(o["version"]) ?? 2
+        version = v.isFinite && v >= 3 ? 3 : 2
+        preset = Self.presetId(o["preset"])
+        // Numbers are read by the renderer's rules (GradeValues): coerced like JS Number(), clamped to the contract,
+        // a null taking the preset's value; keys the grade leaves out stay out and read through the preset.
+        let p = presetValues
+        intensity = GradeValues.intensity(o["intensity"], fallback: p?.intensity ?? 1)
+        adjust = Self.limitedValues(obj(o["adjust"]), keys: Self.adjustKeys, fallback: { p?.adjust[$0] ?? 0 }, GradeValues.adjustLimit)
+        if let w = obj(o["wheels"]) {
+            for k in Self.wheelKeys {
+                guard let x = obj(w[k]) else { continue }
+                wheels[k] = Wheel(hue: GradeValues.wrapDegrees(x["hue"]), amount: GradeValues.limited(x["amount"], fallback: 0, GradeValues.wheelAmountLimit),
+                                  level: GradeValues.limited(x["level"], fallback: 0, GradeValues.wheelLevelLimit))
+            }
+        }
         if let c = obj(o["curves"]) { for k in c.keys { curves[k] = pts(c[k]) } }
         if let c = obj(o["hueCurves"]) { for k in c.keys { hueCurves[k] = pts(c[k]) } }
         if case .array(let a)? = o["secondaries"] {
@@ -154,11 +178,33 @@ public struct ColorGrading: Equatable, Sendable {
                 return s
             }
         }
-        details = nums(o["details"])
+        details = Self.limitedValues(obj(o["details"]), keys: Self.detailKeys, fallback: { p?.details[$0] ?? Self.defaultDetail($0) }, GradeValues.detailLimit)
         effects = nums(o["effects"])
         if case .array(let a)? = o["palette"] { palette = a.compactMap { if case .string(let s) = $0 { return s }; return nil } }
-        if case .string(let s)? = o["lut"] { lut = Lut(src: s) }
-        else if let l = obj(o["lut"]), case .string(let s)? = l["src"] { lut = Lut(src: s, intensity: n(l["intensity"]) ?? 1) }
+        // A blank source is no LUT; the strength is clamped to 0…1 and a non-number reads as 1, as the renderer does.
+        func source(_ s: String) -> String? { let t = s.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t }
+        if case .string(let s)? = o["lut"], let src = source(s) { lut = Lut(src: src) }
+        else if let l = obj(o["lut"]), case .string(let s)? = l["src"], let src = source(s) {
+            lut = Lut(src: src, intensity: GradeValues.number(l["intensity"]).flatMap { $0.isFinite ? min(1, max(0, $0)) : nil } ?? 1)
+        }
+    }
+
+    /// The stored preset id as the renderer reads it: a trimmed string (empty = none) or a number's JS text.
+    static func presetId(_ v: NativeJSONValue?) -> String? {
+        switch v {
+        case .string(let s)?: let t = s.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t
+        case .number(let d)?: return jsNumberString(d)
+        default: return nil
+        }
+    }
+
+    /// The `keys` present in `o`, each read by `GradeValues.limited` with its fallback and limit.
+    static func limitedValues(_ o: NativeJSONObject?, keys: [String], fallback: (String) -> Double,
+                              _ limit: (String) -> ClosedRange<Double>) -> [String: Double] {
+        var out: [String: Double] = [:]
+        guard let o else { return out }
+        for k in keys where o[k] != nil { out[k] = GradeValues.limited(o[k], fallback: fallback(k), limit(k)) }
+        return out
     }
 
     // MARK: Presets (HF_COLOR_GRADING_PRESETS, values ported verbatim; zero/default entries omitted)
