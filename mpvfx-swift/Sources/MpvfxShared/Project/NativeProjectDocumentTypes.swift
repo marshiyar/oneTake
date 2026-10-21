@@ -290,13 +290,13 @@ public extension NativeProjectDocument {
 
     /// The one notice shown when the document holds layers the renderer skips; nil when it has none.
     /// Newer mask records remain serialized but are not rendered by this version.
-    public var unsupportedMaskCount: Int {
+    var unsupportedMaskCount: Int {
         sequence.tracks.reduce(0) { total, track in
             total + track.clips.reduce(0) { $0 + ($1.masks ?? []).filter { !$0.isSupported }.count }
         }
     }
 
-    public var unsupportedMasksNotice: String? {
+    var unsupportedMasksNotice: String? {
         let n = unsupportedMaskCount
         guard n > 0 else { return nil }
         return "\(n) mask\(n == 1 ? "" : "s") from a newer version of the editor \(n == 1 ? "is" : "are") kept in the project but not drawn in preview or export."
