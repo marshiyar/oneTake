@@ -229,37 +229,15 @@ public final class TimelineController {
     /// A press with every modifier: `command` (⌘/Ctrl) adds to the selection like `shift`; on a clip ⌘/Ctrl+⌥ slips it
     /// and ⇧ on an edge rolls the cut (`clipPointerDown`).
     public func pointerDown(x: Double, y: Double, keys: TimelineGestureKeys) {
+        if menuPointerDown(x: x, y: y) { return }
         let shift = keys.shift || keys.command
-        if view.gapMenu != nil { gapMenuClick(x: x, y: y); return }
-        if view.clipMenu != nil { clipMenuClick(x: x, y: y); return }
-        if view.keyframeMenu != nil { keyframeMenuClick(x: x, y: y); return }
         let hit = hitTest(x: x, y: y)
         if tool == .razor, x >= TimelineLayout.contentOrigin, y >= TimelineLayout.rulerHeight {
             razorClick(x: x, hit: hit, shift: shift); return
         }
         // Diamonds sit above the clip body and trim handles (TimelineClipDiamonds z-index 5, pointerdown stops there).
         if let kh = view.keyframeHit(x: x, y: y) { keyframePointerDown(kh, x: x, y: y, shift: shift); return }
-        switch hit {
-        case .ruler:
-            gesture = .scrub; view.scrubbing = true; scrub(to: x)
-        case .empty(let row):
-            // Empty body: click clears (unless additive) and may grow into a marquee; ruler-height strip scrubs.
-            if row == nil && y < TimelineLayout.rulerHeight { gesture = .scrub; view.scrubbing = true; scrub(to: x); break }
-            if !shift { view.selection = [] }
-            marqueeKeyframeBase = shift ? view.selectedKeyframes : []
-            if !shift { view.selectedKeyframes = [] }
-            if x >= TimelineLayout.contentOrigin { gesture = .pendingMarquee(x: x, y: y, base: shift ? view.selection : []) }
-        case .header(let row):
-            if let lc = view.laneControl(atX: x, y: y, track: row) { laneControlClick(clipId: lc.clip.id, lane: lc.lane, control: lc.control); needsDisplay?(); break }
-            headerClick(x: x, y: y, row: row)
-        case let .groupHeader(id, caret):
-            if caret { toggleGroup(id) } else { groupHeaderClick(id, x: x, y: y) }
-        case let .clipExtra(id, _):
-            if view.selectedKeyframes.contains(where: { $0.clipId != id }) { view.selectedKeyframes = [] }
-            if shift { if view.selection.contains(id) { view.selection.remove(id) } else { view.selection.insert(id) } }
-            else { view.selection = [id] }
-        case .clip: clipPointerDown(hit, x: x, y: y, keys: keys)
-        }
+        hitPointerDown(hit, x: x, y: y, keys: keys)
         needsDisplay?()
     }
 

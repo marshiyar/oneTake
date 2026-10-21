@@ -27,7 +27,7 @@ extension TimelineController {
     /// selected and a trim (on an edge, ripple with ⌥) or a move may start. A locked track selects but never edits.
     func clipPointerDown(_ hit: Hit, x: Double, y: Double, keys: TimelineGestureKeys) {
         guard case let .clip(id, row, edge) = hit else { return }
-        if let g = slipRollGesture(hit, x: x, keys: keys) { beginSlipRoll(g, clipId: id); return }
+        if let g = slipRollGesture(hit, x: x, keys: keys) { beginSlipRoll(g, clipId: id, additive: tool == .select); return }
         if keys.shift || keys.command { toggleSelected(id); return }
         if !view.selection.contains(id) { view.selection = [id] }
         // Keyframe selections stay on one clip: pressing another clip's body drops them.
@@ -56,8 +56,10 @@ extension TimelineController {
         return nil
     }
 
-    func beginSlipRoll(_ g: Gesture, clipId: String) {
-        view.selection = [clipId]
+    /// `additive`: the gesture came from a modifier (⇧ edge, ⌘⌥ body) under the select tool, so the press keeps its
+    /// ⇧/⌘-click meaning and toggles the clip in the selection; a press that never drags changes nothing else.
+    func beginSlipRoll(_ g: Gesture, clipId: String, additive: Bool) {
+        if additive { toggleSelected(clipId) } else { view.selection = [clipId] }
         if view.selectedKeyframes.contains(where: { $0.clipId != clipId }) { view.selectedKeyframes = [] }
         gesture = g
         if case .slip = g { cursor = .slip } else { cursor = .roll }
@@ -110,7 +112,15 @@ extension TimelineController {
     }
 
     /// The hover cursor under the slip and roll tools; the roll tool also marks the cut it would roll.
+    /// Redraws when the marked cut moves or goes away, even while the hovered clip and the cursor stay the same.
     func slipRollHover(_ hit: Hit, cursor current: Cursor) -> Cursor {
+        let before = view.rollHover
+        let cursor = slipRollCursor(hit, current)
+        if before?.row != view.rollHover?.row || before?.time != view.rollHover?.time { needsDisplay?() }
+        return cursor
+    }
+
+    private func slipRollCursor(_ hit: Hit, _ current: Cursor) -> Cursor {
         view.rollHover = nil
         guard tool == .slip || tool == .roll, case let .clip(id, row, edge) = hit, !view.tracks[row].locked else { return current }
         if tool == .slip { return .slip }

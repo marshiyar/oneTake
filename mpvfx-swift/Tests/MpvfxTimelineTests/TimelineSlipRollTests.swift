@@ -123,6 +123,11 @@ final class TimelineSlipRollTests: XCTestCase {
         XCTAssertEqual(c.view.drag, .slip(clipId: "clip:a", deltaFrames: 10, sourceShift: 10.0 / 600))
         XCTAssertEqual(c.cursor, .slip)
         XCTAssertEqual(try clip(e, "clip:a").sourceInFrame, 30, "nothing is committed during the drag")
+        let model = try XCTUnwrap(c.view.tracks[1].clips.first { $0.id == "clip:a" })
+        let drawn = c.view.slipPreview(model)
+        XCTAssertEqual(drawn.sourceStartFraction - model.sourceStartFraction, 10.0 / 600, accuracy: 1e-12, "the waveform window moves with the slip")
+        XCTAssertEqual(drawn.sourceEndFraction - model.sourceEndFraction, 10.0 / 600, accuracy: 1e-12)
+        XCTAssertEqual(drawn.start, model.start, "the clip itself is drawn where it is")
         c.pointerUp(x: x(frame: 50), y: Self.rowY)
         XCTAssertEqual(try clip(e, "clip:a").sourceInFrame, 40); XCTAssertEqual(e.undoStack.count, 1)
         XCTAssertNil(c.view.drag)
@@ -218,6 +223,27 @@ final class TimelineSlipRollTests: XCTestCase {
         c.pointerUp(x: x(frame: 132), y: Self.rowY)
         XCTAssertEqual(try clip(e, "clip:a").durationFrames, 132); XCTAssertEqual(try clip(e, "clip:b").startFrame, 132)
         XCTAssertEqual(e.undoStack.count, 1)
+    }
+
+    func testShiftClickOnAnEdgeWithoutDraggingKeepsTheSelection() throws {
+        let (c, e) = try controller()
+        c.view.selection = ["clip:c"]
+        c.pointerDown(x: x(frame: 118), y: Self.rowY, shift: true)   // clip:a's shared end edge
+        c.pointerUp(x: x(frame: 118), y: Self.rowY)
+        XCTAssertEqual(c.view.selection, ["clip:a", "clip:c"], "⇧-click still adds to the selection")
+        XCTAssertTrue(e.undoStack.isEmpty, "no drag, no roll")
+    }
+
+    func testRollHoverRedrawsWhenTheMarkedCutGoesAway() throws {
+        let (c, _) = try controller()
+        c.tool = .roll
+        c.pointerMove(x: x(frame: 118), y: Self.rowY)
+        XCTAssertNotNil(c.view.rollHover)
+        var redraws = 0
+        c.needsDisplay = { redraws += 1 }
+        c.pointerMove(x: x(frame: 2), y: Self.rowY)   // clip:a's start: nothing touches it
+        XCTAssertNil(c.view.rollHover); XCTAssertEqual(c.cursor, .roll, "same clip, same cursor")
+        XCTAssertGreaterThan(redraws, 0, "the stale bracket is repainted away")
     }
 
     func testRollToolHoverMarksTheCutAndAGapEdgePreviewsATrim() throws {
