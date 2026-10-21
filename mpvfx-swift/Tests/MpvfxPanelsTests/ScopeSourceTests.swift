@@ -175,7 +175,7 @@ final class ScopeSourceTests: XCTestCase {
         XCTAssertGreaterThan(program.x, clip.x, "Clip, then Program")
         XCTAssertNotEqual(px(program.x + 2, program.midY), px(clip.x + 2, clip.midY), "\(name): the chosen segment is washed")
         let head = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
-        let box = CanvasRect(x: head.x + 1, y: head.y + 28 + 23.5 + 6 + 1, width: head.width + 26 - 2, height: 100)
+        let box = CanvasRect(x: head.x + 1, y: head.y + 28 + InspectorPanel.scopeTabsHeight + 6 + 1, width: head.width + 26 - 2, height: 100)
         var lit = 0
         for y in stride(from: box.y + 1, to: box.maxY, by: 2) { for x in stride(from: box.x + 1, to: box.maxX, by: 2) {
             if px(x, y).max() ?? 0 > 60 { lit += 1 }
