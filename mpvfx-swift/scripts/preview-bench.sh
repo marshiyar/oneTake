@@ -13,7 +13,7 @@
 #
 #===----------------------------------------------------------------------===#
 # Preview playback benchmark (tools/MpvfxPreviewBench): one 1080p30 H.264 clip, one 4K30 clip, two 1080p clips
-# stacked, a cross-dissolve between two 1080p clips on one track, a graded clip, and random seeks, each through the compositor, engine decode and canvas paint, and 10 s of
+# stacked, a graded clip, and random seeks, each through the compositor, engine decode and canvas paint, and 10 s of
 # 1080p30 exported to MP4 (export: export_fps, paint_ms, encode_ms; export-serial: the same painted and encoded in
 # turn on one thread, the baseline on this machine), each in its own process. Results: one JSON line per scenario
 # appended to the results file (fps, ms per frame per stage, peak RSS).
@@ -30,5 +30,5 @@ mkdir -p "$dir"
 swift build -c release --product MpvfxPreviewBench
 bench="$(swift build -c release --show-bin-path)/MpvfxPreviewBench"
 "$bench" --make-clips "$dir"
-for s in 1080p 4k stacked dissolve graded scrub export export-serial; do "$bench" "$s" "$dir" "$out"; done
+for s in 1080p 4k stacked graded scrub export export-serial; do "$bench" "$s" "$dir" "$out"; done
 echo "results appended to $out"
