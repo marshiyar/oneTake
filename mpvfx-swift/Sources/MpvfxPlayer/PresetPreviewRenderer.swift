@@ -73,13 +73,8 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     /// `pixelHeight` device pixels at most (aspect-fit). Call on the UI thread.
     public func preview(clipId: String, presetId: String, lut: ColorGradeParams.Lut?, time: Double, pixelWidth: Int, pixelHeight: Int,
                         version: Int = ColorGradeParams.currentVersion) -> State {
-        guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
-              let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
-        let c = entry.clip
-        let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
-        let t = max(first, min(last, time))
-        let layer = comp.layer(entry, at: t)
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        guard pixelWidth > 1, pixelHeight > 1, let at = clipFrame(clipId: clipId, time: time) else { return .unavailable }
+        let (comp, layer, t, want) = (at.comp, at.layer, at.time, at.want)
         guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
             return compositor.decodesMedia ? .rendering : .unavailable
         }
@@ -111,13 +106,8 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     /// The selected clip's frame at `time` with its own grade (the scopes' captured frame), at most `pixelWidth` x
     /// `pixelHeight`. Shares the queue, the source lookup and the bounded cache with the preset tiles.
     public func gradedFrame(clipId: String, time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
-        guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
-              let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
-        let c = entry.clip
-        let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
-        let t = max(first, min(last, time))
-        let layer = comp.layer(entry, at: t)
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        guard pixelWidth > 1, pixelHeight > 1, let at = clipFrame(clipId: clipId, time: time) else { return .unavailable }
+        let (comp, layer, t, want) = (at.comp, at.layer, at.time, at.want)
         guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
             return compositor.decodesMedia ? .rendering : .unavailable
         }
@@ -144,9 +134,29 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         return .rendering
     }
 
+    /// The composition entry of `clipId` when it has a picture to decode (not offline: its file is missing).
+    func decodableEntry(_ clipId: String) -> (comp: PreviewComposition, entry: PreviewComposition.Entry)? {
+        guard let comp = compositor.composition,
+              let entry = comp.entries.first(where: { $0.clip.id == clipId && $0.kind != .offline }) else { return nil }
+        return (comp, entry)
+    }
+
+    /// `clipId`'s layer at `time` clamped into the clip, and the frame to decode for it.
+    private func clipFrame(clipId: String, time: Double) -> (comp: PreviewComposition, layer: PreviewLayer, time: Double, want: Int)? {
+        guard let found = decodableEntry(clipId) else { return nil }
+        let (comp, entry) = found
+        let c = entry.clip
+        let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
+        let t = max(first, min(last, time))
+        let layer = comp.layer(entry, at: t)
+        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        return (comp, layer, t, want)
+    }
+
     /// Whether `clipId` has a picture to preview: a visual clip with readable media, and a decoder or a decoded frame.
     public func isAvailable(clipId: String) -> Bool {
-        guard let comp = compositor.composition, let e = comp.entries.first(where: { $0.clip.id == clipId }) else { return false }
+        guard let found = decodableEntry(clipId) else { return false }
+        let (comp, e) = found
         if compositor.decodesMedia { return true }
         let lane = comp.layer(e, at: e.clip.startFrame / comp.fps).laneKey
         return compositor.cache.nearest(lane: lane, to: 0) != nil
