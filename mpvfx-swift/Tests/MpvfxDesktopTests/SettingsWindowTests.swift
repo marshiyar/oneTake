@@ -124,6 +124,41 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertEqual(session.compositor.cache.budgetBytes, 1024 << 20)
     }
 
+    /// Issue #104, acceptance 4: while the card is open the pane that had the keys keeps them in waiting; Escape, or
+    /// Enter on Close, closes the card and the keys go back to that pane.
+    func testClosingSettingsReturnsFocusToThePaneThatHadIt() throws {
+        let userData = try temporaryDirectory()
+        let session = try EditorSession(backend: nil, projectPath: nil, demo: true)
+        defer { session.audio?.stop() }
+        let router = session.installShell(userData: userData) {}
+        let c = PanelMeasureCanvas(), size = CanvasSize(1440, 900)
+        router.draw(c, size: size)
+        let right = try XCTUnwrap(router.frames?.right)
+        let x = right.x + right.width / 2, y = right.y + right.height - 12
+        router.pointerDown(x: x, y: y, button: PointerButton.primary, modifiers: [])
+        router.pointerUp(x: x, y: y)
+        XCTAssertEqual(router.focused, .right)
+        let panel = session.settingsPanel
+
+        session.showSettings()
+        router.draw(c, size: size)
+        XCTAssertTrue(panel.focus.visible, "the card opens with keyboard focus")
+        XCTAssertTrue(router.keyDown(EditorKey(.tab)), "Tab moves inside the card")
+        XCTAssertTrue(panel.isOpen)
+        XCTAssertEqual(router.focused, .right)
+        XCTAssertTrue(router.keyDown(EditorKey(.escape)))
+        XCTAssertFalse(panel.isOpen)
+        XCTAssertEqual(router.focused, .right, "Escape gives the keys back to the pane that had them")
+
+        session.showSettings()
+        router.draw(c, size: size)
+        XCTAssertTrue(router.keyDown(EditorKey(.tab, shift: true)), "back from the first control to Close")
+        XCTAssertEqual(panel.focus.current, .close)
+        XCTAssertTrue(router.keyDown(EditorKey(.enter)))
+        XCTAssertFalse(panel.isOpen)
+        XCTAssertEqual(router.focused, .right, "Enter on Close gives the keys back too")
+    }
+
     func testCtrlCommaOpensSettingsAndChangesPersist() throws {
         let userData = try temporaryDirectory(), root = try temporaryDirectory(), exports = try temporaryDirectory()
         let project = try RuntimeDesktopBackend(userData: userData).createProject(name: "Alpha", directory: root + "/Alpha")
