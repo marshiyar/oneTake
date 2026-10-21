@@ -118,7 +118,8 @@ void outMomWrite(int i, vec4 v) { outMom[i] = v; }
 #define GU_blurOn 63
 #define GU_bloomOn 64
 #define GU_kuwaharaOn 65
-#define GU_COUNT 66
+#define GU_whiteBalanceGains 66
+#define GU_COUNT 67
 #define EK_blur 0
 #define EK_pixelate 1
 #define EK_chromaBleed 2
@@ -599,6 +600,10 @@ inline float hueRangeMask(float hue, float saturation, float4 key) {
     if (softness <= 0.0f) { return 0.0f; }
     return 1.0f - smoothstepf(range, range + softness, hueDistance);
 }
+inline float3 whiteBalanceGain(float temperature, float tint) {
+    float3 g = V3(1.0f + temperature * 0.16f + tint * 0.08f, 1.0f - tint * 0.16f, 1.0f - temperature * 0.16f + tint * 0.08f);
+    return g / lumaOf(g);
+}
 float3 applySecondary(float3 color, int index, int secT) {
     int base = index * 5;
     float4 hueKey = tex1Read(secT, base), satKey = tex1Read(secT, base + 1), lumaKey = tex1Read(secT, base + 2);
@@ -615,9 +620,13 @@ float3 applySecondary(float3 color, int index, int secT) {
     corrected = mix3(V3S(correctedLuma), corrected, FMAX(0.0f, 1.0f + decodeSigned(correction.y)));
     corrected += V3S(decodeSigned(correction.z));
     float temperature = decodeSigned(correction.w), tint = decodeSigned(tintCorrection.x);
-    corrected.x += temperature * 0.08f + tint * 0.04f;
-    corrected.z -= temperature * 0.08f - tint * 0.04f;
-    corrected.y -= tint * 0.08f;
+    if (tintCorrection.y > 0.75f) {
+        corrected *= whiteBalanceGain(temperature, tint);
+    } else {
+        corrected.x += temperature * 0.08f + tint * 0.04f;
+        corrected.z -= temperature * 0.08f - tint * 0.04f;
+        corrected.y -= tint * 0.08f;
+    }
     return mix3(color, corrected, mask);
 }
 float3 applyAdvancedGrade(float3 inColor, P_ALL) {
@@ -683,9 +692,13 @@ float3 applyPrimaryGrade(float3 inColor, int uArg_) {
     float blackPoint = clampf(U(blacks) * 0.18f, -0.18f, 0.18f);
     float whitePoint = clampf(1.0f - U(whites) * 0.18f, 0.82f, 1.18f);
     color = (color - V3S(blackPoint)) / FMAX(whitePoint - blackPoint, 0.2f);
-    color.x += U(temperature) * 0.08f + U(tint) * 0.04f;
-    color.z -= U(temperature) * 0.08f - U(tint) * 0.04f;
-    color.y -= U(tint) * 0.08f;
+    if (U(whiteBalanceGains) > 0.0f) {
+        color *= whiteBalanceGain(U(temperature), U(tint));
+    } else {
+        color.x += U(temperature) * 0.08f + U(tint) * 0.04f;
+        color.z -= U(temperature) * 0.08f - U(tint) * 0.04f;
+        color.y -= U(tint) * 0.08f;
+    }
     color = (color - 0.5f) * FMAX(0.0f, 1.0f + U(contrast)) + 0.5f;
     float satLuma = lumaOf(color);
     float currentSat = clampf(colorSaturation(color), 0.0f, 1.0f);

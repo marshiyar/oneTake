@@ -5,7 +5,7 @@ signing secrets are set; Windows and Linux installers are unsigned (no certifica
 
 | OS | File | What it does | Built by |
 |---|---|---|---|
-| macOS 15+ (Apple silicon) | `MpVFX-<version>-macos-arm64.dmg` | Disk image with `MpVFX.app` and an Applications link: drag to install. The engine libraries are in `MpVFX.app/Contents/Frameworks`. Developer ID signed, hardened runtime, notarized and stapled when the signing secrets are set | `packaging/macos/package.sh` |
+| macOS 15+ (Apple silicon) | `MpVFX-<version>-macos-arm64-developer-verified.dmg` or `…-developer-stamp-unverified.dmg` | Disk image with `MpVFX.app` and an Applications link: drag to install. The engine libraries are in `MpVFX.app/Contents/Frameworks`. Developer ID signed, hardened runtime, notarized and stapled when the signing secrets are set and Apple accepts it: then named and released as *Developer Verified*. Otherwise (no secrets, a pull request, a rejected or locked Apple ID) it still ships, named and released as *Developer Stamp Unverified*; open it the first time with right-click → Open | `packaging/macos/package.sh` |
 | Windows 10/11 x64 | `MpVFX-<version>-windows-x64-setup.exe` | Per-user install to `%LOCALAPPDATA%\Programs\MpVFX` (the engine DLLs next to `MpVFX.exe`), Start menu shortcut, entry in Settings > Apps with an uninstaller. No administrator rights. Unsigned: SmartScreen asks "More info > Run anyway" | `packaging/windows/build-setup.ps1` (IExpress, part of Windows) |
 | Ubuntu/Debian x64 | `mpvfx_<version>+git<time>.<sha>_amd64.deb` | App in `/opt/mpvfx`, the engine libraries in `/usr/lib/mpvfx`, `mpvfx` on PATH, menu entry and icons. Depends are the packages of the system libraries the app and engines link | `packaging/linux/build-deb.sh` |
 
@@ -40,8 +40,10 @@ gives a packaging-only run). Each OS has one build, package and install-smoke jo
 shards (`linux test (…)`, `windows test (…)`, `macos / test (…)`), the same shard list on every OS
 (`.github/ci/test-shards.py`, balanced by measured test time). A shard that passed on an OS is not rerun there while
 every file its tests are built from (and `binaries.lock`) is unchanged (cache entry `<os>-pass-<shard>-<key>`). The
-nightly run ignores every recorded pass and runs all of it. `ci-ok` passes when every job passed or was skipped for a
-recorded pass. Pull requests build and test but never publish. The macOS jobs run on GitHub's `xcode-27` runner with
+nightly run ignores every recorded pass and runs all of it. A pull request builds and tests only the platforms its
+files can affect (`.github/ci/platforms.py`: a Windows-only change never waits for a Mac; anything shared runs all
+three), and the macOS jobs start only after the fast Linux checks passed. `ci-ok` passes when every job passed or was
+skipped for a recorded pass or an unaffected platform. Pull requests build and test but never publish. The macOS jobs run on GitHub's `xcode-27` runner with
 Xcode pinned (`XCODE_VERSION` in `mpvfx-macos.yml`). Each job installs its installer on the runner, launches the
 installed app with a hidden window (the `*-smoke.png` snapshot) with the build tree and the fetched libraries moved
 away, and, on Windows and Linux, uninstalls it again.

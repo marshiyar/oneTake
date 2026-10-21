@@ -20,6 +20,11 @@ import MpvfxTimeline   // EditorKey
 /// `<userData>/preferences.json`: appearance, interface size, audio output device, preview cache size and the default export folder.
 /// The host owns persistence: every change goes out through `onChange` with the new values, and "Choose…" asks the
 /// host for a folder (`onChooseExportFolder`), which answers by setting `values.exportFolder`.
+///
+/// Keyboard (issue #104): the card opens with focus on its first control and the ring showing. Tab / ⇧Tab cycle
+/// Appearance, Audio output, Preview cache, Choose…, Reset and Close without leaving the card; the appearance
+/// segments are one stop, and Left / Right move to and apply the next one. Enter / Space press the focused control
+/// (the lists open with the current choice highlighted, the arrows choose and Enter commits); Escape closes.
 public final class SettingsPanel {
     public struct Values: Equatable {
         public var appearance: ThemeAppearance
@@ -65,12 +70,22 @@ public final class SettingsPanel {
     public let dropdown = PanelDropdown()
     public private(set) var hits = HitMap<Hit>()
     public var hovered: Hit?
+    /// Keyboard focus inside the card and its ring; cleared when the card closes.
+    public var focus = PanelFocus<Hit>()
     private var size = CanvasSize(0, 0)
 
     public init() {}
 
-    public func open() { guard !isOpen else { return }; isOpen = true; hovered = nil; onOpen?() }
-    public func close() { isOpen = false; dropdown.close(); hovered = nil }
+    /// Opens the card with keyboard focus on its first control (the chosen appearance segment, read after `onOpen`
+    /// has refreshed `values`), so a keyboard user can start at once.
+    public func open() {
+        guard !isOpen else { return }
+        isOpen = true; hovered = nil
+        onOpen?()
+        focus = PanelFocus()
+        focus.current = .appearance(values.appearance); focus.visible = true
+    }
+    public func close() { isOpen = false; dropdown.close(); hovered = nil; focus = PanelFocus() }
     public func toggle() { if isOpen { close() } else { open() } }
 
     public static func cacheLabel(_ mb: Int?) -> String {
@@ -135,7 +150,6 @@ public final class SettingsPanel {
         PanelDraw.text(c, "Settings", in: CanvasRect(x: x, y: card.y + 14, width: w - 30, height: 20), font: Self.title, color: PanelTheme.text0)
         let closeR = CanvasRect(x: card.maxX - 12 - PanelTabStrip.buttonSize, y: card.y + 12, width: PanelTabStrip.buttonSize, height: PanelTabStrip.buttonSize)
         PanelTabStrip.iconButton(c, closeR, icon: .close, hovered: hovered == .close)
-        hits.add(closeR, .close)
         PanelDraw.hline(c, x0: card.x + 1, x1: card.maxX - 1, y: card.y + Self.header, PanelTheme.panelBorderInput)
 
         var row = Row(x: x, cx: x + Self.labelW, cw: max(0, w - Self.labelW), y: card.y + Self.header + 12)
@@ -145,6 +159,10 @@ public final class SettingsPanel {
         }
         if let saveError {
             PanelDraw.text(c, saveError, in: CanvasRect(x: x, y: row.y, width: w, height: 16), font: Self.note, color: PanelTheme.danger)
+        }
+        hits.add(closeR, .close)   // recorded after the rows, so Tab reaches Close last
+        if let ring = focus.ringRect(hits), let focused = focus.current {
+            PanelDraw.focusRing(c, ring, radius: Self.ringRadius(focused))
         }
         dropdown.draw(c)
     }
@@ -233,24 +251,29 @@ public final class SettingsPanel {
 
     // MARK: Input (window coordinates). While open the card is modal: it takes every press, move, wheel and key.
 
-    /// True when the press was taken (always while open; a press outside the card closes it).
+    /// True when the press was taken (always while open; a press outside the card closes it). A press hides the
+    /// focus ring and moves focus to the control pressed, so Tab goes on from there.
     public func pointerDown(_ p: CanvasPoint) -> Bool {
         guard isOpen else { return false }
+        focus.pointerPressed()
         if dropdown.isOpen { _ = dropdown.pointerDown(p); return true }
         guard let hit = hits.hit(p) else { close(); return true }
-        press(hit)
+        if hit != .card { focus.current = hit }
+        act(hit)
         return true
     }
 
-    private func press(_ hit: Hit) {
+    /// What a press on `hit` does, by pointer or by Enter / Space on the focused control.
+    private func act(_ hit: Hit) {
         switch hit {
         case .close: close()
-        case .appearance(let a): change(\.appearance, a)
+        case .appearance(let segment): focus.current = .appearance(segment); change(\.appearance, segment)
         case .interfaceSize: openInterfaceSizeList()
         case .audio: openAudioList()
         case .cache: openCacheList()
         case .chooseFolder: onChooseExportFolder?()
-        case .resetFolder: change(\.exportFolder, nil)
+        case .resetFolder:   // Reset goes away once used; focus stays on the row, on Choose…
+            focus.current = .chooseFolder; change(\.exportFolder, nil)
         case .card: break
         }
     }
@@ -263,8 +286,12 @@ public final class SettingsPanel {
     }
 
     private func openAudioList() {
-        let options = [PanelDropdown.Option(value: "", label: "System default")] + devices.map { .init(value: $0.id, label: $0.name) }
-        openDropdown(.audio, options, values.audioDevice ?? "") { [weak self] v in self?.change(\.audioDevice, v.isEmpty ? nil : v) }
+        // Options are spelled out (not `.init`) so complexity tools read these closures as closures.
+        let options = [PanelDropdown.Option(value: "", label: "System default")]
+            + devices.map { PanelDropdown.Option(value: $0.id, label: $0.name) }
+        openDropdown(.audio, options, values.audioDevice ?? "") { [weak self] v in
+            self?.change(\.audioDevice, v.isEmpty ? nil : v)
+        }
     }
 
     private func openInterfaceSizeList() {
@@ -276,8 +303,12 @@ public final class SettingsPanel {
     }
 
     private func openCacheList() {
-        let options = Self.cacheChoicesMB.map { PanelDropdown.Option(value: $0.map(String.init) ?? "", label: Self.cacheLabel($0)) }
-        openDropdown(.cache, options, values.previewCacheMB.map(String.init) ?? "") { [weak self] v in self?.change(\.previewCacheMB, Int(v)) }
+        let options = Self.cacheChoicesMB.map { choice in
+            PanelDropdown.Option(value: choice.map { String($0) } ?? "", label: Self.cacheLabel(choice))
+        }
+        openDropdown(.cache, options, values.previewCacheMB.map { String($0) } ?? "") { [weak self] v in
+            self?.change(\.previewCacheMB, Int(v))
+        }
     }
 
     private func openDropdown(_ hit: Hit, _ options: [PanelDropdown.Option], _ selected: String, _ pick: @escaping (String) -> Void) {
@@ -306,13 +337,77 @@ public final class SettingsPanel {
         return true
     }
 
-    /// Escape closes the open list, then the card. Command shortcuts (save, quit, Cmd/Ctrl+, to close) pass through.
+    /// Escape closes the open list, then the card. Command shortcuts (save, quit, Cmd/Ctrl+, to close) pass through;
+    /// every other key stays with the card, which is modal.
     public func keyDown(_ k: EditorKey) -> Bool {
         guard isOpen else { return false }
-        // A command shortcut closes an open list and goes on to the editor and menus (Cmd/Ctrl+, closes the card).
-        if dropdown.isOpen, k.command { dropdown.close(); return false }
-        if dropdown.isOpen { _ = dropdown.key(k); return true }   // arrows, Enter, Escape closes the list
+        if dropdown.isOpen { return listKey(k) }
         if case .escape = k.code { close(); return true }
-        return !k.command
+        if k.command { return false }
+        cardKey(k)
+        return true
+    }
+
+    /// An open list takes the arrows, Enter (commit) and Escape (close the list) through `PanelDropdown.key`. A
+    /// command shortcut closes it and goes on to the editor and menus (Cmd/Ctrl+, closes the card).
+    /// Tab / ⇧Tab close the list without choosing and move the card's focus on, as from a native list.
+    private func listKey(_ key: EditorKey) -> Bool {
+        if key.command { dropdown.close(); return false }
+        if key.code == .tab { dropdown.close(); moveFocus(forward: !key.shift); return true }
+        if key.isRepeat, key.code == .enter { return true }   // the Enter that opened the list, still held
+        _ = dropdown.key(key)
+        return true
+    }
+
+    private func cardKey(_ key: EditorKey) {
+        switch key.code {
+        case .tab: moveFocus(forward: !key.shift)
+        case .left: stepAppearance(by: -1)
+        case .right: stepAppearance(by: 1)
+        case .enter, .space: if !key.isRepeat { pressFocused() }   // a held key presses once; arrows repeat
+        default: break
+        }
+    }
+
+    /// What Tab stops on: every control, the appearance segments as one stop (the chosen one).
+    static func focusable(_ hit: Hit, appearance: ThemeAppearance) -> Bool {
+        switch hit {
+        case .card: false
+        case .appearance(let segment): segment == appearance
+        default: true
+        }
+    }
+
+    /// The ring follows the control's corners: segments and Close are `radius`, fields and buttons `radiusMd`.
+    static func ringRadius(_ hit: Hit) -> Double {
+        switch hit {
+        case .appearance, .close: PanelTheme.radius
+        default: PanelTheme.radiusMd
+        }
+    }
+
+    /// Tab / ⇧Tab inside the modal card: past the last control focus comes round to the first, and back.
+    private func moveFocus(forward: Bool) {
+        let appearance = values.appearance
+        let focusable = { (hit: Hit) -> Bool in SettingsPanel.focusable(hit, appearance: appearance) }
+        if !focus.move(hits, forward: forward, focusable) { focus.move(hits, forward: forward, focusable) }
+    }
+
+    /// Left / Right on the appearance control move to the neighbouring segment and apply it. The ends hold (Left on
+    /// System stays on System) rather than wrap, so a held arrow never flips the window from Dark back to System.
+    private func stepAppearance(by step: Int) {
+        guard case .appearance(let current)? = focus.current else { return }
+        let choices = ThemeAppearance.allCases
+        guard let index = choices.firstIndex(of: current) else { return }
+        focus.visible = true
+        act(.appearance(choices[min(max(index + step, 0), choices.count - 1)]))
+    }
+
+    /// Enter / Space press the focused control while its ring shows; a list opened this way starts on the current
+    /// choice, as a native list opened from the keyboard does.
+    private func pressFocused() {
+        guard focus.visible, let focused = focus.current else { return }
+        act(focused)
+        if dropdown.isOpen { dropdown.highlightSelected() }
     }
 }

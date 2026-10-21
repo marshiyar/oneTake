@@ -22,7 +22,8 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
 4. **Dense, not cramped.** 12 px body text, 11 px secondary text, 24–28 px rows. Empty space is a sign that a panel
    has nothing to show; show a short hint there instead.
 5. **Time is timecode.** Times read `HH:MM:SS:FF` (or `MM:SS:FF` under an hour) in tabular figures, in the accent
-   colour where the user can scrub them.
+   colour where the user can scrub them. The timeline ruler always reads `HH:MM:SS:FF`, so a minute never looks
+   like an hour ([TIMELINE.md](TIMELINE.md)).
 6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; muted text at least 3:1.
    Light mode keeps the same contrast; its structure is tuned separately (see "Light mode").
 
@@ -83,7 +84,8 @@ Each step is its own pull request, small enough to review on screenshots.
 4. **Track headers** — compact headers with a track tag (`V1`, `A1`) in the accent when targeted, lock, visibility,
    mute and solo, 28 px tall by default.
 5. **Inspector** — label in grey, value in the accent when changed, a stopwatch toggle for animated properties and
-   the previous/add/next keyframe buttons on the same row.
+   the previous/add/next keyframe buttons on the same row. Labels are `text2`, not `text3`: 11 px labels are body
+   text and `text3` stays under 4.5:1 on the inspector's inset. *(done)*
 6. **Timeline extras** — coloured markers on the ruler, timecode on the playhead, audio meters docked beside the
    timeline.
 

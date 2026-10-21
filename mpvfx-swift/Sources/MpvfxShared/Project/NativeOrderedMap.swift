@@ -82,6 +82,7 @@ extension NativeOrderedMap: ExpressibleByDictionaryLiteral {
 extension NativeOrderedMap: Equatable where Value: Equatable {
     public static func == (a: Self, b: Self) -> Bool { a.storage == b.storage }
 }
+extension NativeOrderedMap: Sendable where Value: Sendable {}
 extension NativeOrderedMap: Hashable where Value: Hashable {
     public func hash(into h: inout Hasher) { h.combine(storage) }
 }

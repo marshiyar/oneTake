@@ -91,13 +91,6 @@ reason = "Token is contents: read + security-events: write; nothing uses git aft
 
 [[allow]]
 rule = "persist-credentials"
-workflow = "codeql.yml"
-job = "swift"
-count = 1
-reason = "Token is contents: read + security-events: write; nothing uses git after the checkout. Follow-up PR adds the flag."
-
-[[allow]]
-rule = "persist-credentials"
 workflow = "sentinel.yml"
 job = "repo"
 count = 1

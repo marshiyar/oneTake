@@ -14,7 +14,7 @@
 // Projects native keyframes into the rows the keyframe navigator and inspector show.
 import Foundation
 
-public enum NativeKeyframeUiProperty: String, CaseIterable {
+public enum NativeKeyframeUiProperty: String, CaseIterable, Sendable {
     case x, y, z, rotation, scale, scaleX, scaleY, scaleZ, rotationX, rotationY, transformPerspective, opacity, width, height
 }
 

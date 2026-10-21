@@ -114,6 +114,9 @@ public final class InspectorPanel {
     public var onImportLut: (() -> Void)?
     /// Host hook: the selected clip's current frame graded with a preset, for the Grade preset tiles (nil: no previews).
     public var presetPreview: ((PresetPreviewRequest) -> PresetPreviewState)?
+    /// Host hook: the built-in sample picture graded with a tile's look or effect, for the Effects catalog tiles and
+    /// for preset tiles whose clip has no picture (nil: those tiles show the "No preview renderer" placeholder).
+    public var effectPreview: ((EffectPreviewRequest) -> PresetPreviewState)?
     /// Whether the clip has a picture the preset tiles can show (nil: assume it does).
     public var presetPreviewsAvailable: ((String) -> Bool)?
     /// "Retry look previews" (the host drops what it holds and renders again).
@@ -370,11 +373,11 @@ public final class InspectorPanel {
         switch row.kind {
         case .number(let n): drawNumber(c, r, n, compact: false)
         case .pair(let label, let a, let b):
-            // LayoutGeometryRows, grouped: `space-y-1` heading row (11px text-3, the group's keyframe navigation
+            // LayoutGeometryRows, grouped: `space-y-1` heading row (11px rowLabel, the group's keyframe navigation
             // on the right, h-5) over a `grid-cols-2 gap-2` of compact fields.
             let head = CanvasRect(x: r.x, y: r.y, width: r.width, height: 20)
             PanelDraw.text(c, label, in: CanvasRect(x: head.x, y: head.midY - 8.25, width: head.width, height: 16.5),
-                           font: PanelTheme.font(11), color: PanelTheme.text3)
+                           font: PanelTheme.font(11), color: PanelTheme.rowLabel)
             if let kf = a.keyframe { _ = drawKeyframeNav(c, right: head.maxX, midY: head.midY, key: a.key, kf) }
             let colW = (r.width - 8) / 2, fy = head.maxY + 4
             drawNumber(c, CanvasRect(x: r.x, y: fy, width: colW, height: 30), a, compact: true)
@@ -428,9 +431,9 @@ public final class InspectorPanel {
         return lines
     }
 
-    /// FlatRow (`min-h-[30px]`): 11px label in its tier colour; the value field (`border-b pb-px font-mono`, the
-    /// input's own `text-neutral-100`, `disabled:text-neutral-600`) 146 wide on the right, then the keyframe
-    /// gutter and, for a custom value, the hover reset. Compact (`rounded bg-panel-bg px-1.5 gap-1`): the value
+    /// FlatRow (`min-h-[30px]`): 11px grey label (rowLabel); the value field (`border-b pb-px font-mono`) 146 wide on
+    /// the right, its value in the tier colour (the accent once changed, and while scrubbed; `text-neutral-100` while
+    /// typed; `disabled:text-neutral-600`), then the keyframe gutter and, for a custom value, the hover reset. Compact (`rounded bg-panel-bg px-1.5 gap-1`): the value
     /// fills the field.
     func drawNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, compact: Bool) {
         let isHover = hovered == .field(n.key) || hovered == .scrub(n.key) || hovered == .reset(n.key)
@@ -460,7 +463,8 @@ public final class InspectorPanel {
         if editing, let f = self.field { text = f.draft }
         let tr = CanvasRect(x: field.x, y: field.y, width: field.width, height: 16.5)
         if editing { c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput) }
-        PanelDraw.text(c, text, in: tr, font: font, color: n.disabled ? PanelTheme.neutral600 : PanelTheme.neutral100, align: .right)
+        PanelDraw.text(c, text, in: tr, font: font,
+                       color: n.tier.valueInk(disabled: n.disabled, typing: editing, adjusting: scrub?.key == n.key), align: .right)
         if editing {   // caret after the draft
             c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent)
         }
@@ -527,9 +531,10 @@ public final class InspectorPanel {
         return p
     }
 
-    /// FlatSlider (`min-h-[28px] gap-2.5`): 86px text-3 label, `h-5 flex-1` track (2px bg-panel-hover line; a
+    /// FlatSlider (`min-h-[28px] gap-2.5`): 86px grey label (rowLabel), `h-5 flex-1` track (2px bg-panel-hover line; a
     /// 1×4 text-5 centre tick; a text-5 fill from the left only for a custom value), knob 7px text-4 (8px white
-    /// when custom), `w-11` mono 10 value, `w-3.5` reset slot. An optional settings gear sits 6px after it.
+    /// when custom), `w-11` mono 10 value in the tier colour (the accent once changed, and while dragged;
+    /// `neutral600` when disabled), `w-3.5` reset slot. An optional settings gear sits 6px after it.
     func drawSlider(_ c: CanvasContext, _ r: CanvasRect, _ s: InspectorRow.Slider) {
         var row = r
         if let st = s.settings {
@@ -539,7 +544,7 @@ public final class InspectorPanel {
             hits.add(gear.insetBy(-3), .keyframe(s.key))
             row = CanvasRect(x: r.x, y: r.y, width: r.width - 18, height: r.height)
         }
-        PanelDraw.text(c, s.label, in: CanvasRect(x: row.x, y: row.midY - 8.25, width: 86, height: 16.5), font: PanelTheme.font(11), color: PanelTheme.text3)
+        PanelDraw.text(c, s.label, in: CanvasRect(x: row.x, y: row.midY - 8.25, width: 86, height: 16.5), font: PanelTheme.font(11), color: s.tier.labelColor)
         var right = row.maxX
         if let kf = s.keyframe, s.settings == nil { right = drawKeyframeNav(c, right: right, midY: row.midY, key: s.key, kf) - 10 }
         if s.centerTick || s.reset != nil {
@@ -556,7 +561,7 @@ public final class InspectorPanel {
         let pos = dragging ? sliderDrag!.current : s.position
         let custom = s.tier == .explicitCustom || dragging
         PanelDraw.text(c, dragging ? s.format(pos) : s.display, in: valueRect, font: PanelTheme.mono(10),
-                       color: custom ? PanelTheme.text0 : PanelTheme.text3, align: .right)
+                       color: s.tier.valueInk(disabled: s.disabled, adjusting: dragging), align: .right)
         let track = CanvasRect(x: row.x + 96, y: row.midY - 10, width: max(10, valueRect.x - 10 - (row.x + 96)), height: 20)
         let span = max(1e-9, s.max - s.min)
         let pct = max(0, min(1, (pos - s.min) / span))
@@ -570,9 +575,9 @@ public final class InspectorPanel {
         if !s.disabled { hits.add(track, .slider(s.key)) }
     }
 
-    /// FlatToggle: 24×14 pill, knob 10px (accent on the right when on, text-4 on the left when off).
+    /// FlatToggle: grey label (rowLabel), 24×14 pill, knob 10px (accent on the right when on, text-4 on the left when off).
     func drawToggle(_ c: CanvasContext, _ r: CanvasRect, _ t: InspectorRow.Toggle) {
-        PanelDraw.text(c, t.label, in: r, font: PanelTheme.font(11), color: t.on ? PanelTheme.text2 : PanelTheme.text3)
+        PanelDraw.text(c, t.label, in: r, font: PanelTheme.font(11), color: t.tier.labelColor)
         let sw = CanvasRect(x: r.maxX - 24, y: r.y + (r.height - 14) / 2, width: 24, height: 14)
         c.fillRoundedRect(sw, radius: 7, t.on ? PanelTheme.accent.withAlpha(0.35) : PanelTheme.panelHover)
         let knob = CanvasRect(x: t.on ? sw.maxX - 12 : sw.x + 2, y: sw.y + 2, width: 10, height: 10)
@@ -580,12 +585,12 @@ public final class InspectorPanel {
         hits.add(CanvasRect(x: sw.x - 4, y: r.y, width: sw.width + 4, height: r.height), .toggle(t.key))
     }
 
-    /// FlatSegmentedRow (`min-h-[32px]`): 11px text-3 label; options `gap-0.5`, each `px-1.5 py-1 text-[11px]
+    /// FlatSegmentedRow (`min-h-[32px]`): 11px grey label (rowLabel); options `gap-0.5`, each `px-1.5 py-1 text-[11px]
     /// border-b-2` (16.5 line + 8 + 2): the active one text-0 over a 2px accent underline, the rest text-4
     /// (hover text-2) over a transparent one. No container.
     func drawSegmented(_ c: CanvasContext, _ r: CanvasRect, _ s: InspectorRow.Segmented) {
         let font = PanelTheme.font(11)
-        PanelDraw.text(c, s.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width, height: 16.5), font: font, color: PanelTheme.text3)
+        PanelDraw.text(c, s.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width, height: 16.5), font: font, color: PanelTheme.rowLabel)
         var x = r.maxX
         let bh = 26.5
         for o in s.options.reversed() {
