@@ -21,7 +21,12 @@ import MpvfxRuntime
 private final class ScriptedDialogs: NativeDialogs, @unchecked Sendable {
     var saves: [String?] = [], opens: [[String]] = []
     var saveRequests: [SaveDialogOptions] = [], openRequests: [OpenDialogOptions] = [], opened: [String] = []
-    func showSave(_ options: SaveDialogOptions) async -> String? { saveRequests.append(options); return saves.isEmpty ? nil : saves.removeFirst() }
+    /// Runs while the save dialog is "open": what another program does between the user's choice and the write.
+    var whileSaving: (() -> Void)?
+    func showSave(_ options: SaveDialogOptions) async -> String? {
+        saveRequests.append(options); whileSaving?(); whileSaving = nil
+        return saves.isEmpty ? nil : saves.removeFirst()
+    }
     func showOpen(_ options: OpenDialogOptions) async -> [String] { openRequests.append(options); return opens.isEmpty ? [] : opens.removeFirst() }
     func showError(title: String, message: String) async {}
     func openPath(_ path: String) async { opened.append(path) }
@@ -133,6 +138,19 @@ final class LibraryCommandsTests: XCTestCase {
         _ = try await run(reopened, dialogs, save)
         XCTAssertEqual(try String(contentsOfFile: saved, encoding: .utf8), "encoded-fixture")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: out), ["Final cut.mp4"], "no staged copy left")
+
+        // A file that appears at the extension-added path after the dialog closed was never approved: it is kept. (A
+        // name the dialog returned with its extension was approved by the user and is replaced, as every save dialog
+        // does.)
+        let late = out + "/Late.mp4"
+        dialogs.whileSaving = { FileManager.default.createFile(atPath: late, contents: Data("written meanwhile".utf8)) }
+        dialogs.saves = [out + "/Late"]
+        do { _ = try await run(reopened, dialogs, save); XCTFail("expected an error") }
+        catch {
+            XCTAssertEqual((error as? DesktopError)?.message,
+                           "A file named Late.mp4 already exists there. It was left unchanged; choose another name.")
+        }
+        XCTAssertEqual(try String(contentsOfFile: late, encoding: .utf8), "written meanwhile")
         try await reopened.close()
     }
 }
