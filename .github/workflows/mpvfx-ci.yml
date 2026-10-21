@@ -62,6 +62,9 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.files.outputs.code }}
+      # true: the pull request changes the test jobs OneTake-actionRunners-1 runs from main (mpvfx-ci.yml, its generated
+      # mpvfx-ci-tests-source.yml or source_workflows.py), so every shard runs here, with its own definition.
+      workflow: ${{ steps.files.outputs.workflow }}
     steps:
       - name: Changed files
         id: files
@@ -75,6 +78,9 @@ jobs:
           # Both sides of a rename count: code renamed to a .md name is still a code change.
           gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
           n=$(wc -l < "$RUNNER_TEMP/files.txt")
+          if [ "$n" -ge 3000 ] || grep -qE '^\.github/(workflows/mpvfx-ci(-tests-source)?\.yml|ci/source_workflows\.py)$' "$RUNNER_TEMP/files.txt"; then
+            echo "workflow=true" >> "$GITHUB_OUTPUT"
+          fi
           other=$(grep -vE '\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$' "$RUNNER_TEMP/files.txt" || true)
           if [ "$n" -gt 0 ] && [ "$n" -lt 3000 ] && [ -z "$other" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"; echo "documentation only ($n files): build and tests skipped"
@@ -91,6 +97,10 @@ jobs:
     outputs:
       linux_shards: ${{ steps.pick.outputs.linux }}
       windows_shards: ${{ steps.pick.outputs.windows }}
+      # The shards remote-shards sends to OneTake-actionRunners-1 (names), and their input keys by "<os>/<shard>".
+      remote_linux: ${{ steps.pick.outputs.remote_linux }}
+      remote_windows: ${{ steps.pick.outputs.remote_windows }}
+      remote_keys: ${{ steps.pick.outputs.remote_keys }}
     defaults:
       run:
         shell: bash
@@ -171,10 +181,18 @@ jobs:
           FULL: ${{ github.event_name == 'schedule' || inputs.full_tests == true }}
           LINUX_HITS: ${{ steps.l0.outputs.cache-hit }},${{ steps.l1.outputs.cache-hit }},${{ steps.l2.outputs.cache-hit }},${{ steps.l3.outputs.cache-hit }}
           WINDOWS_HITS: ${{ steps.w0.outputs.cache-hit }},${{ steps.w1.outputs.cache-hit }},${{ steps.w2.outputs.cache-hit }},${{ steps.w3.outputs.cache-hit }}
+          # Shards marked `runners` (test-shards.py RUNNERS) go to OneTake-actionRunners-1 when both App secrets are
+          # set and the commit is this repository's (never a fork's pull request) and does not change the test jobs that
+          # repository runs from main (changes.outputs.workflow); otherwise every shard runs here.
+          APP_ID: ${{ secrets.RUNNERS_APP_ID }}
+          APP_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+          OWN: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.changes.outputs.workflow != 'true' }}
         run: |
           python3 -I -B - <<'PY'
           import json, os
           full = os.environ["FULL"] == "true"
+          remote_ok = bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"
+          print(f"::notice::{'shards marked runners run on OneTake-actionRunners-1' if remote_ok else 'every shard runs here (no RUNNERS_APP_* secrets, or a fork)'}")
           def pick(label, shards, hits):
               hits = os.environ[hits].split(",")
               assert len(hits) == len(shards), f"{label}: {len(shards)} shards, {len(hits)} lookups"
@@ -184,8 +202,18 @@ jobs:
               return run
           linux = pick("linux shard", json.loads(os.environ["LINUX"]), "LINUX_HITS")
           windows = pick("windows shard", json.loads(os.environ["WINDOWS"]), "WINDOWS_HITS")
+          # Each shard runs in exactly one place: here, or on OneTake-actionRunners-1.
+          remote = {o: [s for s in run if remote_ok and s["runners"]] for o, run in (("linux", linux), ("windows", windows))}
+          local = {o: [s for s in run if s not in remote[o]] for o, run in (("linux", linux), ("windows", windows))}
+          keys = {f"{o}/{s['shard']}": s["key"] for o in remote for s in remote[o]}
+          for o in remote:
+              for s in remote[o]:
+                  print(f"::notice::{o} shard {s['shard']}: runs on OneTake-actionRunners-1")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"linux={json.dumps(linux)}\nwindows={json.dumps(windows)}\n")
+              out.write(f"linux={json.dumps(local['linux'])}\nwindows={json.dumps(local['windows'])}\n")
+              out.write(f"remote_linux={json.dumps([s['shard'] for s in remote['linux']])}\n")
+              out.write(f"remote_windows={json.dumps([s['shard'] for s in remote['windows']])}\n")
+              out.write(f"remote_keys={json.dumps(keys)}\n")
           PY
 
   checks:
@@ -357,7 +385,7 @@ jobs:
           FILTER: ${{ matrix.filter }}
           SKIP: ${{ matrix.skip }}
         # In batches: the selected tests reach the XCTest runner as one argument, which has a length limit.
-        run: python3 -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+        run: python3 -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit "${PIPESTATUS[0]}"
       - name: Test counts
         if: always()
         run: grep -E "^shard:|Test Suite 'All tests' (passed|failed)" -A1 "$RUNNER_TEMP/test.log" | grep -E "^shard:|Executed" || true
@@ -516,7 +544,7 @@ jobs:
         env:
           FILTER: ${{ matrix.filter }}
           SKIP: ${{ matrix.skip }}
-        run: python -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+        run: python -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit "${PIPESTATUS[0]}"
       - name: Test counts
         if: always()
         run: grep -E "^shard:|Test Suite 'All tests' (passed|failed)" -A1 "$RUNNER_TEMP/test.log" | grep -E "^shard:|Executed" || true
@@ -534,9 +562,84 @@ jobs:
           path: mpvfx-swift/.build
           key: windows-debug-${{ github.sha }}
 
+  remote-shards:
+    # The test shards the plan job marked for OneTake-app/OneTake-actionRunners-1 (test-shards.py RUNNERS: three Linux
+    # shards; Windows none yet): one repository_dispatch `onetake-test-shards` with their names and this commit. That
+    # repository calls mpvfx-ci-tests-source.yml (linux-test, generated by .github/ci/source_workflows.py) and
+    # sets one commit status per shard on the head commit, `<os> test (<shard>) (runners-1)`, each naming this run.
+    # This job waits for those statuses (.github/ci/remote_shards.py, one read a minute) and fails when one fails,
+    # errors or has not reported by its deadline, so ci-ok still requires every shard. A pass is then recorded under
+    # the shard's input key here, exactly as linux-test records its own. Never runs for a fork or
+    # without both RUNNERS_APP_* secrets: the plan job then keeps every shard here.
+    needs: plan
+    if: needs.plan.result == 'success' && (needs.plan.outputs.remote_linux != '[]' || needs.plan.outputs.remote_windows != '[]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50   # a shard's 30, its build without a cache, and a margin for the other pool's queue
+    permissions:
+      contents: read
+      statuses: read
+    steps:
+      - name: Runners App token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RUNNERS_APP_ID }}
+          private-key: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+          owner: OneTake-app
+          repositories: OneTake-actionRunners-1
+          permission-contents: write   # repository_dispatch needs it
+      - name: Send the shards to OneTake-actionRunners-1
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SHA: ${{ github.sha }}   # the commit linux-test and windows-test check out (a pull request's merge commit)
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}   # the commit that carries the statuses
+          RUN: ${{ github.run_id }}/${{ github.run_attempt }}
+          LINUX: ${{ needs.plan.outputs.remote_linux }}
+          WINDOWS: ${{ needs.plan.outputs.remote_windows }}
+        run: |
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$SHA" --arg head "$HEAD" --arg run "$RUN" \
+            --argjson linux "$LINUX" --argjson windows "$WINDOWS" \
+            '{event_type: "onetake-test-shards", client_payload: {repository: $repo, sha: $sha, head: $head, run: $run, linux: $linux, windows: $windows}}' |
+            gh api -X POST repos/OneTake-app/OneTake-actionRunners-1/dispatches --input -
+          echo "linux $LINUX and windows $WINDOWS run on OneTake-app/OneTake-actionRunners-1 (run $RUN)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github
+          persist-credentials: false
+      - name: Wait for every shard's status
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN: ${{ github.run_id }}/${{ github.run_attempt }}
+          LINUX: ${{ needs.plan.outputs.remote_linux }}
+          WINDOWS: ${{ needs.plan.outputs.remote_windows }}
+        run: python3 -I -B -u .github/ci/remote_shards.py --minutes 45 | tee -a "$GITHUB_STEP_SUMMARY"; exit "${PIPESTATUS[0]}"
+      - name: Pass record
+        env:
+          RUN: ${{ github.run_id }}/${{ github.run_attempt }}
+        run: mkdir -p mpvfx-swift && echo "passed on OneTake-app/OneTake-actionRunners-1 for oneTake run $RUN" > mpvfx-swift/.test-pass
+      - name: Record the pass of linux library
+        if: contains(fromJSON(needs.plan.outputs.remote_linux), 'library')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-library-${{ fromJSON(needs.plan.outputs.remote_keys)['linux/library'] }}
+      - name: Record the pass of linux audio-presets
+        if: contains(fromJSON(needs.plan.outputs.remote_linux), 'audio-presets')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-audio-presets-${{ fromJSON(needs.plan.outputs.remote_keys)['linux/audio-presets'] }}
+      - name: Record the pass of linux audio-live
+        if: contains(fromJSON(needs.plan.outputs.remote_linux), 'audio-live')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-audio-live-${{ fromJSON(needs.plan.outputs.remote_keys)['linux/audio-live'] }}
+
   macos-runners:
-    # The organization OneTake-app has its own pool of GitHub-hosted runners, with its own macOS slots. A push to main
-    # or a pull request labelled `macos` sends its macOS build there: a repository_dispatch to OneTake-actionRunners-1,
+    # The organization OneTake-app has its own pool of GitHub-hosted runners, with its own macOS slots. A push to main,
+    # the nightly run (every shard, kind nightly) or a pull request labelled `macos` sends its macOS build there: a repository_dispatch to OneTake-actionRunners-1,
     # which calls mpvfx-macos.yml on this commit, reports the commit status `macos (runners-1)` here and, for main,
     # uploads the disk image into this commit's nightly release. Without the RUNNERS_APP_* secrets (a fork, or before
     # they are set) nothing is sent and the macos job below builds here instead. Fork pull requests are never sent:
@@ -544,7 +647,7 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.code == 'true'
-      && ((github.event_name == 'push' && github.ref == 'refs/heads/main')
+      && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule'
       || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')
       && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
@@ -575,14 +678,15 @@ jobs:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           KIND: ${{ github.event_name == 'pull_request' && 'pr' || 'nightly' }}
+          FULL: ${{ github.event_name == 'schedule' }}   # the nightly run tests every shard, as it does here
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::notice::RUNNERS_APP_ID is not set: macOS builds on this repository's runners"
             echo "sent=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$SHA" --arg kind "$KIND" --arg run "$RUN_URL" \
-            '{event_type: "onetake-macos", client_payload: {repository: $repo, sha: $sha, kind: $kind, run: $run}}' |
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$SHA" --arg kind "$KIND" --arg run "$RUN_URL" --arg full "$FULL" \
+            '{event_type: "onetake-macos", client_payload: {repository: $repo, sha: $sha, kind: $kind, run: $run, full: $full}}' |
             gh api -X POST repos/OneTake-app/OneTake-actionRunners-1/dispatches --input -
           echo "sent=true" >> "$GITHUB_OUTPUT"
           echo "macOS for $SHA runs on OneTake-app/OneTake-actionRunners-1 (status: macos (runners-1))" >> "$GITHUB_STEP_SUMMARY"
@@ -591,7 +695,7 @@ jobs:
     # Owner ruling 2026-10-21: macOS never holds the other platforms back. The macOS runners (xcode-27) are scarce and
     # queued jobs sat for an hour before being cancelled, so a pull request builds macOS only when it carries the
     # `macos` label. Main and labelled pull requests go to OneTake-actionRunners-1 (macos-runners) and build here only
-    # when that hand-off was not sent; the nightly run, tags and a dispatch always build here.
+    # when that hand-off was not sent, and so does the nightly run; tags and a dispatch always build here.
     needs: [changes, macos-runners]
     if: >-
       always() && needs.changes.outputs.code == 'true'
@@ -604,7 +708,7 @@ jobs:
 
   ci-ok:
     # The one required check: every job passed or was skipped on purpose.
-    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos-runners, macos]
+    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, remote-shards, macos-runners, macos]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -614,6 +718,7 @@ jobs:
           REQUIRED: >-
             ${{ needs.changes.result }} ${{ needs.plan.result }} ${{ needs.checks.result }} ${{ needs.linux.result }}
             ${{ needs.linux-test.result }} ${{ needs.windows.result }} ${{ needs.windows-test.result }}
+            ${{ needs.remote-shards.result }}
           MACOS: ${{ needs.macos-runners.result }} ${{ needs.macos.result }}
         run: |
           echo "required job results: $REQUIRED; macos-runners, macos: $MACOS"
@@ -627,7 +732,7 @@ jobs:
           done
 
   publish:
-    needs: [plan, checks, linux, linux-test, windows, windows-test]
+    needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards]
     # Only main (nightly prerelease) and v* tags publish; publish.sh decides which release.
     # Owner ruling 2026-10-21: no OS holds another back. Linux and Windows publish as soon as they pass, without waiting
     # for a macOS runner; publish-macos adds the disk image to the same release when the macOS job finishes. A stable
@@ -642,12 +747,16 @@ jobs:
     permissions:
       contents: write
     env:
+      # An OS passed when its build and every shard did: those here (linux-test, windows-test) and those sent to
+      # OneTake-actionRunners-1 (remote-shards; it is not needed only when nothing of that OS was sent).
       LINUX_OK: >-
         ${{ needs.linux.result == 'success' && (needs.linux-test.result == 'success'
-        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]')) }}
+        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_linux == '[]') }}
       WINDOWS_OK: >-
         ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
-        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]')) }}
+        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_windows == '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -683,7 +792,7 @@ jobs:
     # After publish (so the two never race to create the release), whatever publish's result: on main and prerelease
     # tags it uploads the macOS disk image into the same release; on a stable v<X.Y.Z> tag it publishes every OS at
     # once and fails unless all of them passed.
-    needs: [plan, checks, linux, linux-test, windows, windows-test, macos, publish]
+    needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards, macos, publish]
     if: >-
       always() && github.event_name != 'pull_request'
       && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
@@ -695,12 +804,16 @@ jobs:
       contents: write
     env:
       STABLE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+      # An OS passed when its build and every shard did: those here (linux-test, windows-test) and those sent to
+      # OneTake-actionRunners-1 (remote-shards; it is not needed only when nothing of that OS was sent).
       LINUX_OK: >-
         ${{ needs.linux.result == 'success' && (needs.linux-test.result == 'success'
-        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]')) }}
+        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_linux == '[]') }}
       WINDOWS_OK: >-
         ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
-        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]')) }}
+        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_windows == '[]') }}
       MACOS_OK: ${{ needs.macos.result == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
