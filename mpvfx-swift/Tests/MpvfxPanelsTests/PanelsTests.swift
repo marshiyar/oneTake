@@ -67,8 +67,8 @@ final class ShortcutsPanelTests: XCTestCase {
     let trigger = CanvasRect(x: 300, y: 360, width: 28, height: 28)
     func testSectionsMatchSource() {
         XCTAssertEqual(shortcutSections.map(\.title), ["Playback", "Keyframes (when an element is selected)", "Editing", "Gesture recording modifiers", "Canvas", "Crop", "Panels", "Work area"])
-        // Editing gained ⇧H and ⌥⇧H (Hold frame, issue #292): 10 + 2.
-        XCTAssertEqual(shortcutSections.reduce(0) { $0 + $1.hints.count }, 9 + 7 + 12 + 6 + 3 + 2 + 2 + 6)
+        // Editing gained ⇧H and ⌥⇧H (Hold frame, issue #292): 12 + 2.
+        XCTAssertEqual(shortcutSections.reduce(0) { $0 + $1.hints.count }, 9 + 10 + 14 + 6 + 4 + 2 + 2 + 6)
         let editing = shortcutSections.first { $0.title == "Editing" }?.hints.map(\.key) ?? []
         XCTAssertTrue(editing.contains("⇧H") && editing.contains("⌥⇧H"), "\(editing)")
         XCTAssertEqual(formatPanelTime(44.9), "00:44"); XCTAssertEqual(formatPanelTime(7200), "120:00"); XCTAssertEqual(formatPanelTime(-1), "00:00")

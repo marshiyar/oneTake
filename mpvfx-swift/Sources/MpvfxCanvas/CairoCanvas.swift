@@ -96,12 +96,46 @@ public final class CairoCanvas: CanvasContext {
     public func drawImage(_ image: CanvasImage, in rect: CanvasRect) { drawImage(image, in: rect, opacity: 1) }
 
     public func drawImage(_ image: CanvasImage, in rect: CanvasRect, opacity: Double) {
-        guard image.width > 0, image.height > 0, opacity > 0 else { return }
-        let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, Int32(image.width), Int32(image.height))!
-        defer { cairo_surface_destroy(surface) }
+        guard image.width > 0, image.height > 0, opacity > 0,
+              let converted = image.drawable(CairoImageSurface.self, make: { CairoImageSurface(image) }) else { return }
+        let surface = converted.surface
+        cairo_save(cr)
+        cairo_rectangle(cr, rect.x, rect.y, rect.width, rect.height)
+        cairo_clip(cr)
+        cairo_translate(cr, rect.x, rect.y)
+        cairo_scale(cr, rect.width / Double(image.width), rect.height / Double(image.height))
+        cairo_set_source_surface(cr, surface, 0, 0)
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD)
+        // Edge pixels extend instead of fading to transparent at the image border when scaled.
+        cairo_pattern_set_extend(cairo_get_source(cr), CAIRO_EXTEND_PAD)
+        if opacity >= 1 { cairo_paint(cr) } else { cairo_paint_with_alpha(cr, opacity) }
+        cairo_restore(cr)
+    }
+}
+
+/// A `CanvasImage` as a premultiplied native-endian ARGB32 cairo image surface, made once per image and painted by
+/// every draw of it (and of its copies).
+public final class CairoImageSurface: CanvasDrawable {
+    public let surface: OpaquePointer
+    public let byteCount: Int
+
+    /// Nil when cairo cannot make the surface (out of memory, a size cairo refuses).
+    init?(_ image: CanvasImage) {
+        guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, Int32(image.width), Int32(image.height)) else { return nil }
+        guard cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS, let data = cairo_image_surface_get_data(surface) else {
+            cairo_surface_destroy(surface); return nil
+        }
+        self.surface = surface
         cairo_surface_flush(surface)
         let stride = Int(cairo_image_surface_get_stride(surface))
-        let data = cairo_image_surface_get_data(surface)!
+        byteCount = stride * image.height
+        Self.premultiply(image, into: data, stride: stride)
+        cairo_surface_mark_dirty(surface)
+    }
+    deinit { cairo_surface_destroy(surface) }
+
+    /// Straight RGBA8 -> premultiplied ARGB32 rows (the conversion every draw did before #95, unchanged).
+    static func premultiply(_ image: CanvasImage, into data: UnsafeMutablePointer<UInt8>, stride: Int) {
         let w = image.width
         image.rgba.withUnsafeBytes { src in
             for y in 0..<image.height {
@@ -120,18 +154,6 @@ public final class CairoCanvas: CanvasContext {
                 }
             }
         }
-        cairo_surface_mark_dirty(surface)
-        cairo_save(cr)
-        cairo_rectangle(cr, rect.x, rect.y, rect.width, rect.height)
-        cairo_clip(cr)
-        cairo_translate(cr, rect.x, rect.y)
-        cairo_scale(cr, rect.width / Double(image.width), rect.height / Double(image.height))
-        cairo_set_source_surface(cr, surface, 0, 0)
-        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD)
-        // Edge pixels extend instead of fading to transparent at the image border when scaled.
-        cairo_pattern_set_extend(cairo_get_source(cr), CAIRO_EXTEND_PAD)
-        if opacity >= 1 { cairo_paint(cr) } else { cairo_paint_with_alpha(cr, opacity) }
-        cairo_restore(cr)
     }
 }
 

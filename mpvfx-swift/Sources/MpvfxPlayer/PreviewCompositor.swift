@@ -138,18 +138,18 @@ public final class PreviewCompositor: FrameSource {
             let want = layer.isStill ? PreviewDecodeLane.stillFrame : frame
             if let img = cache.frame(lane: layer.laneKey, frame: want) {
                 let g = shownImage(layer, img, frame: want, time: time, fps: comp.fps, target: size)
-                PreviewPainter.draw(layer, image: g.image, on: c, frame: rect, scale: s)
+                draw(layer, raw: img, shown: g.image, shownIsCurrent: g.current, on: c, frame: rect, scale: s, context: context)
                 shown.append(Shown(clipId: layer.clipId, frame: want, exact: true, grade: g.grade, gradeCurrent: g.current))
             } else if let held = cache.nearest(lane: layer.laneKey, to: want) {
                 let g = shownImage(layer, held.image, frame: held.frame, time: time, fps: comp.fps, target: size)
-                PreviewPainter.draw(layer, image: g.image, on: c, frame: rect, scale: s)
+                draw(layer, raw: held.image, shown: g.image, shownIsCurrent: g.current, on: c, frame: rect, scale: s, context: context)
                 shown.append(Shown(clipId: layer.clipId, frame: held.frame, exact: false, grade: g.grade, gradeCurrent: g.current))
                 heldFrames += 1
             } else if let prev = shownLane[layer.clipId], prev != layer.laneKey,
                       let held = cache.frame(lane: prev, frame: want).map({ (frame: want, image: $0) }) ?? cache.nearest(lane: prev, to: want) {
                 // A trim or retime starts a new lane: keep showing the previous frames until the new ones are decoded.
                 let g = shownImage(layer, held.image, frame: held.frame, time: time, fps: comp.fps, target: size, lane: prev)
-                PreviewPainter.draw(layer, image: g.image, on: c, frame: rect, scale: s)
+                draw(layer, raw: held.image, shown: g.image, shownIsCurrent: g.current, on: c, frame: rect, scale: s, context: context)
                 shown.append(Shown(clipId: layer.clipId, frame: held.frame, exact: false, grade: g.grade, gradeCurrent: g.current))
                 heldFrames += 1
                 continue
@@ -178,13 +178,34 @@ public final class PreviewCompositor: FrameSource {
             }
         }
         for (k, lane) in lanes where !used.contains(k) { lane.stop(); lanes[k] = nil }
-        lastShown = shown
+        lastShown = shown; cache.fitBudget(); grader.fitBudget()   // the caches count drawables this draw made
 
         // Element clips (no media of their own) keep their labelled box; video/image clips whose file is missing
         // draw nothing, like a media element with an unreadable source.
         let mediaIds = Set(layers.map(\.clipId))
         let rest = elements.filter { !mediaIds.contains($0.id) && $0.kind == .element }
         if !rest.isEmpty { PlaceholderFrameSource.drawBoxes(c, rest) }
+    }
+
+    /// Compare is a presentation-only wipe. Both halves use the same cached decoded image; only the right half
+    /// asks `PreviewGrader` for the current look, so moving the divider cannot create or restart a decode lane.
+    func draw(_ layer: PreviewLayer, raw: CanvasImage, shown: CanvasImage, shownIsCurrent: Bool = true,
+              on c: CanvasContext, frame: CanvasRect, scale: Double, context: FrameDrawContext) {
+        guard context.compareClipId == layer.clipId else {
+            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+        }
+        let split = frame.x + frame.width * max(0, min(1, context.comparePosition))
+        // A completed grade from a previous request is useful during normal playback, but must never be paired
+        // with a different raw source frame in Compare. Until this frame's grade completes, show it raw on both sides.
+        let after = shownIsCurrent ? shown : raw
+        c.withState {
+            c.clip(CanvasRect(x: frame.x, y: frame.y, width: max(0, split - frame.x), height: frame.height))
+            PreviewPainter.draw(layer, image: raw, on: c, frame: frame, scale: scale)
+        }
+        c.withState {
+            c.clip(CanvasRect(x: split, y: frame.y, width: max(0, frame.maxX - split), height: frame.height))
+            PreviewPainter.draw(layer, image: after, on: c, frame: frame, scale: scale)
+        }
     }
 
     func decodeSize(_ layer: PreviewLayer, scale s: Double, backing: Double) -> PreviewDecodeSize {

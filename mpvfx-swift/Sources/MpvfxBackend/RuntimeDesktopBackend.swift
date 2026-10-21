@@ -32,6 +32,8 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     private let lock = NSLock()
     private var stores: [String: ProjectDocumentStore] = [:]
     private var watchers: [String: ProjectDocumentWatcher] = [:]
+    /// Each watch's receiver, so a relocated project keeps being watched (`relocateProject`). Guarded by `lock`.
+    private var watchHandlers: [String: @Sendable (DesktopProjectEvent) -> Void] = [:]
     private let recents: RecentProjects
     private var closed = false
     private let bridge: LibraryBridge
@@ -131,15 +133,55 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     }
 
     public func closeProject(id: String) {
-        let w = lock.withLock { () -> ProjectDocumentWatcher? in stores[id] = nil; return watchers.removeValue(forKey: id) }
+        let w = lock.withLock { () -> ProjectDocumentWatcher? in
+            stores[id] = nil; watchHandlers[id] = nil
+            return watchers.removeValue(forKey: id)
+        }
         w?.stop()
     }
 
     public func watchProject(id: String, onExternalChange: @escaping @Sendable (String) -> Void) throws {
+        try watchProjectEvents(id: id) { event in if case .changed(let text) = event { onExternalChange(text) } }
+    }
+
+    public func watchProjectEvents(id: String, onEvent: @escaping @Sendable (DesktopProjectEvent) -> Void) throws {
         let s = try store(id)
-        let watcher = ProjectDocumentWatcher(store: s, onChange: onExternalChange)
+        lock.withLock { watchHandlers[id] = onEvent }
+        startWatching(id, s, onEvent)
+    }
+
+    private func startWatching(_ id: String, _ s: ProjectDocumentStore, _ onEvent: @escaping @Sendable (DesktopProjectEvent) -> Void) {
+        let watcher = ProjectDocumentWatcher(store: s) { (event: ProjectDocumentEvent) in
+            switch event {
+            case .changed(let text): onEvent(.changed(text))
+            case .missing: onEvent(.missing)
+            }
+        }
         let old = lock.withLock { () -> ProjectDocumentWatcher? in defer { watchers[id] = watcher }; return watchers[id] }
         old?.stop()
+    }
+
+    /// The project `id` now lives at `path` (its folder was moved while open): a store opened there replaces the old one
+    /// under the same id, the watch follows it and the recent list records the new folder. The document there is
+    /// returned as found; the caller decides whether its own edits may be saved over it.
+    public func relocateProject(id: String, to path: String) throws -> DesktopProject {
+        try checkOpen()
+        let old = try store(id)
+        let dir = realPath(try mapErrors { try ProjectDocuments.projectDirectory(for: path) })
+        if lock.withLock({ stores.contains { $0.key != id && $0.value.directory == dir } }) {
+            throw DesktopError("\(dir) is already open in MpVFX")
+        }
+        let moved = try access.runBlocking(dir) { try mapErrors { try ProjectDocumentStore.open(dir, durableWrite: durableWrite) } }
+        let handler = lock.withLock { () -> (@Sendable (DesktopProjectEvent) -> Void)? in
+            stores[id] = moved
+            return watchHandlers[id]
+        }
+        if let handler { startWatching(id, moved, handler) }
+        do {
+            if old.directory != moved.directory { try recents.remove(old.directory) }
+            try recents.add(moved.directory)
+        } catch { FileHandle.standardError.write(Data("[MpVFX] could not update recent projects: \(error)\n".utf8)) }
+        return DesktopProject(id: id, directory: moved.directory, content: moved.savedContent)
     }
 
     private func summary(_ p: ProjectSummary, library: String? = nil) -> DesktopProjectSummary {
@@ -237,6 +279,19 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     public func duplicateMedia(projectId: String, path: String) throws -> String {
         let s = try store(projectId)
         return try exclusive(s) { try duplicateProjectMedia(s.directory, path, durableWrite: durableWrite) }
+    }
+
+    // MARK: Captions
+
+    public func importCaptions(projectId: String, path: String, content: String) throws -> DesktopCaptionImport {
+        let s = try store(projectId)
+        let r = try exclusive(s) { try s.importCaptions(fromSRT: path, content: content) }
+        return DesktopCaptionImport(content: r.content, cueCount: r.cueCount)
+    }
+
+    public func exportCaptions(projectId: String, path: String, content: String) throws -> Int {
+        let s = try store(projectId)
+        return try exclusive(s) { try s.exportCaptions(toSRT: path, content: content) }
     }
 
     // MARK: Libraries
@@ -436,7 +491,7 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     static func desktopError(_ error: Error) -> DesktopError {
         switch error {
         case let e as DesktopError: return e
-        case let e as ProjectDocumentError: return DesktopError(e.message, name: e.kind == .conflict ? "ConflictError" : "Error")
+        case let e as ProjectDocumentError: return DesktopError(e.message, name: desktopErrorName(e.kind))
         case let e as ProjectMediaOperationError:
             return DesktopError(e.message, name: e.kind == .inUse ? "MediaInUseError" : e.kind == .exists ? "ConflictError" : "Error")
         case let e as ProjectsError: return DesktopError(e.message)
@@ -444,6 +499,15 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         case let e as LibraryError: return DesktopError(e.message)
         default: return DesktopError("\(error)")
         }
+    }
+}
+
+/// The `DesktopError.name` the editor dispatches on for a document error.
+func desktopErrorName(_ kind: ProjectDocumentError.Kind) -> String {
+    switch kind {
+    case .conflict: return "ConflictError"
+    case .missing: return DesktopError.projectMovedName
+    case .notAProject, .alreadyExists, .invalidDocument: return "Error"
     }
 }
 

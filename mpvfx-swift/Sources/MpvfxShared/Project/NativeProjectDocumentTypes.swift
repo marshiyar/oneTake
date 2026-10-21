@@ -166,6 +166,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var startFrame: Double; public var durationFrames: Double; public var sourceInFrame: Double
     public var sourceInFraction: NativePlaybackRate?
     public var playbackRate: NativePlaybackRate?
+    /// Optional non-linear clip time map. Absent retains the legacy constant `playbackRate` path.
+    public var speedRamp: NativeSpeedRamp? = nil
     /// False plays a sped-up or slowed clip's sound at a pitch that follows the speed; absent or true keeps the pitch.
     public var preservesPitch: Bool? = nil
     /// Required on the document; optional only on input (NativeProjectDocumentInput).
@@ -184,6 +186,9 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var text: NativeClipText? = nil
     /// A held source frame (`NativeClipHold`): the clip shows that one frame for its whole length; absent plays the source.
     public var holdSourceFrame: NativeClipHold? = nil
+    /// How a media clip's picture fills its box (the inspector's Fit row); absent means Fit, the contain fit every
+    /// clip had before the option existed. Text clips ignore it.
+    public var fit: NativeMediaFit? = nil
     /// Fade-in length in project frames from the clip start (`NativeClipFade`); absent means none.
     public var fadeInFrames: Double? = nil
     /// Fade-out length in project frames up to the clip end; absent means none.
@@ -245,6 +250,9 @@ public extension NativeAudioGroup {
 public struct NativeProjectSequence: Codable, Equatable, Sendable {
     public var id: String; public var name: String; public var durationFrames: Double?
     public var audioGroups: [NativeAudioGroup]?; public var tracks: [NativeProjectTrack]
+    /// The caption track (`NativeCaptionTrack.swift`); absent in a project without captions and in every project
+    /// written before captions existed, which open unchanged.
+    public var captions: NativeCaptionTrack? = nil
 }
 
 /// The timeline kind a document stores in `mediaEngine`. Every document is a native timeline drawn by the Swift
@@ -263,6 +271,8 @@ public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var id: String; public var revision: Double
     public var frameRate: RationalFrameRate; public var canvas: NativeCanvas
     public var assets: [NativeProjectAsset]; public var sequence: NativeProjectSequence
+    /// The Easing panel's custom presets for this project (NativeEasingPreset.swift); nil writes no key.
+    public var easingPresets: [NativeEasingPreset]? = nil
 }
 
 public extension NativeProjectDocument {
@@ -278,13 +288,34 @@ public extension NativeProjectDocument {
         sequence.tracks.reduce(0) { n, track in n + track.clips.filter(isUndrawnElementClip).count }
     }
 
+    var unsupportedSpeedRampCount: Int {
+        sequence.tracks.reduce(0) { count, track in count + track.clips.filter { $0.speedRamp?.isSupported == false }.count }
+    }
+
     /// The one notice shown when the document holds layers the renderer skips; nil when it has none.
     var undrawnElementLayersNotice: String? {
-        let n = undrawnElementLayerCount
+        let n = undrawnElementLayerCount + unsupportedSpeedRampCount
         guard n > 0 else { return nil }
         return n == 1
             ? "1 layer from an earlier version of the editor is kept in the project but not drawn in preview or export."
             : "\(n) layers from an earlier version of the editor are kept in the project but not drawn in preview or export."
+    }
+
+    /// One notice for future colour-key contracts retained in the document but deliberately not rendered.
+    var unsupportedColorKeysNotice: String? {
+        let count = sequence.tracks.flatMap(\.clips).flatMap(\.effects).filter { effect in
+            guard effect.enabled, effect.effectId == "color-key", let parameters = effect.parameters else { return false }
+            return parameters["v"]?.numberValue != 1 || parameters["kind"]?.stringValue != "chroma"
+        }.count
+        guard count > 0 else { return nil }
+        return count == 1
+            ? "1 colour-key effect from a newer version of the editor is kept in the project but not drawn in preview or export."
+            : "\(count) colour-key effects from a newer version of the editor are kept in the project but not drawn in preview or export."
+    }
+
+    /// Notices presented once when opening or exporting content deliberately retained but not drawn.
+    var undrawnContentNotices: [String] {
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedHoldNotice].compactMap { $0 }
     }
 }
 
@@ -295,7 +326,9 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidPlaybackRate = "invalid-playback-rate", invalidBinding = "invalid-binding", duplicateBinding = "duplicate-binding"
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
+    case invalidCaption = "invalid-caption"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip"
+    case invalidSpeedRamp = "invalid-speed-ramp"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {

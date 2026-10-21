@@ -35,7 +35,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     }
 
     public struct Key: Hashable, Sendable {
-        public var lane: String, frame: Int, preset: String, lut: String, width: Int, height: Int
+        public var lane: String, frame: Int, preset: String, lut: String, width: Int, height: Int, version: Int = ColorGradeParams.currentVersion
     }
 
     public let compositor: PreviewCompositor
@@ -71,7 +71,8 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
 
     /// Thumbnail of `presetId` for `clipId` at composition `time` (clamped into the clip), `pixelWidth` x
     /// `pixelHeight` device pixels at most (aspect-fit). Call on the UI thread.
-    public func preview(clipId: String, presetId: String, lut: ColorGradeParams.Lut?, time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
+    public func preview(clipId: String, presetId: String, lut: ColorGradeParams.Lut?, time: Double, pixelWidth: Int, pixelHeight: Int,
+                        version: Int = ColorGradeParams.currentVersion) -> State {
         guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
               let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
         let c = entry.clip
@@ -83,7 +84,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
             return compositor.decodesMedia ? .rendering : .unavailable
         }
         let lutKey = lut.map { "\($0.src)@\($0.intensity)" } ?? ""
-        let key = Key(lane: layer.laneKey, frame: source.frame, preset: presetId, lut: lutKey, width: pixelWidth, height: pixelHeight)
+        let key = Key(lane: layer.laneKey, frame: source.frame, preset: presetId, lut: lutKey, width: pixelWidth, height: pixelHeight, version: version)
         lock.lock()
         if let hit = images[key] {
             tick += 1; images[key] = (hit.image, tick); latest[presetId] = key
@@ -100,7 +101,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
             let gradeTime = Double(shownFrame) / comp.fps
             queue.async { [weak self] in
                 self?.render(key, slot: presetId, raw: source.image, time: gradeTime, renderer: renderer) {
-                    ColorGradeRenderer.forClip(Self.params(preset: presetId, lut: lut), clipId: clipId, projectDir: dir)
+                    ColorGradeRenderer.forClip(Self.params(preset: presetId, lut: lut, version: version), clipId: clipId, projectDir: dir)
                 }
             }
         }
@@ -152,12 +153,13 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     }
 
     /// `preview` with the LUT as the clip stores it (`lut.src`, `lut.intensity`).
-    public func preview(clipId: String, presetId: String, lutSrc: String?, lutIntensity: Double, time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
+    public func preview(clipId: String, presetId: String, lutSrc: String?, lutIntensity: Double, time: Double, pixelWidth: Int, pixelHeight: Int,
+                        version: Int = ColorGradeParams.currentVersion) -> State {
         let lut = lutSrc.flatMap { s -> ColorGradeParams.Lut? in
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
             return t.isEmpty ? nil : ColorGradeParams.Lut(src: t, intensity: lutIntensity.isFinite ? min(1, max(0, lutIntensity)) : 1)
         }
-        return preview(clipId: clipId, presetId: presetId, lut: lut, time: time, pixelWidth: pixelWidth, pixelHeight: pixelHeight)
+        return preview(clipId: clipId, presetId: presetId, lut: lut, time: time, pixelWidth: pixelWidth, pixelHeight: pixelHeight, version: version)
     }
 
     /// The raw frame to grade: the preview's exact frame, then our own decode's exact frame, then (while that
@@ -203,14 +205,15 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         onReady?()
     }
 
-    /// `normalizeHfColorGrading({ preset, lut })`.
-    public static func params(preset: String, lut: ColorGradeParams.Lut?) -> ColorGradeParams? {
-        var o: NativeJSONObject = ["preset": .string(preset)]
+    /// `normalizeHfColorGrading({ version, preset, lut })`: the look under the clip grade's contract.
+    public static func params(preset: String, lut: ColorGradeParams.Lut?, version: Int = ColorGradeParams.currentVersion) -> ColorGradeParams? {
+        var o: NativeJSONObject = ["preset": .string(preset), "version": .number(Double(version))]
         if let lut { o["lut"] = .object(["src": .string(lut.src), "intensity": .number(lut.intensity)]) }
         return ColorGradeParams(json: o)
     }
 
-    static func size(_ i: CanvasImage) -> Int { i.width * i.height * 4 }
+    /// Pixels plus the drawable the inspector's draw makes from them (#95).
+    static func size(_ i: CanvasImage) -> Int { i.drawnBytes }
 
     func evict(protecting keep: Key) {
         guard bytes > budgetBytes else { return }

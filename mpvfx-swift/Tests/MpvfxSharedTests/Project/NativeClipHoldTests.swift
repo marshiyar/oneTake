@@ -60,8 +60,8 @@ final class NativeClipHoldTests: XCTestCase {
         XCTAssertEqual(try NativeJSONValue.from(clip.holdSourceFrame), J(hold), "every key kept as written")
         XCTAssertNil(clip.holdSourceFrame?.sourceFrame)
         XCTAssertTrue(doc.isUndrawnClip(clip))
-        XCTAssertEqual(doc.undrawnClipsNotice,
-                       "1 held frame from a newer version of the editor is kept in the project but not drawn in preview or export.")
+        XCTAssertEqual(doc.undrawnContentNotices,
+                       ["1 held frame from a newer version of the editor is kept in the project but not drawn in preview or export."])
         XCTAssertTrue(try serialize(J(try serialize(withHold(hold)))).contains("\"motion\": \"blur\""))
     }
 

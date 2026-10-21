@@ -18,7 +18,7 @@ import Foundation
 /// ordinary clip (trim, move, grade, keyframes) that does not move. Version 1 (`"v": 1`) holds `frame`, a whole
 /// source frame index at the project frame rate, the unit of `sourceInFrame`. A hold written with another version
 /// stays in the document exactly as written (every key kept), is not drawn and is not heard; the editor says so once
-/// when the project opens (`NativeProjectDocument.undrawnClipsNotice`).
+/// when the project opens (`NativeProjectDocument.undrawnContentNotices`).
 public struct NativeClipHold: Codable, Equatable, Hashable, Sendable {
     /// The version this editor reads and writes.
     public static let currentVersion: Double = 1
@@ -92,13 +92,12 @@ public extension NativeProjectDocument {
     /// Every clip preview and export leave out while the document keeps it (`isUndrawnElementClip`, `isUndrawnHoldClip`).
     func isUndrawnClip(_ clip: NativeProjectClip) -> Bool { isUndrawnElementClip(clip) || isUndrawnHoldClip(clip) }
 
-    /// The one notice shown on open (and with an export) for every clip kept but not drawn; nil when there is none.
-    var undrawnClipsNotice: String? {
+    /// The notice for held frames written by a newer version of the editor (kept, not drawn); nil when there is none.
+    var unsupportedHoldNotice: String? {
         let holds = sequence.tracks.reduce(0) { n, track in n + track.clips.filter(isUndrawnHoldClip).count }
-        let held: String? = holds == 0 ? nil : holds == 1
+        guard holds > 0 else { return nil }
+        return holds == 1
             ? "1 held frame from a newer version of the editor is kept in the project but not drawn in preview or export."
             : "\(holds) held frames from a newer version of the editor are kept in the project but not drawn in preview or export."
-        let parts = [undrawnElementLayersNotice, held].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 }

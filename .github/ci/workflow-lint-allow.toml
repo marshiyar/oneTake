@@ -138,13 +138,6 @@ job = "macos"
 count = 1
 reason = "Read-only token (contents, actions); sparse checkout of .github only, no git afterwards. Follow-up after #56, which edits this file."
 
-[[allow]]
-rule = "persist-credentials"
-workflow = "codex-apply.yml"
-job = "apply"
-count = 1
-reason = "The job pushes Codex's commit with the checkout's stored token today. PR #73 sets the flag and authenticates only the push command; remove this entry when #73 lands."
-
 # --- untrusted-checkout ---------------------------------------------------------------------------------------------
 
 [[allow]]
