@@ -37,6 +37,7 @@ import http.client
 import json
 import os
 import re
+import ssl
 import sys
 
 CODACY = "codacy-production[bot]"
@@ -188,7 +189,10 @@ class Transport:
         self.token = token
 
     def __call__(self, method, path, body=None):
-        conn = http.client.HTTPSConnection(HOST, timeout=30)
+        # The certificate and host name are verified explicitly (ssl.create_default_context), not by relying on the
+        # interpreter's default, which is what the Semgrep audit rule below warns about; the host is fixed.
+        tls = ssl.create_default_context()
+        conn = http.client.HTTPSConnection(HOST, timeout=30, context=tls)  # nosemgrep: python.lang.security.audit.httpsconnection-detected.httpsconnection-detected
         try:
             conn.request(method, path, body=None if body is None else json.dumps(body),
                          headers={"Authorization": f"Bearer {self.token}", "Accept": "application/vnd.github+json",

@@ -19,6 +19,7 @@ Run: python3 -I -B .github/ci/test_codacy_to_codex.py
 """
 import datetime
 import os
+import ssl
 import sys
 import unittest
 
@@ -227,8 +228,8 @@ class Run(unittest.TestCase):
         seen = {}
 
         class Conn:
-            def __init__(self, host, timeout):
-                seen["host"] = host
+            def __init__(self, host, timeout, context):
+                seen.update(host=host, verifies=context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED)
 
             def request(self, method, path, body=None, headers=None):
                 seen.update(method=method, path=path, body=body, auth=headers["Authorization"])
@@ -255,7 +256,7 @@ class Run(unittest.TestCase):
             c2c.http.client.HTTPSConnection = real
         self.assertEqual(result, (200, "", [{"id": 1}]))
         self.assertEqual((seen["host"], seen["auth"], seen["body"]), ("api.github.com", "Bearer t0k", '{"query": "q"}'))
-        self.assertTrue(seen["closed"])
+        self.assertTrue(seen["closed"] and seen["verifies"])
 
     def test_main_checks_its_arguments(self):
         for k in ("REPO", "APP_LOGIN", "GH_TOKEN"):
