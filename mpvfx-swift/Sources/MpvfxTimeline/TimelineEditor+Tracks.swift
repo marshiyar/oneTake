@@ -14,7 +14,7 @@
 import Foundation
 import MpvfxShared
 
-/// Track operations on the native document: add, remove, reorder, mute, hide, lock.
+/// Track operations on the native document: add, remove, reorder, mute, solo, hide, lock.
 /// Every op is one undo step (restoreDocument inverse).
 public extension TimelineEditor {
     func isTrackLocked(_ trackId: String) -> Bool {
@@ -87,6 +87,17 @@ public extension TimelineEditor {
         let detached = Set(document.sequence.tracks.flatMap(\.clips).compactMap(\.audioDetachedFrom))
         // A video whose sound is detached stays muted.
         return updateTrack(trackId, muted ? "Mute track" : "Unmute track") { t in for i in t.clips.indices where muted || !detached.contains(t.clips[i].id) { t.clips[i].muted = muted } }
+    }
+
+    /// Solo or unsolo an audio track: while any audio track is soloed only soloed tracks are heard (DocumentAudioGraph).
+    /// Solo changes what is monitored, not the clips, so a locked track accepts it too, as it accepts unlocking.
+    /// Refused for video and mixed tracks, which have no solo button.
+    @discardableResult
+    func setTrackSoloed(_ trackId: String, _ soloed: Bool) -> Bool {
+        guard let i = document.sequence.tracks.firstIndex(where: { $0.id == trackId && $0.kind == .audio }) else { return false }
+        var d = document
+        d.sequence.tracks[i].soloed = soloed ? true : nil
+        return commit(d, soloed ? "Solo track" : "Unsolo track")
     }
 
     /// A track counts as muted when it has clips and all of them are muted.

@@ -94,7 +94,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         collectDuplicateId(&trackIds, track["id"], "\(trackPath).id", &issues)
         let trackKind = str(track["kind"]).flatMap(NativeProjectTrackKind.init(rawValue:))
         if trackKind == nil { pushIssue(&issues, .invalidTrack, "\(trackPath).kind", "Track kind must be video, audio, or mixed") }
-        for flag in ["hidden", "locked"] where track[flag] != nil && track[flag]?.boolValue == nil {
+        for flag in ["hidden", "locked", "soloed"] where track[flag] != nil && track[flag]?.boolValue == nil {
             pushIssue(&issues, .invalidTrack, "\(trackPath).\(flag)", "Track \(flag) must be a boolean")
         }
         if let lane = validateTrackLane(track["lane"], trackIndex, "\(trackPath).lane", &issues) {

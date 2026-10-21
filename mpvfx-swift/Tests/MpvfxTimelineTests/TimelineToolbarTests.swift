@@ -105,13 +105,15 @@ final class TimelineToolbarTests: XCTestCase {
         let (tb, c, _) = try make()
         var saved: Double?
         c.onTrackHeightChange = { saved = $0 }
-        XCTAssertEqual(c.view.trackHeight, 48)
+        XCTAssertEqual(c.view.trackHeight, 28, "compact rows by default (docs/DESIGN.md step 4)")
         let r = tb.layout(width: Self.width).first { $0.item == .trackHeight }!.rect
         let track = tb.sliderTrack(.trackHeight, in: r)
         tb.pointerDown(x: track.maxX - 1, y: r.centerY, width: Self.width); tb.pointerUp()
         XCTAssertEqual(c.view.trackHeight, 96); XCTAssertEqual(saved, 96)
+        tb.pointerDown(x: track.centerX, y: r.centerY, width: Self.width); tb.pointerUp()
+        XCTAssertEqual(c.view.trackHeight.truncatingRemainder(dividingBy: 4), 0, "the slider steps by 4 px")
         tb.pointerDown(x: track.x, y: r.centerY, width: Self.width); tb.pointerUp()
-        XCTAssertEqual(c.view.trackHeight, 32)
+        XCTAssertEqual(c.view.trackHeight, 28)
         c.setTrackHeight(61); XCTAssertEqual(c.view.trackHeight, 61, "rounded, clamped (the store keeps any integer)")
         c.setTrackHeight(200); XCTAssertEqual(c.view.trackHeight, 96)
         c.setTrackHeight(64)

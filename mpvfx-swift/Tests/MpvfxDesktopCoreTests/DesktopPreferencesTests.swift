@@ -63,6 +63,37 @@ final class DesktopPreferencesTests: XCTestCase {
         XCTAssertNil(cleared.value(DesktopPreferences.previewCacheKey))
     }
 
+    /// Issue #106: the interface size is one of 100–200 % in 25 % steps, kept as a whole percentage; 100 % is the
+    /// default and is stored as no key.
+    func testInterfaceSizeSurvivesRelaunch() throws {
+        let prefs = DesktopPreferences(userData: dir)
+        XCTAssertEqual(prefs.interfaceScalePercent, 100, "nothing stored: 100 %")
+        XCTAssertEqual(DesktopPreferences.interfaceScaleChoices, [100, 125, 150, 175, 200])
+        prefs.renderSettings = .object(["format": .string("mp4")])
+        prefs.interfaceScalePercent = 175
+        let again = DesktopPreferences(userData: dir)
+        XCTAssertEqual(again.interfaceScalePercent, 175)
+        XCTAssertEqual(again.renderSettings, .object(["format": .string("mp4")]), "other keys are kept")
+        let text = try String(contentsOfFile: dir + "/preferences.json", encoding: .utf8)
+        XCTAssertTrue(text.contains("\"mpvfx-interface-scale-percent\":175"), text)
+        again.interfaceScalePercent = 100
+        XCTAssertNil(DesktopPreferences(userData: dir).value(DesktopPreferences.interfaceScaleKey), "100 % removes the key")
+    }
+
+    /// A size the card does not offer (hand-edited or from a newer build) reads as 100 % and is never written.
+    func testInterfaceSizeOutsideTheChoicesReadsAsOneHundred() throws {
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        for stored in ["130", "300", "0", "-150", "150.5", "1e308", "\"200\"", "null", "[200]"] {
+            try "{\"mpvfx-interface-scale-percent\":\(stored)}".write(toFile: dir + "/preferences.json", atomically: true, encoding: .utf8)
+            XCTAssertEqual(DesktopPreferences(userData: dir).interfaceScalePercent, 100, stored)
+        }
+        let prefs = DesktopPreferences(userData: dir)
+        prefs.interfaceScalePercent = 400
+        XCTAssertNil(DesktopPreferences(userData: dir).value(DesktopPreferences.interfaceScaleKey), "400 is not stored")
+        prefs.interfaceScalePercent = 150
+        XCTAssertEqual(DesktopPreferences(userData: dir).interfaceScalePercent, 150)
+    }
+
     /// Values a hand-edited file may hold that the window would never write read as the default.
     func testInvalidSettingsReadAsDefaults() throws {
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)

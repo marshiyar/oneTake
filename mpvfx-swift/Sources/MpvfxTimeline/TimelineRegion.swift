@@ -34,6 +34,8 @@ public final class TimelineRegion {
     /// Filmstrips and waveforms for the clips (asked for before each paint).
     public var media: TimelineMediaFeeder?
     var top: Double { TimelineToolbar.height }
+    /// Status-line text for what is under the pointer: the track header control's action (nil elsewhere).
+    public var hint: String? { controller.headerHint }
 
     public init(controller: TimelineController, preferences: TimelineUIPreferencesStore? = nil) {
         self.controller = controller
@@ -125,6 +127,7 @@ public final class TimelineRegion {
 
     public func pointerMove(x: Double, y: Double) {
         if toolbarCapture || (y < top && controller.gesture == nil) {
+            if controller.view.hoveredHeader != nil { controller.view.hoveredHeader = nil; controller.needsDisplay?() }
             toolbar.pointerMove(x: x, y: y, width: size.width)
             return
         }

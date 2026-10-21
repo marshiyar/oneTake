@@ -39,7 +39,7 @@ extension TimelineController {
 
     /// A track header: a lane control (keyframe navigation, toggles) when one is under the pointer, else the header.
     func headerPointerDown(row: Int, x: Double, y: Double) {
-        if let lc = view.laneControl(atX: x, y: y, track: row) { laneControlClick(clipId: lc.clip.id, lane: lc.lane, control: lc.control); return }
+        if laneHeaderClick(x: x, y: y, row: row) { return }
         headerClick(x: x, y: y, row: row)
     }
 

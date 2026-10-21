@@ -18,6 +18,7 @@ import MpvfxTimeline
 import MpvfxPlayer
 import MpvfxPanels
 import MpvfxDesktopCore
+import MpvfxAudio
 
 /// Host-side wiring of the side panels:
 /// the left sidebar (the Media panel) gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms
@@ -50,8 +51,11 @@ final class SessionPanels {
     private(set) var presetPreviews: PresetPreviewRenderer?
     /// Effects catalog and look tile demos on the built-in sample picture.
     private(set) var effectPreviews: EffectPreviewRenderer?
-    private var presetPreviewTime = 0.0
+    private(set) var presetPreviewTime = 0.0
     private var panelsAnimating = false
+    /// The bin's audition (SessionPanels+Audition.swift): the player and the project it started in.
+    var auditionPlayer: AssetAuditionPlayer?
+    var auditionProjectId: String?
 
     init(session: EditorSession, layout: PanelLayoutState, userData: String) {
         self.session = session
@@ -102,6 +106,7 @@ final class SessionPanels {
         left.onCopyPath = { [weak self] path in self?.copyToClipboard?(path) }
         left.onLibrary = { [weak self] cmd in self?.runLibrary(cmd) }
         left.library.available = backend?.libraries != nil
+        wireAudition()
     }
 
     /// Re-reads the project's media (after import, rename, delete, a project switch, or an external change).
@@ -194,7 +199,7 @@ final class SessionPanels {
             guard let assetId = existing ?? editor.addAsset(kind: kind, name: entry.name, source: path, durationFrames: frames,
                                                             naturalSize: natural) else { return }
             let t = time ?? self.session.playback.currentTime
-            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: trackId) else {
+            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: self.insertTrack(trackId, time, assetId, t)) else {
                 if existing == nil { editor.undo() }
                 return
             }
@@ -229,6 +234,13 @@ final class SessionPanels {
                 else { post { self?.session.onError("Could not add media", "\(error)") } }
             }
         }
+    }
+
+    /// Where `addToTimeline` puts its clip: the track asked for; for an add at the playhead (no `time`) the targeted
+    /// track when it is free there (the accent V / A tag); else nil, the first free lane.
+    func insertTrack(_ trackId: String?, _ time: Double?, _ assetId: String, _ t: Double) -> String? {
+        if let trackId { return trackId }
+        return time == nil ? session.timeline.targetedInsertTrack(assetId: assetId, at: t) : nil
     }
 
     /// AssetContextMenu rename: the file is renamed in place (same folder) and the document's assets follow it.
@@ -330,8 +342,7 @@ final class SessionPanels {
         switch cmd {
         case .createLibrary: command = ["type": .string("create")]
         case .openLibrary: command = ["type": .string("open")]
-        case .createEvent(let l, let name): command = ["type": .string("event"), "libraryId": .string(l), "name": .string(name)]
-        case .createProject(let l, let e, let name): command = ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
+        case .createEvent, .createProject, .renameEvent, .renameProject: command = Self.namedItemCommand(cmd)
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
             if left.library.currentProjectId != nil, let id = projectId,
@@ -397,6 +408,7 @@ final class SessionPanels {
 
     /// After the session opened another project: everything per-project is re-read.
     func projectSwitched() {
+        stopAudition()
         media = []; probedDurations = [:]; probing = []; session.mediaThumbnails.reset()
         renders.reset()
         effectPreviews?.reset()   // sample tiles resolve LUT paths against the project folder
@@ -435,7 +447,9 @@ final class SessionPanels {
         rendersPanel.onAnimate = { [weak self] in self?.animatePanels() }
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
+        inspector.lutStatus = { [weak self] src in LutStatusReader.status(src, projectDir: self?.session.projectDir?.path) }
         wirePresetPreviews(inspector)
+        wireCrop(inspector)
         wireEffectPreviews(inspector)
         wireRenders()
     }
@@ -448,14 +462,14 @@ final class SessionPanels {
         var last = Date()
         func step() {
             let now = Date(), dt = now.timeIntervalSince(last); last = now
-            let a = right.tick(dt), b = left.tick(dt), r = rendersPanel.tick(dt)
+            let a = right.tick(dt), b = left.tick(dt), r = rendersPanel.tick(dt), p = pollAudition()
             redraw()
-            if a || b || r { _ = schedule(1.0 / 60, step) } else { panelsAnimating = false }
+            if a || b || r || p { _ = schedule(1.0 / 60, step) } else { panelsAnimating = false }
         }
         _ = schedule(1.0 / 60, step)
     }
 
-    /// Grade preset tiles and scopes: the selected clip's frame graded with each preset, or its own grade (PresetPreviewRenderer). While playing
+    /// Grade preset tiles: the selected clip's frame graded with each preset (PresetPreviewRenderer). While playing
     /// the tiles keep the frame they showed when playback started, so playback does not re-grade 18 thumbnails a frame.
     private func wirePresetPreviews(_ inspector: InspectorPanel) {
         let renderer = PresetPreviewRenderer(compositor: session.compositor)
@@ -475,15 +489,8 @@ final class SessionPanels {
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
-        inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
-            guard let self, let inspector else { return .unavailable }
-            let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
-            switch renderer.gradedFrame(clipId: clipId, time: t, pixelWidth: w, pixelHeight: h) {
-            case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
-            case .unavailable: return .unavailable
-            }
-        }
+        wireStageFrame(inspector, renderer)
+        wireScopes(inspector, clip: renderer)
     }
 
     /// Effects catalog tiles: the selected clip's frame with its grade plus each effect or look (the preset tiles'

@@ -225,9 +225,13 @@ public struct NativeProjectTrack: Codable, Equatable, Sendable {
     public var hidden: Bool?
     /// A locked track refuses clip edits (move, trim, split, delete, paste). Absent means unlocked.
     public var locked: Bool?
+    /// A soloed audio track is heard alone: while any audio track is soloed, the clips of every other track are left
+    /// out of the mix (live playback and export). Ignored on video and mixed tracks. Absent means not soloed.
+    public var soloed: Bool?
 
-    public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil, locked: Bool? = nil) {
-        self.id = id; self.kind = kind; self.lane = lane; self.clips = clips; self.hidden = hidden; self.locked = locked
+    public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil,
+                locked: Bool? = nil, soloed: Bool? = nil) {
+        self.id = id; self.kind = kind; self.lane = lane; self.clips = clips; self.hidden = hidden; self.locked = locked; self.soloed = soloed
     }
 }
 
@@ -290,13 +294,13 @@ public extension NativeProjectDocument {
 
     /// The one notice shown when the document holds layers the renderer skips; nil when it has none.
     /// Newer mask records remain serialized but are not rendered by this version.
-    public var unsupportedMaskCount: Int {
+    var unsupportedMaskCount: Int {
         sequence.tracks.reduce(0) { total, track in
             total + track.clips.reduce(0) { $0 + ($1.masks ?? []).filter { !$0.isSupported }.count }
         }
     }
 
-    public var unsupportedMasksNotice: String? {
+    var unsupportedMasksNotice: String? {
         let n = unsupportedMaskCount
         guard n > 0 else { return nil }
         return "\(n) mask\(n == 1 ? "" : "s") from a newer version of the editor \(n == 1 ? "is" : "are") kept in the project but not drawn in preview or export."
@@ -324,7 +328,8 @@ public extension NativeProjectDocument {
 
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
-        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice].compactMap { $0 }
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice,
+         unsupportedTextLooksNotice].compactMap { $0 }
     }
 }
 

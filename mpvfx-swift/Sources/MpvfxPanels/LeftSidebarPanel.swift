@@ -73,6 +73,8 @@ public enum LibraryNavCommand: Equatable {
     case createLibrary, openLibrary
     case createEvent(libraryId: String, name: String)
     case createProject(libraryId: String, eventId: String, name: String)
+    case renameProject(libraryId: String, projectId: String, name: String)
+    case renameEvent(libraryId: String, eventId: String, name: String)
     case switchProject(String)
     case importIntoEvent(libraryId: String, eventId: String, linked: Bool)
     case attach(libraryId: String, assetId: String)
@@ -96,6 +98,8 @@ public final class LeftSidebarPanel {
         case search, clearSearch, filter, clearFilters
         case createField, createConfirm, createCancel
         case tile(MediaTileRef), tileAction(MediaTileRef)
+        /// The play / stop button of a tile that can be auditioned, and the progress bar of the one that is.
+        case tileAudition(MediaTileRef), auditionBar(MediaTileRef)
         case menuItem(String, Int), deleteConfirm(String), deleteCancel, removePlacements, renameField, renameOK, renameCancel
         case binArea
     }
@@ -117,6 +121,16 @@ public final class LeftSidebarPanel {
     public var onCopyPath: ((String) -> Void)?
     public var onLibrary: ((LibraryNavCommand) -> Void)?
     public var onChange: (() -> Void)?
+    /// Audition (play a file on its own): the host starts or stops it for a bin asset id (Space on a tile, the tile's play
+    /// button), seeks it to seconds (a click on the progress bar) or by seconds (← / →), and stops it (Esc).
+    public var onAuditionToggle: ((String) -> Void)?
+    public var onAuditionSeek: ((String, Double) -> Void)?
+    public var onAuditionSeekBy: ((Double) -> Void)?
+    public var onAuditionStop: (() -> Void)?
+    /// The asset being auditioned, with its position; nil when none. Filled by the host every frame.
+    public var audition: AuditionTileState?
+    /// A tile's audition failure, shown on the tile until the next try ("Can't play \"take3.wav\": the file is missing").
+    public var auditionErrors: [String: String] = [:]
 
     public internal(set) var hits = HitMap<Hit>()
     public let dropdown = PanelDropdown()
@@ -132,6 +146,8 @@ public final class LeftSidebarPanel {
     var selectedEventId: String?
     var linkedImport = false
     var creating: (kind: String, field: PanelTextField)?
+    /// The rename target stays fixed while its name row is open.
+    var renameTarget: (libraryId: String, id: String)?
     public struct Menu: Equatable {
         public var target: MediaTileRef; public var at: CanvasPoint; public var mode: Int = 0; public var removePlacements = false
         public var rename: PanelTextField?
@@ -154,6 +170,8 @@ public final class LeftSidebarPanel {
     /// Every tile of the last draw in grid order, in content coordinates (unscrolled; the arrows and scrolling a
     /// tile into view use it, including tiles scrolled out of sight).
     var tileFrames: [(MediaTileRef, CanvasRect)] = []
+    /// The progress bar of the audition playing, as drawn (the seek click maps along its width).
+    var auditionBars: [MediaTileRef: CanvasRect] = [:]
 
     public init(layout: PanelLayoutState) {
         self.layout = layout
@@ -334,6 +352,7 @@ public final class LeftSidebarPanel {
             if case .media(let id) = ref { pressedAsset = (id, p) }
             if let lc = lastClick, lc.ref == ref, time - lc.at < 0.4 { runPrimary(ref); lastClick = nil } else { lastClick = (ref, time) }
         case .tileAction(let ref): selected = ref; runPrimary(ref)
+        case .tileAudition, .auditionBar: _ = pressAudition(hit, at: p)
         default: break
         }
         return false
@@ -383,4 +402,56 @@ public final class LeftSidebarPanel {
     public func tick(_ dt: Double) -> Bool { binScroller.tick(dt) }
 
     func commitSearch() { if let s = search { searchQuery = s.draft; search = nil; binScroll = 0 } }
+    /// The name row can be sent: a name is typed and no library command runs (one would drop it).
+    func canConfirmName(_ field: PanelTextField) -> Bool {
+        !library.busy && !field.draft.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    func confirmCreate() {
+        guard let cr = creating, let l = activeLibrary, !library.busy else { return }
+        let name = cr.field.draft.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        if let command = nameCommand(cr.kind, libraryId: l.id, name: name) { onLibrary?(command) }
+        creating = nil
+    }
+
+    /// The command the name row sends: create an event or project, or rename the shown event or current project.
+    private func nameCommand(_ kind: String, libraryId: String, name: String) -> LibraryNavCommand? {
+        switch kind {
+        case "event": return .createEvent(libraryId: libraryId, name: name)
+        case "project": return activeEvent.map { .createProject(libraryId: libraryId, eventId: $0.id, name: name) }
+        case "renameEvent": return renameTarget.map { .renameEvent(libraryId: $0.libraryId, eventId: $0.id, name: name) }
+        case "renameProject": return renameTarget.map { .renameProject(libraryId: $0.libraryId, projectId: $0.id, name: name) }
+        default: return nil
+        }
+    }
+
+    /// Placeholder and confirm button of the name row for each kind.
+    static func nameRowLabels(_ kind: String) -> (placeholder: String, confirm: String) {
+        switch kind {
+        case "event": return ("Event name", "Create")
+        case "renameEvent": return ("Event name", "Rename")
+        case "renameProject": return ("Project name", "Rename")
+        default: return ("Project name", "Create")
+        }
+    }
+
+    /// The current project when it belongs to the event shown (the one the project picker shows).
+    var currentProject: LibraryNavModel.Project? {
+        activeLibrary?.projects.first { $0.id == library.currentProjectId && $0.eventId == activeEvent?.id }
+    }
+
+    /// Rename needs something to rename and no library command running.
+    func canRename(_ kind: String) -> Bool {
+        guard !library.busy else { return false }
+        return kind == "renameEvent" ? activeEvent != nil : currentProject != nil
+    }
+
+    /// Opens the name row on the current name of the shown event or current project.
+    func startRename(_ kind: String) {
+        let target = kind == "renameEvent" ? activeEvent.map { ($0.id, $0.name) } : currentProject.map { ($0.id, $0.name) }
+        guard canRename(kind), let l = activeLibrary, let target else { return }
+        renameTarget = (l.id, target.0)
+        creating = (kind, PanelTextField(key: "create", value: target.1))
+    }
 }

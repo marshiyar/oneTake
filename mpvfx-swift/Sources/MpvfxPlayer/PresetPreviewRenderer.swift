@@ -134,6 +134,33 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         return .rendering
     }
 
+    /// The composited program frame at composition `time` (every visible layer, graded, painted as export paints it),
+    /// at most `pixelWidth` x `pixelHeight`: what the colour picker's eyedropper samples. Painted on the caller's
+    /// thread from frames already decoded (the preview's, else this renderer's own lane); `.rendering` while a
+    /// picture layer has none yet, `.unavailable` when it never will (no decoder).
+    public func programFrame(time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
+        guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition else { return .unavailable }
+        let cw = max(comp.canvas.width, 1), ch = max(comp.canvas.height, 1)
+        let s = min(Double(pixelWidth) / cw, Double(pixelHeight) / ch)
+        let w = max(2, Int((cw * s).rounded())), h = max(2, Int((ch * s).rounded()))
+        let frame = comp.frameIndex(at: time)
+        var missing = false
+        do {
+            let painter = try ExportFramePainter(composition: comp, width: w, height: h, pad: comp.background)
+            let image = try painter.paint(time: time) { [self] layer, _, lw, lh in
+                let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, frame))
+                guard let f = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: lw, pixelHeight: lh) else { missing = true; return nil }
+                return f.image
+            }
+            // A picture layer without a frame: wait for its decode, or, with no decoder, say so rather than offer a
+            // frame with the picture missing to sample from.
+            guard missing else { return .ready(image) }
+            return compositor.decodesMedia ? .rendering : .unavailable
+        } catch {
+            return .unavailable   // the raster canvas could not be made or drawn on: the picker says the frame is unavailable
+        }
+    }
+
     /// The composition entry of `clipId` when it has a picture to decode (not offline: its file is missing).
     func decodableEntry(_ clipId: String) -> (comp: PreviewComposition, entry: PreviewComposition.Entry)? {
         guard let comp = compositor.composition,

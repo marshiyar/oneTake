@@ -68,7 +68,7 @@ extension InspectorPanel {
     func edited(_ op: @autoclosure () -> Bool, label: String? = nil) {
         let title = label ?? buildGroupTitle()
         let ok = editor?.withHistory(title) { op() } ?? op()
-        if ok { onEdited?() }
+        if ok { colorFieldError = nil; onEdited?() }
     }
     private func buildGroupTitle() -> String {
         switch openGroupId {
@@ -81,13 +81,16 @@ extension InspectorPanel {
         let animated = editor.isAnimated(clipId: s.id, pid)
         let on = editor.hasKeyframe(clipId: s.id, pid, time: time)
         let t = time
-        return InspectorRow.Keyframe(
+        var kf = InspectorRow.Keyframe(
             state: on ? .onKey : (animated ? .animated : .none),
             toggle: { [weak self] in self?.edited(editor.toggleKeyframe(clipId: s.id, pid, time: t, fallback: fallback)) },
             stopwatch: { [weak self] in self?.edited(editor.setAnimated(clipId: s.id, [(pid, fallback)], !animated, time: t)) },
             // KeyframeNavigation: a stepper is live only when there is a keyframe that way.
             prev: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: false) : nil).map { v in { [weak self] in self?.onSeek?(v) } },
             next: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: true) : nil).map { v in { [weak self] in self?.onSeek?(v) } })
+        kf.kind = TimelineKeyframeCatalog.property(pid).kind
+        kf.ease = TimelineKeyframeEase(on ? editor.interpolation(clipId: s.id, pid, time: t) : nil)
+        return kf
     }
 
     /// Position's controls cover the vec2 track and the scalar x/y tracks (older and recorded projects), which preview
@@ -304,12 +307,7 @@ extension InspectorPanel {
             if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
         }
         if s.kind == .video || s.kind == .audio {
-            let rate = editor.playbackRate(clipId: s.id)
-            rows.append(.init(.slider(.init(
-                key: "rate", label: "Rate", position: rate * 100, min: 25, max: 300, display: "\(PanelFormat.number(rate))x",
-                format: { "\(PanelFormat.number($0 / 100))x" }, tier: rate == 1 ? .default : .explicitCustom,
-                commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, (p).rounded() / 100)) },
-                reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }))))
+            rows.append(rateRow(editor, s))
             // A detached video plays no sound (its linked audio clip does, with its own pitch option), like the clip menu.
             let detached = s.kind == .video && editor.document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == s.id } }
             if !detached {
@@ -317,52 +315,34 @@ extension InspectorPanel {
                 rows.append(.init(.toggle(.init(key: "keepPitch", label: "Keep audio pitch", on: keeps, tier: keeps ? .default : .explicitCustom,
                                                 set: { [weak self] v in self?.edited(editor.setPreservesPitch(clipId: s.id, v)) }))))
             }
-            let fps = editor.fps
-            rows.append(.init(.number(.init(key: "mediaStart", label: "Media start", text: String(format: "%.2fs", s.clip.sourceInFrame / fps),
-                                            tier: s.clip.sourceInFrame == 0 ? .default : .explicitCustom, commit: { _ in }, disabled: true))))
-            let label = s.kind == .video ? "Play video sound" : "Muted"
-            let on = s.kind == .video ? !s.clip.muted : s.clip.muted
-            rows.append(.init(.toggle(.init(key: "muted", label: label, on: on, tier: s.clip.muted ? .explicitCustom : .default, set: { [weak self] v in
-                self?.edited(editor.setMuted(clipId: s.id, s.kind == .video ? !v : v))
-            }))))
+            rows.append(.init(.number(.init(key: "mediaStart", label: "Media start", text: Self.mediaStartTimecode(s.clip, editor.document.frameRate),
+                                            tier: s.clip.sourceInFrame == 0 ? .default : .explicitCustom, commit: { _ in }, readOnly: true))))
+            // One switch for every clip kind (issue #188): on means the clip is heard, so it writes `muted` inverted.
+            rows.append(.init(.toggle(.init(key: "muted", label: "Sound", on: !s.clip.muted, tier: s.clip.muted ? .explicitCustom : .default,
+                                            set: { [weak self] v in self?.edited(editor.setMuted(clipId: s.id, !v)) }))))
         }
         return InspectorGroup(id: "media", title: "Media", summary: s.kind.rawValue, rows: rows)
     }
 
-    func cropRows(_ editor: TimelineEditor, _ s: Selected) -> [InspectorRow] {
-        let crop = editor.crop(clipId: s.id) ?? NativeClipCrop()
-        guard cropActive == s.id else {
-            return [.init(.subheader("Crop", buttons: [.init(key: "crop:start", label: "Crop", style: .accent) { [weak self] in
-                self?.cropActive = s.id; self?.cropLinkAll = false; self?.onEdited?()
-            }]))]
-        }
-        var rows: [InspectorRow] = [.init(.subheader("Crop", buttons: [
-            .init(key: "crop:reset", label: "↺", style: .muted) { [weak self] in self?.edited(editor.setCrop(clipId: s.id, nil)) },
-            .init(key: "crop:cancel", label: "Cancel", style: .muted) { [weak self] in
-                if let before = self?.cropBefore { _ = editor.setCrop(clipId: s.id, before) }
-                self?.cropActive = nil; self?.onEdited?()
-            },
-            .init(key: "crop:apply", label: "Apply", style: .accent) { [weak self] in self?.cropActive = nil; self?.cropBefore = nil; self?.onEdited?() },
-        ]))]
-        rows.append(.init(.segmented(.init(key: "crop:links", label: "Link edges",
-                                           options: [(key: "all", label: "All", active: cropLinkAll), (key: "sides", label: "Sides", active: !cropLinkAll)],
-                                           select: { [weak self] k in self?.cropLinkAll = k == "all"; self?.onEdited?() }))))
-        func set(_ edge: String, _ v: Double) -> Bool {
-            var c = editor.crop(clipId: s.id) ?? NativeClipCrop()
-            let px = max(0, v)
-            if cropLinkAll { c = NativeClipCrop(top: px, right: px, bottom: px, left: px) }
-            else { switch edge { case "top": c.top = px; case "right": c.right = px; case "bottom": c.bottom = px; default: c.left = px } }
-            return editor.setCrop(clipId: s.id, c)
-        }
-        if cropLinkAll {
-            rows.append(.init(.quad([numberRow(key: "crop:all", label: "All", value: crop.top, decimals: 0, suffix: "px",
-                                               tier: crop.isZero ? .default : .explicitCustom, step: 1, apply: { set("top", $0) })])))
-        } else {
-            rows.append(.init(.quad([("top", "T", crop.top), ("right", "R", crop.right), ("bottom", "B", crop.bottom), ("left", "L", crop.left)].map { e in
-                numberRow(key: "crop:\(e.0)", label: e.1, value: e.2, decimals: 0, suffix: "", tier: e.2 == 0 ? .default : .explicitCustom,
-                          step: 1, apply: { set(e.0, $0) })
-            })))
-        }
-        return rows
+    /// Rate (25 %…300 %): 1x is a detent within 3 % of the track while dragging, a double-click returns to it, and
+    /// the value reads "1.00×".
+    func rateRow(_ editor: TimelineEditor, _ s: Selected) -> InspectorRow {
+        let rate = editor.playbackRate(clipId: s.id)
+        return InspectorRow(.slider(InspectorRow.Slider(
+            key: "rate", label: "Rate", position: rate * 100, min: 25, max: 300, display: Self.rateText(rate),
+            format: { Self.rateText($0 / 100) }, tier: rate == 1 ? .default : .explicitCustom,
+            commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, p.rounded() / 100)) },
+            reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }, detent: 100)))
+    }
+
+    static func rateText(_ rate: Double) -> String { String(format: "%.2f×", rate) }
+
+    /// The source in-point as timecode at the project rate, from the integer frame count (docs/DESIGN.md
+    /// principle 5). A count or rate that is not a whole number (fractional, NaN, too big for `Int`) reads as the
+    /// zero timecode rather than a rounded guess.
+    static func mediaStartTimecode(_ clip: NativeProjectClip, _ rate: RationalFrameRate) -> String {
+        let frame = Int(exactly: clip.sourceInFrame) ?? 0
+        let num = Int(exactly: rate.numerator) ?? 0, den = Int(exactly: rate.denominator) ?? 0
+        return TimelineRuler.timecode(frame: frame, numerator: num, denominator: den)
     }
 }

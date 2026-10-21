@@ -112,6 +112,7 @@ public final class RightPanel {
         self.layout = layout
         // The group the user left open last time; Transform when nothing was saved.
         inspector.openGroupId = layout.prefs.openInspectorGroup ?? "layout"
+        inspector.scopeSource = layout.prefs.scopeSource ?? .clip
         inspector.layout = layout
         inspector.onOpenEasing = { [weak self] clipId, refs in
             guard let self else { return }
@@ -309,7 +310,7 @@ public final class RightPanel {
         // About video formats: the 12px circle-question after "Format" (gap-1), text-5 → text-3 on hover.
         let info = CanvasRect(x: x + c.measureText("Format", font: label).width + 4 + 2, y: y + 1.5, width: 12, height: 12)
         PanelIcon.help.draw(c, in: info, color: hovered == .formatInfo ? PanelTheme.text3 : PanelTheme.text5, lineWidth: 2)
-        hits.add(info.insetBy(-2), .formatInfo)
+        hits.add(info.target(in: CanvasRect(x: r.x, y: r.y, width: r.width, height: y + 19 - r.y)), .formatInfo)   // above the field
         // Scales the whole composition, aspect kept; the frame's shape is the composition size (Design tab).
         select(.resolution, "Output size", resolutionLabel, CanvasRect(x: x + colW + gap, y: y, width: colW, height: 47))
         y += 47 + gap

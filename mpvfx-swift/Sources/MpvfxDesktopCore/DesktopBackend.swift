@@ -66,6 +66,8 @@ public protocol LibraryService: Sendable {
     func relink(libraryId: String, assetId: String, path: String) async throws
     func root(libraryId: String) throws -> String
     func saveOutput(libraryId: String, jobId: String, destination: String, overwrite: Bool) async throws
+    func renameEvent(libraryId: String, eventId: String, name: String) async throws
+    func renameProject(libraryId: String, projectId: String, name: String) async throws
 }
 
 /// An open project: its id, its directory, and the native document text as last read or saved.
