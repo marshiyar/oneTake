@@ -245,9 +245,9 @@ internal final class TimelineBeatTests: XCTestCase {
     internal func testFutureVersionRetainsUnknownDataAndAddsOneOpenNotice() throws {
         let (_, editor): (TimelineController, TimelineEditor) = try make()
         var raw = try NativeJSONValue.from(editor.document)
-        var sequence = raw["sequence"]!
-        var tracks = sequence["tracks"]!.arrayValue!
-        var clips = tracks[0]["clips"]!.arrayValue!
+        var sequence: NativeJSONValue = try XCTUnwrap(raw["sequence"])
+        var tracks: [NativeJSONValue] = try XCTUnwrap(sequence["tracks"]?.arrayValue)
+        var clips: [NativeJSONValue] = try XCTUnwrap(tracks[0]["clips"]?.arrayValue)
         clips[0]["beats"] = .object(["v": .number(2), "kind": .string("future"), "payload": .array([.number(9)])])
         tracks[0]["clips"] = .array(clips)
         sequence["tracks"] = .array(tracks)
