@@ -102,16 +102,16 @@ final class ExportStartOutcomeTests: XCTestCase {
         try FileManager.default.removeItem(atPath: "\(root)/red.mov")
         try FileManager.default.removeItem(atPath: "\(root)/blue.mov")
         let missing = projectJSON.replacingOccurrences(of: #""source":"blue.mov""#, with: #""source":"media/blue.mov""#)
-        var calls = 0
+        let calls = CallCount()
         let counting = NativeExportFrames.defaultRenderer
-        NativeExportFrames.defaultRenderer = counting.map { r in { calls += 1; return try r($0) } }
+        NativeExportFrames.defaultRenderer = counting.map { r -> NativeExportFrameRendererFactory in { calls.bump(); return try r($0) } }
         defer { NativeExportFrames.defaultRenderer = counting }
         XCTAssertThrowsError(try startExport(project: try document(missing), projectDir: root, outputPath: "\(root)/missing.mp4",
                                              settings: settings)) {
             XCTAssertEqual(($0 as? ExportStartError)?.issues, ["Missing media: red.mov, blue.mov"])
             XCTAssertEqual("\($0)", "Missing media: red.mov, blue.mov")
         }
-        XCTAssertEqual(calls, 0, "no frame was rendered")
+        XCTAssertEqual(calls.value, 0, "no frame was rendered")
         XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/missing.mp4"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/missing.meta.json"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/.studio-render-tmp"))
@@ -133,4 +133,12 @@ final class ExportStartOutcomeTests: XCTestCase {
         project.sequence.tracks[0].hidden = true
         XCTAssertEqual(missingExportMedia(project, projectDir: root), [], "a hidden track is not read")
     }
+}
+
+/// Counts frame-renderer factory calls from whichever thread export uses (the factory is `@Sendable`).
+private final class CallCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func bump() { lock.lock(); count += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
 }
