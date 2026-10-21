@@ -216,6 +216,17 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             validateNativeClipMoves(clip["moves"], clipDuration: clip["durationFrames"]?.numberValue, "\(clipPath).moves", &issues)
             validateNativeClipPresentation(clip, clipPath, &issues)
             validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
+            if let generator = clip["generator"] {
+                let path = "\(clipPath).generator"
+                validateNativeFill(generator, path, allowInherit: false, assets: assetsById, &issues)
+                if assetKind != "element" || clip["text"] != nil {
+                    pushIssue(&issues, .invalidClip, path, "Generators need an element clip without text")
+                }
+                if generator["v"]?.numberValue == 1, let kind = generator["kind"]?.stringValue,
+                   NativeFill.clipKinds.contains(kind), !["color", "gradient"].contains(kind) {
+                    pushIssue(&issues, .invalidFill, path, "Generators support solid colours and gradients")
+                }
+            }
             validateNativeFill(clip["fill"], "\(clipPath).fill", allowInherit: true, assets: assetsById, &issues)
             validateNativeClipNarration(clip["narration"], assetKind: asset == nil ? nil : assetKind, "\(clipPath).narration", &issues)
             if clip["text"] != nil, assetKind != "element" {

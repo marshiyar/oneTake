@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxTimeline
+import MpvfxShared
 
 /// One item of the media bin: a project asset with what the card shows.
 public struct MediaBinItem: Equatable {
@@ -115,6 +116,7 @@ public final class LeftSidebarPanel {
     public var importing = false
 
     public var onImport: (() -> Void)?
+    public var onAddGenerator: ((NativeGeneratorKind) -> Void)?
     public var onAddAtPlayhead: ((String) -> Void)?
     /// Instantiates a built-in text recipe as editable text at the playhead.
     public var onAddTextLook: ((TextLookPreset) -> Void)?
