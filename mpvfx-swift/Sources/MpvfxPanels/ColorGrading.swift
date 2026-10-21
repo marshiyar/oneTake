@@ -66,6 +66,8 @@ public struct ColorGrading: Equatable, Sendable {
     public func adjustValue(_ k: String) -> Double { adjust[k] ?? presetValues?.adjust[k] ?? 0 }
     public func detail(_ k: String) -> Double { details[k] ?? presetValues?.details[k] ?? Self.detailDefaults[k] ?? 0 }
     public func wheel(_ k: String) -> Wheel { wheels[k] ?? Wheel() }
+    /// A stylize effect value as rendered: stored, else the preset's, else the contract default.
+    public func effect(_ k: String) -> Double { effects[k] ?? presetValues?.effects[k] ?? GradeValues.effectDefaults[k] ?? 0 }
     /// The named preset's values, which fill the keys the grade leaves out; nil for no preset or an unknown name.
     var presetValues: Preset? { preset.flatMap(Self.preset) }
     /// A control's own default (what a reset writes): 0 for an adjust key, the contract default for a detail.
@@ -170,7 +172,9 @@ public struct ColorGrading: Equatable, Sendable {
             }
         }
         details = Self.limitedValues(obj(o["details"]), keys: Self.detailKeys, fallback: { p?.details[$0] ?? Self.defaultDetail($0) }, GradeValues.detailLimit)
-        effects = nums(o["effects"])
+        effects = Self.limitedValues(obj(o["effects"]), keys: GradeValues.effectKeys, fallback: { p?.effects[$0] ?? GradeValues.effectDefaults[$0] ?? 0 },
+                                     GradeValues.effectLimit)
+            .merging(nums(o["effects"]).filter { !GradeValues.effectKeys.contains($0.key) }) { a, _ in a }   // keep keys this build does not know
         if case .array(let a)? = o["palette"] { palette = a.compactMap { if case .string(let s) = $0 { return s }; return nil } }
         // A blank source is no LUT; the strength is clamped to 0…1 and a non-number reads as 1, as the renderer does.
         func source(_ s: String) -> String? { let t = s.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t }
