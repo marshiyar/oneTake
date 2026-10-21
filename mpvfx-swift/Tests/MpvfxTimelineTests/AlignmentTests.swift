@@ -104,8 +104,9 @@ final class AlignmentTests: XCTestCase {
         XCTAssertTrue(startAnimation(e, parameter: TimelineEditor.positionId, value: .vec2(.init(x: 0, y: 0)), type: .vec2))
         XCTAssertTrue(e.alignClips(["a"], to: .right, time: 1))
         XCTAssertEqual(e.parameterValue(clipId: "a", parameterId: TimelineEditor.positionId, time: 0), .vec2(.init(x: 0, y: 0)))
-        XCTAssertEqual(e.parameterValue(clipId: "a", parameterId: TimelineEditor.positionId, time: 1), .vec2(.init(x: 870, y: 0)))
-        XCTAssertEqual(e.clip("a")?.clip.parameterTracks.first?.keyframes.map(\.frame), [0, 30])
+        XCTAssertEqual(e.parameterValue(clipId: "a", parameterId: POSITION_X_PARAMETER_ID, time: 1), .number(870))
+        XCTAssertEqual(e.clip("a")?.clip.parameterTracks.first?.keyframes.map(\.frame), [0], "original vector path is preserved")
+        XCTAssertEqual(e.clip("a")?.clip.parameterTracks.last?.keyframes.map(\.frame), [0, 30])
         XCTAssertNil(e.clip("a")?.clip.staticParameters?[TimelineEditor.positionId])
     }
 
@@ -136,6 +137,69 @@ final class AlignmentTests: XCTestCase {
         let reopened = try TimelineEditor(json: serializeNativeProjectDocument(e.document, engine: e.engine), engine: e.engine)
         XCTAssertEqual(try bounds(reopened, "a"), try bounds(e, "a"))
         XCTAssertEqual(try bounds(reopened, "b"), try bounds(e, "b"))
+    }
+
+    func motionEditor(scalarOverride: Bool = false) throws -> TimelineEditor {
+        let e = try editor()
+        var d = e.document
+        let track = try createNativeParameterTrack(.init(id: "motion", parameterId: TimelineEditor.positionId, valueType: .vec2,
+            frameRate: d.frameRate, keyframes: [
+                .init(id: "p0", frame: 0, value: .vec2(.init(x: 0, y: 0)), outgoing: .linear,
+                      outgoingPath: .bezier(cp1: .init(x: 80, y: 120), cp2: .init(x: 170, y: -90))),
+                .init(id: "p1", frame: 60, value: .vec2(.init(x: 240, y: 180)), outgoing: .linear),
+            ], autoRotate: true), engine: e.engine)
+        d.sequence.tracks[0].clips[0].parameterTracks = [track]
+        if scalarOverride { d.sequence.tracks[0].clips[0].staticParameters?[POSITION_X_PARAMETER_ID] = .number(15) }
+        e.loadDocument(try parseNativeProjectDocument(d, engine: e.engine))
+        return e
+    }
+
+    func testAutoRotatingPathAlignmentPreservesTangentAndUntouchedAxis() throws {
+        let e = try motionEditor(), before = e.document
+        let path = try XCTUnwrap(e.clip("a")?.clip.parameterTracks.first)
+        let ys = try (0...60).map { try bounds(e, "a", time: Double($0) / 30).y }
+        XCTAssertTrue(e.alignClips(["a"], to: .left, time: 1))
+        XCTAssertEqual(try bounds(e, "a").x, 0, accuracy: 1e-9)
+        XCTAssertEqual(e.clip("a")?.clip.parameterTracks.first, path, "Bezier handles, easing and autoRotate remain identical")
+        for f in 0...60 { XCTAssertEqual(try bounds(e, "a", time: Double(f) / 30).y, ys[f], accuracy: 1e-9) }
+        XCTAssertEqual(e.undoStack.count, 1)
+        let after = e.document
+        XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
+        XCTAssertTrue(e.redo()); XCTAssertEqual(e.document, after)
+        let reopened = try TimelineEditor(json: serializeNativeProjectDocument(e.document, engine: e.engine), engine: e.engine)
+        XCTAssertEqual(try bounds(reopened, "a").x, 0, accuracy: 1e-9)
+    }
+
+    func testAnimatedVectorWithStaticScalarOverrideAlignsWithoutRejectedStaticCommand() throws {
+        let e = try motionEditor(scalarOverride: true)
+        let beforeY = try bounds(e, "a").y
+        XCTAssertTrue(e.alignClips(["a"], to: .right, time: 1))
+        XCTAssertEqual(try bounds(e, "a").maxX, 1000, accuracy: 1e-9)
+        XCTAssertEqual(try bounds(e, "a").y, beforeY, accuracy: 1e-9)
+        XCTAssertEqual(e.parameterValue(clipId: "a", parameterId: POSITION_X_PARAMETER_ID, time: 0), .number(15))
+        XCTAssertNil(e.lastPropertyFailure)
+        XCTAssertEqual(e.undoStack.count, 1)
+    }
+
+    func testVerticalAlignmentDoesNotInsertKeysIntoEasedScalarX() throws {
+        let e = try editor()
+        var d = e.document
+        let track = try createNativeParameterTrack(.init(id: "scalar-x", parameterId: POSITION_X_PARAMETER_ID, valueType: .number,
+            frameRate: d.frameRate, keyframes: [
+                .init(id: "x0", frame: 0, value: .number(0), outgoing: .cubicBezier(.init(x1: 0.2, y1: 0, x2: 0.8, y2: 1))),
+                .init(id: "x1", frame: 60, value: .number(200), outgoing: .linear),
+            ]), engine: e.engine)
+        d.sequence.tracks[0].clips[0].parameterTracks = [track]
+        e.loadDocument(try parseNativeProjectDocument(d, engine: e.engine))
+        XCTAssertTrue(e.alignClips(["a"], to: .top, time: 1))
+        XCTAssertEqual(e.clip("a")?.clip.parameterTracks, [track])
+        XCTAssertEqual(try bounds(e, "a").y, 0)
+    }
+
+    func testSelectionReferenceForSingleClipFallsBackToFrame() throws {
+        let e = try editor()
+        XCTAssertTrue(e.alignClips(["a"], to: .left, relativeTo: .selection, time: 1))
+        XCTAssertEqual(try bounds(e, "a").x, 0)
     }
 
     func testLockedAudioMissingAndTooSmallSelectionsCannotPartiallyEdit() throws {

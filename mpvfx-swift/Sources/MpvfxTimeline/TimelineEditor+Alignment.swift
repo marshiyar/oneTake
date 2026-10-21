@@ -79,7 +79,7 @@ public extension TimelineEditor {
     func alignClips(_ ids: Set<String>, to alignment: TimelineAlignment,
                     relativeTo reference: TimelineAlignmentReference = .frame, time: Double) -> Bool {
         guard let boxes = arrangementBoxes(ids, time: time) else { return false }
-        let target = reference == .frame
+        let target = reference == .frame || ids.count < 2
             ? CanvasRect(x: 0, y: 0, width: document.canvas.width, height: document.canvas.height)
             : arrangementUnion(boxes.map(\.box))
         let moves = boxes.map { item -> (String, Double, Double) in
@@ -147,24 +147,67 @@ private extension TimelineEditor {
     }
 
     func applyArrangement(_ moves: [(String, Double, Double)], time: Double, label: String) -> Bool {
-        var commands: [NativeProjectAtomicPropertyCommand] = []
-        for (id, dx, dy) in moves where abs(dx) > 1e-9 || abs(dy) > 1e-9 {
-            guard let (track, c) = clip(id), let frame = localFrame(clipId: id, time: time) else { return false }
-            let current = arrangementPosition(id, time: time), next = Vec2Value(x: current.x + dx, y: current.y + dy)
-            func put(_ pid: String, _ type: NativeValueType, _ value: NativeParameterValue, _ baseline: NativeParameterValue) {
-                let address = NativeProjectParameterAddress(sequenceId: sequenceId, trackId: track.id, clipId: id, parameterId: pid)
-                if c.parameterTracks.contains(where: { $0.parameterId == pid && !$0.keyframes.isEmpty }) {
-                    commands.append(.keyframe(.upsert(address: address, valueType: type, frame: frame, value: value,
-                        baselineValue: c.staticParameters?[pid] ?? baseline)))
-                } else { commands.append(.setStatic(address: address, value: value)) }
+        var next = document
+        var changed = false
+        do {
+            for (id, dx, dy) in moves where abs(dx) > 1e-9 || abs(dy) > 1e-9 {
+                guard let ti = next.sequence.tracks.firstIndex(where: { $0.clips.contains { $0.id == id } }),
+                      let ci = next.sequence.tracks[ti].clips.firstIndex(where: { $0.id == id }),
+                      let frame = localFrame(clipId: id, time: time) else { return false }
+                var c = next.sequence.tracks[ti].clips[ci]
+                let vector = c.parameterTracks.first { $0.parameterId == Self.positionId && !$0.keyframes.isEmpty }
+                var statics = c.staticParameters ?? [:]
+                var position = Vec2Value(x: 0, y: 0)
+                if case .vec2(let v)? = parameterValue(clipId: id, parameterId: Self.positionId, time: time) { position = v }
+                var writeVector = false
+                for (pid, delta, xAxis) in [(POSITION_X_PARAMETER_ID, dx, true), (POSITION_Y_PARAMETER_ID, dy, false)] where abs(delta) > 1e-9 {
+                    let scalarIndex = c.parameterTracks.firstIndex { $0.parameterId == pid && !$0.keyframes.isEmpty }
+                    let scalarValue = parameterValue(clipId: id, parameterId: pid, time: time)
+                    let current = arrangementPosition(id, time: time)
+                    let value = (xAxis ? current.x : current.y) + delta
+                    if scalarIndex != nil || vector != nil {
+                        // Keep the original 2D path and its auto-rotation tangent intact. A component override
+                        // changes only the requested axis, including when inserted between eased/path keys.
+                        var track: NativeParameterTrack
+                        if let index = scalarIndex { track = c.parameterTracks[index] }
+                        else {
+                            let trackId = nativeParameterTrackId(clipId: id, parameterId: pid)
+                            let keys: [NativeKeyframe]
+                            if let scalarValue {
+                                keys = [.init(id: nativeParameterKeyframeId(parameterTrackId: trackId, frame: 0), frame: 0,
+                                              value: scalarValue, outgoing: .linear)]
+                            } else {
+                                keys = (vector?.keyframes ?? []).map { key in
+                                    var k = key
+                                    k.id = nativeParameterKeyframeId(parameterTrackId: trackId, frame: key.frame)
+                                    if case .vec2(let v) = key.value { k.value = .number(xAxis ? v.x : v.y) }
+                                    k.outgoingPath = nil
+                                    return k
+                                }
+                            }
+                            track = try createNativeParameterTrack(.init(id: trackId, parameterId: pid, valueType: .number,
+                                                                         frameRate: document.frameRate, keyframes: keys), engine: engine)
+                        }
+                        let existing = track.keyframes.first { $0.frame == frame }
+                        let key = NativeKeyframe(id: existing?.id ?? nativeParameterKeyframeId(parameterTrackId: track.id, frame: frame),
+                            frame: frame, value: .number(value), outgoing: existing?.outgoing ?? .linear)
+                        guard case .success(let updated, _) = try applyNativeKeyframeCommand(track, .upsert(key), engine: engine) else { return false }
+                        if let index = scalarIndex { c.parameterTracks[index] = updated }
+                        else { c.parameterTracks.append(updated) }
+                    } else if scalarValue != nil { statics[pid] = .number(value) }
+                    else {
+                        if xAxis { position.x += delta } else { position.y += delta }
+                        writeVector = true
+                    }
+                }
+                if writeVector { statics[Self.positionId] = .vec2(position) }
+                c.staticParameters = statics.isEmpty ? nil : statics
+                next.sequence.tracks[ti].clips[ci] = c
+                changed = true
             }
-            put(Self.positionId, .vec2, .vec2(next), .vec2(current))
-            for (pid, value, baseline) in [(POSITION_X_PARAMETER_ID, next.x, current.x), (POSITION_Y_PARAMETER_ID, next.y, current.y)]
-            where parameterValue(clipId: id, parameterId: pid, time: time) != nil {
-                put(pid, .number, .number(value), .number(baseline))
-            }
-        }
-        guard !commands.isEmpty else { return false }
-        return withHistory(label) { applyProperty(.batch(commands)) }
+            guard changed else { return false }
+            // Validate the complete selection before exposing any change, then record one ordinary document inverse.
+            return applyKeyframe(.restoreDocument(try parseNativeProjectDocument(next, engine: engine)), label: label)
+        } catch { return false }
     }
 }

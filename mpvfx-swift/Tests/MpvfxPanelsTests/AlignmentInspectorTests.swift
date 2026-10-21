@@ -64,6 +64,21 @@ final class AlignmentInspectorTests: XCTestCase {
         XCTAssertEqual(e.undoStack.count, 1)
     }
 
+    func testSingleSelectionFallsBackFromPersistedSelectionReferenceAndKeepsOneHistoryStep() throws {
+        let (p, e, c) = try panel(["a", "b"])
+        p.alignmentReference = .selection
+        p.selection = ["a"]
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 364, height: 1600))
+        let before = e.document
+        p.focus.current = .button("align:left"); p.focus.visible = true
+        XCTAssertTrue(p.keyDown(EditorKey(.enter)))
+        XCTAssertEqual(e.alignmentBounds(clipId: "a", time: 1)?.x, 0)
+        XCTAssertEqual(e.undoStack.count, 1, "edited and withHistory name one native transaction")
+        let after = e.document
+        XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
+        XCTAssertTrue(e.redo()); XCTAssertEqual(e.document, after)
+    }
+
     func testDistributionRequiresThreeAndAudioOrLockedSelectionsCannotEdit() throws {
         let (p, e, _) = try panel(["a", "b"])
         let rows = p.groups.flatMap(\.rows)

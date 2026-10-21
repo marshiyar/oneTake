@@ -19,7 +19,7 @@ extension InspectorPanel {
     func alignmentGroup(_ editor: TimelineEditor) -> InspectorGroup {
         let ids = Set(selection), t = time
         let enabled = editor.canArrangeClips(ids, time: t)
-        let reference = alignmentReference
+        let reference: TimelineAlignmentReference = ids.count < 2 ? .frame : alignmentReference
         func button(_ value: TimelineAlignment, _ label: String) -> InspectorRow.Button {
             .init(key: "align:\(value.rawValue)", label: label, style: .muted, action: { [weak self] in
                 self?.edited(editor.alignClips(ids, to: value, relativeTo: reference, time: t), label: "Align clips")
