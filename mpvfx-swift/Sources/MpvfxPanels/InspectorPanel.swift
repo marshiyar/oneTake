@@ -494,14 +494,7 @@ public final class InspectorPanel {
                     arrow.over(bg, opacity: hasPrev ? 1 : 0.25), width: 1.4)
         if hasPrev { hits.add(prevBtn.insetBy(-2), .kfPrev(key)) }
         let d = CanvasRect(x: x0 + 14, y: midY - 6.5, width: 13, height: 13)
-        let dia = CanvasRect(x: d.x + 2, y: d.y + 2, width: 9, height: 9)
-        let hov = hovered == .keyframe(key)
-        switch kf.state {
-        case .onKey: c.fill(Self.keyframeDiamond(dia), PanelTheme.mint)
-        case .animated, .none:
-            let o = hov ? 1 : (kf.state == .animated ? 0.6 : 0.25)
-            c.stroke(Self.keyframeDiamond(dia), arrow.over(bg, opacity: o), StrokeStyle(width: 1.2 * 0.9))
-        }
+        drawKeyframeMark(c, in: d, kf, hovered: hovered == .keyframe(key))
         hits.add(d.insetBy(-2), .keyframe(key))
         let nextBtn = CanvasRect(x: x0 + 29, y: midY - 10, width: 12, height: 20)
         c.strokeSVG(["M1 1L5 5L1 9"], viewBox: 10, in: CanvasRect(x: nextBtn.x + 3, y: midY - 5, width: 10, height: 10),
@@ -510,22 +503,20 @@ public final class InspectorPanel {
         return watch.x
     }
 
-    /// KeyframeDiamond's `<rect x=5 y=0.7 width=6 height=6 rx=1 transform="rotate(45 5 0.7)">` in a 10-unit
-    /// view box, mapped into the 9px box.
-    static func keyframeDiamond(_ box: CanvasRect) -> CanvasPath {
-        let s = box.width / 10, k = 0.5522847498
-        let ca = cos(Double.pi / 4), sa = sin(Double.pi / 4)
-        func map(_ x: Double, _ y: Double) -> CanvasPoint {   // rect space (0…6) → rotated about (5, 0.7)
-            CanvasPoint(box.x + (5 + x * ca - y * sa) * s, box.y + (0.7 + x * sa + y * ca) * s)
+    /// The ◆ of a property row, as the timeline draws the property's keys (TimelineKeyframeGlyph): on a key the
+    /// kind's mark filled in the kind's colour (with the key's interpolation variant); animated, its outline in the kind's
+    /// colour at .75; not animated, a #a3a3a3 ghost outline at .3. Hover brings the outline to full opacity.
+    func drawKeyframeMark(_ c: CanvasContext, in d: CanvasRect, _ kf: InspectorRow.Keyframe, hovered hov: Bool) {
+        let at = CanvasPoint(d.midX, d.midY), shape = kf.kind.shape
+        switch kf.state {
+        case .onKey:
+            TimelineKeyframeGlyph.draw(c, .init(kf.kind, ease: kf.ease), at: at, r: 5)
+        case .animated:
+            TimelineKeyframeGlyph.drawOutline(c, .init(shape: shape, color: kf.kind.color.withAlpha(hov ? 1 : 0.75)), at: at, r: 5)
+        case .none:
+            let ghost = PanelTheme.neutral400.over(PanelTheme.panelBgInset, opacity: hov ? 1 : 0.3)
+            TimelineKeyframeGlyph.drawOutline(c, .init(shape: shape, color: ghost), at: at, r: 5)
         }
-        var p = CanvasPath()
-        p.move(to: map(1, 0)); p.line(to: map(5, 0))
-        p.curve(to: map(6, 1), c1: map(5 + k, 0), c2: map(6, 1 - k)); p.line(to: map(6, 5))
-        p.curve(to: map(5, 6), c1: map(6, 5 + k), c2: map(5 + k, 6)); p.line(to: map(1, 6))
-        p.curve(to: map(0, 5), c1: map(1 - k, 6), c2: map(0, 5 + k)); p.line(to: map(0, 1))
-        p.curve(to: map(1, 0), c1: map(0, 1 - k), c2: map(1 - k, 0))
-        p.close()
-        return p
     }
 
     /// FlatSlider (`min-h-[28px] gap-2.5`): 86px grey label (rowLabel), `h-5 flex-1` track (2px bg-panel-hover line; a

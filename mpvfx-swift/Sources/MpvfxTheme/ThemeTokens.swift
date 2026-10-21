@@ -220,6 +220,17 @@ public enum ThemeTokens {
     public static let curveHueLumaPair = ThemePair(0xF8FAFC, 0x27272A)
     /// Preview viewport around the stage.
     public static let viewportPair = ThemePair(0x141414, 0xE7E7EA)
+    /// Keyframe marks by property kind (timeline lanes and inspector). Each kind also has its own shape, which carries
+    /// the meaning; the colour reinforces it. Hues follow the Okabe-Ito colour-vision-safe set (yellow, reddish purple,
+    /// orange, bluish green, blue) with a neutral for opacity, lightened for the dark lanes and darkened for the
+    /// light ones. Each is at least 3:1 on the lane, row and gutter backgrounds in its mode, and every pair stays apart
+    /// under simulated protan, deutan and tritan vision (`KeyframeKindTokenTests`).
+    public static let keyframeTransformPair = ThemePair(0xF0E042, 0x6E5C00)
+    public static let keyframe3DPair = ThemePair(0xE0A4C8, 0xA42F80)
+    public static let keyframeOpacityPair = ThemePair(0xD4D4D8, 0x52525B)
+    public static let keyframeColorPair = ThemePair(0xE6A100, 0xCC5C00)
+    public static let keyframeEffectPair = ThemePair(0x2BC29A, 0x008056)
+    public static let keyframeAudioPair = ThemePair(0x56B4E9, 0x0072B2)
 
     // MARK: Fixed (the same in both modes)
     /// Media/stage canvas surface: the stage stays neutral so pictures are judged on the same grey.

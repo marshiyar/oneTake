@@ -161,9 +161,10 @@ final class TimelineKeyframeSelectionTests: XCTestCase {
     func testLaneDiamondsSelectAndDrag() throws {
         let (c, e) = try make()
         c.view.expandedClips = ["clip:a"]
-        let laneY = c.view.rowTop(1) + c.view.trackHeight + TimelineLayout.laneHeight / 2
+        // Expanded: the summary row, then the Position row under it.
+        let laneY = c.view.rowTop(1) + c.view.trackHeight + TimelineLayout.laneHeight * 1.5
         let hit = try XCTUnwrap(c.view.keyframeHit(x: x(c, 2), y: laneY))
-        XCTAssertEqual(hit.lane, 0); XCTAssertEqual(hit.frame, 60)
+        XCTAssertEqual(hit.lane, 0); XCTAssertEqual(hit.frame, 60); XCTAssertEqual(hit.laneRow, .property("position"))
         click(c, x(c, 2), laneY)
         XCTAssertEqual(selectedFrames(c), [60])
         XCTAssertTrue(c.view.isDiamondSelected(c.view.tracks[1].clips[0], group: nil, frame: 60), "the clip-bar diamond shows the same key selected")

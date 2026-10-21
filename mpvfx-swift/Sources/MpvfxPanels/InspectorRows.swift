@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxTimeline
 
 /// Row descriptors of the flat inspector. Rows are rebuilt from the document
 /// on every draw and event; they carry closures that edit through TimelineEditor, never state of their own.
@@ -26,6 +27,9 @@ public struct InspectorRow {
         public var stopwatch: () -> Void
         public var prev: (() -> Void)?
         public var next: (() -> Void)?
+        /// The property's kind and the playhead key's interpolation: the ◆ draws the timeline's mark for them.
+        public var kind: TimelineKeyframeKind = .transform
+        public var ease: TimelineKeyframeEase = .linear
     }
     public struct Number {
         public var key: String

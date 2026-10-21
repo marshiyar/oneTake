@@ -181,7 +181,8 @@ final class PanelSnapshotTests: XCTestCase {
             let underlineY = 28.3   // 16 + 26.5/2 - 2 … 29.25
             assertPixel(t, 240 - easeW - 2 - linearW / 2, underlineY, scale: scale, "#4c8df0", tol: 10)
             assertPixel(t, 240 - easeW / 2, underlineY, scale: scale, "#191919")
-            assertPixel(t, 240 - 41 + 14 + 6.5, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)   // 9px diamond centre
+            // The ◆ on a key is the property kind's mark (#201): a transform key, filled in keyframeTransformPair.
+            assertPixel(t, 240 - 41 + 14 + 6.5, 48 + 0.5, scale: scale, "#f0e042", tol: 12)   // mark centre
         }
     }
 
