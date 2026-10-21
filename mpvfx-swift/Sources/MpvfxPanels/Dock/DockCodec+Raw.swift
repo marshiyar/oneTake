@@ -13,15 +13,15 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 
-// The file's JSON shape. Every field is optional or a plain string so that a wrong value is repaired with a note
-// instead of failing the whole file; only the version and the tree's shape (a node is a group or a split) are
-// structural.
+// The file's JSON shape. Every field is optional and every value `Lenient`, so a wrong value (a number where a panel
+// id belongs, a string among the weights) is dropped or repaired with a note instead of failing the whole file;
+// only the version and the tree's shape (a node is a group or a split) are structural.
 
 struct RawVersion: Decodable { var version: Int? }
 
 struct RawFile: Codable {
     var version: Int
-    var current: String?
+    var current: Lenient<String>?
     var workspaces: [String: RawLayout]?
 }
 
@@ -43,8 +43,8 @@ indirect enum RawNode: Codable {
 
     init(_ node: DockNode) {
         switch node {
-        case .group(let g): self = .group(RawGroup(id: g.id, panels: g.panels, active: g.active))
-        case .split(let s): self = .split(RawSplit(axis: s.axis.rawValue, children: s.children.map(RawNode.init), weights: s.weights))
+        case .group(let g): self = .group(RawGroup(g))
+        case .split(let s): self = .split(RawSplit(s))
         }
     }
 
@@ -72,26 +72,54 @@ indirect enum RawNode: Codable {
 }
 
 struct RawGroup: Codable {
-    var id: String?
-    var panels: [String]?
-    var active: String?
+    var id: Lenient<String>?
+    var panels: [Lenient<String>]?
+    var active: Lenient<String>?
+
+    init(_ g: DockGroup) { id = Lenient(g.id); panels = g.panels.map(Lenient.init); active = Lenient(g.active) }
 }
 
 struct RawSplit: Codable {
-    var axis: String?
+    var axis: Lenient<String>?
     var children: [RawNode]?
-    var weights: [Double]?
+    var weights: [Lenient<Double>]?
+
+    init(_ s: DockSplit) { axis = Lenient(s.axis.rawValue); children = s.children.map(RawNode.init); weights = s.weights.map(Lenient.init) }
 }
 
 struct RawPlace: Codable {
-    var mates: [String]?
-    var index: Int?
-    var neighbour: [String]?
-    var edge: String?
-    var fraction: Double?
+    var mates: [Lenient<String>]?
+    var index: Lenient<Int>?
+    var neighbour: [Lenient<String>]?
+    var edge: Lenient<String>?
+    var fraction: Lenient<Double>?
 
     init(_ p: DockPlace) {
-        mates = p.mates; index = p.index; neighbour = p.neighbour; edge = p.edge?.rawValue; fraction = p.fraction
+        mates = p.mates.map(Lenient.init); index = Lenient(p.index); neighbour = p.neighbour.map(Lenient.init)
+        edge = p.edge.map { Lenient($0.rawValue) }; fraction = p.fraction.map(Lenient.init)
+    }
+}
+
+/// One value of the file that may hold the wrong type: it reads as nil (and is dropped or defaulted with a note)
+/// instead of refusing the whole file. Other decoding errors (bytes that are not JSON) still refuse it.
+struct Lenient<Value: Codable & Sendable>: Codable, Sendable {
+    let value: Value?
+    init(_ value: Value) { self.value = value }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        do {
+            value = try c.decode(Value.self)
+        } catch DecodingError.typeMismatch {
+            value = nil   // an object, array, number or string where the other kind belongs
+        } catch DecodingError.valueNotFound {
+            value = nil   // null
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        if let value { try c.encode(value) } else { try c.encodeNil() }
     }
 }
 
@@ -109,7 +137,7 @@ extension DockCodec {
             }
         }
         guard let first = workspaces.keys.sorted().first else { return .failure(.noWorkspace) }
-        let current = raw.current.flatMap { workspaces[$0] == nil ? nil : $0 }
+        let current = raw.current?.value.flatMap { workspaces[$0] == nil ? nil : $0 }
             ?? (workspaces[DockFile.defaultWorkspace] == nil ? first : DockFile.defaultWorkspace)
         return .success(Decoded(file: DockFile(current: current, workspaces: workspaces), notes: notes))
     }
@@ -135,10 +163,12 @@ extension DockCodec {
         case .group(let g):
             return .group(group(g, registry: registry, seen: &seen, notes: &notes))
         case .split(let s):
-            let axis = DockAxis(rawValue: s.axis ?? "")
-            if axis == nil { notes.append("unknown split axis \(quoted(s.axis ?? "")), using row") }
+            let named = s.axis?.value ?? ""
+            let axis = DockAxis(rawValue: named)
+            if axis == nil { notes.append("unknown split axis \(quoted(named)), using row") }
             let children = s.children ?? []
-            let weights = s.weights ?? []
+            // A missing or wrong weight is NaN here; `fixedWeights` makes it the mean of the others.
+            let weights = (s.weights ?? []).map { $0.value ?? .nan }
             var kids: [DockNode] = [], kept: [Double] = []
             for (i, child) in children.enumerated() {
                 guard let n = node(child, registry: registry, seen: &seen, notes: &notes) else { continue }
@@ -151,12 +181,13 @@ extension DockCodec {
     /// A group keeps the registered panels it lists that no earlier group took.
     static func group(_ g: RawGroup, registry: DockRegistry, seen: inout Set<DockPanelID>, notes: inout [String]) -> DockGroup {
         var panels: [DockPanelID] = []
-        for id in g.panels ?? [] {
+        for entry in g.panels ?? [] {
+            guard let id = entry.value else { notes.append("dropped a panel entry that is not a name"); continue }
             if !registry.contains(id) { notes.append("dropped unknown panel \(quoted(id))"); continue }
             if !seen.insert(id).inserted { notes.append("dropped duplicate panel \(quoted(id))"); continue }
             panels.append(id)
         }
-        return DockGroup(id: g.id ?? "", panels: panels, active: g.active)
+        return DockGroup(id: g.id?.value ?? "", panels: panels, active: g.active?.value)
     }
 
     /// Closed panels' places: only registered, closable panels that are not open; ids in a place that are not
@@ -174,11 +205,13 @@ extension DockCodec {
     }
 
     static func place(_ p: RawPlace, of id: DockPanelID, registry: DockRegistry) -> DockPlace {
-        let known = { (ids: [String]?) in Array((ids ?? []).filter { registry.contains($0) && $0 != id }.prefix(64)) }
-        let fraction = p.fraction.flatMap { $0.isFinite && $0 > 0 && $0 < 1 ? $0 : nil }
-        var place = DockPlace.beside(known(p.neighbour), edge: p.edge.flatMap(DockEdge.init(rawValue:)), fraction: fraction)
+        let known = { (ids: [Lenient<String>]?) in
+            Array((ids ?? []).compactMap(\.value).filter { registry.contains($0) && $0 != id }.prefix(64))
+        }
+        let fraction = p.fraction?.value.flatMap { $0.isFinite && $0 > 0 && $0 < 1 ? $0 : nil }
+        var place = DockPlace.beside(known(p.neighbour), edge: p.edge?.value.flatMap(DockEdge.init(rawValue:)), fraction: fraction)
         place.mates = known(p.mates)
-        place.index = min(max(0, p.index ?? 0), 64)
+        place.index = min(max(0, p.index?.value ?? 0), 64)
         return place
     }
 

@@ -304,32 +304,42 @@ final class DockLayoutTests: XCTestCase {
         XCTAssertEqual(row.weights, [0.25, 0.5, 0.25])
     }
 
+    func testSharesKeepAOnePercentFloorAndHugeValuesDoNotOverflow() {
+        let tiny = DockLayout.fixedWeights([1e-9, 1, 1], count: 3)
+        XCTAssertEqual(tiny[0], DockLayout.minShare, accuracy: 1e-12)
+        XCTAssertEqual(tiny.reduce(0, +), 1, accuracy: 1e-12)
+        XCTAssertEqual(DockLayout.fixedWeights([1e308, 1e308], count: 2), [0.5, 0.5])
+        let many = DockLayout.fixedWeights([1e-6] + Array(repeating: 1, count: 199), count: 200)
+        XCTAssertEqual(many[0], 1.0 / 200, accuracy: 1e-12, "more than 100 children: the floor is 1 / count")
+        XCTAssertEqual(DockLayout.fixedWeights([.nan, -1, 2], count: 4), [0.25, 0.25, 0.25, 0.25])
+    }
+
     // MARK: Invariants
 
-    /// Thousands of random moves, swaps, closes and opens: the invariants hold after each, and the required panels
+    /// Thousands of arbitrary moves, swaps, closes and opens (a fixed SplitMix64 sequence): the invariants hold after each, and the required panels
     /// stay open.
-    func testInvariantsHoldAfterRandomOperationSequences() throws {
+    func testInvariantsHoldAfterArbitraryOperationSequences() throws {
         var r = registry
         try r.register(DockPanelSpec(id: "easing", title: "Easing", defaultDock: .right, minSize: CanvasSize(240, 160)))
         try r.register(DockPanelSpec(id: "scopes", title: "Scopes", defaultDock: .bottom, minSize: CanvasSize(200, 150)))
-        var rng = SeededGenerator(seed: 0xD0C)
+        var seq = SplitMix64(seed: 0xD0C)
         var l = DockDefaults.layout(r)
         let ids = r.specs.map(\.id)
         for _ in 0..<3000 {
-            randomOperation(&l, r, ids, &rng)
+            arbitraryOperation(&l, r, ids, &seq)
             assertDockInvariants(l, r)
             XCTAssertLessThanOrEqual(l.root.depth, ids.count + 1)
         }
     }
 
-    private func randomOperation(_ l: inout DockLayout, _ r: DockRegistry, _ ids: [DockPanelID], _ rng: inout SeededGenerator) {
-        let a = ids.randomElement(using: &rng) ?? "media", b = ids.randomElement(using: &rng) ?? "preview"
-        let group = l.groups.randomElement(using: &rng)?.id ?? "g1"
-        let edge = DockEdge.allCases.randomElement(using: &rng) ?? .left
+    private func arbitraryOperation(_ l: inout DockLayout, _ r: DockRegistry, _ ids: [DockPanelID], _ seq: inout SplitMix64) {
+        let a = seq.pick(ids) ?? "media", b = seq.pick(ids) ?? "preview"
+        let group = seq.pick(l.groups)?.id ?? "g1"
+        let edge = seq.pick(DockEdge.allCases) ?? .left
         do {
-            switch Int.random(in: 0..<7, using: &rng) {
-            case 0: try l.move(a, to: .stack(group: group, index: Int.random(in: -1...4, using: &rng)))
-            case 1: try l.move(a, to: .split(group: group, edge: edge), fraction: Double.random(in: -1...2, using: &rng))
+            switch seq.below(7) {
+            case 0: try l.move(a, to: .stack(group: group, index: seq.below(6) - 1))
+            case 1: try l.move(a, to: .split(group: group, edge: edge), fraction: seq.unit() * 3 - 1)
             case 2: try l.move(a, to: .window(edge))
             case 3: try l.swap(a, b)
             case 4: try l.close(a, registry: r)
@@ -344,8 +354,9 @@ final class DockLayoutTests: XCTestCase {
     }
 }
 
-/// A small deterministic generator (SplitMix64) so the random sequences repeat run to run.
-struct SeededGenerator: RandomNumberGenerator {
+/// SplitMix64: a fixed, repeatable sequence of numbers, so the fuzz runs see the same cases on every run and machine.
+/// Test inputs only; nothing secret depends on it.
+struct SplitMix64 {
     var state: UInt64
     init(seed: UInt64) { state = seed }
     mutating func next() -> UInt64 {
@@ -355,4 +366,9 @@ struct SeededGenerator: RandomNumberGenerator {
         z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
         return z ^ (z >> 31)
     }
+    /// 0 ..< n (0 when n ≤ 0).
+    mutating func below(_ n: Int) -> Int { n > 0 ? Int(next() % UInt64(n)) : 0 }
+    /// 0 ..< 1.
+    mutating func unit() -> Double { Double(next() >> 11) / Double(UInt64(1) << 53) }
+    mutating func pick<T>(_ items: [T]) -> T? { items.isEmpty ? nil : items[below(items.count)] }
 }

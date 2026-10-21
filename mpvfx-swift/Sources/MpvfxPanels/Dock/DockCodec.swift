@@ -66,7 +66,7 @@ public enum DockCodec {
     }
 
     public static func encode(_ file: DockFile) throws -> Data {
-        let raw = RawFile(version: version, current: file.current,
+        let raw = RawFile(version: version, current: Lenient(file.current),
                           workspaces: file.workspaces.mapValues { RawLayout($0) })
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

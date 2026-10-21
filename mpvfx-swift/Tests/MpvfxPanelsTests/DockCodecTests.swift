@@ -58,8 +58,7 @@ final class DockCodecTests: XCTestCase {
 
     func testCorruptFilesAreTypedErrorsAndLoadTheDefault() {
         let cases: [String] = ["", "null", "[]", "{", "not json", #"{"version": "1"}"#, #"{"version": 1, "workspaces": []}"#,
-                               #"{"version": 1, "workspaces": {"edit": {"root": {"leaf": {}}}}}"#,
-                               #"{"version": 1, "workspaces": {"edit": {"root": {"split": {"weights": ["a"]}}}}}"#]
+                               #"{"version": 1, "workspaces": {"edit": {"root": {"leaf": {}}}}}"#]
         for json in cases {
             let result = DockCodec.load(Data(json.utf8), registry: registry, fallback: fallback)
             XCTAssertNotNil(result.error, json)
@@ -131,6 +130,25 @@ final class DockCodecTests: XCTestCase {
         XCTAssertTrue(d.notes.contains(#"unknown split axis "diagonal", using row"#))
     }
 
+    /// One wrong value in a list (a number among panel ids, a string among weights, an object as an index) is
+    /// dropped or defaulted with a note; the rest of the layout survives.
+    func testWrongTypesInsideListsAreDroppedNotFatal() throws {
+        let d = try file(#"""
+        {"version": 1, "current": 7, "workspaces": {"edit": {"root": {"split": {"axis": "row", "weights": ["a", 1, null], "children": [
+          {"group": {"id": 3, "panels": [1, "media", null, {"x": 1}, ["preview"]], "active": false}},
+          {"group": {"panels": ["preview"]}}, {"group": {"panels": ["timeline"]}}]}},
+          "closed": {"renders": {"mates": [true, "inspector"], "index": {}, "edge": 2, "fraction": "half"}}}}}
+        """#)
+        let l = try XCTUnwrap(d.file.layout)
+        assertDockInvariants(l, registry)
+        XCTAssertEqual(d.file.current, "edit")
+        XCTAssertEqual(l.root.group(containing: "media")?.panels, ["media"])
+        guard case .split(let s) = l.root else { return XCTFail("root") }
+        XCTAssertEqual(s.weights.count, 3)
+        XCTAssertEqual(l.closed["renders"], .tab(mates: ["inspector"], index: 0))
+        XCTAssertEqual(d.notes.filter { $0 == "dropped a panel entry that is not a name" }.count, 4)
+    }
+
     func testClosedPlacesAreFilteredAndClamped() throws {
         let d = try file(#"""
         {"version": 1, "current": "missing", "workspaces": {"edit": {"root": {"group": {"panels": ["preview", "timeline"]}},
@@ -151,22 +169,22 @@ final class DockCodecTests: XCTestCase {
         XCTAssertEqual(d.notes, ["dropped unknown panel \"\(String(repeating: "x", count: 40))…\""])
     }
 
-    /// Random byte edits of a valid file: decoding never crashes, and a file it accepts satisfies every invariant.
+    /// Byte edits of a valid file (a fixed SplitMix64 sequence): decoding never crashes, and a file it accepts satisfies every invariant.
     func testMutatedFilesNeverCrashAndAcceptedOnesAreValid() throws {
         var l = DockDefaults.layout(registry)
         try l.close("renders", registry: registry)
         let base = Array(try DockCodec.encode(DockFile(workspaces: ["edit": l, "audio": DockDefaults.layout(registry)])))
-        var rng = SeededGenerator(seed: 0xF11E)
+        var seq = SplitMix64(seed: 0xF11E)
         let alphabet = Array(#"{}[]",:0123456789.-eE"abcdefghijklmnopqrstuvwxyz \n"#.utf8)
         var accepted = 0
         for _ in 0..<2000 {
             var bytes = base
-            for _ in 0..<Int.random(in: 1...6, using: &rng) {
-                let i = Int.random(in: 0..<bytes.count, using: &rng)
-                switch Int.random(in: 0..<3, using: &rng) {
-                case 0: bytes[i] = alphabet.randomElement(using: &rng) ?? 0
+            for _ in 0..<(1 + seq.below(6)) {
+                let i = seq.below(bytes.count)
+                switch seq.below(3) {
+                case 0: bytes[i] = seq.pick(alphabet) ?? 0
                 case 1: bytes.remove(at: i)
-                default: bytes.insert(alphabet.randomElement(using: &rng) ?? 0, at: i)
+                default: bytes.insert(seq.pick(alphabet) ?? 0, at: i)
                 }
             }
             guard case .success(let d) = DockCodec.decode(Data(bytes), registry: registry) else { continue }
