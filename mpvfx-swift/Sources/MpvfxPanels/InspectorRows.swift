@@ -38,6 +38,8 @@ public struct InspectorRow {
         /// Label drag scrubs the value: (current value, units per pixel, apply on release).
         public var scrub: (value: Double, step: Double, apply: (Double) -> Void, format: (Double) -> String)?
         public var disabled = false
+        /// Shown in the normal ink and focusable, its text selected while focused, but never edited (Media start).
+        public var readOnly = false
     }
     public struct Slider {
         public var key: String
@@ -56,6 +58,9 @@ public struct InspectorRow {
         public var settings: (active: Bool, toggle: () -> Void)?
         /// Drags along y, bottom = min (the Tone EQ's faders).
         public var vertical = false
+        /// A detent: a drag within `detentReach` of the track's span from it lands on it (Rate's 1x).
+        public var detent: Double?
+        public static let detentReach = 0.03
     }
     public struct Toggle {
         public var key: String

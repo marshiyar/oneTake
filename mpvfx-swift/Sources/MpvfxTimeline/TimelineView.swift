@@ -129,6 +129,20 @@ public enum TimelineRuler {
         }
         return String(format: "%02d:%02d:%02d", s / 60, s % 60, frames % base)
     }
+
+    /// Timecode of a whole frame count (a clip's `sourceInFrame`) at the rational rate `numerator/denominator`,
+    /// in integer arithmetic only: the same fields and rules as `timecode(_:frameRate:hours:)` (non-drop-frame,
+    /// frames at the nominal rate, the hours field from an hour of real time on).
+    public static func timecode(frame: Int, numerator: Int, denominator: Int, hours: Bool = false) -> String {
+        guard numerator > 0, denominator > 0 else { return hours ? "00:00:00:00" : "00:00:00" }
+        let base = max(1, (numerator + denominator / 2) / denominator)
+        let frames = max(0, frame), s = frames / base
+        let (realSpan, overflow) = frames.multipliedReportingOverflow(by: denominator)
+        if hours || overflow || realSpan >= 3600 * numerator || s >= 3600 {
+            return String(format: "%02d:%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60, frames % base)
+        }
+        return String(format: "%02d:%02d:%02d", s / 60, s % 60, frames % base)
+    }
 }
 
 /// One expanded property lane (a property group, e.g. Position), keyframe times clip-local seconds.

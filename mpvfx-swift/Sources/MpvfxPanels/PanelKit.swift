@@ -128,12 +128,16 @@ public struct PanelTextField: Equatable {
     public var key: String
     public var draft: String
     public var original: String
-    public init(key: String, value: String) { self.key = key; draft = value; original = value }
+    /// Shown and focusable but never edited (the Media group's Media start): Enter and Esc leave it, other plain
+    /// keys change nothing.
+    public var readOnly = false
+    public init(key: String, value: String, readOnly: Bool = false) { self.key = key; draft = value; original = value; self.readOnly = readOnly }
 
     public enum Outcome: Equatable { case none, editing, commit(String), cancel }
 
     /// Handles one key while focused.
     public mutating func key(_ k: EditorKey) -> Outcome {
+        if readOnly { return Self.readOnlyKey(k) }
         switch k.code {
         case .enter: return .commit(draft)
         case .escape: draft = original; return .cancel
@@ -143,6 +147,11 @@ public struct PanelTextField: Equatable {
         case .left, .right, .up, .down, .home, .end: return .editing
         default: return .none
         }
+    }
+
+    static func readOnlyKey(_ k: EditorKey) -> Outcome {
+        if k.command || k.alt { return .none }
+        return k.code == .enter || k.code == .escape ? .cancel : .editing
     }
 }
 

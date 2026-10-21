@@ -64,12 +64,21 @@ public final class InspectorPanel {
     /// Set by showKeyframeEasing: the next layout scrolls the open group's "Keyframe easing" rows into view.
     var revealEasingRows = false
     var cropActive: String?
+    /// The host's stage crop tool (one crop session for the inspector and the stage toolbar); nil runs the
+    /// inspector's own session.
+    public var cropLink: InspectorCropLink?
     var cropBefore: NativeClipCrop?
     var cropLinkAll = false
     struct Scrub { var key: String; var startX: Double; var value: Double; var current: Double; var moved: Bool }
     var scrub: Scrub?
-    struct SliderDrag { var key: String; var track: CanvasRect; var min: Double; var max: Double; var current: Double; var vertical = false }
+    struct SliderDrag {
+        var key: String; var track: CanvasRect; var min: Double; var max: Double; var current: Double; var vertical = false
+        var detent: Double?
+    }
     var sliderDrag: SliderDrag?
+    /// The last press on a slider track (key, time): a second press on it within `doubleClickInterval` resets it.
+    var lastSliderPress: (key: String, time: Double)?
+    public static let doubleClickInterval = 0.4
     var lastRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     /// Custom-row drag in flight (row id, part).
     var customDrag: (String, Int)?
@@ -459,17 +468,25 @@ public final class InspectorPanel {
         if let s = scrub, s.key == n.key, let fmt = n.scrub?.format { text = fmt(s.current) }
         if editing, let f = self.field { text = f.draft }
         let tr = CanvasRect(x: field.x, y: field.y, width: field.width, height: 16.5)
-        if editing { c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput) }
+        if editing { drawFieldEditing(c, tr, text: text, font: font, readOnly: n.readOnly) }
         PanelDraw.text(c, text, in: tr, font: font,
                        color: n.tier.valueInk(disabled: n.disabled, typing: editing, adjusting: scrub?.key == n.key), align: .right)
-        if editing {   // caret after the draft
-            c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent)
-        }
         let underline: CanvasColor = n.tier == .explicitCustom
             ? PanelTheme.accent.withAlpha(isHover ? 0.7 : 0.3)
             : PanelTheme.panelBorderInput.withAlpha(isHover ? 1 : 0.5)
         c.fillRect(CanvasRect(x: field.x, y: field.maxY - 1, width: field.width, height: 1).snapped, editing ? PanelTheme.accent : underline)
         if !n.disabled { hits.add(CanvasRect(x: field.x, y: r.y, width: field.width, height: r.height), .field(n.key)) }
+    }
+
+    /// A focused field's backdrop, then its caret after the draft; a read-only value shows its text selected instead.
+    func drawFieldEditing(_ c: CanvasContext, _ tr: CanvasRect, text: String, font: CanvasFont, readOnly: Bool) {
+        c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput)
+        guard readOnly else {
+            c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent)
+            return
+        }
+        let w = min(tr.width, c.measureText(text, font: font).width)
+        c.fillRect(CanvasRect(x: tr.maxX - w - 1, y: tr.y + 1, width: w + 2, height: tr.height - 2), PanelTheme.accent.withAlpha(0.3))
     }
 
     /// Keyframe controls on the property's row (docs/DESIGN.md Rollout 5): the 12px stopwatch (Phosphor Timer, the
@@ -699,7 +716,7 @@ public final class InspectorPanel {
         return true
     }
 
-    public func pointerDown(_ p: CanvasPoint) -> Bool {
+    public func pointerDown(_ p: CanvasPoint, time: Double = Date().timeIntervalSinceReferenceDate) -> Bool {
         focus.pointerPressed()
         // A press ends any audition first, so a pick commits on top of the stored chain, never the auditioned one.
         endAudition()
@@ -712,18 +729,14 @@ public final class InspectorPanel {
         case .group(let id):
             toggleGroup(id)
         case .groupReset(let id): buildGroups().first { $0.id == id }?.reset?()
-        case .field(let k): if let n = number(k) { field = PanelTextField(key: k, value: n.text) }
+        case .field(let k): if let n = number(k) { field = PanelTextField(key: k, value: n.text, readOnly: n.readOnly) }
         case .scrub(let k): if let s = number(k)?.scrub { scrub = Scrub(key: k, startX: p.x, value: s.value, current: s.value, moved: false) }
         case .keyframe(let k): if let st = slider(k)?.settings { st.toggle() } else { keyframe(k)?.toggle() }
         case .kfPrev(let k): keyframe(k)?.prev?()
         case .kfNext(let k): keyframe(k)?.next?()
         case .stopwatch(let k): keyframe(k)?.stopwatch()
         case .reset(let k): reset(k)?()
-        case .slider(let k):
-            if let s = slider(k), let tr = hits.rect(where: { $0 == .slider(k) }) {
-                sliderDrag = SliderDrag(key: k, track: tr, min: s.min, max: s.max, current: s.position, vertical: s.vertical)
-                sliderMove(p)
-            }
+        case .slider(let k): pressSlider(k, p, time: time)
         case .toggle(let k): if let t = toggle(k) { t.set(!t.on) }
         case .segment(let k, let o): segmented(k)?.select(o)
         case .button(let k): button(k)?.action()
@@ -746,11 +759,23 @@ public final class InspectorPanel {
         return true
     }
 
+    /// A press on a slider track starts a drag; a second press within `doubleClickInterval` resets it instead.
+    func pressSlider(_ k: String, _ p: CanvasPoint, time: Double) {
+        guard let s = slider(k), let tr = hits.rect(where: { $0 == .slider(k) }) else { return }
+        if let last = lastSliderPress, last.key == k, time - last.time >= 0, time - last.time <= Self.doubleClickInterval, let reset = s.reset {
+            lastSliderPress = nil; reset(); return
+        }
+        lastSliderPress = (k, time)
+        sliderDrag = SliderDrag(key: k, track: tr, min: s.min, max: s.max, current: s.position, vertical: s.vertical, detent: s.detent)
+        sliderMove(p)
+    }
+
     func sliderMove(_ p: CanvasPoint) {
         guard var d = sliderDrag else { return }
         let pct = d.vertical ? max(0, min(1, (d.track.maxY - p.y) / max(1, d.track.height)))
             : max(0, min(1, (p.x - d.track.x) / max(1, d.track.width)))
         d.current = d.min + pct * (d.max - d.min)
+        if let detent = d.detent, abs(d.current - detent) <= InspectorRow.Slider.detentReach * (d.max - d.min) { d.current = detent }
         sliderDrag = d
     }
 
@@ -783,7 +808,7 @@ public final class InspectorPanel {
         if let s = scrub {
             scrub = nil
             if s.moved { number(s.key)?.scrub?.apply(s.current) }
-            else if let n = number(s.key) { field = PanelTextField(key: s.key, value: n.text) }   // click on label focuses
+            else if let n = number(s.key) { field = PanelTextField(key: s.key, value: n.text, readOnly: n.readOnly) }   // click on label focuses
             onEdited?()
         }
     }

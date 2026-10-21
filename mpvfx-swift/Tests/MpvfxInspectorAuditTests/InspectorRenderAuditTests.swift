@@ -328,7 +328,7 @@ final class InspectorRenderAuditTests: XCTestCase {
 
     func testVideoSoundToggle() {
         let export0 = exportRender()
-        toggle("muted", false)   // "Play video sound" off
+        toggle("muted", false)   // "Sound" off
         XCTAssertEqual(audioTrack("V")?.muted, true, "live mix drops it")
         XCTAssertNotEqual(exportRender().audio, export0.audio, "export leaves its audio out")
         XCTAssertEqual(exportRender().audio?.tracks.first { $0.id == "V" }?.muted, true)
@@ -337,7 +337,7 @@ final class InspectorRenderAuditTests: XCTestCase {
     func testAudioClipMute() {
         select("M")
         let export0 = exportRender()
-        toggle("muted", true)
+        toggle("muted", false)   // "Sound" off: the same switch, the same meaning, as on a video clip (issue #188)
         XCTAssertEqual(audioTrack("M")?.muted, true)
         XCTAssertNotEqual(exportRender().audio, export0.audio)
     }
