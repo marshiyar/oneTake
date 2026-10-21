@@ -25,15 +25,34 @@ public struct TimelineKeyableParameter: Equatable, Sendable {
 public extension TimelineEditor {
     /// Every keyframeable property the inspector shows for the clip, as the parameters it keys: visual clips (video,
     /// image, element) Position, Size, Rotation, Scale, Opacity, Depth, Tilt X, Tilt Y and Perspective (Roll is
-    /// Rotation); clips with sound (audio, video) Volume. Position keys the scalar x / y tracks when those carry
-    /// the animation (recorded and older projects), else the vec2 track.
+    /// Rotation); clips with sound (audio, and video whose audio is not detached) Volume. Position keys the scalar
+    /// x / y parameters when the clip has them (recorded and older projects), else the vec2 track; Opacity keys
+    /// whichever opacity parameter already animates (older projects carry `visual.autoAlpha`), else `visual.opacity`.
     func keyableParameters(clipId: String, time: Double) -> [TimelineKeyableParameter] {
         guard let (_, c) = clip(clipId) else { return [] }
         let kind = document.assets.first { $0.id == c.assetId }?.kind ?? .element
         var out: [TimelineKeyableParameter] = []
         if kind == .video || kind == .image || kind == .element { out += visualKeyableParameters(clipId: clipId, time: time) }
-        if kind == .audio || kind == .video { out.append(.init(Self.volumeId, .number(clipVolume(clipId: clipId)))) }
+        // A video whose sound was detached to its own clip carries no volume: the detached clip does, and reattaching
+        // refuses a video with volume keys of its own.
+        if kind == .audio || (kind == .video && !hasDetachedAudio(clipId)) { out.append(.init(Self.volumeId, .number(clipVolume(clipId: clipId)))) }
         return out
+    }
+
+    internal func hasDetachedAudio(_ clipId: String) -> Bool {
+        document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == clipId } }
+    }
+
+    /// The opacity parameters in the order preview and export read them (`PreviewComposition.layer`).
+    static let opacityIds = ["transform.opacity", opacityId, "visual.autoAlpha"]
+
+    internal func opacityKeyableParameters(clipId: String, time: Double) -> [TimelineKeyableParameter] {
+        let shown: Double = Self.opacityIds.lazy.compactMap { id -> Double? in
+            if case .number(let v)? = self.parameterValue(clipId: clipId, parameterId: id, time: time) { return v }
+            return nil
+        }.first ?? 1
+        let animated = Self.opacityIds.filter { isParameterAnimated(clipId: clipId, $0) }
+        return (animated.isEmpty ? [Self.opacityId] : animated).map { .init($0, .number(shown)) }
     }
 
     internal func visualKeyableParameters(clipId: String, time: Double) -> [TimelineKeyableParameter] {
@@ -43,14 +62,16 @@ public extension TimelineEditor {
         out.append(.init(Self.heightId, .number(tr.height ?? box.height)))
         out.append(.init(Self.rotationId, .number(0)))
         out.append(.init(Self.scaleId, .vec2(Vec2Value(x: 1, y: 1))))
-        out.append(.init(Self.opacityId, .number(1)))
+        out += opacityKeyableParameters(clipId: clipId, time: time)
         out += NativeTransform3D.parameterIds.map { .init($0, .number(0)) }
         return out
     }
 
     internal func positionKeyableParameters(clipId: String, x: Double, y: Double) -> [TimelineKeyableParameter] {
+        // Scalar x / y win over the vec2 in preview and export whenever the clip has them, animated or static.
+        let statics = clip(clipId)?.clip.staticParameters ?? [:]
         let scalar = [TimelineKeyableParameter(POSITION_X_PARAMETER_ID, .number(x)), .init(POSITION_Y_PARAMETER_ID, .number(y))]
-            .filter { isParameterAnimated(clipId: clipId, $0.parameterId) }
+            .filter { isParameterAnimated(clipId: clipId, $0.parameterId) || statics[$0.parameterId] != nil }
         let vec = TimelineKeyableParameter(Self.positionId, .vec2(Vec2Value(x: x, y: y)))
         if scalar.isEmpty || isParameterAnimated(clipId: clipId, Self.positionId) { return [vec] + scalar }
         return scalar
@@ -62,8 +83,8 @@ public extension TimelineEditor {
 
     /// ⌘K (`animatedOnly` false): a key at the playhead on every keyframeable property of each clip, holding the
     /// value shown there. ⇧⌘K (`animatedOnly` true): only on the properties that already have keys. A property
-    /// already keyed at that frame is left as it is; locked clips are skipped. One undo step ("Add keyframes");
-    /// false when nothing was written.
+    /// already keyed at that frame is left as it is; locked clips and clips the playhead is not over are skipped.
+    /// One undo step ("Add keyframes"); false when nothing was written.
     @discardableResult
     func keyProperties(clipIds: [String], time: Double, animatedOnly: Bool) -> Bool {
         let cmds = clipIds.filter { !isClipLocked($0) }.flatMap { keyCommands(clipId: $0, time: time, animatedOnly: animatedOnly) }
@@ -74,7 +95,10 @@ public extension TimelineEditor {
     }
 
     internal func keyCommands(clipId: String, time: Double, animatedOnly: Bool) -> [NativeProjectAtomicPropertyCommand] {
-        guard let (track, c) = clip(clipId), let frame = localFrame(clipId: clipId, time: time) else { return [] }
+        guard let (track, c) = clip(clipId) else { return [] }
+        // The playhead's frame inside the clip; a clip it is not over gets no key (localFrame would clamp to an end).
+        let frame = (time * fps).rounded() - c.startFrame
+        guard frame >= 0, frame < c.durationFrames else { return [] }
         return keyableParameters(clipId: clipId, time: time).compactMap { p in
             let keys = c.parameterTracks.first { $0.parameterId == p.parameterId }?.keyframes ?? []
             guard !keys.contains(where: { $0.frame == frame }), !animatedOnly || !keys.isEmpty else { return nil }
