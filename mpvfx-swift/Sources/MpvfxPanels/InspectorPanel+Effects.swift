@@ -30,6 +30,20 @@ public struct EffectsUIState: Equatable {
 /// border-input rail (Mix / settings), "Add effect", and the catalog: a 4-column family tab strip over a tile grid
 /// of the family's looks and effects. Every value is an amount in the clip's grade (undoable).
 extension InspectorPanel {
+    /// The selected effect's amount ("Mix"), keyframeable as `grade.effects.<key>` (issue #179).
+    func masterSlider(_ editor: TimelineEditor, _ s: Selected, _ sel: EffectSpecs.Spec,
+                      commit: @escaping (ColorGrading) -> Void) -> InspectorRow {
+        let g = editor.gradeShown(clipId: s.id, time: time)   // the grade the group's other rows show
+        let v = (g.effects[sel.key] ?? 0) * 100
+        let fmt: (Double) -> String = { x in sel.masterFormat?(x / 100) ?? "\(Int(x.rounded()))%" }
+        let kf = NativeGradeParameter.effectKeys.contains(sel.key) ? gradeKeyframe(editor, s, [NativeGradeParameter.effectId(sel.key)], shown: g) : nil
+        return .init(.slider(.init(key: "fx:\(sel.key)", label: sel.masterLabel, position: v, min: 0, max: sel.max,
+                                   display: fmt(v), format: fmt, tier: .explicitCustom,
+                                   commit: { x in var n = g; n.effects[sel.key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
+                                   reset: { var n = g; n.effects[sel.key] = EffectSpecs.resetValue(effect: sel.key, sel.key); commit(n) },
+                                   keyframe: kf)), rail: true)
+    }
+
     func stylizeGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
         let t = time, g = editor.gradeShown(clipId: s.id, time: t)
         let commit: (ColorGrading) -> Void = { [weak self] n in self?.edited(editor.commitGrade(clipId: s.id, time: t, shown: g, next: n)) }
@@ -61,15 +75,7 @@ extension InspectorPanel {
             })), rail: true))
             if sel.showMaster {
                 gap(4, rail: true)
-                let v = (g.effects[sel.key] ?? 0) * 100
-                let fmt: (Double) -> String = { x in sel.masterFormat?(x / 100) ?? "\(Int(x.rounded()))%" }
-                rows.append(.init(.slider(.init(key: "fx:\(sel.key)", label: sel.masterLabel, position: v, min: 0, max: sel.max,
-                                                display: fmt(v), format: fmt, tier: .explicitCustom,
-                                                commit: { x in var n = g; n.effects[sel.key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
-                                                reset: { var n = g; n.effects[sel.key] = EffectSpecs.resetValue(effect: sel.key, sel.key); commit(n) },
-                                                keyframe: NativeGradeParameter.effectKeys.contains(sel.key)
-                                                    ? gradeKeyframe(editor, s, [NativeGradeParameter.effectId(sel.key)], shown: g) : nil)),
-                                  rail: true))
+                rows.append(masterSlider(editor, s, sel, commit: commit))
             }
             for control in sel.settings {
                 gap(4, rail: true)

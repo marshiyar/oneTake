@@ -94,16 +94,7 @@ extension InspectorPanel {
         gap(6)
         rows.append(.init(.section("Primary")))
         gap(4)
-        for (i, a) in ColorGrading.adjustSliders.enumerated() {
-            if i > 0 { gap(2) }
-            let v = g.adjustValue(a.key) * a.scale
-            let fmt: (Double) -> String = { x in a.key == "exposure" ? String(format: "%+.2f", x / 100) : "\(Int(x.rounded()))\(a.suffix)" }
-            rows.append(.init(.slider(.init(key: "grade:adj:\(a.key)", label: a.label, position: v, min: a.min, max: a.max, display: fmt(v), format: fmt,
-                                            tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
-                                            commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
-                                            reset: { var n = g; n.adjust[a.key] = nil; commit(n) },
-                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g)))))
-        }
+        rows += primaryRows(editor, s, g, commit: commit)
         gap(6)
         rows.append(.init(.section("Color wheels")))
         gap(6)
@@ -146,6 +137,22 @@ extension InspectorPanel {
         // not drawn: the native preview has no compare bypass or runtime handshake yet.
         group.reset = g.isAuthored ? { commit(ColorGrading()) } : nil
         return group
+    }
+
+    /// The ten Primary sliders, `space-y-0.5`, each keyframeable (issue #179).
+    func primaryRows(_ editor: TimelineEditor, _ s: Selected, _ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> [InspectorRow] {
+        var rows: [InspectorRow] = []
+        for (i, a) in ColorGrading.adjustSliders.enumerated() {
+            if i > 0 { rows.append(.init(.spacer(2))) }
+            let v = g.adjustValue(a.key) * a.scale
+            let fmt: (Double) -> String = { x in a.key == "exposure" ? String(format: "%+.2f", x / 100) : "\(Int(x.rounded()))\(a.suffix)" }
+            rows.append(.init(.slider(.init(key: "grade:adj:\(a.key)", label: a.label, position: v, min: a.min, max: a.max, display: fmt(v), format: fmt,
+                                            tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
+                                            commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
+                                            reset: { var n = g; n.adjust[a.key] = nil; commit(n) },
+                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g)))))
+        }
+        return rows
     }
 
     func copyGradeRow(_ g: ColorGrading, apply: @escaping () -> Void) -> InspectorCustomRow {
