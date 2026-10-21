@@ -24,7 +24,9 @@ internal final class ShapeEditTests: XCTestCase {
         var project = sourceEditor.document
         project.sequence.tracks[1].clips[0].text = nil
         let editor = try TimelineEditor(
-            json: serializeNativeProjectDocument(project, engine: sourceEditor.engine), engine: sourceEditor.engine)
+            json: serializeNativeProjectDocument(project, engine: sourceEditor.engine),
+            engine: sourceEditor.engine
+        )
         let shape = NativeClipShape(kind: "rectangle", radius: 20, strokeWidth: 10)
         XCTAssertTrue(editor.setClipShape(clipId: "title", shape))
         XCTAssertFalse(editor.setClipShape(clipId: "title", shape))
@@ -32,7 +34,8 @@ internal final class ShapeEditTests: XCTestCase {
         XCTAssertFalse(editor.setClipShape(clipId: "natural", shape), "media assets refuse shapes")
         let reopened = try TimelineEditor(
             json: serializeNativeProjectDocument(editor.document, engine: sourceEditor.engine),
-            engine: sourceEditor.engine)
+            engine: sourceEditor.engine
+        )
         XCTAssertEqual(reopened.clip("title")?.clip.shape, shape)
         _ = editor.undo()
         XCTAssertNil(editor.clip("title")?.clip.shape)
