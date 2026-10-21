@@ -131,8 +131,8 @@ public enum DocumentAudioGraph {
         track.stem.sourceIn -= lead * track.stem.rate; track.stem.duration = track.end - track.start
         track.volumeKeyframes?.leadFrames = lead * fps
         track.transitionGain = AudioTransitionGain(
-            fadeIn: t.incoming.map { AudioGainRamp(start: ($0.kind == .dissolve ? $0.startFrame : $0.cutFrame) / fps, end: $0.endFrame / fps, fadeIn: true) },
-            fadeOut: t.outgoing.map { AudioGainRamp(start: $0.startFrame / fps, end: ($0.kind == .dissolve ? $0.endFrame : $0.cutFrame) / fps, fadeIn: false) })
+            fadeIn: t.incoming.map { AudioGainRamp(start: ($0.kind.overlaps ? $0.startFrame : $0.cutFrame) / fps, end: $0.endFrame / fps, fadeIn: true) },
+            fadeOut: t.outgoing.map { AudioGainRamp(start: $0.startFrame / fps, end: ($0.kind.overlaps ? $0.endFrame : $0.cutFrame) / fps, fadeIn: false) })
     }
 
     /// The clips solo leaves out of the mix: while any audio track is soloed, every clip on a track that is not a
