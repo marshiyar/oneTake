@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxPanels
+import MpvfxPlayer
 import MpvfxTimeline
 
 /// The editor window: the dock (every panel in its group, with tab bars and splitters; `DockView`) above the 22 pt
@@ -119,10 +120,14 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
     var menuExtras: [DockMenuItem] = []
     var onMenuExtra: (DockPanelID, String) -> Void = { _, _ in }
     var isFullscreen: () -> Bool = { false }
+    /// What the preview stage asks for under the pointer (`PlayerController.stageCursor`).
+    var stageCursor: () -> StageCursor = { .arrow }
     var needsDisplay: () -> Void = {}
     /// Every workspace's layout as saved, and where it is saved (`restoreDock`).
     var dockFile: DockFile?
     var dockStore: DockLayoutStore?
+    /// The last save failure, drawn in the status line until a save succeeds (nil: none).
+    var saveFailureStatus: () -> String? = { nil }
     private(set) var frames: EditorShellFrames?
     /// Pane that got the press; it receives moves/up until release (pointer capture).
     var captured: Region?
@@ -184,15 +189,23 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
         return panes[region]?.hint() ?? Self.regionHints[region]
     }
 
-    /// The cursor a host should show at a point: column resize over a vertical splitter, row resize over a horizontal one.
-    enum Cursor { case arrow, columnResize, rowResize }
+    /// The cursor a host should show at a point: column or row resize over a splitter, and over the preview the
+    /// stage's own (transform handles, move, rotate, anchor, locked: StageHostCursor.swift).
+    enum Cursor: Equatable { case arrow, columnResize, rowResize, move, resizeNWSE, resizeNESW, crosshair, notAllowed }
+    /// Order: the Settings card covers everything (arrow); a pane holding the pointer keeps its own cursor (the
+    /// stage's, or the arrow) so a drag crossing a splitter shows no resize arrow; a splitter under the pointer or
+    /// being dragged; then the preview's stage cursor.
     func cursor(at x: Double, _ y: Double) -> Cursor {
-        guard !isFullscreen(), !modalOpen else { return .arrow }
-        switch dock.cursor(at: CanvasPoint(x, y)) {
-        case .columnResize?: return .columnResize
-        case .rowResize?: return .rowResize
-        case .arrow?, nil: return .arrow
+        guard !modalOpen else { return .arrow }
+        if let c = captured { return c == .player ? Cursor(stage: stageCursor()) : .arrow }
+        if !isFullscreen() {
+            switch dock.cursor(at: CanvasPoint(x, y)) {
+            case .columnResize?: return .columnResize
+            case .rowResize?: return .rowResize
+            case .arrow?, nil: break
+            }
         }
+        return region(at: x, y) == .player ? Cursor(stage: stageCursor()) : .arrow
     }
 
     // MARK: Hit testing

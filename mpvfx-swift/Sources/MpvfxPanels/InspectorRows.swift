@@ -212,7 +212,7 @@ public struct InspectorCustomRow {
     /// a press replays a pointer at the part's centre, which on a wheel or graph is an edit (issue #171).
     public var keyPress: ((Int, EditorKey) -> Bool)?
     public init(id: String, height: Double, draw: @escaping (CanvasContext, CanvasRect, InspectorPanel) -> Void,
-                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }) {
-        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer
+                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }, key: ((Int, EditorKey) -> Bool)? = nil) {
+        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer; self.keyPress = key
     }
 }

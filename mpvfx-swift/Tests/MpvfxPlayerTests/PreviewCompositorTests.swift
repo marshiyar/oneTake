@@ -82,13 +82,14 @@ final class PreviewCompositorTests: XCTestCase {
 
     func testLayersAreActiveVisualClipsInTrackOrder() throws {
         let comp = Self.composition(try Self.document())
-        XCTAssertEqual(comp.entries.map(\.clip.id), ["A", "B", "img"], "audio and missing media are not layers; lane 1 at the bottom")
+        XCTAssertEqual(comp.entries.map(\.clip.id), ["A", "G", "B", "img"], "audio is not a layer; lane 1 at the bottom")
+        XCTAssertEqual(comp.entries.map(\.kind), [.video, .offline, .video, .image], "missing media is an offline layer (#102)")
         XCTAssertEqual(comp.layers(at: 0).map(\.clipId), ["A", "B"])
         XCTAssertEqual(comp.layers(at: 0.5).map(\.clipId), ["A", "B", "img"])
         XCTAssertEqual(comp.layers(at: 1.45).map(\.clipId), ["A", "B", "img"], "frame 14 is the image's last frame")
         XCTAssertEqual(comp.layers(at: 1.5).map(\.clipId), ["A", "B"])
         XCTAssertEqual(comp.layers(at: 2.0).map(\.clipId), ["A"])
-        XCTAssertEqual(comp.layers(at: 3.2).map(\.clipId), [], "missing media draws nothing")
+        XCTAssertEqual(comp.layers(at: 3.2).map(\.clipId), ["G"], "missing media is drawn as an offline slate (#102)")
         let b = try XCTUnwrap(comp.layers(at: 0).last)
         XCTAssertEqual(b.source, "/proj/b.mp4"); XCTAssertEqual(b.sourceIn, 0.4, accuracy: 1e-9)
         XCTAssertEqual(b.box, CanvasRect(x: 0, y: 0, width: 200, height: 100), "default box is the whole canvas")
@@ -105,7 +106,7 @@ final class PreviewCompositorTests: XCTestCase {
         var doc = try Self.document()
         doc.sequence.tracks[2].clips[0].hidden = true   // t1 clip A
         XCTAssertEqual(Self.composition(doc).layers(at: 0.5).map(\.clipId), ["B", "img"])
-        XCTAssertEqual(Self.composition(doc).entries.map(\.clip.id), ["B", "img"])
+        XCTAssertEqual(Self.composition(doc).entries.map(\.clip.id), ["G", "B", "img"], "G (gone.mp4) stays as an offline entry")
     }
 
     func testZIndexOverridesTrackOrder() throws {

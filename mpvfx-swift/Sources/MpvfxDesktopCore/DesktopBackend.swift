@@ -16,9 +16,37 @@ import Foundation
 
 /// An error with a name ("Error", "AbortError") and a message, shown to the user as is.
 public struct DesktopError: Error, Equatable, CustomStringConvertible, Sendable {
+    public enum SaveFailure: String, Sendable {
+        case diskFull = "ENOSPC", quotaExceeded = "EDQUOT", readOnly = "EROFS"
+        case permissionDenied = "EACCES", folderMissing = "ENOENT"
+
+        public var reason: String {
+            switch self {
+            case .diskFull: return "The disk is full"
+            case .quotaExceeded: return "The storage quota is full"
+            case .readOnly: return "The folder is read-only"
+            case .permissionDenied: return "Permission to write was denied"
+            case .folderMissing: return "The project folder is unavailable"
+            }
+        }
+    }
     public var name: String
     public var message: String
+    public private(set) var saveFailure: SaveFailure?
     public init(_ message: String, name: String = "Error") { self.message = message; self.name = name }
+    public init(saveFailure: SaveFailure, folder: String) {
+        self.saveFailure = saveFailure
+        name = "SaveError"
+        let action: String
+        switch saveFailure {
+        case .diskFull: action = "The disk holding \(folder) is full. Free some space."
+        case .quotaExceeded: action = "The storage quota for \(folder) is full. Free some space or increase the quota."
+        case .readOnly: action = "The folder \(folder) is read-only. Make the folder or its drive writable."
+        case .permissionDenied: action = "MpVFX cannot write to \(folder). Give your account permission to write to this folder."
+        case .folderMissing: action = "The project folder \(folder) is unavailable. Reconnect its drive or restore the folder."
+        }
+        message = action + " Your edits are kept in memory. Once this is fixed, save again or keep editing to retry."
+    }
     public var description: String { message }
     public static func notImplemented(_ what: String) -> DesktopError {
         DesktopError("\(what) is not implemented yet")

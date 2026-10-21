@@ -26,7 +26,8 @@ import MpvfxColor
 /// to the box, or stretched onto it), then scaled and rotated about the box centre, at `opacity`.
 /// `crop` insets the untransformed box (canvas px) and travels with the box's scale and rotation.
 public struct PreviewLayer: Equatable, Sendable {
-    public enum Kind: Sendable, Equatable { case video, image, text }
+    /// `offline`: a video or image clip whose media file is missing, drawn as a slate naming the file, never decoded.
+    public enum Kind: Sendable, Equatable { case video, image, text, offline }
     public var clipId: String
     /// Absolute media path.
     public var source: String
@@ -37,6 +38,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var sourceIn: Double
     /// Source seconds per timeline second.
     public var rate: Double
+    /// Optional clip-local nonlinear map; export and preview share this exact layer path.
+    public var speedRamp: NativeSpeedRamp?
     /// Timeline frames the clip covers, [startFrame, endFrame).
     public var startFrame: Int, endFrame: Int
     public var box: CanvasRect
@@ -55,6 +58,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
+    /// File name of an offline layer's missing media (kind .offline), shown on its slate.
+    public var offlineFileName: String?
     /// How the picture fills the box (`clip.fit`; nil: Fit, contain).
     public var fit: NativeMediaFit?
     /// The media's natural width over height when known: sizes the decode so a Fill or Stretch picture, larger than
@@ -70,7 +75,10 @@ public struct PreviewLayer: Equatable, Sendable {
     }
 
     /// Source seconds shown at timeline `time`.
-    public func sourceTime(at time: Double) -> Double { sourceIn + (time - start) * rate }
+    public func sourceTime(at time: Double) -> Double {
+        sourceIn + (speedRamp?.sourcePosition(atClipFrame: max(0, (time - start) * timelineFPS)) ?? ((time - start) * rate * timelineFPS)) / timelineFPS
+    }
+    public var timelineFPS = 1.0
 
     /// Nothing would reach the screen (zero area, zero scale, fully transparent, or cropped away).
     public var isVisible: Bool {
@@ -100,6 +108,8 @@ public struct PreviewComposition {
         public var layer: Double
         /// The clip's active grade, built once per document.
         public var grade: ColorGradeRenderer? = nil
+        /// The missing file's name when the clip is offline (kind .offline).
+        public var offlineFileName: String? = nil
         /// The media's natural width over height (PreviewLayer.mediaAspect), nil when unknown.
         public var mediaAspect: Double? = nil
     }
@@ -107,16 +117,19 @@ public struct PreviewComposition {
     public let canvas: CanvasSize
     public let background: CanvasColor
     public let fps: Double
-    /// Visual clips with a readable media file, bottom-most first.
+    /// Visual clips, bottom-most first: those with a media file on disk, and offline ones (kind .offline).
     public let entries: [Entry]
+    /// Assets (video, image and sound) whose media file was missing when the composition was built. Each source is
+    /// statted once per build, never per frame; a rebuild after the file comes back clears its mark.
+    public let offlineAssetIds: Set<String>
     public let engine: KeyframeEngine?
 
     /// `naturalSize`: the media's natural pixel size (default: the size cached on the asset). A clip with no size
     /// of its own takes the default box for it (nativeClipNaturalLayout), as export does.
     public init(document: NativeProjectDocument, projectDir: URL?, engine: KeyframeEngine?,
-                naturalSize: (NativeProjectAsset) -> NativeMediaNaturalSize? = { $0.naturalSize },
-                sizePending: (NativeProjectAsset) -> Bool = { _ in false },
-                fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) {
+                naturalSize: @escaping (NativeProjectAsset) -> NativeMediaNaturalSize? = { $0.naturalSize },
+                sizePending: @escaping (NativeProjectAsset) -> Bool = { _ in false },
+                fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) {
         canvas = CanvasSize(document.canvas.width, document.canvas.height)
         background = CanvasColor(hex: document.canvas.background) ?? CanvasColor(ThemeTokens.stageScrim)
         let rate = document.frameRate.denominator != 0 ? document.frameRate.numerator / document.frameRate.denominator : 30
@@ -125,36 +138,23 @@ public struct PreviewComposition {
         let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var ordered: [(Entry, Int)] = []
         var n = 0
+        var media = MediaEntries(document: document, projectDir: projectDir, naturalSize: naturalSize, sizePending: sizePending,
+                                 fileExists: fileExists)
         let trackLayers = nativeTrackStackingLayers(document.sequence.tracks)
         for (index, track) in document.sequence.tracks.enumerated() {
             for clip in track.clips {
-                guard !Self.isHidden(track: track, clip: clip) else { n += 1; continue }
                 n += 1
-                if let asset = assets[clip.assetId], asset.kind == .element, clip.text != nil {
+                guard !Self.isLeftOut(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
+                let layer = Self.stackingLayer(clip, track: trackLayers[index])
+                if asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
-                    var layer = trackLayers[index]
-                    if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { layer = z }
                     ordered.append((Entry(clip: clip, kind: .text, path: "text:\(clip.id)", layer: layer), n))
-                    continue
+                } else if let entry = media.entry(clip, asset: asset, layer: layer) {
+                    ordered.append((entry, n))
                 }
-                guard let asset = assets[clip.assetId], asset.kind == .video || asset.kind == .image,
-                      let src = asset.source, !src.isEmpty else { continue }
-                // An absolute source in the host's flavor (a drive-letter path on Windows) is used as it is; joining it
-                // to the project folder made every absolute Windows path a missing file.
-                let path = HostPath.isAbsolute(src) ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
-                guard fileExists(path) else { continue }
-                // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
-                guard !sizePending(asset) else { continue }
-                var layer = trackLayers[index]
-                if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { layer = z }
-                let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
-                let clip = nativeClipWithNaturalLayout(clip, natural: naturalSize(asset),
-                                                       canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
-                let kind: PreviewLayer.Kind = asset.kind == .image ? .image : .video
-                ordered.append((Entry(clip: clip, kind: kind, path: path, layer: layer, grade: grade,
-                                      mediaAspect: naturalSize(asset).flatMap(\.aspect)), n))
             }
         }
+        offlineAssetIds = media.offline
         entries = ordered.sorted { a, b in
             if a.0.layer != b.0.layer { return a.0.layer < b.0.layer }
             if a.0.clip.startFrame != b.0.clip.startFrame { return a.0.clip.startFrame < b.0.clip.startFrame }
@@ -163,8 +163,84 @@ public struct PreviewComposition {
         }.map(\.0)
     }
 
+    /// Compositing order key: layout.zIndex, else the track's display row.
+    static func stackingLayer(_ clip: NativeProjectClip, track: Double) -> Double {
+        if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { return z }
+        return track
+    }
+
+    /// Builds the entry of a video or image clip, statting each media file once per composition: a clip whose file is
+    /// missing becomes an offline entry and its asset (sound-only ones too) is recorded in `offline`.
+    struct MediaEntries {
+        let document: NativeProjectDocument
+        let projectDir: URL?
+        let naturalSize: (NativeProjectAsset) -> NativeMediaNaturalSize?
+        let sizePending: (NativeProjectAsset) -> Bool
+        let fileExists: (String) -> Bool
+        var exists: [String: Bool] = [:]
+        var offline = Set<String>()
+
+        init(document: NativeProjectDocument, projectDir: URL?, naturalSize: @escaping (NativeProjectAsset) -> NativeMediaNaturalSize?,
+             sizePending: @escaping (NativeProjectAsset) -> Bool, fileExists: @escaping (String) -> Bool) {
+            self.document = document; self.projectDir = projectDir; self.naturalSize = naturalSize
+            self.sizePending = sizePending; self.fileExists = fileExists
+        }
+
+        /// Stats `asset`'s media file (once per path) and records the asset when it is missing. Returns the resolved
+        /// path and whether the file is there; nil for assets with no media file (elements, text).
+        mutating func check(_ asset: NativeProjectAsset) -> (path: String, present: Bool)? {
+            guard asset.kind == .video || asset.kind == .image || asset.kind == .audio, let src = asset.source, !src.isEmpty else { return nil }
+            // An absolute source (`/…`, or `C:\…` on Windows) is used as is; anything else is relative to the project.
+            let path = HostPath.isAbsolute(src) ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
+            let present = exists[path] ?? fileExists(path)
+            exists[path] = present
+            if !present { offline.insert(asset.id) }
+            return (path, present)
+        }
+
+        /// The entry of a video or image clip; sound-only clips are checked (so they are marked offline) but not drawn.
+        mutating func entry(_ clip: NativeProjectClip, asset: NativeProjectAsset, layer: Double) -> Entry? {
+            guard let found = check(asset), asset.kind != .audio, let src = asset.source else { return nil }
+            let path = found.path
+            guard found.present else {
+                // Missing media: a slate in the clip's box (the known natural size, else the default box).
+                return Entry(clip: laidOut(clip, asset), kind: .offline, path: path, layer: layer,
+                             offlineFileName: URL(fileURLWithPath: src).lastPathComponent)
+            }
+            // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
+            guard !sizePending(asset) else { return nil }
+            let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
+            return Entry(clip: laidOut(clip, asset), kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade,
+                         mediaAspect: naturalSize(asset).flatMap(\.aspect))
+        }
+
+        private func laidOut(_ clip: NativeProjectClip, _ asset: NativeProjectAsset) -> NativeProjectClip {
+            nativeClipWithNaturalLayout(clip, natural: naturalSize(asset), canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
+        }
+    }
+
+    /// Assets whose media file is missing, as a composition of `document` built now would report them, without building
+    /// one: what a session re-checks while the document is unchanged (a file deleted or restored outside the app).
+    public static func offlineAssetIds(document: NativeProjectDocument, projectDir: URL?,
+                                       fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> Set<String> {
+        let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var media = MediaEntries(document: document, projectDir: projectDir, naturalSize: { _ in nil }, sizePending: { _ in false },
+                                 fileExists: fileExists)
+        for track in document.sequence.tracks {
+            for clip in track.clips where !isLeftOut(track: track, clip: clip) {
+                if let asset = assets[clip.assetId] { _ = media.check(asset) }
+            }
+        }
+        return media.offline
+    }
+
     /// Hidden tracks and hidden clips (the timeline eye toggle) are left out of the picture, as export leaves them out.
     static func isHidden(track: NativeProjectTrack, clip: NativeProjectClip) -> Bool { track.hidden == true || clip.hidden == true }
+
+    /// Clips the composition does not draw: hidden ones, and those whose speed ramp this build cannot play.
+    static func isLeftOut(track: NativeProjectTrack, clip: NativeProjectClip) -> Bool {
+        isHidden(track: track, clip: clip) || clip.speedRamp?.isSupported == false
+    }
 
     /// Timeline frame shown at `time` (a frame is shown from its start time until the next).
     public func frameIndex(at time: Double) -> Int { Int((time * fps + 1e-6).rounded(.down)) }
@@ -234,10 +310,13 @@ public struct PreviewComposition {
                             startFrame: Int(c.startFrame.rounded()), endFrame: Int((c.startFrame + c.durationFrames).rounded()),
                             box: box, scaleX: sx, scaleY: sy,
                             rotation: (num("transform.rotation") ?? 0) + autoRotate, opacity: opacity, crop: crop)
+        out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
+        out.timelineFPS = fps
         out.motionRotation = autoRotate
         out.grade = e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.text = e.kind == .text ? c.text : nil
+        out.offlineFileName = e.offlineFileName
         out.fit = c.fit
         out.mediaAspect = e.mediaAspect
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,

@@ -74,11 +74,11 @@ public enum PanelTabStrip {
 public enum ShellStatusLine {
     public static let height = 22.0
 
-    public static func draw(_ c: CanvasContext, _ r: CanvasRect, hint: String?) {
+    public static func draw(_ c: CanvasContext, _ r: CanvasRect, hint: String?, error: String? = nil) {
         guard r.width > 0, r.height > 0 else { return }
         c.fillRect(r, PanelTheme.panelBg)
-        guard let hint, !hint.isEmpty else { return }
-        PanelDraw.text(c, hint, in: CanvasRect(x: r.x + 8, y: r.y, width: max(0, r.width - 16), height: r.height),
-                       font: PanelTheme.font(11), color: PanelTheme.text3)
+        guard let text = error ?? hint, !text.isEmpty else { return }
+        PanelDraw.text(c, text, in: CanvasRect(x: r.x + 8, y: r.y, width: max(0, r.width - 16), height: r.height),
+                       font: PanelTheme.font(11), color: error == nil ? PanelTheme.text3 : PanelTheme.danger)
     }
 }
