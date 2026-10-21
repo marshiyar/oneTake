@@ -72,7 +72,9 @@ final class InspectorBlendTests: XCTestCase {
         XCTAssertEqual(r.easing.selectedKeyframes, [ref])
         XCTAssertTrue(
             style.rows.contains {
-                if case .buttons(let buttons) = $0.kind { return buttons.contains { $0.key == "openEasing" } }
+                if case .buttons(let buttons) = $0.kind {
+                    return buttons.contains { $0.key == "openEasing" }
+                }
                 return false
             }
         )
