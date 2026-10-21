@@ -173,8 +173,9 @@ func sleepUntil(_ deadline: Double) {
 /// Real-time playback for `seconds` at 30 draws per second, as the display timer drives it: the share of draws that
 /// showed every layer's exact frame (the rest held an earlier frame), how many different pictures reached the screen
 /// per second (smoothness: 30 is every frame), how far the shown frame trailed the playhead, and the draw cadence
-/// (`DrawCadence`: draw interval and wake lateness p95 and max, draws that repeated the previous picture). Each draw is
-/// due in the middle of its frame, so OS wake jitter under half a frame never decides which frame a draw samples.
+/// (`DrawCadence`: draw interval and wake lateness p95 and max, draws that repeated the previous picture, ticks dropped
+/// after a late draw). Each draw is due in the middle of its frame, so OS wake jitter under half a frame never decides
+/// which frame a draw samples, and a draw that overruns drops the ticks it missed, as a display timer does.
 func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Double) -> [String: String] {
     let run = Run(doc, width: width, height: height)
     run.show(0, playing: false)
@@ -182,7 +183,7 @@ func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Do
     var exact = 0, lag = 0
     let t0 = now()
     while true {
-        sleepUntil(t0 + cadence.deadline(cadence.starts.count))
+        sleepUntil(t0 + cadence.nextDeadline(at: now() - t0))
         let t = now() - t0
         if t >= seconds { break }
         _ = run.draw(t, playing: true)

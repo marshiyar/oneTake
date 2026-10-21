@@ -81,6 +81,46 @@ final class DrawCadenceTests: XCTestCase {
         XCTAssertEqual(cadence.deadline(-5), cadence.deadline(0))
     }
 
+    /// Failed when the loop took each draw's deadline from the draw count: after a 200 ms stall it replayed the
+    /// missed ticks back to back, microseconds apart, and five of them sampled the same frame again.
+    func testALongStallDropsTheMissedTicksInsteadOfReplayingThem() throws {
+        var cadence = try XCTUnwrap(DrawCadence(fps: 30))
+        var clock = 0.0
+        for _ in 0..<40 {
+            let start = max(clock, cadence.nextDeadline(at: clock)) + 0.001   // the OS wakes 1 ms late
+            cadence.record(start: start, frames: [frame(at: start)])
+            clock = start + (cadence.starts.count == 10 ? 0.200 : 0.004)       // draw 10 stalls for 200 ms
+        }
+        XCTAssertEqual(cadence.droppedTicks, 6)
+        XCTAssertEqual(cadence.repeats, 0)
+        XCTAssertEqual(cadence.changes, 40)
+        XCTAssertGreaterThan(DrawCadence.quantile(cadence.intervals, 0), 1.0 / 30 - 1e-9, "no draws back to back")
+        XCTAssertEqual(try XCTUnwrap(cadence.metrics()["draw_interval_max_ms"]), 7000.0 / 30, accuracy: 1e-6)
+        XCTAssertEqual(cadence.metrics()["dropped_ticks"], 6)
+        XCTAssertEqual(try XCTUnwrap(cadence.metrics()["draw_late_max_ms"]), 1, accuracy: 1e-6)
+    }
+
+    func testAnOnTimeLoopDropsNoTicksAndBadClocksMoveNothing() throws {
+        var cadence = try XCTUnwrap(DrawCadence(fps: 30))
+        XCTAssertEqual(cadence.nextDeadline(at: 0), cadence.deadline(0))
+        XCTAssertEqual(cadence.nextDeadline(at: -3), cadence.deadline(0))
+        XCTAssertEqual(cadence.nextDeadline(at: .nan), cadence.deadline(0))
+        XCTAssertEqual(cadence.nextDeadline(at: .infinity), cadence.deadline(0))
+        XCTAssertEqual(cadence.nextDeadline(at: 1e300), cadence.deadline(0))
+        XCTAssertEqual(cadence.droppedTicks, 0)
+        cadence.record(start: cadence.deadline(0), frames: [0])
+        XCTAssertEqual(cadence.nextDeadline(at: cadence.deadline(0) + 0.010), cadence.deadline(1))
+        XCTAssertEqual(cadence.droppedTicks, 0)
+    }
+
+    func testTheFirstDrawCountsAsAChangeEvenWithNoLayers() throws {
+        var cadence = try XCTUnwrap(DrawCadence(fps: 30))
+        cadence.record(start: cadence.deadline(0), frames: [])
+        cadence.record(start: cadence.deadline(1), frames: [])
+        XCTAssertEqual(cadence.changes, 1)
+        XCTAssertEqual(cadence.repeats, 1)
+    }
+
     func testNoDrawsGiveZeroesNotATrap() throws {
         let cadence = try XCTUnwrap(DrawCadence(fps: 30))
         XCTAssertEqual(cadence.metrics().values.reduce(0, +), 0)

@@ -32,7 +32,14 @@ public struct DrawCadence {
     public private(set) var repeats = 0
     /// Draws that showed different frames from the draw before them (the first draw counts).
     public private(set) var changes = 0
-    private var lastFrames: [Int?]?
+    /// The tick the next draw is due on (tick `n` is due at `deadline(n)`).
+    public private(set) var nextTick = 0
+    /// Ticks no draw was made for because the draw before ran past them. A display timer drops a missed tick rather
+    /// than firing it late, so the loop does too: replaying missed ticks back to back would add draws a few
+    /// microseconds apart that sample one frame again and again.
+    public private(set) var droppedTicks = 0
+    private var lastFrames: [Int?] = []
+    private var hasDrawn = false
 
     /// Nil unless `fps` is a finite rate above zero.
     public init?(fps: Double) {
@@ -40,18 +47,33 @@ public struct DrawCadence {
         self.fps = fps
     }
 
-    /// Seconds from playback start at which draw `index` (0 first) is due: the middle of frame `index`.
+    /// Seconds from playback start at which tick `index` (0 first) is due: the middle of frame `index`.
     public func deadline(_ index: Int) -> Double { (Double(max(0, index)) + 0.5) / fps }
 
-    /// Records draw `starts.count`, which began at `start` seconds and showed `frames` (one per layer).
+    /// The deadline of the next draw when `elapsed` seconds have passed: the next tick's, or, when that one has
+    /// already passed, the first tick still ahead (the ticks in between are dropped).
+    public mutating func nextDeadline(at elapsed: Double) -> Double {
+        let frames = elapsed * fps - 0.5
+        guard frames.isFinite, frames < Double(Int32.max) else { return deadline(nextTick) }
+        let ahead = Int(frames.rounded(.up))   // the first tick whose deadline is not before `elapsed`
+        if ahead > nextTick {
+            droppedTicks += ahead - nextTick
+            nextTick = ahead
+        }
+        return deadline(nextTick)
+    }
+
+    /// Records the draw for tick `nextTick`, which began at `start` seconds and showed `frames` (one per layer).
     public mutating func record(start: Double, frames: [Int?]) {
-        lateness.append(start - deadline(starts.count))
+        lateness.append(start - deadline(nextTick))
         starts.append(start)
-        if frames == lastFrames {
+        nextTick += 1
+        if hasDrawn && frames == lastFrames {
             repeats += 1
         } else {
             changes += 1
             lastFrames = frames
+            hasDrawn = true
         }
     }
 
@@ -66,7 +88,7 @@ public struct DrawCadence {
         return sorted[min(sorted.count - 1, max(0, rank))]
     }
 
-    /// The bench's figures in milliseconds: draw interval p95 and max, lateness p95 and max, and the repeat count.
+    /// The bench's figures: draw interval and lateness p95 and max in milliseconds, repeated draws, dropped ticks.
     public func metrics() -> [String: Double] {
         let gaps = intervals
         return [
@@ -74,7 +96,8 @@ public struct DrawCadence {
             "draw_interval_max_ms": Self.quantile(gaps, 1) * 1000,
             "draw_late_p95_ms": Self.quantile(lateness, 0.95) * 1000,
             "draw_late_max_ms": Self.quantile(lateness, 1) * 1000,
-            "repeat_draws": Double(repeats)
+            "repeat_draws": Double(repeats),
+            "dropped_ticks": Double(droppedTicks)
         ]
     }
 }
