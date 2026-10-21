@@ -31,7 +31,6 @@ jobs:
           sparse-checkout: .github/ci
           persist-credentials: false
       - name: Slice size, owner areas and bug-fix tests (advisory)
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
