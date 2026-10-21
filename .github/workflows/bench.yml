@@ -9,7 +9,12 @@ name: bench
 # and by hand with a run count.
 # GitHub's hosted runners are shared machines with virtual GPUs (lavapipe, WARP, Apple's paravirtual device): the
 # numbers are for trends between runs of the same class, never for comparing against a developer's machine.
-# Separate from mpvfx-ci on purpose: it never blocks a merge and never publishes anything. The linux and macos
+# Budgets (.github/ci/bench-budgets.json, issue #96): after the benchmarks each job checks its report with bench.py
+# --check. A metric's p50 past its ceiling or floor, a budgeted metric missing from the results, or (on a pull request)
+# a p50 more than 25% worse than main's latest bench run of the same class (.github/ci/bench_base.py) fails the job,
+# with a table of the failed metrics in the job summary. Windows budgets are pending #92 and reported as not checked.
+# Separate from mpvfx-ci on purpose: bench is not a required check (whether it becomes one is the owner's call), so a
+# red bench job marks the pull request without blocking its merge; it never publishes anything. The linux and macos
 # jobs run on OneTake-app/OneTake-actionRunners-1 whenever job runners sends them there, and here only when it does not;
 # windows always runs here.
 
@@ -38,6 +43,9 @@ on:
       - 'mpvfx-swift/Sources/MpvfxColorBench/**'
       - 'mpvfx-swift/tools/MpvfxPreviewBench/**'
       - '.github/ci/bench.py'
+      - '.github/ci/bench_base.py'
+      - '.github/ci/bench-budgets.json'
+      - '.github/ci/test_bench.py'
       - '.github/workflows/bench.yml'
   schedule:
     - cron: '20 4 * * 0'
@@ -156,6 +164,9 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
     timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read   # bench_base.py lists main's bench runs and downloads their artifact
     defaults:
       run:
         shell: bash
@@ -173,6 +184,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false   # read-only token, and nothing here uses git against origin
+      - name: Budget check tests
+        working-directory: .
+        run: python3 -I -B .github/ci/test_bench.py
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore the release build cache
@@ -203,6 +217,21 @@ jobs:
             ${{ runner.temp }}/bench.log
           if-no-files-found: ignore
           retention-days: 90
+      - name: Main's latest bench report, the baseline of the regression rule (pull requests)
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -I -B .github/ci/bench_base.py bench-linux "$RUNNER_TEMP/bench/bench-linux.json" "$RUNNER_TEMP/bench-main.json"
+      - name: Budgets (.github/ci/bench-budgets.json)
+        run: |
+          set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
+          python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-linux.json" --budgets ../.github/ci/bench-budgets.json --strict \
+            --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          cat "$RUNNER_TEMP/budgets.log" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
 
   windows:
     # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
@@ -215,6 +244,9 @@ jobs:
     # The full run took 84-86 min before the export scenarios (about 12 min more: 5 runs each of export and
     # export-serial at about 1 min per run); 90 min cancelled it mid-run.
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read   # bench_base.py lists main's bench runs and downloads their artifact
     defaults:
       run:
         shell: bash
@@ -258,6 +290,21 @@ jobs:
             ${{ runner.temp }}/bench.log
           if-no-files-found: ignore
           retention-days: 90
+      - name: Main's latest bench report, the baseline of the regression rule (pull requests)
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -I -B .github/ci/bench_base.py bench-windows "$RUNNER_TEMP/bench/bench-windows.json" "$RUNNER_TEMP/bench-main.json"
+      - name: Budgets (.github/ci/bench-budgets.json)
+        run: |
+          set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
+          python -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-windows.json" --budgets ../.github/ci/bench-budgets.json --strict \
+            --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          cat "$RUNNER_TEMP/budgets.log" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
 
   macos:
     # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
@@ -271,6 +318,9 @@ jobs:
       && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.sha == github.event.workflow_run.head_sha))
     runs-on: xcode-27
     timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read   # bench_base.py lists main's bench runs and downloads their artifact
     defaults:
       run:
         shell: bash
@@ -320,3 +370,18 @@ jobs:
             ${{ runner.temp }}/bench.log
           if-no-files-found: ignore
           retention-days: 90
+      - name: Main's latest bench report, the baseline of the regression rule (pull requests)
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -I -B .github/ci/bench_base.py bench-macos "$RUNNER_TEMP/bench/bench-darwin.json" "$RUNNER_TEMP/bench-main.json"
+      - name: Budgets (.github/ci/bench-budgets.json)
+        run: |
+          set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
+          python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-darwin.json" --budgets ../.github/ci/bench-budgets.json --strict \
+            --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          cat "$RUNNER_TEMP/budgets.log" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
