@@ -23,10 +23,10 @@ extension RightPanel {
         if !isRendering { hits.add(select, .preset) }
         let name = CanvasRect(x: x, y: select.maxY + 8, width: w, height: 28)
         c.fillRoundedRect(name, radius: PanelTheme.radiusMd, PanelTheme.panelInput)
-        let editing = field?.key == "preset-name"
-        PanelDraw.text(c, editing ? field!.draft : (presetName.isEmpty ? "Preset name" : presetName),
+        let draft = field.flatMap { $0.key == "preset-name" ? $0.draft : nil }
+        PanelDraw.text(c, draft ?? (presetName.isEmpty ? "Preset name" : presetName),
                        in: name.insetBy(6), font: PanelTheme.font(11), color: PanelTheme.text1)
-        if editing { PanelDraw.focusRing(c, name, radius: PanelTheme.radiusMd) }
+        if draft != nil { PanelDraw.focusRing(c, name, radius: PanelTheme.radiusMd) }
         if !isRendering { hits.add(name, .presetName) }
         for (i, item) in [(Hit.savePreset, "Save / update"), (Hit.deletePreset, "Delete preset")].enumerated() {
             let rect = CanvasRect(x: x + Double(i) * (w + 8) / 2, y: name.maxY + 8, width: (w - 8) / 2, height: 28)
