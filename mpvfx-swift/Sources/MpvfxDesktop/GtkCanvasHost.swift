@@ -57,11 +57,11 @@ final class GtkCanvasHost {
             h.lastPoint = (ev.x, ev.y)
             defer { h.refreshCursor() }
             if ev.button == 3 {
-                Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().input?.secondaryClick(x: ev.x, y: ev.y)
+                h.input?.secondaryClick(x: ev.x, y: ev.y)
                 return 1
             }
             // Left, middle (preview pan) and extra buttons, in DOM numbering.
-            Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().input?
+            h.input?
                 .pointerDown(x: ev.x, y: ev.y, button: PointerButton.fromGdk(ev.button), modifiers: GtkCanvasHost.modifiers(ev.state))
             return 1
         } as EvCB, to: GCallback.self), me)
