@@ -148,13 +148,7 @@ public enum KeyframeEasing {
         d.count == 2 ? hypot(d[0], d[1]) : d.reduce(0) { max($0, abs($1)) }
     }
 
-    static func components(_ v: NativeParameterValue) -> [Double] {
-        switch v {
-        case .number(let n): return [n]
-        case .vec2(let p): return [p.x, p.y]
-        case .rgba(let c): return [c.red, c.green, c.blue, c.alpha]
-        }
-    }
+    static func components(_ v: NativeParameterValue) -> [Double] { v.components }
 }
 
 /// The value and speed graphs' data: the property's engine-evaluated value across its keyed range, so the line drawn
