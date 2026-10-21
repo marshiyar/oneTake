@@ -30,9 +30,9 @@ if [ -n "${RUNNERS_APP_ID:-}" ] && [ -n "${RUNNERS_APP_PRIVATE_KEY:-}" ]; then
     code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $header.$payload.$sig" \
       -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/installation" || true)
     [ "$code" = 200 ] && installed=true
-    [ "$installed" = true ] || echo "::notice::oneTake-Runners1 is not installed on $GITHUB_REPOSITORY (HTTP $code): every job runs here"
+    [ "$installed" = true ] || echo "::notice::oneTake-Runners1 is not installed on $GITHUB_REPOSITORY (HTTP $code): every job runs here" >&2
   else
-    echo "::warning::RUNNERS_APP_PRIVATE_KEY is not a usable private key: every job runs here"
+    echo "::warning::RUNNERS_APP_PRIVATE_KEY is not a usable private key: every job runs here" >&2
   fi
 fi
 echo "installed=$installed"
