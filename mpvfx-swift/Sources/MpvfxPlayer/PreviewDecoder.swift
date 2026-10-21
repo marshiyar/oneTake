@@ -89,7 +89,8 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     public var gaveUp: Bool { lock.lock(); defer { lock.unlock() }; return gaveUpFlag }
     func giveUpIfNothingDecoded() {
         guard framesDecoded == 0 else { return }
-        lock.lock(); gaveUpFlag = true; lock.unlock()
+        lock.lock(); let notify = !gaveUpFlag; gaveUpFlag = true; lock.unlock()
+        if notify { onFrame?() }
     }
 
     init(layer: PreviewLayer, fps: Double, cache: PreviewFrameCache) {
