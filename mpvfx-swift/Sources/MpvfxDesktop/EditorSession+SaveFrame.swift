@@ -29,7 +29,9 @@ extension EditorSession {
     /// Captures the document and playhead before opening the dialog; playback and selection cannot change the still.
     @discardableResult
     internal func requestSaveFrame() -> Bool {
-        guard let projectDir, let dialogs = panels?.dialogs else { return false }
+        guard let projectDir, let dialogs = panels?.dialogs else {
+            return false
+        }
         let document: NativeProjectDocument = editor.document
         let time: Double = playback.currentTime
         let engine: KeyframeEngine? = engine
@@ -46,7 +48,9 @@ extension EditorSession {
                         filters: [.init(name: "JPEG image", extensions: ["jpg", "jpeg"])]
                     )
                 )
-            else { return }
+            else {
+                return
+            }
             do {
                 try SaveFrame.jpeg(
                     project: document,
