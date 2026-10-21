@@ -24,8 +24,11 @@ The check passes when the body has a closing keyword with an issue number of thi
 `fixes: #12`, `Resolves #12`; the keyword forms GitHub links, see
 https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue,
 read 2026-10-21) and every number so named is an open issue here, not a pull request. Exempt: the label `no-issue`,
-Dependabot and the Codex reviewer, merge-train branches `train/<n>`, and documentation-only changes (the same filter
-as the `changes` job of mpvfx-ci.yml: Markdown anywhere, mpvfx-swift/docs/, the licence files).
+Dependabot and the Codex reviewer, and documentation-only changes (the same filter
+as the `changes` job of mpvfx-ci.yml: Markdown anywhere, mpvfx-swift/docs/, the licence files). A merge-train pull
+request (`train/<n>`) is not exempt: it merges in place of the pull requests it carries, which are closed unmerged, and
+GitHub closes a linked issue only when the linking pull request merges into the default branch (same page), so the
+train's body must carry their `Closes #<n>` lines.
 
 Prints a Markdown verdict; exit 0 pass or exempt, 1 the check fails, 2 bad arguments or the API could not be read.
 """
@@ -44,7 +47,8 @@ TRAIN_BRANCH = re.compile(r"train/\d+")
 # Kept equal to the docs filter of the `changes` job in .github/workflows/mpvfx-ci.yml.
 DOCS_FILE = re.compile(r"\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$")
 DOCS_MAX_FILES = 3000
-CLOSING = re.compile(r"(?<![\w/#-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.IGNORECASE)
+# Keyword and number on one line: GitHub does not link `Closes:` and `#12` across a line break.
+CLOSING = re.compile(r"(?<![\w/#-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t]*:?[ \t]+#(\d+)\b", re.IGNORECASE)
 MAX_REFERENCES = 20
 
 
@@ -129,8 +133,6 @@ def exemption(pr, files):
         return f"labelled `{EXEMPT_LABEL}`"
     if author in EXEMPT_AUTHORS:
         return f"opened by `{author}`"
-    if train_branch(pr):
-        return f"merge-train branch `{train_branch(pr)}`"
     if docs_only(files):
         return f"documentation only ({len(files)} files)"
     return None
@@ -147,6 +149,15 @@ def issue_problem(n, issue):
     return None
 
 
+def no_issue_message(pr):
+    """The failure line for a body without a closing reference; a merge train is told where its references come from."""
+    if train_branch(pr):
+        return (f"The merge train `{train_branch(pr)}` names no issue: its body must repeat the `Closes #<issue>` "
+                f"lines of the pull requests it lands, or carry the label `{EXEMPT_LABEL}` when none of them has one.")
+    return ("The body names no issue: add `Closes #<issue>` (or `Fixes`/`Resolves`), "
+            f"or label the pull request `{EXEMPT_LABEL}` when no issue applies.")
+
+
 def judge(pr, files, get_issue):
     """(passed, Markdown lines). get_issue(n) returns the issue's JSON, or None when there is none."""
     why = exemption(pr, files)
@@ -154,8 +165,7 @@ def judge(pr, files, get_issue):
         return True, [f"Exempt: {why}."]
     numbers = referenced_issues(pr.get("body"))
     if not numbers:
-        return False, [("The body names no issue: add `Closes #<issue>` (or `Fixes`/`Resolves`), "
-                        f"or label the pull request `{EXEMPT_LABEL}` when no issue applies.")]
+        return False, [no_issue_message(pr)]
     if len(numbers) > MAX_REFERENCES:
         return False, [f"The body names {len(numbers)} issues; at most {MAX_REFERENCES} are checked."]
     problems = [p for p in (issue_problem(n, get_issue(n)) for n in numbers) if p]

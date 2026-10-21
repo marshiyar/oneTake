@@ -90,6 +90,12 @@ class MustNameAnOpenIssue(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual(pr_issue.referenced_issues(body), [])
 
+    def test_keyword_and_number_on_separate_lines_do_not_count(self):
+        for body in ("Closes:\n#108", "Closes\n#108", "Fixes:\r\n#108", "Resolves \n #108"):
+            with self.subTest(body=body):
+                self.assertEqual(pr_issue.referenced_issues(body), [])
+        self.assertEqual(pr_issue.referenced_issues("Closes:\t#108"), [108])
+
     def test_references_are_deduplicated_in_order(self):
         self.assertEqual(pr_issue.referenced_issues("Fixes #3\nCloses #1\nresolves #3"), [3, 1])
 
@@ -113,16 +119,22 @@ class Exemptions(unittest.TestCase):
         self.assert_exempt(pr("", author="dependabot[bot]"))
         self.assert_exempt(pr("", author="chatgpt-codex-connector[bot]"))
 
-    def test_merge_train_branch_of_this_repository(self):
-        self.assert_exempt(pr("", head="train/4"))
+    def test_merge_train_is_not_exempt_and_must_carry_the_closing_references(self):
+        passed, lines = pr_issue.judge(pr("Lands #3, #4 together.", head="train/4"), CODE, issues())
+        self.assertFalse(passed)
+        self.assertIn("merge train `train/4`", lines[0])
+        self.assertTrue(pr_issue.judge(pr("- #3\nCloses #108", head="train/4"), CODE, issues(n108=OPEN))[0])
+        self.assert_exempt(pr("", labels=("no-issue",), head="train/4"))
 
-    def test_train_named_branch_from_a_fork_is_not_exempt(self):
-        self.assertFalse(pr_issue.judge(pr("", head="train/4", head_repo="someone/fork"), CODE, issues())[0])
-        self.assertFalse(pr_issue.judge(pr("", head="train/4-extra"), CODE, issues())[0])
+    def test_train_named_branch_from_a_fork_gets_the_plain_message(self):
+        for the_pr in (pr("", head="train/4", head_repo="someone/fork"), pr("", head="train/4-extra")):
+            passed, lines = pr_issue.judge(the_pr, CODE, issues())
+            self.assertFalse(passed)
+            self.assertTrue(lines[0].startswith("The body names no issue"), lines)
         deleted_fork = pr("", head="train/4")
         deleted_fork["head"]["repo"] = None
         deleted_fork["base"] = None
-        self.assertFalse(pr_issue.judge(deleted_fork, CODE, issues())[0])
+        self.assertTrue(pr_issue.judge(deleted_fork, CODE, issues())[1][0].startswith("The body names no issue"))
 
     def test_documentation_only(self):
         self.assert_exempt(pr(""), ["README.md", "mpvfx-swift/docs/STATUS.md", "mpvfx-swift/docs/a.png", "LICENSE"])
