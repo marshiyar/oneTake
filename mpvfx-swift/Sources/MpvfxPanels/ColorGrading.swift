@@ -90,10 +90,10 @@ public struct ColorGrading: Equatable, Sendable {
     public func hueCurve(_ k: String) -> [[Double]] { hueCurves[k] ?? [] }
 
     /// Anything differs from neutral (`hasHfColorGradingAuthoredValues`).
-    /// (A balance wheel with only a hue counts, so a hue typed before its amount is kept.)
+    /// (A wheel with only a hue counts, so a hue typed before its amount is kept.)
     public var isAuthored: Bool {
         preset.map { $0 != "neutral" } ?? false || adjust.values.contains { abs($0) > 1e-6 }
-            || wheels.values.contains { !$0.isNeutral } || balance.values.contains { !$0.isNeutral || $0.hue != 0 } || abs(pivotValue - GradeValues.defaultPivot) > 1e-6
+            || wheels.values.contains { !$0.isNeutral || $0.hue != 0 } || balance.values.contains { !$0.isNeutral || $0.hue != 0 } || abs(pivotValue - GradeValues.defaultPivot) > 1e-6
             || curves.values.contains { !$0.isEmpty && $0 != [[0, 0], [1, 1]] }
             || hueCurves.values.contains { !$0.isEmpty } || !secondaries.isEmpty || lut != nil
             || Self.detailKeys.contains { abs(detail($0) - (Self.detailDefaults[$0] ?? 0)) > 1e-6 }

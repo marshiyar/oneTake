@@ -84,6 +84,14 @@ final class GradeWheelsTests: XCTestCase {
         XCTAssertEqual(gain(e).hue, 330, "text that is not a number changes nothing")
     }
 
+    /// A hue set on a tonal wheel before its amount keeps the grade (it is not dropped as neutral), as on a balance wheel.
+    func testAHueOnlyWheelKeepsTheGrade() {
+        var g = ColorGrading(json: ["version": .number(2)]); g.wheels["midtones"] = .init(hue: 120, amount: 0, level: 0)
+        XCTAssertTrue(g.isAuthored)
+        var b = ColorGrading(); b.balance["gain"] = .init(hue: 60, amount: 0, level: 0)
+        XCTAssertTrue(b.isAuthored)
+    }
+
     func testTabReachesTheWheelFields() throws {
         let (p, _) = try inspector()
         let order = PanelFocus<InspectorPanel.Hit>.order(p.hits, InspectorPanel.focusable)

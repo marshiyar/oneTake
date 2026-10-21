@@ -31,7 +31,7 @@ The grade is one entry of the clip's `effects` array (`NativeClipEffect`):
 
 ## The grade object
 
-Top-level keys: `enabled, version, preset, intensity, adjust, wheels, curves, hueCurves,
+Top-level keys: `enabled, version, preset, intensity, adjust, pivot, wheels, balance, curves, hueCurves,
 secondaries, details, effects, palette, lut, colorSpace`. A grade authored outside the app should write `"version": 3`. Every key is optional. Reading normalizes the object the
 way `normalizeHfColorGrading` does (`ColorGradeParams.init(json:)`): missing values come from the named preset,
 or from the contract defaults when there is no preset; every number is clamped to its limit; a non-finite number
@@ -45,6 +45,8 @@ reads as 0; malformed curves fall back to identity.
 | `intensity` | number 0…1 | Mix of the primary grade (adjust, wheels, curves, secondaries, LUT) over the source. Default 1, or the preset's. Vignette, grain and stylize effects are not scaled by it. |
 | `adjust` | object | Primary correction. `exposure` −2…2 (stops); `contrast, highlights, shadows, whites, blacks, temperature, tint, vibrance, saturation` −1…1. Default 0. UI labels: Exposure, Contrast, Highlights, Shadows, White Point, Black Point, Warmth, Tint, Vibrance, Saturation. |
 | `wheels` | object | `shadows`, `midtones`, `highlights`, each `{ "hue": 0…360 (wrapped), "amount": 0…1, "level": −1…1 }`. Default all 0. |
+| `balance` | object | Lift / Gamma / Gain / Offset: `lift`, `gamma`, `gain`, `offset`, each `{ "hue": 0…360 (wrapped), "amount": 0…1, "level": −1…1 }`. Lift adds `0.25·level` (plus `0.2·amount` along the hue) scaled by (1 − x), so black moves and white stays; gain multiplies by 1 + `0.5·level` (+ `0.4·amount`), so black stays; gamma raises to 1 / (1 + `0.5·level` + `0.3·amount`), so 0 and 1 stay; offset adds `0.25·level` (+ `0.2·amount`). Applied after the primary grade, before the tonal wheels. Default all 0 (no effect). |
+| `pivot` | number 0…1 | The luma contrast pivots on: a pixel of luma `pivot` keeps its value. Default 0.5. |
 | `curves` | object | `master, red, green, blue`: arrays of `[x, y]` points in 0…1, 2…16 points, sorted by x, no duplicate x; endpoints `[0,0]` / `[1,1]` are added when missing. Default identity `[[0,0],[1,1]]`. Sampled as a monotone cubic (`ColorCurveMath`). |
 | `hueCurves` | object | `hueVsHue` (y in −180…180 degrees), `hueVsSaturation`, `hueVsLuma` (y in −1…1): `[hueDegrees, delta]` points, 3…16, periodic over hue. Fewer than 3 points means off. Default `[]`. |
 | `secondaries` | array (≤ 4) | HSL qualifier plus correction, below. |

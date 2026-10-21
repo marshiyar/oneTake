@@ -83,7 +83,13 @@ extension InspectorPanel {
         }, pointer: { [weak self] part, p, phase in
             self?.wheelPointer(g, set, part: part, p, phase, commit: commit)
         })
-        row.keyPress = { [weak self] part, k in self?.wheelKey(g, set, part: part, k, commit: commit) ?? false }
+        // Keys read the grade as it is now, not as it was at the last draw: several presses (or a held key) can arrive
+        // before the next redraw, and each must build on the one before it.
+        row.keyPress = { [weak self] part, k in
+            guard let self else { return false }
+            let now = self.selected().flatMap { self.editor?.colorGrading(clipId: $0.id) } ?? g
+            return self.wheelKey(now, set, part: part, k, commit: commit)
+        }
         return row
     }
 
