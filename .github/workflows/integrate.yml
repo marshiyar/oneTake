@@ -6,14 +6,19 @@
 # *-source.yml workflows and git rerere (the resolution cache is kept between runs). One pull request that stays
 # conflicted is skipped. The whole batch is then built once; a build error drops the pull requests that changed the
 # failing files, at most 3 times. The result is pushed, opened as one pull request, and (input `merge`, default on)
-# squash-merged; the combined pull requests are closed and the skipped ones labelled `needs-resolution`.
+# squash-merged (needs OWNER_TOKEN); the combined pull requests are closed and the skipped ones labelled
+# `needs-resolution`.
 #
 # Three jobs keep pull request code away from every secret. `plan` and `publish` run main's script only; `build`
 # runs the toolchain over the merged pull request code with a read-only token and hands over plain files (a JSON
 # result and a git bundle), which `publish` checks against live pull request state before pushing with the review
-# App's token (secrets AGENT_APP_ID, AGENT_APP_PRIVATE_KEY). There is no pull_request_target trigger: pull request
-# commits are only fetched and merged with git (hooks off). A push that GitHub refuses (for example a batch that
-# changes workflow files) fails the run with the error.
+# App's token (secrets AGENT_APP_ID, AGENT_APP_PRIVATE_KEY): it builds main + one commit authored as the owner and
+# pushes it. A squash merge is authored by whoever opened the pull request, so the pull request is opened and merged
+# with the optional secret OWNER_TOKEN (a fine-grained token of the owner with contents and pull-requests write on
+# this repository). Without it nothing is opened or merged and the summary says the branch is ready; a person then
+# runs `python3 .github/ci/integrate.py land --repo marshiyar/oneTake` with their own gh login.
+# There is no pull_request_target trigger: pull request commits are only fetched and merged with git (hooks off).
+# A push that GitHub refuses (for example a batch that changes workflow files) fails the run with the error.
 name: integrate
 
 on:
@@ -173,6 +178,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PUSH_TOKEN: ${{ steps.app.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          OWNER_TOKEN: ${{ secrets.OWNER_TOKEN }}   # optional; see the header
           INTEGRATE_MERGE: ${{ github.event_name != 'workflow_dispatch' || inputs.merge }}
         run: |
           python3 -I -B .github/ci/integrate.py publish --plan "$RUNNER_TEMP/in/plan.json" \
