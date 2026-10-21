@@ -123,9 +123,15 @@ final class Run {
     }
 
     /// Draws `time` until every layer shows its exact, fully graded frame (a stall after 10 s is counted and skipped).
-    func show(_ time: Double, playing: Bool) {
-        while !draw(time, playing: playing) {
-            if ready.wait(timeout: .now() + 10) == .timedOut { stalls += 1; return }
+    /// Returns when (`now()`) the first draw that put a picture on every layer ended: a stand-in or the exact frame.
+    @discardableResult
+    func show(_ time: Double, playing: Bool) -> Double? {
+        var first: Double?
+        while true {
+            let done = draw(time, playing: playing)
+            if first == nil && compositor.lastShown.allSatisfy({ $0.frame != nil }) { first = now() }
+            if done { return first }
+            if ready.wait(timeout: .now() + 10) == .timedOut { stalls += 1; return first }
         }
     }
 
@@ -198,22 +204,34 @@ func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Do
             "realtime_lane_restarts": "\(restarts)", "realtime_frames_decoded": "\(decoded)", "realtime_frames_skipped": "\(skipped)"]
 }
 
-/// Random seeks while paused: time until the exact frame is on screen.
+/// Mean, 95th percentile and maximum of `seconds` in milliseconds, as `<prefix>_mean_ms`, `_p95_ms` and `_max_ms`.
+func latencyKeys(_ prefix: String, _ seconds: [Double]) -> [String: String] {
+    guard !seconds.isEmpty else { return [:] }
+    let sorted = seconds.sorted()
+    let mean = seconds.reduce(0, +) / Double(seconds.count)
+    let p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+    return ["\(prefix)_mean_ms": fmt(mean * 1000), "\(prefix)_p95_ms": fmt(p95 * 1000),
+            "\(prefix)_max_ms": fmt((sorted.last ?? 0) * 1000)]
+}
+
+/// Random seeks while paused: time until the first picture is on screen (`seek_first_*`: a stand-in such as the
+/// nearest cached frame, or the exact frame when it came first) and until the exact frame is (`seek_*`).
 func scrub(_ run: Run, seeks: Int, duration: Double) -> [String: String] {
     var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
-    var latencies: [Double] = []
+    var latencies: [Double] = [], firsts: [Double] = []
     for _ in 0..<seeks {
         seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
         let frame = Int((seed >> 33) % UInt64(duration * 30 - 1))
         let t0 = now()
-        run.show(Double(frame) / 30, playing: false)
-        latencies.append(now() - t0)
+        let first = run.show(Double(frame) / 30, playing: false)
+        let exact = now()
+        latencies.append(exact - t0)
+        firsts.append((first ?? exact) - t0)
     }
-    let sorted = latencies.sorted()
-    let mean = latencies.reduce(0, +) / Double(max(1, latencies.count))
-    let p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
-    return ["seek_mean_ms": fmt(mean * 1000), "seek_p95_ms": fmt(p95 * 1000), "seek_max_ms": fmt((sorted.last ?? 0) * 1000),
-            "seeks": "\(seeks)", "stalls": "\(run.stalls)"]
+    var out = latencyKeys("seek", latencies)
+    out.merge(latencyKeys("seek_first", firsts)) { $1 }
+    out["seeks"] = "\(seeks)"; out["stalls"] = "\(run.stalls)"
+    return out
 }
 
 func scenario(_ name: String) -> (clips: [Clip], seconds: Double)? {
