@@ -34,8 +34,6 @@ on:
         required: false
         default: true
         type: boolean
-  schedule:
-    - cron: '0 */2 * * *'
 
 permissions: {}
 
