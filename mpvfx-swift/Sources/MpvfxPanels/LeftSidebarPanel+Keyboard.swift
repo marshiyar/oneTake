@@ -71,6 +71,7 @@ extension LeftSidebarPanel {
     }
 
     func keyNavigate(_ k: EditorKey) -> Bool {
+        if isTabStop(focus.current), stripArrow(k) { return true }   // Left / Right / Home / End on the tab bar
         switch k.code {
         case .tab:
             let moved = focus.move(hits, forward: !k.shift) { [unowned self] in self.isFocusable($0) }
@@ -87,11 +88,14 @@ extension LeftSidebarPanel {
     /// The header and search controls, and one stop in the grid: the selected tile, else the first.
     func isFocusable(_ h: Hit) -> Bool {
         switch h {
+        case .tab(let t): return t == tab   // the tab bar is one stop: the selected tab
         case .hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .clearFilters, .clearSearch, .createCancel, .createConfirm: return true
         case .tile(let ref): return ref == (selected.flatMap { s in tileFrames.contains { $0.0 == s } ? s : nil } ?? tileFrames.first?.0)
         default: return false
         }
     }
+
+    func isTabStop(_ h: Hit?) -> Bool { if case .tab? = h { return true }; return false }
 
     /// Presses the focused header control the way a click does, keeping the ring where it was.
     func pressFocusedControl() -> Bool {

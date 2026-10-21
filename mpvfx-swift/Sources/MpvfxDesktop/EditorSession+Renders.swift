@@ -112,9 +112,9 @@ extension SessionPanels {
     var preferences: DesktopPreferences { session.preferences(userData: userData) }
 
     func wireRenders() {
-        right.settings = RenderSettingsBridge.model(preferences.renderSettings)
-        right.onSettingsChanged = { [weak self] m in self?.preferences.renderSettings = RenderSettingsBridge.json(m) }
-        right.onRender = { [weak self] action in self?.renderAction(action) }
+        rendersPanel.settings = RenderSettingsBridge.model(preferences.renderSettings)
+        rendersPanel.onSettingsChanged = { [weak self] m in self?.preferences.renderSettings = RenderSettingsBridge.json(m) }
+        rendersPanel.onRender = { [weak self] action in self?.renderAction(action) }
     }
 
     /// Re-reads the project's render history (finished exports in its renders folder).
@@ -138,20 +138,20 @@ extension SessionPanels {
     /// Pushes the queue into the Renders tab.
     func publishRenders() {
         let rows = renders.rows { [weak self] path in self?.session.mediaThumbnails.frame(path: path, at: 0, width: 160, height: 90) }
-        right.jobs = rows
+        rendersPanel.jobs = rows
         let lastMs = renders.active.last(where: { $0.view.status == .complete }).flatMap { a in renders.history.first { $0.id == a.id }?.durationMs }
             ?? renders.history.first(where: { $0.status != "failed" })?.durationMs
-        right.lastRenderSeconds = lastMs.map { $0 / 1000 }
-        if let e = renders.loadError, right.actionError == nil { right.actionError = e }
+        rendersPanel.lastRenderSeconds = lastMs.map { $0 / 1000 }
+        if let e = renders.loadError, rendersPanel.actionError == nil { rendersPanel.actionError = e }
         redraw()
     }
 
     func renderAction(_ action: RenderAction) {
-        right.actionError = nil
+        rendersPanel.actionError = nil
         switch action {
         case .start(let settings): startRender(settings)
         case .retry(let id):
-            let settings = renders.active.first { $0.id == id }?.settings ?? right.settings
+            let settings = renders.active.first { $0.id == id }?.settings ?? rendersPanel.settings
             startRender(settings)
         case .cancel(let id): renders.active.first { $0.id == id }?.run?.cancel()
         case .delete(let id): deleteRender(id)
@@ -161,12 +161,12 @@ extension SessionPanels {
             }
         case .hideFinished:
             guard let projectId else { return }
-            let finished = right.jobs.filter { $0.status != .rendering && $0.status != .queued }.map(\.id)
+            let finished = rendersPanel.jobs.filter { $0.status != .rendering && $0.status != .queued }.map(\.id)
             renders.hidden.formUnion(finished)
             preferences.setHiddenRenders(projectId: projectId, preferences.hiddenRenders(projectId: projectId) + finished)
             publishRenders()
         case .publish:
-            right.actionError = "Publishing is not part of the desktop app."
+            rendersPanel.actionError = "Publishing is not part of the desktop app."
             redraw()
         }
     }
@@ -183,7 +183,7 @@ extension SessionPanels {
             renders.history.removeAll { $0.id == id }
             publishRenders()
         } catch {
-            right.actionError = "Couldn't delete the render — it's still on disk."
+            rendersPanel.actionError = "Couldn't delete the render — it's still on disk."
             redraw()
         }
     }
@@ -192,11 +192,11 @@ extension SessionPanels {
     /// with its row in the queue from the moment it is queued.
     func startRender(_ model: RenderSettingsModel) {
         guard let backend, let projectId else {
-            right.actionError = "Nothing to export from: open or create a project first (the demo timeline has no project folder)."
+            rendersPanel.actionError = "Nothing to export from: open or create a project first (the demo timeline has no project folder)."
             redraw(); return
         }
-        guard !right.isRendering else { return }
-        if let failure = session.flushSave() { right.actionError = "Save the project before rendering: \(failure)"; redraw(); return }
+        guard !rendersPanel.isRendering else { return }
+        if let failure = session.flushSave() { rendersPanel.actionError = "Save the project before rendering: \(failure)"; redraw(); return }
         let settings = RenderSettingsBridge.exportSettings(model, canvas: session.editor.document.canvas)
         let jobId = "render-" + UUID().uuidString.lowercased()
         let post = uiPost
@@ -212,7 +212,7 @@ extension SessionPanels {
         } catch {
             let message = (error as? DesktopError)?.message ?? "\(error)"
             FileHandle.standardError.write(Data("[MpVFX] export could not start: \(message)\n".utf8))
-            right.actionError = message; redraw(); return
+            rendersPanel.actionError = message; redraw(); return
         }
         let name = (run.outputPath as NSString).lastPathComponent
         renders.active.append(.init(id: jobId, run: run, view: RenderJobView(id: jobId, name: name, status: .queued, stage: "Preparing", createdAt: Date().timeIntervalSince1970),
@@ -236,7 +236,7 @@ extension SessionPanels {
     /// A failed export shows its reason on its row and in the panel's error banner (and in the log).
     func renderFailed(_ id: String, _ message: String) {
         FileHandle.standardError.write(Data("[MpVFX] export \(id) failed: \(message)\n".utf8))
-        right.actionError = "Export failed: \(message)"
+        rendersPanel.actionError = "Export failed: \(message)"
         updateActive(id) { $0.view.status = .failed; $0.view.error = message; $0.view.stage = "" }
     }
 

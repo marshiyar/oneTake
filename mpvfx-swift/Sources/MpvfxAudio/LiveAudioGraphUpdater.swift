@@ -88,7 +88,7 @@ public final class LiveAudioGraphUpdater {
             let s = Result { try loadStem(key) }
             stemCache[key] = s
             return try s.get()
-        }, issues: &issues)
+        }, issues: &issues, sampleRate: Double(source.format.sampleRate))
         // Stems are decoded at the source's rate, so the graph runs at it too (in-place edits compare the rate).
         project.sampleRate = Double(source.format.sampleRate)
         let live = Set(inputs.tracks.map(\.stem))
