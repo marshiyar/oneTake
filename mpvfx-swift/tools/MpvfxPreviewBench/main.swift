@@ -164,38 +164,50 @@ func playback(_ run: Run, frames: Int) -> [String: String] {
     return out
 }
 
+/// Sleeps until `deadline` (a `now()` value).
+func sleepUntil(_ deadline: Double) {
+    let wait = deadline - now()
+    if wait > 0 { usleep(UInt32(min(1, wait) * 1e6)) }
+}
+
 /// Real-time playback for `seconds` at 30 draws per second, as the display timer drives it: the share of draws that
 /// showed every layer's exact frame (the rest held an earlier frame), how many different pictures reached the screen
-/// per second (smoothness: 30 is every frame), and how far the shown frame trailed the playhead.
+/// per second (smoothness: 30 is every frame), how far the shown frame trailed the playhead, and the draw cadence
+/// (`DrawCadence`: draw interval and wake lateness p95 and max, draws that repeated the previous picture).
 func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Double) -> [String: String] {
     let run = Run(doc, width: width, height: height)
     run.show(0, playing: false)
-    var exact = 0, total = 0, changes = 0, lag = 0
-    var last: [Int?] = []
+    guard var cadence = DrawCadence(fps: 30) else { return [:] }
+    var exact = 0, lag = 0
     let t0 = now()
     while true {
+        sleepUntil(t0 + cadence.deadline(cadence.starts.count))
         let t = now() - t0
         if t >= seconds { break }
         _ = run.draw(t, playing: true)
         let shown = run.compositor.lastShown
         if shown.allSatisfy({ $0.exact }) { exact += 1 }
-        let frames = shown.map(\.frame)
-        if frames != last { changes += 1; last = frames }
+        cadence.record(start: t, frames: shown.map(\.frame))
         let want = Int((t * 30 + 1e-6).rounded(.down))
         lag += shown.compactMap(\.frame).map { max(0, want - $0) }.max() ?? 0
-        total += 1
-        let next = Double(total) / 30
-        let wait = next - (now() - t0)
-        if wait > 0 { usleep(UInt32(wait * 1e6)) }
     }
-    let lanes = run.compositor.lanes.values
-    let restarts = lanes.reduce(0) { $0 + $1.restarts }, decoded = lanes.reduce(0) { $0 + $1.framesDecoded }
-    let skipped = lanes.reduce(0) { $0 + $1.framesSkipped }
+    var out = laneTotals(run)
     run.compositor.stopAll()
-    let n = Double(max(1, total))
-    return ["realtime_exact_pct": fmt(Double(exact) / n * 100), "realtime_draws": "\(total)",
-            "realtime_new_frames_per_s": fmt(Double(changes) / seconds), "realtime_mean_lag_frames": fmt(Double(lag) / n),
-            "realtime_lane_restarts": "\(restarts)", "realtime_frames_decoded": "\(decoded)", "realtime_frames_skipped": "\(skipped)"]
+    let draws = Double(max(1, cadence.starts.count))
+    out["realtime_exact_pct"] = fmt(Double(exact) / draws * 100)
+    out["realtime_draws"] = "\(cadence.starts.count)"
+    out["realtime_new_frames_per_s"] = fmt(Double(cadence.changes) / seconds)
+    out["realtime_mean_lag_frames"] = fmt(Double(lag) / draws)
+    for (key, value) in cadence.metrics() { out["realtime_\(key)"] = fmt(value) }
+    return out
+}
+
+/// Restarts, decoded and skipped frames summed over the run's decode lanes.
+func laneTotals(_ run: Run) -> [String: String] {
+    let lanes = run.compositor.lanes.values
+    return ["realtime_lane_restarts": "\(lanes.reduce(0) { $0 + $1.restarts })",
+            "realtime_frames_decoded": "\(lanes.reduce(0) { $0 + $1.framesDecoded })",
+            "realtime_frames_skipped": "\(lanes.reduce(0) { $0 + $1.framesSkipped })"]
 }
 
 /// Random seeks while paused: time until the exact frame is on screen.
