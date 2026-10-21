@@ -174,11 +174,92 @@ final class GradeWheelsTests: XCTestCase {
             XCTAssertEqual(e.undoStack.count, steps + 1)
             let held = gain(e)
             XCTAssertEqual(part == 2 ? held.hue : held.level, part == 2 ? 45 : 0.25, accuracy: 1e-9)
+            p.keyUp(EditorKey(.right))
             XCTAssertTrue(p.keyDown(EditorKey(.right)))
             XCTAssertEqual(e.undoStack.count, steps + 2, "a new physical press has its own undo step")
             e.undo(); XCTAssertEqual(gain(e), held)
             e.undo(); XCTAssertEqual(e.colorGrading(clipId: "clip:a"), g)
         }
+    }
+
+    func testDelayedWheelAndLevelRepeatsStayInOneHistoryEntryWithoutRepeatFlags() throws {
+        for flagged in [false, true] {
+            for part in [2, 12] {
+                var grade = ColorGrading()
+                grade.balance["gain"] = .init(hue: 40, amount: 0.5, level: 0.2)
+                let (panel, editor) = try inspector(grade: grade)
+                var clock: Double = 1_000
+                editor.now = { clock }
+                panel.focus.visible = true
+                panel.focus.current = .custom(Self.set, part)
+                let entries: Int = editor.undoStack.count
+                XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+                clock += 1 // Normal first-repeat delay exceeds the generic 0.3-second timeout.
+                XCTAssertTrue(panel.keyDown(EditorKey(.right, isRepeat: flagged)))
+                clock += 2
+                XCTAssertTrue(panel.keyDown(EditorKey(.right, isRepeat: flagged)))
+                XCTAssertEqual(editor.undoStack.count, entries + 1)
+                let held = gain(editor)
+                panel.keyUp(EditorKey(.right))
+                XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+                XCTAssertEqual(editor.undoStack.count, entries + 2)
+                XCTAssertTrue(editor.undo())
+                XCTAssertEqual(gain(editor), held)
+                XCTAssertTrue(editor.undo())
+                XCTAssertEqual(editor.colorGrading(clipId: "clip:a"), grade)
+            }
+        }
+    }
+
+    func testWheelHoldOverrideDoesNotChangeOrdinaryHistoryTimeout() throws {
+        let (panel, editor) = try inspector()
+        var clock: Double = 1_000
+        editor.now = { clock }
+        panel.focus.visible = true
+        panel.focus.current = .custom(Self.set, 2)
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        panel.keyUp(EditorKey(.right))
+        let entries: Int = editor.undoStack.count
+        var grade = ColorGrading()
+        grade.balance["gain"] = .init(hue: 50, amount: 0.5, level: 0.2)
+        editor.withHistory("Ordinary grade edit", coalesceKey: "ordinary") {
+            XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", grade))
+        }
+        clock += 1
+        grade.balance["gain"] = .init(hue: 60, amount: 0.5, level: 0.2)
+        editor.withHistory("Ordinary grade edit", coalesceKey: "ordinary") {
+            XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", grade))
+        }
+        XCTAssertEqual(editor.undoStack.count, entries + 2, "the scoped hold override must not leak")
+    }
+
+    func testChangingFocusEndsAHoldEvenWithoutAReleaseEvent() throws {
+        let (panel, editor) = try inspector()
+        panel.focus.visible = true
+        panel.focus.current = .custom(Self.set, 2)
+        let entries = editor.undoStack.count
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        panel.focus.visible = false // A lost release must not survive focus leaving and returning.
+        panel.focus.visible = true
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        XCTAssertEqual(editor.undoStack.count, entries + 2)
+    }
+
+    func testRightPanelForwardsKeyReleaseToItsInspector() throws {
+        let (_, editor) = try inspector()
+        let right = RightPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1_440))
+        let panel = right.inspector
+        panel.editor = editor
+        panel.selection = ["clip:a"]
+        panel.openGroupId = "grade"
+        redraw(panel)
+        panel.focus.visible = true
+        panel.focus.current = .custom(Self.set, 2)
+        let entries = editor.undoStack.count
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        right.keyUp(EditorKey(.right))
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        XCTAssertEqual(editor.undoStack.count, entries + 2)
     }
 
     /// At the narrowest panel the field labels (10 px) never run into each other.

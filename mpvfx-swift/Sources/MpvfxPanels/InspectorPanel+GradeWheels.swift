@@ -177,11 +177,13 @@ extension InspectorPanel {
         var n = g; set.write(&n, set.keys[index], w)
         guard let editor else { return false }
         let control = "\(set.id):\(part):\(k.code):\(k.shift)"
-        if !k.isRepeat || grade.wheelKeyControl != control || grade.wheelKeyHistory == nil {
+        if grade.wheelKeyCode != k.code || grade.wheelKeyControl != control || grade.wheelKeyHistory == nil {
             grade.wheelKeyControl = control
+            grade.wheelKeyCode = k.code
             grade.wheelKeyHistory = "grade:wheel:key:\(UUID().uuidString)"
         }
-        editor.withHistory("Edit color grade", coalesceKey: grade.wheelKeyHistory) { commit(n) }
+        editor.withHistory("Edit color grade", coalesceKey: grade.wheelKeyHistory,
+                           coalesceWindow: .infinity) { commit(n) }
         return true
     }
 }

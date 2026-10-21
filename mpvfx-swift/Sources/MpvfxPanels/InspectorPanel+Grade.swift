@@ -31,6 +31,7 @@ public struct GradeUIState: Equatable {
     var curveDraft: [[Double]]?
     /// A fresh physical arrow press starts a history group; its repeats reuse it.
     var wheelKeyControl: String?
+    var wheelKeyCode: EditorKey.Code?
     var wheelKeyHistory: String?
     /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
     /// past the drag threshold (a click that only selects a point never moves it).

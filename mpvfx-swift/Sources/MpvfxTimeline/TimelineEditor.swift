@@ -38,6 +38,7 @@ public final class TimelineEditor {
     public var now: () -> Double = { Date().timeIntervalSince1970 }
     var pendingLabel: String?
     var pendingCoalesceKey: String?
+    var pendingCoalesceWindow: Double?
     public internal(set) var lastFailure: NativeProjectClipFailure?
     public internal(set) var lastPropertyFailure: NativeProjectKeyframeFailure?
     public let engine: KeyframeEngine?
@@ -222,13 +223,17 @@ public final class TimelineEditor {
     }
 
     /// Run `body` so every history entry it records carries `label` (an enclosing call's label wins) (and folds with neighbours
-    /// sharing `coalesceKey`, e.g. a slider drag in an inspector field). Returns body's result.
+    /// sharing `coalesceKey`, e.g. a slider drag in an inspector field). An interaction with its own unique key can
+    /// supply an infinite coalesce window to span a physical key hold; the override ends with this call.
+    /// Returns body's result.
     @discardableResult
-    public func withHistory<T>(_ label: String, coalesceKey: String? = nil, _ body: () -> T) -> T {
-        let saved = (pendingLabel, pendingCoalesceKey)
+    public func withHistory<T>(_ label: String, coalesceKey: String? = nil,
+                               coalesceWindow: Double? = nil, _ body: () -> T) -> T {
+        let saved = (pendingLabel, pendingCoalesceKey, pendingCoalesceWindow)
         // The outermost caller names the entry (an inspector's "Set volume" wraps the op's own label).
         pendingLabel = pendingLabel ?? label; pendingCoalesceKey = pendingCoalesceKey ?? coalesceKey
-        defer { (pendingLabel, pendingCoalesceKey) = saved }
+        pendingCoalesceWindow = pendingCoalesceWindow ?? coalesceWindow
+        defer { (pendingLabel, pendingCoalesceKey, pendingCoalesceWindow) = saved }
         return body()
     }
 
@@ -239,7 +244,7 @@ public final class TimelineEditor {
 
     func pushHistory(_ inverse: NativeProjectClipCommand, defaultLabel: String) {
         let t = now()
-        if let key = pendingCoalesceKey, let last = undoStack.last, last.coalesceKey == key, t - last.time <= coalesceWindow {
+        if let key = pendingCoalesceKey, let last = undoStack.last, last.coalesceKey == key, t - last.time <= (pendingCoalesceWindow ?? coalesceWindow) {
             // Keep the older inverse: undo returns to the state before the first folded edit.
             undoStack[undoStack.count - 1].time = t
         } else {

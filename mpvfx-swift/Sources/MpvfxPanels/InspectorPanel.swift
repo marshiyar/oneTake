@@ -30,7 +30,9 @@ public final class InspectorPanel {
 
     public var editor: TimelineEditor?
     /// Selected clip ids (the timeline/stage selection).
-    public var selection: [String] = []
+    public var selection: [String] = [] {
+        didSet { if selection != oldValue { endWheelKeyHold() } }
+    }
     /// Playhead (composition seconds).
     public var time = 0.0
     /// The open accordion group ("" when all are closed). Every change, from a header click or a host reveal, is saved
@@ -137,7 +139,11 @@ public final class InspectorPanel {
     public internal(set) var cubeDrag: CubeDrag?
     public internal(set) var cubeBox: CanvasRect?
     /// Keyboard focus (Tab / ⇧Tab, Enter / Space) and its ring.
-    public var focus = PanelFocus<Hit>()
+    public var focus = PanelFocus<Hit>() {
+        didSet {
+            if focus.current != oldValue.current || focus.visible != oldValue.visible { endWheelKeyHold() }
+        }
+    }
     /// Groups whose header (and body, when open) play the 120 ms entrance (`hf-flat-group-enter`: opacity 0→1,
     /// translateY -4→0, ease-out): the one just toggled and the one it closed.
     public private(set) var enteringGroups: [String] = []
@@ -744,6 +750,17 @@ public final class InspectorPanel {
         guard lastRect.contains(p) else { return false }
         if bodyScroller.scroll(by: dy, precise: precise, max: bodyMaxScroll) { onAnimate?() }
         return true
+    }
+
+    /// End a physical wheel/level arrow hold on release, even on hosts without repeat flags.
+    public func keyUp(_ key: EditorKey) {
+        if grade.wheelKeyCode == key.code { endWheelKeyHold() }
+    }
+
+    private func endWheelKeyHold() {
+        grade.wheelKeyCode = nil
+        grade.wheelKeyControl = nil
+        grade.wheelKeyHistory = nil
     }
 
     /// Keys go to a focused field first. Tab moves to the next field of the open group.

@@ -199,5 +199,8 @@ extension EditorShellRouter {
         return false
     }
 
-    func keyUp(_ k: EditorKey) { (panes[focused]?.input ?? panes[.timeline]?.input)?.keyUp(k) }
+    /// Every pane retires its own held-key state, including the pane that lost focus during the hold.
+    func keyUp(_ k: EditorKey) {
+        for pane in panes.values { pane.input?.keyUp(k) }
+    }
 }
