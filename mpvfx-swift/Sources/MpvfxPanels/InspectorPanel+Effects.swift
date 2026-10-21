@@ -61,7 +61,7 @@ extension InspectorPanel {
             })), rail: true))
             if sel.showMaster {
                 gap(4, rail: true)
-                let v = (g.effects[sel.key] ?? 0) * 100
+                let v = g.effect(sel.key) * 100
                 let fmt: (Double) -> String = { x in sel.masterFormat?(x / 100) ?? "\(Int(x.rounded()))%" }
                 rows.append(.init(.slider(.init(key: "fx:\(sel.key)", label: sel.masterLabel, position: v, min: 0, max: sel.max,
                                                 display: fmt(v), format: fmt, tier: .explicitCustom,
