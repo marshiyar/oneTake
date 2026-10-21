@@ -20,13 +20,16 @@ import MpvfxPanels
 import MpvfxDesktopCore
 
 /// Host-side wiring of the side panels:
-/// the left sidebar gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms and the library
-/// views; the right panel's inspector edits the open document at the playhead for the current selection; context-menu
-/// and navigator commands go to the backend. Both panels draw into `shell.panes[.left/.right]`.
+/// the left sidebar (the Media panel) gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms
+/// and the library views; the Design panel's inspector edits the open document at the playhead for the current
+/// selection; the Renders panel exports; context-menu and navigator commands go to the backend. They draw into
+/// `shell.panes[.left]`, `[.right]` and `[.renders]`, three dock panels.
 final class SessionPanels {
     unowned let session: EditorSession
     let left: LeftSidebarPanel
+    /// The Design panel (the inspector) and the Renders panel: one `RightPanel` each, docked to its tab.
     let right: RightPanel
+    let rendersPanel: RightPanel
     let userData: String
     /// Native file/folder dialogs (GtkDialogs / MacDialogs); library commands that need a chooser no-op without one.
     var dialogs: NativeDialogs?
@@ -45,6 +48,8 @@ final class SessionPanels {
     var renders = RenderQueueState()
     /// Grade preset tile thumbnails, and the composition time they show.
     private(set) var presetPreviews: PresetPreviewRenderer?
+    /// Effects catalog and look tile demos on the built-in sample picture.
+    private(set) var effectPreviews: EffectPreviewRenderer?
     private var presetPreviewTime = 0.0
     private var panelsAnimating = false
 
@@ -53,6 +58,9 @@ final class SessionPanels {
         self.userData = userData
         left = LeftSidebarPanel(layout: layout)
         right = RightPanel(layout: layout)
+        right.dockedTab = .design
+        rendersPanel = RightPanel(layout: layout)
+        rendersPanel.dockedTab = .renders
         wireLeft()
         wireRight()
     }
@@ -391,6 +399,7 @@ final class SessionPanels {
     func projectSwitched() {
         media = []; probedDurations = [:]; probing = []; session.mediaThumbnails.reset()
         renders.reset()
+        effectPreviews?.reset()   // sample tiles resolve LUT paths against the project folder
         syncItems()
         refreshMedia(); refreshLibraries(); refreshRenders(); refreshRecents()
         redraw()
@@ -418,9 +427,12 @@ final class SessionPanels {
         inspector.onOpenGroupChanged = { [weak self] _ in self?.redraw() }
         inspector.onAudition = { [weak self] request in self?.session.audition(request) }
         right.onAnimate = { [weak self] in self?.animatePanels() }
+        rendersPanel.onChange = { [weak self] in self?.redraw() }
+        rendersPanel.onAnimate = { [weak self] in self?.animatePanels() }
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         wirePresetPreviews(inspector)
+        wireEffectPreviews(inspector)
         wireRenders()
     }
 
@@ -432,9 +444,9 @@ final class SessionPanels {
         var last = Date()
         func step() {
             let now = Date(), dt = now.timeIntervalSince(last); last = now
-            let a = right.tick(dt), b = left.tick(dt)
+            let a = right.tick(dt), b = left.tick(dt), r = rendersPanel.tick(dt)
             redraw()
-            if a || b { _ = schedule(1.0 / 60, step) } else { panelsAnimating = false }
+            if a || b || r { _ = schedule(1.0 / 60, step) } else { panelsAnimating = false }
         }
         _ = schedule(1.0 / 60, step)
     }
@@ -452,12 +464,13 @@ final class SessionPanels {
             switch renderer.preview(clipId: req.clipId, presetId: req.presetId, lutSrc: req.lutSrc, lutIntensity: req.lutIntensity,
                                     time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight) {
             case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
+            // Media that gave up decoding never sends a frame: answer "no picture" so the tile shows the sample.
+            case .rendering: return renderer.decodeGaveUp(clipId: req.clipId) ? .unavailable : .rendering
             case .unavailable: return .unavailable
             }
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
-        inspector.onRetryPresetPreviews = { renderer.reset() }
+        inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
         inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
             guard let self, let inspector else { return .unavailable }
             let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
@@ -466,6 +479,28 @@ final class SessionPanels {
             case .rendering: return .rendering
             case .unavailable: return .unavailable
             }
+        }
+    }
+
+    /// Effects catalog tiles: the selected clip's frame with its grade plus each effect or look (the preset tiles'
+    /// PresetPreviewRenderer); when the clip has no picture, the built-in sample picture (EffectPreviewRenderer), which
+    /// is also what preset tiles fall back to. Both render off the UI thread; a finished tile redraws the panels.
+    private func wireEffectPreviews(_ inspector: InspectorPanel) {
+        let demos = EffectPreviewRenderer()
+        demos.projectDir = { [weak session] in session?.projectDir?.path }
+        demos.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
+        effectPreviews = demos
+        inspector.effectPreview = { [weak self, weak inspector] req in
+            if let self, let inspector, let frames = self.presetPreviews {
+                // Like the preset tiles: paused, follow the playhead; playing, keep the frame shown when playback began.
+                if !self.session.playback.isPlaying { self.presetPreviewTime = inspector.time }
+                switch frames.effectPreview(req, time: self.presetPreviewTime) {
+                case .ready(let img): return .ready(img)
+                case .rendering: return .rendering
+                case .unavailable: break   // no picture on the clip: the sample picture below
+                }
+            }
+            return demos.preview(req)
         }
     }
 
@@ -516,6 +551,7 @@ final class SessionPanels {
         if inspector.selectedKeyframes != keys { inspector.selectedKeyframes = keys }
         inspector.time = session.playback.currentTime
         right.canvasSize = CanvasSize(session.editor.document.canvas.width, session.editor.document.canvas.height)
+        rendersPanel.canvasSize = right.canvasSize
     }
 }
 
@@ -538,12 +574,12 @@ final class LeftSidebarInput: CanvasInput {
     func resized(_ size: CanvasSize) {}
 }
 
-/// CanvasInput adapter for the right panel pane.
+/// CanvasInput adapter for the Design and Renders panes.
 final class RightPanelInput: CanvasInput {
     unowned let panels: SessionPanels
+    let panel: RightPanel
     var last = CanvasPoint(0, 0)
-    init(_ panels: SessionPanels) { self.panels = panels }
-    var panel: RightPanel { panels.right }
+    init(_ panels: SessionPanels, panel: RightPanel) { self.panels = panels; self.panel = panel }
     func pointerDown(x: Double, y: Double, shift: Bool) { last = .init(x, y); if panel.pointerDown(.init(x, y)) { panels.redraw() } }
     func pointerMove(x: Double, y: Double) { last = .init(x, y); if panel.pointerMove(.init(x, y)) { panels.redraw() } }
     func pointerUp(x: Double, y: Double) { last = .init(x, y); panel.pointerUp(.init(x, y)); panels.redraw() }
@@ -560,20 +596,29 @@ final class RightPanelInput: CanvasInput {
     func resized(_ size: CanvasSize) {}
 }
 
+extension RightPanelInput: CanvasAccessibilityProvider {
+    var accessibilityControls: [CanvasAccessibilityControl] { panels.right.accessibilityControls }
+}
+
 extension EditorSession {
-    /// Puts the left sidebar and right panel into the shell (called from installShell).
+    /// Puts the Media, Design and Renders panels into the shell (called from installShell).
     func installPanels(_ router: EditorShellRouter, userData: String) {
         let p = SessionPanels(session: self, layout: router.layout, userData: userData)
         panels = p
-        let li = LeftSidebarInput(p), ri = RightPanelInput(p)
+        let li = LeftSidebarInput(p), ri = RightPanelInput(p, panel: p.right), rr = RightPanelInput(p, panel: p.rendersPanel)
         let drag = BinAssetDrag(p)
         p.assetDrag = drag
         router.crossPaneDrag = drag
-        shellInputs += [li, ri]
+        shellInputs += [li, ri, rr]
         router.panes[.left] = ShellPane(input: li) { [weak p] c, size in p?.startIfNeeded(); p?.left.draw(c, size: size) }
         router.panes[.right] = ShellPane(input: ri) { [weak p] c, size in p?.startIfNeeded(); p?.syncBeforePaint(); p?.right.draw(c, size: size) }
+        router.panes[.renders] = ShellPane(input: rr) { [weak p] c, size in
+            p?.startIfNeeded(); p?.syncBeforePaint(); p?.rendersPanel.draw(c, size: size)
+        }
         router.panes[.left]?.hint = { [weak p] in p?.left.hint }
         router.panes[.right]?.hint = { [weak p] in p?.right.hint }
+        router.panes[.renders]?.hint = { [weak p] in p?.rendersPanel.hint }
+        installDockedPanels(router, p)
         let previous = editor.onChange
         editor.onChange = { [weak p] in previous?(); p?.syncItems() }
         p.syncItems()
