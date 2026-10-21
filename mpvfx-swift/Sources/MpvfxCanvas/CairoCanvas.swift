@@ -89,20 +89,30 @@ public final class CairoCanvas: CanvasContext {
     public func textUnits(_ text: String, font: CanvasFont) -> [TextUnit] {
         let l = layout(text, font)
         defer { g_object_unref(UnsafeMutableRawPointer(l)) }
+        guard let line = pango_layout_get_line_readonly(l, 0) else { return [] }
+        let utf16 = Array(text.utf16)
         return TextUnits.graphemes(text).map { range in
-            let value = String(decoding: Array(text.utf16)[range], as: UTF16.self)
-            let prefix = String(decoding: Array(text.utf16)[..<range.lowerBound], as: UTF16.self)
-            var byte = prefix.utf8.count, boxes: [CanvasRect] = []
-            for scalar in value.unicodeScalars {
-                var r = PangoRectangle()
-                pango_layout_index_to_pos(l, Int32(byte), &r)
-                let x = Double(r.x) / Double(PANGO_SCALE), width = Double(r.width) / Double(PANGO_SCALE)
-                boxes.append(CanvasRect(x: min(x, x + width), y: 0, width: abs(width), height: font.size))
-                byte += scalar.utf8.count
+            let value = String(decoding: utf16[range], as: UTF16.self)
+            let prefix = String(decoding: utf16[..<range.lowerBound], as: UTF16.self)
+            let start = Int32(prefix.utf8.count)
+            var positions: UnsafeMutablePointer<Int32>?
+            var count: Int32 = 0
+            // Query the complete grapheme's UTF-8 boundaries. Per-scalar caret rectangles can
+            // include neighbouring positions inside combining marks and emoji ZWJ sequences.
+            pango_layout_line_get_x_ranges(line, start, start + Int32(value.utf8.count), &positions, &count)
+            guard let positions else {
+                return TextUnit(range: range, rect: CanvasRect(x: 0, y: 0, width: 0, height: font.size))
+            }
+            defer { g_free(UnsafeMutableRawPointer(positions)) }
+            let boxes = (0..<Int(count)).map { index in
+                let left = Double(positions[index * 2]) / Double(PANGO_SCALE)
+                let right = Double(positions[index * 2 + 1]) / Double(PANGO_SCALE)
+                return CanvasRect(x: min(left, right), y: 0, width: abs(right - left), height: font.size)
             }
             return TextUnit(range: range, rect: TextUnits.union(boxes))
         }
     }
+
     public func textWordRanges(_ text: String) -> [Range<Int>] {
         let l = layout(text, CanvasFont(size: 12))
         defer { g_object_unref(UnsafeMutableRawPointer(l)) }

@@ -307,3 +307,9 @@ layout results with no persisted setting or editor command. macOS tests cover La
 CJK, combining marks, emoji ZWJ and skin-tone modifiers, transparent raster parity, RTL order, repeated
 words, wrapping, blank lines and letter spacing. Linux and Windows tests are compiled conditionally
 against their real raster backends and require their CI hosts; they were not executed locally.
+
+Text-unit advances include letter spacing, including trailing spacing. Justified separator spaces
+have grapheme boxes spanning the expanded word gap. Empty native text-unit queries return no units
+without recording a frame error. Pango queries the full grapheme's UTF-8 range, rather than unioning
+individual scalar caret rectangles. Windows helper tests cover zero-count and malformed inputs;
+those tests still require a Windows host.

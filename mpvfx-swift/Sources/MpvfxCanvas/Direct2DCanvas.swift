@@ -161,6 +161,7 @@ public final class Direct2DCanvas: CanvasContext {
 
     public func textUnits(_ text: String, font: CanvasFont) -> [TextUnit] {
         let ranges = TextUnits.graphemes(text)
+        guard !ranges.isEmpty else { return [] }
         let starts = ranges.map { Int32($0.lowerBound) }, lengths = ranges.map { Int32($0.count) }
         var rects = [MpvfxRect](repeating: MpvfxRect(x: 0, y: 0, w: 0, h: 0), count: ranges.count)
         let hr = withDirectWriteText(text, font) { spec in

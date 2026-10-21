@@ -71,15 +71,22 @@ public enum TextLayout {
         func append(_ text: String, x: Double, y: Double, offset: Int) {
             let placed = place(text, x: x, y: y, spacing: space, measure: measure)
             if space != 0 {
-                var prefix = "", characterOffset = offset
+                var prefix = ""
+                var characterOffset = offset
                 for (index, character) in text.enumerated() {
-                    let value = String(character), length = value.utf16.count
-                    if character.isWhitespace {
-                        spaces.append(TextUnit(range: characterOffset..<(characterOffset + length),
-                                               rect: CanvasRect(x: x + (prefix.isEmpty ? 0 : measure(prefix)) + space * Double(index),
-                                                                y: y, width: measure(value), height: b.font.size)))
-                    }
-                    prefix += value; characterOffset += length
+                    let value = String(character)
+                    let length = value.utf16.count
+                    let prefixWidth = prefix.isEmpty ? 0 : measure(prefix)
+                    let advance = measure(prefix + value) - prefixWidth + space
+                    spaces.append(TextUnit(
+                        range: characterOffset..<(characterOffset + length),
+                        rect: CanvasRect(
+                            x: x + prefixWidth + space * Double(index), y: y,
+                            width: max(0, advance), height: b.font.size
+                        )
+                    ))
+                    prefix += value
+                    characterOffset += length
                 }
             }
             var cursor = 0
@@ -116,9 +123,17 @@ public enum TextLayout {
                 let wordsWidth = line.words.reduce(0) { $0 + w($1) }
                 let gap = (width - wordsWidth) / Double(line.words.count - 1)
                 var wordX = 0.0, offset = line.start
-                for word in line.words {
+                for (index, word) in line.words.enumerated() {
                     append(word, x: wordX, y: y, offset: offset)
-                    wordX += w(word) + gap; offset += word.utf16.count + 1
+                    let wordEnd = offset + word.utf16.count
+                    if index < line.words.count - 1 {
+                        spaces.append(TextUnit(
+                            range: wordEnd..<(wordEnd + 1),
+                            rect: CanvasRect(x: wordX + w(word), y: y, width: gap, height: b.font.size)
+                        ))
+                    }
+                    wordX += w(word) + gap
+                    offset = wordEnd + 1
                 }
             } else { append(text, x: x, y: y, offset: line.start) }
         }

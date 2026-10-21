@@ -338,29 +338,79 @@ mpvfx_hresult mpvfx_d2d_measure_text(const MpvfxText *text, float *width, float 
     return S_OK;
 }
 
+namespace {
+
+bool validTextRangeBuffers(const MpvfxText &text, const int32_t *starts,
+                           const int32_t *lengths, const MpvfxRect *rects) {
+    return text.text && starts && lengths && rects;
+}
+
+HRESULT validateTextRangeOffsets(const MpvfxText &text, const int32_t *starts,
+                                 const int32_t *lengths, int32_t count) {
+    for (int32_t index = 0; index < count; ++index) {
+        if (starts[index] < 0 || lengths[index] <= 0) return E_INVALIDARG;
+        if (starts[index] > text.length - lengths[index]) return E_INVALIDARG;
+    }
+    return S_OK;
+}
+
+HRESULT validateTextRanges(const MpvfxText *text, const int32_t *starts,
+                           const int32_t *lengths, const MpvfxRect *rects, int32_t count) {
+    if (!text || count < 0) return E_INVALIDARG;
+    if (text->length < 0) return E_INVALIDARG;
+    if (count == 0) return S_OK;
+    if (!validTextRangeBuffers(*text, starts, lengths, rects)) return E_INVALIDARG;
+    return validateTextRangeOffsets(*text, starts, lengths, count);
+}
+
+HRESULT textRangeMetrics(IDWriteTextLayout *layout, int32_t start, int32_t length,
+                         std::vector<DWRITE_HIT_TEST_METRICS> &metrics) {
+    UINT32 needed = 0;
+    HRESULT status = layout->HitTestTextRange(start, length, 0, 0, nullptr, 0, &needed);
+    if (FAILED(status) && status != E_NOT_SUFFICIENT_BUFFER) return status;
+    metrics.resize(needed);
+    return layout->HitTestTextRange(start, length, 0, 0, metrics.data(), needed, &needed);
+}
+
+MpvfxRect textRangeRect(const std::vector<DWRITE_HIT_TEST_METRICS> &metrics, float height) {
+    if (metrics.empty()) return {0, 0, 0, height};
+    float left = metrics.front().left;
+    float right = left + metrics.front().width;
+    for (const auto &metric : metrics) {
+        left = std::min(left, metric.left);
+        right = std::max(right, metric.left + metric.width);
+    }
+    return {left, 0, std::max(0.0f, right - left), height};
+}
+
+HRESULT validateWordStopInput(const MpvfxText *text, const uint8_t *stops) {
+    if (!text || !stops) return E_INVALIDARG;
+    if (text->length < 0) return E_INVALIDARG;
+    if (text->length > 0 && !text->text) return E_INVALIDARG;
+    return S_OK;
+}
+
+}  // namespace
+
 mpvfx_hresult mpvfx_d2d_text_ranges(const MpvfxText *text, const int32_t *starts,
                                    const int32_t *lengths, MpvfxRect *rects, int32_t count) {
-    if (!text || count < 0 || (count && (!starts || !lengths || !rects))) return E_INVALIDARG;
+    HRESULT status = validateTextRanges(text, starts, lengths, rects, count);
+    if (FAILED(status) || count == 0) return status;
     Com<IDWriteTextLayout> layout;
-    HRESULT hr = makeLayout(*text, layout);
-    if (FAILED(hr)) return hr;
-    for (int32_t i = 0; i < count; ++i) {
-        if (starts[i] < 0 || lengths[i] <= 0 || starts[i] > text->length - lengths[i]) return E_INVALIDARG;
-        UINT32 needed = 0;
-        hr = layout->HitTestTextRange(starts[i], lengths[i], 0, 0, nullptr, 0, &needed);
-        if (FAILED(hr) && hr != E_NOT_SUFFICIENT_BUFFER) return hr;
-        std::vector<DWRITE_HIT_TEST_METRICS> metrics(needed);
-        hr = layout->HitTestTextRange(starts[i], lengths[i], 0, 0, metrics.data(), needed, &needed);
-        if (FAILED(hr)) return hr;
-        float left = 1.0e6f, right = -1.0e6f;
-        for (const auto &m : metrics) { left = std::min(left, m.left); right = std::max(right, m.left + m.width); }
-        rects[i] = {left, 0, std::max(0.0f, right - left), text->size};
+    status = makeLayout(*text, layout);
+    if (FAILED(status)) return status;
+    std::vector<DWRITE_HIT_TEST_METRICS> metrics;
+    for (int32_t index = 0; index < count; ++index) {
+        status = textRangeMetrics(layout.get(), starts[index], lengths[index], metrics);
+        if (FAILED(status)) return status;
+        rects[index] = textRangeRect(metrics, text->size);
     }
     return S_OK;
 }
 
 mpvfx_hresult mpvfx_d2d_word_stops(const MpvfxText *text, uint8_t *stops) {
-    if (!text || !stops || text->length < 0) return E_INVALIDARG;
+    const HRESULT valid = validateWordStopInput(text, stops);
+    if (FAILED(valid)) return valid;
     std::fill(stops, stops + text->length + 1, 0);
     stops[0] = stops[text->length] = 1;
     if (text->length == 0) return S_OK;
