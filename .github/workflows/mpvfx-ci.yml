@@ -575,7 +575,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # publish.sh, VERSION (checked against a v* tag) and the root files (CHANGELOG.md, when there is one).
+          # publish.sh, VERSION (checked against a v* tag) and mpvfx-swift/CHANGELOG.md (cone mode keeps the files of
+          # mpvfx-swift/ itself).
           sparse-checkout: |
             .github
             mpvfx-swift/packaging
