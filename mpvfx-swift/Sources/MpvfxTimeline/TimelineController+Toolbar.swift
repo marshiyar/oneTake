@@ -59,7 +59,7 @@ public extension TimelineController {
 
     /// ⇧H (insert) / ⌥⇧H (overwrite): hold the frame under the playhead of the selected video clip there (else the
     /// video clip on top there) for `holdSeconds`, and select the hold. A refusal is reported through `onEditRefused`.
-    @discardableResult public func holdFrameAtPlayhead(overwrite: Bool) -> Bool {
+    @discardableResult func holdFrameAtPlayhead(overwrite: Bool) -> Bool {
         guard let editor else { return false }
         // The frame on screen at the playhead (PreviewComposition.frameIndex), not the nearest frame boundary.
         let frame = (playback.currentTime * editor.fps + 1e-6).rounded(.down)
