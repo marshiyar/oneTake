@@ -14,13 +14,16 @@
 import Foundation
 import MpvfxShared
 
-public extension TimelineEditor {
+extension TimelineEditor {
     /// Validated document edit, recorded as one undo step and persisted through the normal project serializer.
     @discardableResult
-    func setClipShape(clipId: String, _ shape: NativeClipShape?) -> Bool {
+    public func setClipShape(clipId: String, _ shape: NativeClipShape?) -> Bool {
         do {
-            guard let d = try nativeClipShapeEditPlan(document, clipId: clipId, shape: shape, engine: engine) else { return false }
-            return commitPresets(d, label: "Set shape")
+            guard let updated = try nativeClipShapeEditPlan(document, clipId: clipId, shape: shape, engine: engine)
+            else {
+                return false
+            }
+            return commitPresets(updated, label: "Set shape")
         } catch { return false }
     }
 }

@@ -11,24 +11,28 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import XCTest
 import MpvfxShared
 import OneTakeKeyframes
+import XCTest
+
 @testable import MpvfxTimeline
 
-final class ShapeEditTests: XCTestCase {
-    func testShapeEditIsOneUndoStepSurvivesRestartAndRefusesInvalidData() throws {
-        let e = try TimelineEditor(json: CompositionSizeTests.json, engine: KeyframeRuntime())
+internal final class ShapeEditTests: XCTestCase {
+    internal func testShapeEditIsOneUndoStepSurvivesRestartAndRefusesInvalidData() throws {
+        let sourceEditor = try TimelineEditor(json: CompositionSizeTests.json, engine: KeyframeRuntime())
         // Reuse the existing element asset after removing its text through a fixture edit.
-        var d = e.document
-        d.sequence.tracks[1].clips[0].text = nil
-        let editor = try TimelineEditor(json: serializeNativeProjectDocument(d, engine: e.engine), engine: e.engine)
+        var project = sourceEditor.document
+        project.sequence.tracks[1].clips[0].text = nil
+        let editor = try TimelineEditor(
+            json: serializeNativeProjectDocument(project, engine: sourceEditor.engine), engine: sourceEditor.engine)
         let shape = NativeClipShape(kind: "rectangle", radius: 20, strokeWidth: 10)
         XCTAssertTrue(editor.setClipShape(clipId: "title", shape))
         XCTAssertFalse(editor.setClipShape(clipId: "title", shape))
         XCTAssertFalse(editor.setClipShape(clipId: "title", NativeClipShape(kind: "rectangle", radius: -1)))
         XCTAssertFalse(editor.setClipShape(clipId: "natural", shape), "media assets refuse shapes")
-        let reopened = try TimelineEditor(json: serializeNativeProjectDocument(editor.document, engine: e.engine), engine: e.engine)
+        let reopened = try TimelineEditor(
+            json: serializeNativeProjectDocument(editor.document, engine: sourceEditor.engine),
+            engine: sourceEditor.engine)
         XCTAssertEqual(reopened.clip("title")?.clip.shape, shape)
         _ = editor.undo()
         XCTAssertNil(editor.clip("title")?.clip.shape)
