@@ -1,0 +1,50 @@
+name: pr-issue
+
+# Every builder pull request names the open issue it closes (`Closes #<n>`), so the roadmap, STATUS.md and the dispatch
+# lanes can see which issue it moves (.github/ci/pr_issue.py; exemptions there). Advisory: separate from mpvfx-ci and
+# not part of ci-ok. It never checks out the pull request's code: the body, labels and changed files come from the
+# REST API, and the script runs from the base commit with a read-only token.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: pr-issue-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  names-issue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          # The script and its tests, and platforms.py beside them (the documentation-only rules mpvfx-ci also uses).
+          sparse-checkout: |
+            /.github/ci/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: The check exists on the base commit
+        id: base
+        run: |
+          # The pull request that adds the check runs before the base has it: nothing to judge with yet.
+          if [ -f .github/ci/pr_issue.py ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "pr_issue.py is not on the base commit yet: skipped" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+      - name: The check's own tests
+        if: steps.base.outputs.present == 'true'
+        run: python3 -I -B .github/ci/test_pr_issue.py
+      - name: The body names an open issue of this repository
+        if: steps.base.outputs.present == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/pr_issue.py "$PR" | tee -a "$GITHUB_STEP_SUMMARY"

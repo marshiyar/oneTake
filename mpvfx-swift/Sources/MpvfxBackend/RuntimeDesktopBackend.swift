@@ -36,6 +36,9 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     private var closed = false
     private let bridge: LibraryBridge
     public let preferences: DesktopPreferences?
+    /// The folder each render of this run was written to (job id → folder), so deleting it later finds it even after
+    /// Settings changed the default export folder. Guarded by `lock`.
+    private var renderDirs: [String: String] = [:]
 
     public init(userData: String, durableWrite: DurableWrite = NativeDurableWrite()) {
         projectsDir = PosixPath.join(userData, "projects")
@@ -157,6 +160,8 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     public func recentProjects() -> [DesktopProjectSummary] { recents.list().map { summary($0) } }
 
     public func forgetRecentProject(directory: String) throws { try mapErrors { try recents.remove(directory) } }
+
+    public func clearRecentProjects() throws { try mapErrors { try recents.removeAll() } }
 
     // MARK: Media
 
@@ -295,11 +300,15 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         if isLibraryProject(s), let dir = try mapErrors({ try library.outputDirectory(s.id) }) {
             return dir
         }
-        return PosixPath.join(userData, "renders")   // shared by standalone projects
+        // Shared by standalone projects: Settings > Default export folder, else `<userData>/renders`.
+        return preferences?.defaultExportFolder ?? PosixPath.join(userData, "renders")
     }
 
     public func renders(projectId: String) throws -> [DesktopRender] {
-        ProjectRenders.list(try rendersDirectory(projectId: projectId)).map {
+        let dir = try rendersDirectory(projectId: projectId)
+        // A folder the user chose may hold their own videos: only files named like a render are the history.
+        let chosen = dir == preferences?.defaultExportFolder
+        return ProjectRenders.list(dir).filter { !chosen || ProjectRenders.isRenderId($0.id) }.map {
             DesktopRender(id: $0.id, filename: $0.filename, path: $0.path, size: $0.size, createdAt: $0.createdAt,
                           status: $0.status.rawValue, durationMs: $0.durationMs)
         }
@@ -307,7 +316,9 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
 
     public func renderOutputPath(projectId: String, jobId: String, format: String) throws -> String {
         let dir = try rendersDirectory(projectId: projectId)
-        return try mapErrors { try ProjectRenders.outputPath(dir, jobId: jobId, format: format) }
+        let path = try mapErrors { try ProjectRenders.outputPath(dir, jobId: jobId, format: format) }
+        lock.withLock { renderDirs[jobId] = dir }
+        return path
     }
 
     public func recordRender(projectId: String, jobId: String, failed: Bool, durationMs: Double?) throws {
@@ -316,7 +327,7 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     }
 
     public func deleteRender(projectId: String, id: String) throws {
-        let dir = try rendersDirectory(projectId: projectId)
+        let dir = try lock.withLock({ renderDirs[id] }) ?? rendersDirectory(projectId: projectId)
         _ = try mapErrors { try ProjectRenders.delete(dir, id: id) }
     }
 

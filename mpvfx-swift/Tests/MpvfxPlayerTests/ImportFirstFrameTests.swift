@@ -97,7 +97,7 @@ final class ImportFirstFrameTests: XCTestCase {
         let e = try TimelineEditor(json: Self.json)
         for (i, a) in importAll(e).enumerated() {
             let id = try XCTUnwrap(e.insertClip(assetId: a, at: Double(i) * 20))
-            let pasted = e.paste(e.copyClips([id]), at: Double(i) * 20 + 11)
+            let pasted = e.paste(try XCTUnwrap(e.copyClips([id])), at: Double(i) * 20 + 11)
             XCTAssertEqual(pasted.count, 1)
             assertFitted(e, pasted[0], Self.files[i].3, "paste \(Self.files[i].1)")
         }

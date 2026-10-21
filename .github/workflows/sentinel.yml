@@ -4,7 +4,7 @@ name: sentinel
 # repository or in what it ships. `repo` runs on every pull request and push: sources, scripts, workflows, tracked
 # files and binaries.lock. `artifact` runs after each mpvfx-ci run that built installers (or by hand for a run id),
 # one job per OS: unpacks the installers as a user would and reads every binary's imports against the forbidden sets
-# and the recorded baseline (.github/sentinel-baseline/<binary>.imports); a new import since the last release is a
+# and the recorded baseline (.github/sentinel-baseline/<os>/<binary>.imports); a new import since the last release is a
 # finding, and the run's sentinel-imports-<os> artifact holds the current lists to commit when the change is wanted.
 # The artifact jobs run from the default branch, so they read main's baseline files: a pull request that changes an
 # import is judged against the old list until it is merged. Allow list with reasons: .github/sentinel.toml. Separate from mpvfx-ci; never a required check.
@@ -44,10 +44,34 @@ jobs:
       - name: The scanner's own tests
         run: python3 -I -B .github/ci/test_sentinel.py
       - name: Sources, scripts, workflows, files and binaries.lock
-        run: python3 -I -B .github/ci/sentinel.py repo | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/sentinel.py repo | tee -a "$GITHUB_STEP_SUMMARY"
+
+  installers:
+    # Which installers the mpvfx-ci run built. A pull request that changes only documentation builds none, so the
+    # platform jobs below are skipped for it instead of failing on an artifact that does not exist.
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_id != '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      names: ${{ steps.list.outputs.names }}
+    steps:
+      - name: Installer artifacts of the run
+        id: list
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          names=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")')
+          echo "names= $names " >> "$GITHUB_OUTPUT"
+          for os in linux windows macos; do
+            case " $names " in *" $os "*) echo "$os: installers built" ;; *) echo "$os: no installers in run $RUN_ID, its check is skipped" ;; esac
+          done | tee -a "$GITHUB_STEP_SUMMARY"
 
   linux:
-    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_id != '')
+    needs: installers
+    if: contains(needs.installers.outputs.names, ' linux ')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -66,7 +90,9 @@ jobs:
           tar -xzf dist/mpvfx-linux-x64-*.tar.gz -C unpacked/portable
           dpkg-deb -x dist/mpvfx_*.deb unpacked/deb
       - name: Imports of every shipped binary
-        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -75,7 +101,8 @@ jobs:
           if-no-files-found: ignore
 
   windows:
-    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_id != '')
+    needs: installers
+    if: contains(needs.installers.outputs.names, ' windows ')
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:
@@ -98,7 +125,9 @@ jobs:
           cp dist/MpVFX-*-setup.exe unpacked/installer/MpVFX-setup.exe
           7z x -y -ounpacked/setup dist/MpVFX-*-setup.exe >/dev/null || { echo "::error::7z could not unpack setup.exe"; exit 1; }
       - name: Imports of every shipped binary (the Swift and MSVC runtimes are skipped)
-        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -107,7 +136,8 @@ jobs:
           if-no-files-found: ignore
 
   macos:
-    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_id != '')
+    needs: installers
+    if: contains(needs.installers.outputs.names, ' macos ')
     runs-on: xcode-27
     timeout-minutes: 10
     steps:
@@ -126,7 +156,9 @@ jobs:
           mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
           mkdir -p unpacked; cp -R "$mnt/MpVFX.app" unpacked/; hdiutil detach "$mnt"
       - name: Imports of every shipped binary
-        run: python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/sentinel.py artifact --baseline .github/sentinel-baseline --write-imports "$RUNNER_TEMP/imports" unpacked | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

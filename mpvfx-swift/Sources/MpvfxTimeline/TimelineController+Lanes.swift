@@ -37,13 +37,14 @@ public extension TimelineController {
         let thumbs = view.thumbnailsEnabled
         let canReattach = c.kind == .audio && c.audioDetachedFrom != nil
         let canDetach = !canReattach && c.canDetachAudio
+        // The pitch option goes with the clip that plays the sound (a detached video's lives on its audio clip).
+        let sounds = c.kind == .audio || (c.kind == .video && c.canMute)
         let entries = TimelineClipMenu.entries(kind: c.kind, splitEnabled: t > c.start && t < c.end, thumbnails: thumbs,
-                                               muted: c.muted, canReattach: canReattach, canDetach: canDetach, canMute: c.canMute)
+                                               muted: c.muted, canReattach: canReattach, canDetach: canDetach, canMute: c.canMute,
+                                               canPaste: clipboard != nil, keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
-        let fh = TimelineClipMenu.flipHeight(thumbnails: c.kind == .video || c.kind == .image,
-                                             canMute: (c.kind == .video || c.kind == .audio) && c.canMute, audioAction: canReattach || canDetach)
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
-        if m.y + fh > viewport.height { m.y = max(0, m.y - fh) }
+        if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }
         view.clipMenu = m
     }
 
@@ -66,6 +67,17 @@ public extension TimelineController {
             let frame = (playback.currentTime * editor.fps).rounded()
             guard let a = editor.address(clipId: id) else { return false }
             return editor.apply(.split(address: a, splitFrame: frame))
+        case .cut, .copy:
+            // A clip in the selection acts with the rest of it, like the keys of the diamond menu.
+            if !view.selection.contains(id) { view.selection = [id] }
+            guard copySelection() else { return false }
+            return action == .copy || deleteSelection()
+        case .paste:
+            return pasteClipboard(onto: editor.address(clipId: id)?.trackId)
+        case .duplicate:
+            view.selection = [id]
+            return duplicateSelection()
+        case .keepPitch: return editor.setPreservesPitch(clipId: id, !editor.preservesPitch(clipId: id))
         case .thumbnails:
             setThumbnailsEnabled(!view.thumbnailsEnabled)   // thumbnailMode is timeline-wide (adaptive / hidden)
             return true

@@ -20,7 +20,7 @@ import MpvfxTimeline
 /// are summary rows above and below it. Rows edit the open document through TimelineEditor (undoable).
 public final class InspectorPanel {
     public enum Hit: Equatable {
-        case group(String), field(String), scrub(String), keyframe(String), kfPrev(String), kfNext(String), reset(String)
+        case group(String), field(String), scrub(String), keyframe(String), kfPrev(String), kfNext(String), stopwatch(String), reset(String)
         case slider(String), toggle(String), segment(String, String), button(String), fxToggle(String), fxRemove(String)
         case headerClear, headerReset, body, groupReset(String), scrollbar
         case custom(String, Int)
@@ -61,6 +61,8 @@ public final class InspectorPanel {
     /// Set when a group opens: the next layout scrolls the body so the open group's header sits at its top
     /// (`toggleOpen` → scroll the open group's header to the top), clamped to the end.
     var scrollOpenGroupToStart = false
+    /// Set by showKeyframeEasing: the next layout scrolls the open group's "Keyframe easing" rows into view.
+    var revealEasingRows = false
     var cropActive: String?
     var cropBefore: NativeClipCrop?
     var cropLinkAll = false
@@ -213,6 +215,16 @@ public final class InspectorPanel {
             bodyScroll = Double(i) * headerRowH
             scrollOpenGroupToStart = false
         }
+        if revealEasingRows, let i = groups.firstIndex(where: { $0.id == openGroupId }) {
+            revealEasingRows = false
+            let g = groups[i]
+            if let r = g.rows.firstIndex(where: { if case .heading("Keyframe easing", _) = $0.kind { return true }; return false }) {
+                // Content y of the heading: the headers above, the open header, the body's 12 top padding, the rows above.
+                let top = Double(i + 1) * headerRowH + 12 + g.rows[..<r].reduce(0) { $0 + $1.height + g.spacing }
+                let bottom = top + g.rows[r...].reduce(0) { $0 + $1.height + g.spacing }
+                if top < bodyScroll || bottom > bodyScroll + body.height { bodyScroll = min(bodyMaxScroll, max(0, min(top - 8, bottom - body.height + 12))) }
+            }
+        }
         bodyScroller.clamp(max: bodyMaxScroll)
         bodyRect = body; bodyContentHeight = total
         let p = enterProgress
@@ -358,11 +370,11 @@ public final class InspectorPanel {
         switch row.kind {
         case .number(let n): drawNumber(c, r, n, compact: false)
         case .pair(let label, let a, let b):
-            // LayoutGeometryRows, grouped: `space-y-1` heading row (11px text-3, the group's keyframe navigation
+            // LayoutGeometryRows, grouped: `space-y-1` heading row (11px rowLabel, the group's keyframe navigation
             // on the right, h-5) over a `grid-cols-2 gap-2` of compact fields.
             let head = CanvasRect(x: r.x, y: r.y, width: r.width, height: 20)
             PanelDraw.text(c, label, in: CanvasRect(x: head.x, y: head.midY - 8.25, width: head.width, height: 16.5),
-                           font: PanelTheme.font(11), color: PanelTheme.text3)
+                           font: PanelTheme.font(11), color: PanelTheme.rowLabel)
             if let kf = a.keyframe { _ = drawKeyframeNav(c, right: head.maxX, midY: head.midY, key: a.key, kf) }
             let colW = (r.width - 8) / 2, fy = head.maxY + 4
             drawNumber(c, CanvasRect(x: r.x, y: fy, width: colW, height: 30), a, compact: true)
@@ -416,13 +428,13 @@ public final class InspectorPanel {
         return lines
     }
 
-    /// FlatRow (`min-h-[30px]`): 11px label in its tier colour; the value field (`border-b pb-px font-mono`, the
-    /// input's own `text-neutral-100`, `disabled:text-neutral-600`) 146 wide on the right, then the keyframe
-    /// gutter and, for a custom value, the hover reset. Compact (`rounded bg-panel-bg px-1.5 gap-1`): the value
+    /// FlatRow (`min-h-[30px]`): 11px grey label (rowLabel); the value field (`border-b pb-px font-mono`) 146 wide on
+    /// the right, its value in the tier colour (the accent once changed, and while scrubbed; `text-neutral-100` while
+    /// typed; `disabled:text-neutral-600`), then the keyframe gutter and, for a custom value, the hover reset. Compact (`rounded bg-panel-bg px-1.5 gap-1`): the value
     /// fills the field.
     func drawNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, compact: Bool) {
         let isHover = hovered == .field(n.key) || hovered == .scrub(n.key) || hovered == .reset(n.key)
-            || hovered == .keyframe(n.key) || hovered == .kfPrev(n.key) || hovered == .kfNext(n.key)
+            || hovered == .keyframe(n.key) || hovered == .kfPrev(n.key) || hovered == .kfNext(n.key) || hovered == .stopwatch(n.key)
         let font = PanelTheme.mono(11)
         if compact { c.fillRoundedRect(r.snapped, radius: PanelTheme.radius, PanelTheme.panelBg) }
         let pad = compact ? 6.0 : 0.0
@@ -448,7 +460,8 @@ public final class InspectorPanel {
         if editing, let f = self.field { text = f.draft }
         let tr = CanvasRect(x: field.x, y: field.y, width: field.width, height: 16.5)
         if editing { c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput) }
-        PanelDraw.text(c, text, in: tr, font: font, color: n.disabled ? PanelTheme.neutral600 : PanelTheme.neutral100, align: .right)
+        PanelDraw.text(c, text, in: tr, font: font,
+                       color: n.tier.valueInk(disabled: n.disabled, typing: editing, adjusting: scrub?.key == n.key), align: .right)
         if editing {   // caret after the draft
             c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent)
         }
@@ -459,7 +472,9 @@ public final class InspectorPanel {
         if !n.disabled { hits.add(CanvasRect(x: field.x, y: r.y, width: field.width, height: r.height), .field(n.key)) }
     }
 
-    /// Keyframe navigation (`flex h-5 items-center gap-0.5`, 41 wide): 12×20 stepper with the 6×10 arrow
+    /// Keyframe controls on the property's row (docs/DESIGN.md Rollout 5): the 12px stopwatch (Phosphor Timer, the
+    /// accent while the property is animated, else #a3a3a3 at .6; hover full opacity) 4px before the keyframe
+    /// navigation (`flex h-5 items-center gap-0.5`, 41 wide): 12×20 stepper with the 6×10 arrow
     /// (`M5 1L1 5L5 9`, #a3a3a3, 1.4 round, opacity .25 when there is nowhere to go), the 9px KeyframeDiamond
     /// (`p-0.5`; ghost .25 / inactive .6 #a3a3a3 outline, active #3CE6AC filled; hover full opacity), the next
     /// stepper. Returns the gutter's left edge.
@@ -468,6 +483,11 @@ public final class InspectorPanel {
         let bg = PanelTheme.panelBgInset
         let x0 = right - 41
         let arrow = PanelTheme.neutral400
+        let watch = CanvasRect(x: x0 - 16, y: midY - 6, width: 12, height: 12)
+        let watchColor = kf.state == .none ? arrow.over(bg, opacity: hovered == .stopwatch(key) ? 1 : 0.6)
+            : (hovered == .stopwatch(key) ? PanelTheme.text0 : PanelTheme.accent)
+        PanelIcon.phosphor(.timer).draw(c, in: watch, color: watchColor)
+        hits.add(watch.insetBy(-2), .stopwatch(key))
         let prevBtn = CanvasRect(x: x0, y: midY - 10, width: 12, height: 20)
         let hasPrev = kf.prev != nil, hasNext = kf.next != nil
         c.strokeSVG(["M5 1L1 5L5 9"], viewBox: 10, in: CanvasRect(x: prevBtn.x + 3, y: midY - 5, width: 10, height: 10),
@@ -487,7 +507,7 @@ public final class InspectorPanel {
         c.strokeSVG(["M1 1L5 5L1 9"], viewBox: 10, in: CanvasRect(x: nextBtn.x + 3, y: midY - 5, width: 10, height: 10),
                     arrow.over(bg, opacity: hasNext ? 1 : 0.25), width: 1.4)
         if hasNext { hits.add(nextBtn.insetBy(-2), .kfNext(key)) }
-        return x0
+        return watch.x
     }
 
     /// KeyframeDiamond's `<rect x=5 y=0.7 width=6 height=6 rx=1 transform="rotate(45 5 0.7)">` in a 10-unit
@@ -508,9 +528,10 @@ public final class InspectorPanel {
         return p
     }
 
-    /// FlatSlider (`min-h-[28px] gap-2.5`): 86px text-3 label, `h-5 flex-1` track (2px bg-panel-hover line; a
+    /// FlatSlider (`min-h-[28px] gap-2.5`): 86px grey label (rowLabel), `h-5 flex-1` track (2px bg-panel-hover line; a
     /// 1×4 text-5 centre tick; a text-5 fill from the left only for a custom value), knob 7px text-4 (8px white
-    /// when custom), `w-11` mono 10 value, `w-3.5` reset slot. An optional settings gear sits 6px after it.
+    /// when custom), `w-11` mono 10 value in the tier colour (the accent once changed, and while dragged;
+    /// `neutral600` when disabled), `w-3.5` reset slot. An optional settings gear sits 6px after it.
     func drawSlider(_ c: CanvasContext, _ r: CanvasRect, _ s: InspectorRow.Slider) {
         var row = r
         if let st = s.settings {
@@ -520,7 +541,7 @@ public final class InspectorPanel {
             hits.add(gear.insetBy(-3), .keyframe(s.key))
             row = CanvasRect(x: r.x, y: r.y, width: r.width - 18, height: r.height)
         }
-        PanelDraw.text(c, s.label, in: CanvasRect(x: row.x, y: row.midY - 8.25, width: 86, height: 16.5), font: PanelTheme.font(11), color: PanelTheme.text3)
+        PanelDraw.text(c, s.label, in: CanvasRect(x: row.x, y: row.midY - 8.25, width: 86, height: 16.5), font: PanelTheme.font(11), color: s.tier.labelColor)
         var right = row.maxX
         if let kf = s.keyframe, s.settings == nil { right = drawKeyframeNav(c, right: right, midY: row.midY, key: s.key, kf) - 10 }
         if s.centerTick || s.reset != nil {
@@ -537,7 +558,7 @@ public final class InspectorPanel {
         let pos = dragging ? sliderDrag!.current : s.position
         let custom = s.tier == .explicitCustom || dragging
         PanelDraw.text(c, dragging ? s.format(pos) : s.display, in: valueRect, font: PanelTheme.mono(10),
-                       color: custom ? PanelTheme.text0 : PanelTheme.text3, align: .right)
+                       color: s.tier.valueInk(disabled: s.disabled, adjusting: dragging), align: .right)
         let track = CanvasRect(x: row.x + 96, y: row.midY - 10, width: max(10, valueRect.x - 10 - (row.x + 96)), height: 20)
         let span = max(1e-9, s.max - s.min)
         let pct = max(0, min(1, (pos - s.min) / span))
@@ -551,9 +572,9 @@ public final class InspectorPanel {
         if !s.disabled { hits.add(track, .slider(s.key)) }
     }
 
-    /// FlatToggle: 24×14 pill, knob 10px (accent on the right when on, text-4 on the left when off).
+    /// FlatToggle: grey label (rowLabel), 24×14 pill, knob 10px (accent on the right when on, text-4 on the left when off).
     func drawToggle(_ c: CanvasContext, _ r: CanvasRect, _ t: InspectorRow.Toggle) {
-        PanelDraw.text(c, t.label, in: r, font: PanelTheme.font(11), color: t.on ? PanelTheme.text2 : PanelTheme.text3)
+        PanelDraw.text(c, t.label, in: r, font: PanelTheme.font(11), color: t.tier.labelColor)
         let sw = CanvasRect(x: r.maxX - 24, y: r.y + (r.height - 14) / 2, width: 24, height: 14)
         c.fillRoundedRect(sw, radius: 7, t.on ? PanelTheme.accent.withAlpha(0.35) : PanelTheme.panelHover)
         let knob = CanvasRect(x: t.on ? sw.maxX - 12 : sw.x + 2, y: sw.y + 2, width: 10, height: 10)
@@ -561,12 +582,12 @@ public final class InspectorPanel {
         hits.add(CanvasRect(x: sw.x - 4, y: r.y, width: sw.width + 4, height: r.height), .toggle(t.key))
     }
 
-    /// FlatSegmentedRow (`min-h-[32px]`): 11px text-3 label; options `gap-0.5`, each `px-1.5 py-1 text-[11px]
+    /// FlatSegmentedRow (`min-h-[32px]`): 11px grey label (rowLabel); options `gap-0.5`, each `px-1.5 py-1 text-[11px]
     /// border-b-2` (16.5 line + 8 + 2): the active one text-0 over a 2px accent underline, the rest text-4
     /// (hover text-2) over a transparent one. No container.
     func drawSegmented(_ c: CanvasContext, _ r: CanvasRect, _ s: InspectorRow.Segmented) {
         let font = PanelTheme.font(11)
-        PanelDraw.text(c, s.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width, height: 16.5), font: font, color: PanelTheme.text3)
+        PanelDraw.text(c, s.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width, height: 16.5), font: font, color: PanelTheme.rowLabel)
         var x = r.maxX
         let bh = 26.5
         for o in s.options.reversed() {
@@ -696,6 +717,7 @@ public final class InspectorPanel {
         case .keyframe(let k): if let st = slider(k)?.settings { st.toggle() } else { keyframe(k)?.toggle() }
         case .kfPrev(let k): keyframe(k)?.prev?()
         case .kfNext(let k): keyframe(k)?.next?()
+        case .stopwatch(let k): keyframe(k)?.stopwatch()
         case .reset(let k): reset(k)?()
         case .slider(let k):
             if let s = slider(k), let tr = hits.rect(where: { $0 == .slider(k) }) {
@@ -835,4 +857,3 @@ extension InspectorPanel {
         else if r.maxY > bodyRect.maxY { bodyScroll = min(bodyMaxScroll, bodyScroll + (r.maxY - bodyRect.maxY) + 8) }
     }
 }
-

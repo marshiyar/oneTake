@@ -13,3 +13,4 @@
 //===----------------------------------------------------------------------===//
 #include <pulse/simple.h>
 #include <pulse/error.h>
+#include <pulse/pulseaudio.h>   /* context + introspect: listing the output devices (sinks) */

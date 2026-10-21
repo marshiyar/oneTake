@@ -547,10 +547,14 @@ jobs:
           key: windows-debug-${{ github.sha }}
 
   macos:
-    # After the checks: macOS runners are the scarce ones, so a pull request that fails a check in seconds on Linux
-    # does not wait for one.
+    # After the checks, so a pull request that fails a check in seconds on Linux does not wait for a Mac.
     needs: [changes, checks]
-    if: needs.changes.outputs.macos == 'true'
+    # Owner ruling 2026-10-21: macOS never holds the other platforms back. The macOS runners (xcode-27) are scarce and
+    # queued jobs sat for an hour before being cancelled, so a pull request builds macOS only when its files can affect
+    # macOS and it carries the `macos` label; main, tags, the nightly run and a dispatch always build it.
+    if: >-
+      needs.changes.outputs.macos == 'true'
+      && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos'))
     uses: ./.github/workflows/mpvfx-macos.yml
     secrets: inherit   # only the optional Apple signing secrets; unset, the disk image is ad-hoc signed
     with:
@@ -563,29 +567,44 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Every job passed or was skipped
+      - name: Every required job passed or was skipped
         env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          REQUIRED: >-
+            ${{ needs.changes.result }} ${{ needs.plan.result }} ${{ needs.checks.result }} ${{ needs.linux.result }}
+            ${{ needs.linux-test.result }} ${{ needs.windows.result }} ${{ needs.windows-test.result }}
+          MACOS: ${{ needs.macos.result }}
         run: |
-          echo "job results: $RESULTS"
-          for r in $RESULTS; do
+          echo "required job results: $REQUIRED; macos: $MACOS"
+          # macOS is reported, not required (owner ruling 2026-10-21): a macOS failure, or a job cancelled while it
+          # waited for a runner, warns instead of failing the other platforms.
+          case "$MACOS" in success|skipped) ;; *) echo "::warning::macos ended $MACOS; it is not required for ci-ok" ;; esac
+          for r in $REQUIRED; do
             case "$r" in success|skipped) ;; *) echo "::error::a required job ended $r"; exit 1 ;; esac
           done
 
   publish:
     needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
     # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
+    # Owner ruling 2026-10-21: no OS holds another back. The release carries the installers of every OS whose build
+    # (and, for Linux and Windows, test shards) passed; an OS that failed or never got a runner is left out, not waited
+    # for. It needs the shared checks and at least one OS; a stable v<X.Y.Z> tag fails in Release unless every OS passed.
     if: >-
       always() && github.event_name != 'pull_request'
       && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
       && needs.plan.result == 'success' && needs.checks.result == 'success'
-      && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
-      && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
-      && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+      && (needs.linux.result == 'success' || needs.windows.result == 'success' || needs.macos.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      LINUX_OK: >-
+        ${{ needs.linux.result == 'success' && (needs.linux-test.result == 'success'
+        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]')) }}
+      WINDOWS_OK: >-
+        ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
+        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]')) }}
+      MACOS_OK: ${{ needs.macos.result == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -593,13 +612,37 @@ jobs:
           sparse-checkout: |
             .github
             mpvfx-swift/packaging
+      # One download per OS that passed; the symbols-* artifacts stay in CI.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.LINUX_OK == 'true'
         with:
           path: dist
-          pattern: '{linux,windows,macos}'   # the installers; the symbols-* artifacts stay in CI
-          merge-multiple: true
+          name: linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.WINDOWS_OK == 'true'
+        with:
+          path: dist
+          name: windows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.MACOS_OK == 'true'
+        with:
+          path: dist
+          name: macos
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: bash .github/ci/publish.sh dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png
+        run: |
+          # A stable v<X.Y.Z> tag is the public launch: it ships every OS or none. Prereleases and nightlies leave out
+          # an OS that did not pass.
+          stable=false
+          case "$GITHUB_REF" in refs/tags/v*-*) ;; refs/tags/v*) stable=true ;; esac
+          for os in LINUX WINDOWS MACOS; do
+            ok="${os}_OK"; [ "${!ok}" = true ] && continue
+            if [ "$stable" = true ]; then echo "::error::${os,,} did not pass; a stable release ships every OS"; exit 1; fi
+            echo "::warning::${os,,} did not pass; this release leaves it out"
+          done
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png)
+          [ "${#files[@]}" -gt 0 ] || { echo "::error::no installer to publish"; exit 1; }
+          bash .github/ci/publish.sh "${files[@]}"

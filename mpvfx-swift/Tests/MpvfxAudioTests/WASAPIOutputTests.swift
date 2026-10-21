@@ -33,5 +33,25 @@ final class WASAPIOutputTests: XCTestCase {
         out.flush(); XCTAssertEqual(out.framesPlayed, 0)
         out.stop()
     }
+
+    /// Settings > Audio output: the active endpoints (none on a hosted runner) with unique, non-empty ids and names.
+    func testDevicesListAndAMissingEndpointPlaysOnTheDefault() throws {
+        let devices = WASAPIOutput.devices()
+        XCTAssertEqual(Set(devices.map(\.id)).count, devices.count, "ids are unique")
+        XCTAssertFalse(devices.contains { $0.id.isEmpty || $0.name.isEmpty })
+        XCTAssertEqual(AudioOutputDevices.list().map(\.id), devices.map(\.id))
+
+        // A chosen endpoint that is gone plays on the default one, as the system would: start succeeds or fails exactly
+        // as it does with no choice (no audio hardware on a CI runner).
+        func starts(_ out: WASAPIOutput) -> Bool {
+            defer { out.stop() }
+            do { try out.start(); return true } catch AudioOutputError.unavailable { return false } catch { XCTFail("\(error)"); return false }
+        }
+        let out = WASAPIOutput()
+        out.device = "{0.0.0.00000000}.{mpvfx-no-such-endpoint}"
+        XCTAssertEqual(out.device, "{0.0.0.00000000}.{mpvfx-no-such-endpoint}")
+        XCTAssertEqual(starts(out), starts(WASAPIOutput()))
+        XCTAssertEqual(out.device, "{0.0.0.00000000}.{mpvfx-no-such-endpoint}", "the choice is kept for when it is back")
+    }
 }
 #endif

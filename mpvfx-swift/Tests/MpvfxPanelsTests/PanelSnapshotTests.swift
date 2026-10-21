@@ -88,7 +88,8 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let s = Self.sidebarFixture()
             let t = snapshot("left-sidebar", w: 370, h: 1040, scale: scale) { s.draw($0, size: CanvasSize(370, 1040)) }
-            // At 370×1040: the tab strip (0…32), the library navigator, a hairline, then the media bin.
+            // At 370×1040: the tab strip (0…32), the library navigator, a hairline, then the media bin. Below the
+            // navigator's "Open project… / Recent" row (one line + gap, issue #31) everything sits 24px lower.
             let tab = try XCTUnwrap(s.hits.rect { $0 == .tab(.assets) }), imp = try XCTUnwrap(s.hits.rect { $0 == .importMedia })
             assertPixel(t, 150, 1000, scale: scale, "#1d1d1d")       // flat body: bg-panel-bg
             assertPixel(t, 0, 0, scale: scale, "#1d1d1d")            // no rounded corner: the strip reaches the panel's corner
@@ -96,10 +97,10 @@ final class PanelSnapshotTests: XCTestCase {
             assertPixel(t, 200, 31, scale: scale, "#141414")         // the strip's hairline
             assertPixel(t, imp.x + 4, imp.midY, scale: scale, "#0e0e0e")   // Import media (24 tall): bg-panel-input
             assertPixel(t, 100, 80, scale: scale, "#0e0e0e")         // library select (12,68 346×28): bg-panel-input
-            assertPixel(t, 100, 272, scale: scale, "#141414")        // hairline between the navigator and the bin
-            assertPixel(t, 300, 295, scale: scale, "#0e0e0e")        // search (16,283 338×26.5): bg-panel-input
-            assertPixel(t, 19, 375, scale: scale, "#3a3a3a", tol: 10)    // "Added" badge: neutral-950/80 over the frame
-            assertPixel(t, 60, 415, scale: scale, "#fafafa", tol: 10)    // the first tile shows the frame
+            assertPixel(t, 100, 296, scale: scale, "#141414")        // hairline between the navigator and the bin
+            assertPixel(t, 300, 319, scale: scale, "#0e0e0e")        // search (16,307 338×26.5): bg-panel-input
+            assertPixel(t, 19, 399, scale: scale, "#3a3a3a", tol: 10)    // "Added" badge: neutral-950/80 over the frame
+            assertPixel(t, 60, 439, scale: scale, "#fafafa", tol: 10)    // the first tile shows the frame
         }
     }
 
@@ -168,7 +169,7 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let insp = InspectorPanel()
             let seg = InspectorRow.Segmented(key: "k", label: "Ease", options: [(key: "a", label: "Linear", active: true), (key: "b", label: "Ease", active: false)], select: { _ in })
-            let kf = InspectorRow.Keyframe(state: .onKey, toggle: {}, prev: nil, next: nil)
+            let kf = InspectorRow.Keyframe(state: .onKey, toggle: {}, stopwatch: {}, prev: nil, next: nil)
             let t = snapshot("inspector-controls", w: 240, h: 64, scale: scale, background: PanelTheme.panelBgInset) { c in
                 insp.drawSegmented(c, CanvasRect(x: 0, y: 0, width: 240, height: 32), seg)
                 insp.drawKeyframeNav(c, right: 240, midY: 48, key: "x", kf)

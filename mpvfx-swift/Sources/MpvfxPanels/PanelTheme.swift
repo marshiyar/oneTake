@@ -39,6 +39,9 @@ public enum PanelTheme {
     /// `studio-accent` / `panel-accent` (#2D7FFF). The inline-style mint (`P.accent`, `--hf-accent`) is `mint`.
     public static var accent: CanvasColor { c(T.studioAccentPair) }
     public static var mint: CanvasColor { c(T.mintPair) }
+    /// Property row labels in the inspector (number, slider, toggle and segmented rows, pair headings): text-2, the
+    /// grey that still reaches 4.5:1 on the inspector's inset and on the compact fields' panel grey in both modes.
+    public static var rowLabel: CanvasColor { text2 }
 
     // MARK: panel.* (theme.js)
     public static var panelBg: CanvasColor { c(T.panelBgPair) }
@@ -130,11 +133,16 @@ public enum PropertyValueTier: Equatable, Sendable {
         guard let e = explicit?.trimmingCharacters(in: .whitespaces), !e.isEmpty else { return .default }
         return e == def.trimmingCharacters(in: .whitespaces) ? .explicitDefault : .explicitCustom
     }
-    public var labelColor: CanvasColor {
-        switch self { case .default: PanelTheme.text3; case .explicitDefault: PanelTheme.text2; case .explicitCustom: PanelTheme.text0 }
-    }
-    public var valueColor: CanvasColor {
-        switch self { case .default: PanelTheme.text3; case .explicitDefault: PanelTheme.text0; case .explicitCustom: PanelTheme.accent }
+    /// Labels stay grey in every tier (docs/DESIGN.md Rollout 5): the value, not the label, says what changed.
+    public var labelColor: CanvasColor { PanelTheme.rowLabel }
+    /// The value in the accent once the user changed it (Principle 2), else the field's own ink.
+    public var valueColor: CanvasColor { self == .explicitCustom ? PanelTheme.accent : PanelTheme.neutral100 }
+    /// A value's ink as drawn: `neutral600` when disabled, the field's ink while typed, the accent while scrubbed or
+    /// dragged, else `valueColor`.
+    func valueInk(disabled: Bool, typing: Bool = false, adjusting: Bool) -> CanvasColor {
+        if disabled { return PanelTheme.neutral600 }
+        if typing { return PanelTheme.neutral100 }
+        return adjusting ? PanelTheme.accent : valueColor
     }
 }
 
