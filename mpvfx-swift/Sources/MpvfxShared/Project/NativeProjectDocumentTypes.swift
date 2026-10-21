@@ -189,6 +189,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var fadeOutFrames: Double? = nil
     /// Parametric layer masks; absent means unmasked.
     public var masks: [NativeClipMask]? = nil
+    /// This clip's own canvas fill, or `inherit` for the project's (`NativeFill`); nil means the project's.
+    public var fill: NativeFill? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -273,6 +275,8 @@ public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var assets: [NativeProjectAsset]; public var sequence: NativeProjectSequence
     /// The Easing panel's custom presets for this project (NativeEasingPreset.swift); nil writes no key.
     public var easingPresets: [NativeEasingPreset]? = nil
+    /// What fills the frame behind clips that do not cover it (`NativeFill`); nil writes no key (black bars).
+    public var compositionFill: NativeFill? = nil
 }
 
 public extension NativeProjectDocument {
@@ -329,7 +333,7 @@ public extension NativeProjectDocument {
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice,
-         unsupportedTextLooksNotice].compactMap { $0 }
+         unsupportedTextLooksNotice, unsupportedFillsNotice].compactMap { $0 }
     }
 }
 
@@ -341,7 +345,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
     case invalidCaption = "invalid-caption"
-    case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
+    case invalidFill = "invalid-fill", invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
     case invalidSpeedRamp = "invalid-speed-ramp"
 }
 
