@@ -149,6 +149,34 @@ final class EffectPreviewRendererTests: XCTestCase {
                        #"{a:1.0,b:[true,null,"x"]}"#)
     }
 
+    /// A colour renderer that holds each render until the test opens `gate` (to reset while a render is in flight).
+    final class GatedRenderer: ColorRenderer, @unchecked Sendable {
+        let gate = DispatchSemaphore(value: 0), started = DispatchSemaphore(value: 0)
+        var backend: String { "gated" }
+        func render(_ grade: ColorGradeRenderer, _ rgba: inout [UInt8], width: Int, height: Int, time: Double, sourceKey: String?) {
+            started.signal(); gate.wait()
+            grade.apply(&rgba, width: width, height: height, time: time)
+        }
+    }
+
+    /// Codacy on PR #223: `reset` (Retry, a project switch) also drops renders already in flight, so a result
+    /// computed for the old project never lands in the cache; the next request renders anew.
+    func testResetDropsARenderInFlight() throws {
+        let renderer = EffectPreviewRenderer()
+        let gated = GatedRenderer()
+        renderer.colorRenderer = gated
+        let req = request(InspectorPanel.effectDemo(try XCTUnwrap(EffectSpecs.spec("blur"))), w: 124, h: 70)
+        _ = renderer.preview(req)
+        gated.started.wait()
+        renderer.reset()
+        gated.gate.signal()
+        renderer.wait()
+        XCTAssertEqual(renderer.count, 0, "the stale render was dropped")
+        XCTAssertEqual(renderer.rendered, 0)
+        renderer.colorRenderer = CPUColorRenderer()
+        XCTAssertNoThrow(try image(settled(renderer, req)), "a request after the reset renders anew")
+    }
+
     /// A tile renders once; asking again is a cache hit. The cache stays within its budget; reset empties it.
     func testTilesRenderOnceAndStayWithinBudget() throws {
         let renderer = EffectPreviewRenderer(budgetBytes: 3 * 124 * 70 * 4)

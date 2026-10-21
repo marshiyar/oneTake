@@ -315,9 +315,9 @@ extension InspectorPanel {
                 let hov = panel.hovered == .custom("grade:presets", i)
                 if on { c.fillRect(tr, PanelTheme.accent.withAlpha(0.1)) }
                 let sw = CanvasRect(x: tr.x + 1, y: tr.y + 1, width: tr.width - 2, height: (tr.width - 2) * 9 / 16)
-                // The look frame, `object-contain` in the 16:9 frame, at the tile's device pixels.
-                let k = max(1, c.deviceScale)
-                Self.drawPreviewFrame(c, sw, preview(p.id, Int((sw.width * k).rounded()), Int((sw.height * k).rounded())))
+                // The look frame, `object-contain` in the 16:9 frame, at the tile's device pixels (capped).
+                let px = Self.tilePixels(sw, scale: c.deviceScale)
+                Self.drawPreviewFrame(c, sw, preview(p.id, px.width, px.height))
                 PanelDraw.text(c, p.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(10),
                                color: on ? PanelTheme.text0 : (hov ? PanelTheme.text1 : PanelTheme.text3))
                 c.strokeRect(tr.insetBy(0.5), on ? PanelTheme.accent : (hov ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)

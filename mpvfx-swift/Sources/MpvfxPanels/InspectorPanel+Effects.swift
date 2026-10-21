@@ -227,9 +227,9 @@ extension InspectorPanel {
                 let hov = panel.hovered == .custom(id, i)
                 if t.on { c.fillRect(tr, PanelTheme.accent.withAlpha(0.1)) }   // bg-panel-bg-soft resolves to transparent
                 let sw = CanvasRect(x: tr.x + 1, y: tr.y + 1, width: tr.width - 2, height: (tr.width - 2) * 9 / 16)
-                // The sample picture with the tile's look or effect, at the tile's device pixels.
-                let k = max(1, c.deviceScale), pw = Int((sw.width * k).rounded()), ph = Int((sw.height * k).rounded())
-                Self.drawPreviewFrame(c, sw, self?.samplePreview(t.demo, pw, ph) ?? .failed(.noRenderer))
+                // The clip frame (else the sample picture) with the tile's look or effect, at the tile's device pixels (capped).
+                let px = Self.tilePixels(sw, scale: c.deviceScale)
+                Self.drawPreviewFrame(c, sw, self?.samplePreview(t.demo, px.width, px.height) ?? .failed(.noRenderer))
                 PanelDraw.text(c, t.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(10),
                                color: t.on ? PanelTheme.text1 : (hov ? PanelTheme.text1 : PanelTheme.text3))
                 c.strokeRect(tr.insetBy(0.5), t.on ? PanelTheme.accent : (hov ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)

@@ -40,6 +40,17 @@ extension InspectorPanel {
         return TileDemo(key: "fx:\(spec.key)", grade: g.json, clipId: clipId)
     }
 
+    /// The largest tile picture asked for, in device pixels. A wide high-DPI panel would otherwise ask for ~1 MB per
+    /// tile, a grid's tiles would outgrow the hosts' preview caches, and each finished tile (which redraws) would evict
+    /// another, so the grid never settles. 18 tiles at this size are about 4.1 MB.
+    public static let maxTilePixels = (width: 320, height: 180)
+
+    /// The device-pixel size to ask for a tile frame `sw` drawn at `scale`, at most `maxTilePixels`.
+    static func tilePixels(_ sw: CanvasRect, scale: Double) -> (width: Int, height: Int) {
+        let s = min(max(1, scale), Double(maxTilePixels.width) / max(1, sw.width), Double(maxTilePixels.height) / max(1, sw.height))
+        return (Int((sw.width * s).rounded()), Int((sw.height * s).rounded()))
+    }
+
     /// `demo` at `w` x `h` device pixels from the host (the clip's frame, else the sample picture); a typed failure
     /// without a host renderer.
     func samplePreview(_ demo: TileDemo, _ w: Int, _ h: Int) -> PresetPreviewState {

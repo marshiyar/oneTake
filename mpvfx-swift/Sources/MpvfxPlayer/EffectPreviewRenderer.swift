@@ -41,11 +41,15 @@ public final class EffectPreviewRenderer: @unchecked Sendable {
     var results: [Key: (result: Result<CanvasImage, PreviewFailure>, tick: UInt64)] = [:]
     var pending = Set<Key>()
     var tick: UInt64 = 0
+    /// Advanced by `reset`: a render queued before it is dropped when it finishes (it may use the old project's LUT).
+    var generation: UInt64 = 0
     public private(set) var bytes = 0
     /// Tiles rendered (tests, diagnostics).
     public private(set) var rendered = 0
 
-    public init(budgetBytes: Int = 4 << 20) {
+    /// The default budget holds a whole visible grid: the 18 Grade preset tiles at the panel's largest request
+    /// (`InspectorPanel.maxTilePixels`, 320 x 180) are about 4.1 MB.
+    public init(budgetBytes: Int = 8 << 20) {
         self.budgetBytes = max(1, budgetBytes)
     }
 
@@ -61,10 +65,11 @@ public final class EffectPreviewRenderer: @unchecked Sendable {
             return Self.state(hit.result)
         }
         let queued = !pending.insert(key).inserted
+        let gen = generation
         lock.unlock()
         if !queued {
             let dir = projectDir(), renderer = colorRenderer
-            queue.async { [weak self] in self?.finish(key, Self.render(req, projectDir: dir, renderer: renderer)) }
+            queue.async { [weak self] in self?.finish(key, gen, Self.render(req, projectDir: dir, renderer: renderer)) }
         }
         return .rendering
     }
@@ -106,8 +111,11 @@ public final class EffectPreviewRenderer: @unchecked Sendable {
         }
     }
 
-    func finish(_ key: Key, _ result: Result<CanvasImage, PreviewFailure>) {
+    /// Stores a finished tile, unless `reset` ran since it was queued (`gen` is then stale and the result is dropped;
+    /// `reset` already cleared its pending entry, so a request after the reset renders anew).
+    func finish(_ key: Key, _ gen: UInt64, _ result: Result<CanvasImage, PreviewFailure>) {
         lock.lock()
+        guard gen == generation else { lock.unlock(); return }
         pending.remove(key)
         tick += 1
         if let old = results[key] { bytes -= Self.size(old.result) }
@@ -135,9 +143,9 @@ public final class EffectPreviewRenderer: @unchecked Sendable {
     /// Cached tiles (tests).
     public var count: Int { lock.lock(); defer { lock.unlock() }; return results.count }
 
-    /// Drops every cached tile ("Retry look previews", closing a project).
+    /// Drops every cached tile and every render still queued ("Retry look previews", switching projects).
     public func reset() {
-        lock.lock(); results = [:]; bytes = 0; lock.unlock()
+        lock.lock(); results = [:]; pending = []; bytes = 0; generation &+= 1; lock.unlock()
     }
 
     /// Blocks until queued renders have run (tests).

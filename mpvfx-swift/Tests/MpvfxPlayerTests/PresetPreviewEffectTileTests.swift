@@ -16,6 +16,7 @@ import XCTest
 import MpvfxCanvas
 import MpvfxColor
 import MpvfxShared
+import MpvfxTimeline
 @testable import MpvfxPanels
 
 /// Effects catalog tiles on the clip (issue #170): the clip's own frame graded with its grade plus the tile's effect,
@@ -81,6 +82,58 @@ extension PresetPreviewRendererTests {
         let req = EffectPreviewRequest(key: demo.key, grade: demo.grade, clipId: clip, pixelWidth: 120, pixelHeight: 68)
         guard case .unavailable = r.effectPreview(req, time: 0) else { return false }
         return true
+    }
+
+    /// The blur tile's settled state for clip:a whose media file is `source` (relative to the scratch folder), asking
+    /// the way redraws do and waiting on the decode and render queues (not on time).
+    func settledBlurTile(mediaSource source: String) throws -> (state: PresetPreviewRenderer.State, gaveUp: Bool) {
+        let editor = try TimelineEditor(json: #"""
+        {"schemaVersion":1,"id":"project:m","revision":1,"frameRate":{"numerator":30,"denominator":1},
+         "canvas":{"width":160,"height":90,"background":"#000000"},
+         "assets":[{"id":"asset:a","kind":"video","name":"gone.mov","source":"\#(source)","durationFrames":30}],
+         "sequence":{"id":"sequence:main","name":"Main","tracks":[
+          {"id":"track:v1","kind":"video","lane":{"authoredTrack":1,"displayTrack":0},"clips":[
+           {"id":"clip:a","assetId":"asset:a","startFrame":60,"durationFrames":30,"sourceInFrame":0,"muted":false,"effects":[],"parameterTracks":[]}]}]}}
+        """#)
+        let comp = PreviewCompositor()
+        defer { comp.stopAll() }
+        comp.composition = PreviewComposition(document: editor.document, projectDir: dir, engine: nil)
+        let r = PresetPreviewRenderer(compositor: comp)
+        let demo = InspectorPanel.effectDemo(try XCTUnwrap(EffectSpecs.spec("blur")), clipId: "clip:a")
+        let req = EffectPreviewRequest(key: demo.key, grade: demo.grade, clipId: "clip:a", pixelWidth: 120, pixelHeight: 68)
+        var state = r.effectPreview(req, time: 0)
+        for _ in 0..<20 where Self.isRendering(state) { r.wait(); state = r.effectPreview(req, time: 0) }
+        return (state, r.decodeGaveUp(clipId: "clip:a"))
+    }
+
+    static func isRendering(_ s: PresetPreviewRenderer.State) -> Bool {
+        if case .rendering = s { return true }
+        return false
+    }
+
+    /// Codex P1 on PR #223: a clip whose media file cannot be decoded never gets a frame; its tile answers
+    /// `.unavailable` (the host then shows the sample picture) instead of "Rendering" forever.
+    func testAnUndecodableMediaTileFallsBackInsteadOfRenderingForever() throws {
+        try Data("not a movie".utf8).write(to: dir.appendingPathComponent("broken.mov"))
+        let result = try settledBlurTile(mediaSource: "broken.mov")
+        XCTAssertTrue(Self.isUnavailable(result.state), "the tile still waits for a decode that gave up: \(result.state)")
+        XCTAssertTrue(result.gaveUp)
+    }
+
+    /// A tile asked above `EffectPreviewRenderer.maxSide` starts no decode on the clip path: `.unavailable`, so the host
+    /// answers with the sample renderer's typed `invalidSize`.
+    func testAnOversizedClipTileStartsNoDecode() throws {
+        let r = PresetPreviewRenderer(compositor: compositor)
+        let demo = InspectorPanel.effectDemo(try XCTUnwrap(EffectSpecs.spec("blur")), clipId: "clip:a")
+        let req = EffectPreviewRequest(key: demo.key, grade: demo.grade, clipId: "clip:a", pixelWidth: EffectPreviewRenderer.maxSide + 1, pixelHeight: 68)
+        XCTAssertTrue(Self.isUnavailable(r.effectPreview(req, time: 0)))
+        XCTAssertNil(r.ownLane, "no decode lane was started")
+        XCTAssertEqual(r.count, 0)
+    }
+
+    static func isUnavailable(_ s: PresetPreviewRenderer.State) -> Bool {
+        if case .unavailable = s { return true }
+        return false
     }
 
     /// A clip that is not in the composition, or a request naming no clip, has no picture.

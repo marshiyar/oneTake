@@ -79,6 +79,29 @@ final class EffectTileFrameTests: XCTestCase {
         return blankTiles(r, id: "grade:presets", count: ColorGrading.gradePresets.count, "\(mode) grade")
     }
 
+    /// The tile sizes a 1024 pt right panel drawn at 2x asks for, with the catalog open on `family` (or Grade).
+    func requestedSizes(open group: String, family: String = "Retro & Glitch") throws -> [(Int, Int)] {
+        let r = try PanelSnapshotTests.rightFixture(open: group, h: 3000)
+        r.inspector.effectsUI = EffectsUIState(clipId: "clip:a", catalogOpen: true, catalogFamily: family)
+        var sizes: [(Int, Int)] = []
+        r.inspector.effectPreview = { sizes.append(($0.pixelWidth, $0.pixelHeight)); return .rendering }
+        r.inspector.presetPreview = { sizes.append(($0.pixelWidth, $0.pixelHeight)); return .rendering }
+        let t = CairoImageTarget(width: 2048, height: 6000)
+        t.canvas.scale(2, 2)
+        for _ in 0..<2 { sizes = []; r.draw(t.canvas, size: CanvasSize(1024, 3000)) }   // the 2nd draw knows its width
+        return sizes
+    }
+
+    /// Codex P1 on PR #223: on a wide high-DPI panel the tiles ask for at most `maxTilePixels`, so a whole grid fits
+    /// the hosts' default caches (6 MB clip tiles, 8 MB sample tiles) and the grid settles instead of evicting itself.
+    func testAWidePanelAsksForTilesThatFitTheCaches() throws {
+        let catalog = try requestedSizes(open: "effects"), grade = try requestedSizes(open: "grade")
+        XCTAssertEqual(catalog.count, 10, "the 10 Retro & Glitch tiles")
+        XCTAssertEqual(grade.count, ColorGrading.gradePresets.count)
+        XCTAssertEqual((catalog + grade).filter { $0.0 > 320 || $0.1 > 180 }.count, 0, "a tile above 320×180")
+        XCTAssertLessThanOrEqual(grade.map { $0.0 * $0.1 * 4 }.reduce(0, +), 6 << 20, "the Grade grid outgrows the 6 MB clip-tile cache")
+    }
+
     /// Every Effects catalog family: no tile's frame is the flat scrim.
     func testEffectCatalogTileFramesAreNeverBlankInDark() throws {
         XCTAssertEqual(try blankCatalogTiles(.dark), [])

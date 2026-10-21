@@ -22,10 +22,13 @@ import MpvfxShared
 extension PresetPreviewRenderer {
     /// The frame of `req.clipId` at `time` graded with `req.grade`, at most the request's size. `req.key` names the
     /// tile ("fx:blur"): a newer request for it drops an older one still queued. `.unavailable` when the request
-    /// names no clip or the clip has no picture (the host then shows the sample picture). Call on the UI thread.
+    /// names no clip, the clip has no picture or its media could not be decoded, and for a size outside
+    /// 2…`EffectPreviewRenderer.maxSide` (the host then shows the sample picture, or its typed size failure). Call on
+    /// the UI thread.
     public func effectPreview(_ req: EffectPreviewRequest, time: Double) -> State {
         let slot = req.key, grade = req.grade, pixelWidth = req.pixelWidth, pixelHeight = req.pixelHeight
-        guard pixelWidth > 1, pixelHeight > 1, let clipId = req.clipId, let comp = compositor.composition,
+        let sizes = 2...EffectPreviewRenderer.maxSide
+        guard sizes.contains(pixelWidth), sizes.contains(pixelHeight), let clipId = req.clipId, let comp = compositor.composition,
               let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
         let c = entry.clip
         let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
@@ -33,7 +36,7 @@ extension PresetPreviewRenderer {
         let layer = comp.layer(entry, at: t)
         let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
         guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
-            return compositor.decodesMedia ? .rendering : .unavailable
+            return compositor.decodesMedia && !decodeGaveUp(lane: layer.laneKey) ? .rendering : .unavailable
         }
         let shownFrame = layer.kind == .image ? comp.frameIndex(at: t) : source.frame
         let key = Key(lane: layer.laneKey, frame: source.frame, preset: "\(slot)|\(shownFrame)|\(EffectPreviewRenderer.gradeText(grade))",
@@ -46,6 +49,20 @@ extension PresetPreviewRenderer {
             }
         }
         return .rendering
+    }
+
+    /// Whether the lane that would decode `lane`'s frames (the preview's own, else this renderer's) gave up before
+    /// producing any picture: missing, unreadable or undecodable media. Such a tile waits for nothing.
+    func decodeGaveUp(lane: String) -> Bool {
+        if let l = compositor.lanes[lane] { return l.gaveUp }
+        return ownLane?.key == lane && ownLane?.gaveUp == true
+    }
+
+    /// Whether `clipId`'s picture can never arrive because its media gave up decoding (the Grade preset tiles' host
+    /// then falls back to the sample picture instead of showing "Rendering" forever). Call on the UI thread.
+    public func decodeGaveUp(clipId: String) -> Bool {
+        guard let comp = compositor.composition, let e = comp.entries.first(where: { $0.clip.id == clipId }) else { return false }
+        return decodeGaveUp(lane: comp.layer(e, at: e.clip.startFrame / comp.fps).laneKey)
     }
 
     /// The cached tile for `key`, or nil after marking it the newest for `slot` and queueing it (`.rendering` when it

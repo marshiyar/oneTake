@@ -393,6 +393,7 @@ final class SessionPanels {
     func projectSwitched() {
         media = []; probedDurations = [:]; probing = []; session.mediaThumbnails.reset()
         renders.reset()
+        effectPreviews?.reset()   // sample tiles resolve LUT paths against the project folder
         syncItems()
         refreshMedia(); refreshLibraries(); refreshRenders(); refreshRecents()
         redraw()
@@ -455,7 +456,8 @@ final class SessionPanels {
             switch renderer.preview(clipId: req.clipId, presetId: req.presetId, lutSrc: req.lutSrc, lutIntensity: req.lutIntensity,
                                     time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight) {
             case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
+            // Media that gave up decoding never sends a frame: answer "no picture" so the tile shows the sample.
+            case .rendering: return renderer.decodeGaveUp(clipId: req.clipId) ? .unavailable : .rendering
             case .unavailable: return .unavailable
             }
         }
@@ -482,8 +484,9 @@ final class SessionPanels {
         effectPreviews = demos
         inspector.effectPreview = { [weak self, weak inspector] req in
             if let self, let inspector, let frames = self.presetPreviews {
-                let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
-                switch frames.effectPreview(req, time: t) {
+                // Like the preset tiles: paused, follow the playhead; playing, keep the frame shown when playback began.
+                if !self.session.playback.isPlaying { self.presetPreviewTime = inspector.time }
+                switch frames.effectPreview(req, time: self.presetPreviewTime) {
                 case .ready(let img): return .ready(img)
                 case .rendering: return .rendering
                 case .unavailable: break   // no picture on the clip: the sample picture below
