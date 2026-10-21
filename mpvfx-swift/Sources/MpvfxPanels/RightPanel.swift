@@ -51,11 +51,12 @@ public struct RenderSettingsModel: Equatable, Codable {
 
 public enum RenderAction: Equatable { case start(RenderSettingsModel), cancel(String), delete(String), reveal(String), retry(String), hideFinished, publish(String) }
 
-/// The right panel: the tab strip (Design · Renders (n), then hide and the panel menu), the Design tab (the flat
-/// inspector) and the Renders tab. Collapsed: the 40px rail with the show button.
+/// The right panel: the tab strip (Design · Easing · Renders (n), then hide and the panel menu), the Design tab (the
+/// flat inspector), the Easing tab (KeyframeEasingPanel) and the Renders tab. Collapsed: the 40px rail with the show
+/// button.
 public final class RightPanel {
     public enum Hit: Equatable {
-        case hide, show, design, renders, showRenders, panelMenu
+        case hide, show, design, easing, renders, showRenders, panelMenu
         case format, resolution, fps, quality, customW, customH, export, formatInfo
         case job(String), cancel(String), delete(String), reveal(String), retry(String), hideFinished, dismissError
         case confirmDelete(String), keep(String), thumb(String), listScrollbar
@@ -70,6 +71,7 @@ public final class RightPanel {
     }
     public let layout: PanelLayoutState
     public let inspector = InspectorPanel()
+    public let easing = KeyframeEasingPanel()
     public let dropdown = PanelDropdown()
     public var jobs: [RenderJobView] = []
     public var settings = RenderSettingsModel()
@@ -95,15 +97,21 @@ public final class RightPanel {
     var listScroll: Double { get { listScroller.offset } set { listScroller.set(newValue, max: .infinity) } }
     var listMax = 0.0
     /// Asks the host to call `tick` (~60 Hz) until it returns false (wheel glides, scrollbar fades, the accordion).
-    public var onAnimate: (() -> Void)? { didSet { inspector.onAnimate = onAnimate } }
+    public var onAnimate: (() -> Void)? { didSet { inspector.onAnimate = onAnimate; easing.onAnimate = onAnimate } }
     var listRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     var pressedInInspector = false
+    var pressedInEasing = false
 
     public init(layout: PanelLayoutState) {
         self.layout = layout
         // The group the user left open last time; Transform when nothing was saved.
         inspector.openGroupId = layout.prefs.openInspectorGroup ?? "layout"
         inspector.layout = layout
+        inspector.onOpenEasing = { [weak self] clipId, refs in
+            guard let self else { return }
+            self.showKeyframeEasing(clipId: clipId, refs: refs)
+            self.onChange?()
+        }
         // The inspector's selects (the Composition preset) open this panel's popover, drawn over both tabs.
         inspector.onOpenDropdown = { [weak self] key, options, selected, anchor, pick in
             guard let self else { return }
@@ -124,10 +132,27 @@ public final class RightPanel {
         case .show?: "Show the panel"
         case .panelMenu?: "Panel menu"
         case .design?: "Properties of the selection, or of the composition"
+        case .easing?: "Keyframe easing: graphs, curve and presets for the selected keys"
         case .renders?, .showRenders?: "Export settings and past renders"
         case .export?: "Render the composition with these settings"
-        default: nil
+        default: layout.rightPanelTab == .easing ? easing.hint : nil
         }
+    }
+
+    /// Opens the Easing tab on `refs` of `clipId` (the keyframe menu's "Edit Easing…", the inspector's "Easing…"):
+    /// shows the panel, selects the clip and those keys, and picks their property. False when no key has easing
+    /// (the panel is left as it was).
+    @discardableResult
+    public func showKeyframeEasing(clipId: String, refs: Set<TimelineKeyframeRef>) -> Bool {
+        let keys = refs.filter { $0.clipId == clipId && KeyframeEasingTarget.easedParameterIds.contains($0.parameterId) }
+        guard let first = keys.sorted(by: KeyframeEasingTarget.inTimeOrder).first else { return false }
+        easing.clipId = clipId
+        easing.selectedKeyframes = keys
+        easing.state.chosenProperty = first.parameterId
+        easing.state.pinnedSelection = nil
+        layout.setRightCollapsed(false)
+        layout.setRightTab(.easing)
+        return true
     }
 
     /// The dropdown key of the panel menu.
@@ -148,7 +173,7 @@ public final class RightPanel {
             c.clip(r)
             let strip = CanvasRect(x: 0, y: 0, width: r.width, height: PanelTabStrip.height)
             PanelTabStrip.drawBackground(c, strip)
-            let tabs: [(RightPanelTab, String, Hit)] = [(.design, "Design", .design), (.renders, rendersLabel, .renders)]
+            let tabs: [(RightPanelTab, String, Hit)] = [(.design, "Design", .design), (.easing, "Easing", .easing), (.renders, rendersLabel, .renders)]
             for (rect, (tab, label, hit)) in zip(PanelTabStrip.tabRects(c, strip, labels: tabs.map(\.1)), tabs) {
                 PanelTabStrip.tab(c, rect, label: label, active: layout.rightPanelTab == tab, hovered: hovered == hit)
                 hits.add(rect, hit)
@@ -159,11 +184,10 @@ public final class RightPanel {
             PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == Self.menuKey)
             hits.add(menu, .panelMenu)
             contentRect = CanvasRect(x: 0, y: strip.maxY, width: r.width, height: max(0, r.height - strip.maxY))
-            if layout.rightPanelTab == .design {
-                inspector.draw(c, in: contentRect)
-            } else {
-                inspector.endAudition()   // the Design tab, and the shelf with it, is gone
-                drawRenders(c, contentRect)
+            switch layout.rightPanelTab {
+            case .design: inspector.draw(c, in: contentRect)
+            case .easing: inspector.endAudition(); easing.draw(c, in: contentRect)   // the Design tab's shelf is gone
+            case .renders: inspector.endAudition(); drawRenders(c, contentRect)
             }
         }
         if let ring = focus.ringRect(hits) {
@@ -520,11 +544,7 @@ public final class RightPanel {
     public func pointerDown(_ p: CanvasPoint) -> Bool {
         focus.pointerPressed()
         if dropdown.pointerDown(p) { onChange?(); return true }
-        if layout.rightPanelTab == .design, !layout.effectiveRightCollapsed, contentRect.contains(p) {
-            pressedInInspector = true
-            let r = inspector.pointerDown(p); onChange?(); return r
-        }
-        pressedInInspector = false
+        if let r = contentPointerDown(p) { return r }
         inspector.commitField()
         if field != nil, hits.hit(p) != .customW, hits.hit(p) != .customH { commitField() }
         guard let hit = hits.hit(p) else { return false }
@@ -540,6 +560,7 @@ public final class RightPanel {
         case .show: layout.setRightCollapsed(false)
         case .panelMenu: openPanelMenu()
         case .design: layout.setRightTab(.design)
+        case .easing: layout.setRightTab(.easing)
         case .renders, .showRenders: layout.setRightTab(.renders)
         case .format: open("format", Self.formats, settings.format) { [weak self] v in self?.settings.format = v }
         case .resolution:
@@ -573,10 +594,11 @@ public final class RightPanel {
         guard let a = hits.rect(where: { $0 == .panelMenu }) else { return }
         var options: [PanelDropdown.Option] = []
         if jobs.contains(where: { $0.status != .rendering && $0.status != .queued }) { options.append(.init(value: "hideFinished", label: "Hide finished renders")) }
+        options.append(.init(value: "keyframe-easing", label: "Keyframe easing"))
         options.append(.init(value: "hide", label: "Hide panel"))
         dropdown.open(key: Self.menuKey, options: options, selected: nil, anchor: a, bounds: CanvasRect(x: 0, y: 0, width: size.width, height: size.height)) { [weak self] v in
             guard let self else { return }
-            if v == "hide" { self.layout.setRightCollapsed(true) } else { self.onRender?(.hideFinished) }
+            self.panelMenuPicked(v)
             self.onChange?()
         }
     }
@@ -584,8 +606,7 @@ public final class RightPanel {
     public func pointerMove(_ p: CanvasPoint) -> Bool {
         if dropdown.isOpen { return dropdown.pointerMove(p) }
         var changed = false
-        if pressedInInspector || (layout.rightPanelTab == .design && contentRect.contains(p)) { changed = inspector.pointerMove(p) }
-        else if inspector.hovered != nil { inspector.hovered = nil; inspector.endAudition(); changed = true }
+        changed = contentPointerMove(p)
         let h = hits.hit(p)
         if h != hovered { hovered = h; changed = true }
         if let id = confirmingDelete, h?.jobId != id { confirmingDelete = nil; changed = true }   // pointer left the row: Keep
@@ -594,12 +615,15 @@ public final class RightPanel {
 
     public func pointerUp(_ p: CanvasPoint) {
         if pressedInInspector { inspector.pointerUp(p); pressedInInspector = false; onChange?() }
+        if pressedInEasing { easing.pointerUp(p); pressedInEasing = false; onChange?() }
     }
 
     /// `dy` in points from the host: precise (trackpad) deltas move 1:1, wheel line steps glide (PanelScroller).
-    public func scroll(_ p: CanvasPoint, dy: Double, precise: Bool = false) -> Bool {
+    /// `zoom` (the command key held) zooms the Easing tab's graph instead of panning it.
+    public func scroll(_ p: CanvasPoint, dy: Double, precise: Bool = false, zoom: Bool = false) -> Bool {
         if dropdown.isOpen { dropdown.scrollBy(dy); return true }
         if layout.rightPanelTab == .design { return inspector.scroll(p, dy: dy, precise: precise) }
+        if layout.rightPanelTab == .easing { return easing.scroll(p, dy: dy, zoom: zoom) }
         guard listRect.contains(p) else { return false }
         if listScroller.scroll(by: dy, precise: precise, max: listMax) { onAnimate?() }
         return true
@@ -608,11 +632,11 @@ public final class RightPanel {
     /// Advances wheel glides, scrollbar fades and the inspector's entrance; true while any still needs frames.
     @discardableResult
     public func tick(_ dt: Double) -> Bool {
-        let a = listScroller.tick(dt), b = inspector.tick(dt)
-        return a || b
+        let a = listScroller.tick(dt), b = inspector.tick(dt), e = easing.tick(dt)
+        return a || b || e
     }
 
-    public var isEditingText: Bool { field != nil || inspector.isEditingText }
+    public var isEditingText: Bool { field != nil || inspector.isEditingText || easing.isEditingText }
 
     public func keyDown(_ k: EditorKey) -> Bool {
         if dropdown.key(k) { onChange?(); return true }
@@ -625,7 +649,7 @@ public final class RightPanel {
             }
             onChange?(); return true
         }
-        if layout.rightPanelTab == .design && !layout.effectiveRightCollapsed { return inspector.keyDown(k) }
+        if let handled = tabKeyDown(k) { return handled }
         switch k.code {
         case .tab:
             let moved = focus.move(hits, forward: !k.shift, Self.focusable)

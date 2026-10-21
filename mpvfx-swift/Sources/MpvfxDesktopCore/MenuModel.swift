@@ -33,6 +33,8 @@ public struct MenuItem: Equatable, Sendable {
         case toggleFullScreen
         /// View > appearance (native addition): System / Light / Dark.
         case appearanceSystem, appearanceLight, appearanceDark
+        /// View > Keyframe Easing: the Keyframe Easing panel (the right panel's Easing tab).
+        case keyframeEasing
         case minimize, zoom, bringAllToFront
     }
     public var label: String, command: Command
@@ -82,6 +84,7 @@ public enum MenuModel {
                 ]),
                 Menu(label: "View", items: [
                     MenuItem(label: "Toggle Full Screen", command: .toggleFullScreen, key: "f", modifiers: [.command, .control]),
+                    MenuItem(label: "Keyframe Easing", command: .keyframeEasing, separatorBefore: true),
                     MenuItem(label: "System Appearance", command: .appearanceSystem, separatorBefore: true),
                     MenuItem(label: "Light Appearance", command: .appearanceLight),
                     MenuItem(label: "Dark Appearance", command: .appearanceDark),

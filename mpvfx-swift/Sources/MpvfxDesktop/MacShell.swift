@@ -89,8 +89,9 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                 switch item.command {
                 case .about: selector = #selector(NSApplication.orderFrontStandardAboutPanel(_:))
                 case .services, .openRecent: continue
-                case .openProject, .settings:
-                    let action = item.command == .settings ? #selector(openSettings(_:)) : #selector(openProject(_:))
+                case .openProject, .settings, .keyframeEasing:
+                    let action = item.command == .settings ? #selector(openSettings(_:))
+                        : item.command == .keyframeEasing ? #selector(openKeyframeEasing(_:)) : #selector(openProject(_:))
                     let mi = NSMenuItem(title: item.label, action: action, keyEquivalent: item.key ?? "")
                     mi.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
                     mi.target = self
@@ -140,6 +141,9 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
 
     /// MpVFX > Settings… (⌘, in the editor reaches the same card through EditorSession.commandKey).
     @objc func openSettings(_ sender: NSMenuItem) { session?.showSettings() }
+
+    /// View > Keyframe Easing: the Keyframe Easing panel.
+    @objc func openKeyframeEasing(_ sender: NSMenuItem) { session?.showKeyframeEasingPanel() }
 
     /// File > Open…: the folder dialog (⌘O in the editor reaches the same call through EditorSession.commandKey).
     @objc func openProject(_ sender: NSMenuItem) { session?.requestOpenProject() }

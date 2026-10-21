@@ -137,7 +137,7 @@ final class ShellLifecycleTests: XCTestCase {
         XCTAssertTrue(mac[1].items[2].separatorBefore)
         XCTAssertEqual(mac[2].items.map(\.command), [.undo, .redo, .cut, .copy, .paste, .pasteAndMatchStyle, .delete, .selectAll])
         XCTAssertEqual(mac[2].items[1].key, "z"); XCTAssertEqual(mac[2].items[1].modifiers, [.command, .shift])
-        XCTAssertEqual(mac[3].items.map(\.command), [.toggleFullScreen, .appearanceSystem, .appearanceLight, .appearanceDark])
+        XCTAssertEqual(mac[3].items.map(\.command), [.toggleFullScreen, .keyframeEasing, .appearanceSystem, .appearanceLight, .appearanceDark])
         XCTAssertTrue(mac[3].items[1].separatorBefore)
         XCTAssertEqual(mac[3].items[0].modifiers, [.command, .control])
         XCTAssertEqual(mac[4].items.map(\.command), [.minimize, .zoom, .bringAllToFront])

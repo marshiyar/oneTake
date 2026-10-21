@@ -61,8 +61,6 @@ public final class InspectorPanel {
     /// Set when a group opens: the next layout scrolls the body so the open group's header sits at its top
     /// (`toggleOpen` → scroll the open group's header to the top), clamped to the end.
     var scrollOpenGroupToStart = false
-    /// Set by showKeyframeEasing: the next layout scrolls the open group's "Keyframe easing" rows into view.
-    var revealEasingRows = false
     var cropActive: String?
     var cropBefore: NativeClipCrop?
     var cropLinkAll = false
@@ -73,13 +71,11 @@ public final class InspectorPanel {
     var lastRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     /// Custom-row drag in flight (row id, part).
     var customDrag: (String, Int)?
-    /// Keyframes selected on the timeline (synced before each paint): the easing rows edit these when any are on the
-    /// selected clip's eased channels, else the keys at/before the playhead.
+    /// Keyframes selected on the timeline (synced before each paint): the easing block's "Easing…" opens the panel
+    /// on these when any are on the selected clip's eased channels, else on the keys at/before the playhead.
     public var selectedKeyframes: Set<TimelineKeyframeRef> = []
-    /// An ease-graph handle drag in flight (committed on release, one undo step).
-    public internal(set) var easeDrag: EaseDrag?
-    /// The ease graph's plot area and value range from the last draw.
-    public internal(set) var easeGraphBox: EaseGraphBox?
+    /// "Easing…": open the Keyframe Easing panel on these keys of this clip (RightPanel shows its Easing tab).
+    public var onOpenEasing: ((String, Set<TimelineKeyframeRef>) -> Void)?
     /// The Transform group's 3D transform disclosure (collapsed by default).
     public var transform3DOpen = false
     /// A 3D cube drag in flight (committed on release) and the cube's frame from the last draw.
@@ -214,16 +210,6 @@ public final class InspectorPanel {
         if scrollOpenGroupToStart, let i = groups.firstIndex(where: { $0.id == openGroupId }) {
             bodyScroll = Double(i) * headerRowH
             scrollOpenGroupToStart = false
-        }
-        if revealEasingRows, let i = groups.firstIndex(where: { $0.id == openGroupId }) {
-            revealEasingRows = false
-            let g = groups[i]
-            if let r = g.rows.firstIndex(where: { if case .heading("Keyframe easing", _) = $0.kind { return true }; return false }) {
-                // Content y of the heading: the headers above, the open header, the body's 12 top padding, the rows above.
-                let top = Double(i + 1) * headerRowH + 12 + g.rows[..<r].reduce(0) { $0 + $1.height + g.spacing }
-                let bottom = top + g.rows[r...].reduce(0) { $0 + $1.height + g.spacing }
-                if top < bodyScroll || bottom > bodyScroll + body.height { bodyScroll = min(bodyMaxScroll, max(0, min(top - 8, bottom - body.height + 12))) }
-            }
         }
         bodyScroller.clamp(max: bodyMaxScroll)
         bodyRect = body; bodyContentHeight = total

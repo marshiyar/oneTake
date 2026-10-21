@@ -177,6 +177,10 @@ final class MacCanvasHost: NSView {
         input?.keyUp(k)
     }
 
+    /// F1…F12 as AppKit reports them in `charactersIgnoringModifiers`.
+    static let functionKeys = [NSF1FunctionKey, NSF2FunctionKey, NSF3FunctionKey, NSF4FunctionKey, NSF5FunctionKey, NSF6FunctionKey,
+                               NSF7FunctionKey, NSF8FunctionKey, NSF9FunctionKey, NSF10FunctionKey, NSF11FunctionKey, NSF12FunctionKey]
+
     static func key(_ e: NSEvent) -> EditorKey? {
         let code: EditorKey.Code
         switch e.keyCode {
@@ -193,9 +197,11 @@ final class MacCanvasHost: NSView {
         case 36, 76: code = .enter      // return, keypad enter
         case 48: code = .tab
         default:
-            // Shift is kept (like a GDK keyval), other modifiers are not; function keys are private-use scalars.
-            guard let scalar = e.charactersIgnoringModifiers?.unicodeScalars.first,
-                  scalar.value > 32, !(0xF700...0xF8FF).contains(scalar.value) else { return nil }
+            // Shift is kept (like a GDK keyval), other modifiers are not; function keys are private-use scalars:
+            // F1…F12 become EditorKey.Code.function, the others are dropped.
+            guard let scalar = e.charactersIgnoringModifiers?.unicodeScalars.first, scalar.value > 32 else { return nil }
+            if let n = Self.functionKeys.firstIndex(of: Int(scalar.value)) { code = .function(n + 1); break }
+            guard !(0xF700...0xF8FF).contains(scalar.value) else { return nil }
             code = .char(Character(scalar))
         }
         let f = e.modifierFlags
