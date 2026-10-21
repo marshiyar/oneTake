@@ -82,8 +82,6 @@ release:
 Pull requests and other branches build and test but never publish. Older `build-main-*` releases from before this
 scheme are left as they are.
 
-## Releases: nightly and official
-
 ## Merging
 
 `main` requires `ci-ok` and nothing else: a pull request merges, or auto-merges, once it passes. The project's GitHub
