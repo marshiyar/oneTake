@@ -87,8 +87,8 @@ public final class PreviewToolbar {
             place(.crop, textWidth(c, "Crop", Self.label) + 16, 28.5)
         }
         if onToggleRecording != nil {
-            let text = recording == .recording ? "Stop" : "Record"
-            out.append((.record, CanvasRect(x: Self.paddingX, y: midY - 14, width: 8 + 8 + 6 + textWidth(c, text, Self.small) + 8, height: 28)))
+            let text = max(textWidth(c, "Record", Self.small), textWidth(c, "Armed", Self.small))   // one width for every state
+            out.append((.record, CanvasRect(x: Self.paddingX, y: midY - 14, width: 8 + 8 + 6 + text + 8, height: 28)))
         }
         if gridPopoverOpen, let r = popoverRect(width: width, c) {
             out.append((.popover, r))
@@ -203,10 +203,12 @@ public final class PreviewToolbar {
             }
         }
         if let r = rect(.record) {
-            if hovered == .record { c.fillRoundedRect(r, radius: 4, PanelStyle.neutral800) }
+            if recording != .idle { c.fillRoundedRect(r, radius: 4, Self.red500.withAlpha(recording == .recording ? 0.35 : 0.18)) }
+            else if hovered == .record { c.fillRoundedRect(r, radius: 4, PanelStyle.neutral800) }
             let dot = CanvasRect(x: r.x + 8, y: r.y + (r.height - 8) / 2, width: 8, height: 8)
             c.fillRoundedRect(dot, radius: recording == .recording ? 2 : 4, Self.red500)
-            c.drawText(recording == .recording ? "Stop" : "Record", at: .init(dot.maxX + 6, r.y + (r.height - 11) / 2), font: Self.small, color: PanelStyle.neutral300)
+            let label = recording == .recording ? "Stop" : recording == .armed ? "Armed" : "Record"
+            c.drawText(label, at: .init(dot.maxX + 6, r.y + (r.height - 11) / 2), font: Self.small, color: recording == .idle ? PanelStyle.neutral300 : PanelTheme.red400)
         }
         if gridPopoverOpen, let r = popoverRect(width: width, c) {
             c.fillRoundedRect(r, radius: 8, PanelStyle.neutral800)

@@ -465,7 +465,7 @@ public final class PlayerController {
     public func scroll(x: Double, y: Double, dx: Double, dy: Double, zoom: Bool) -> Bool {
         let vp = view.viewportRect(in: size)
         guard vp.contains(CanvasPoint(x, y)) else { return false }
-        if recorder != nil { recorder?.wheel(dy, modifiers: modifiers.union(zoom ? .ctrl : [])); return true }
+        if recorder != nil { recorder?.wheel(dy, modifiers: modifiers.union(zoom ? .ctrl : [])); dragEngaged = true; return true }
         let f = view.fittedRect(in: size)
         let viewport = CanvasSize(vp.width, vp.height), content = CanvasSize(f.width, f.height)
         if zoom {

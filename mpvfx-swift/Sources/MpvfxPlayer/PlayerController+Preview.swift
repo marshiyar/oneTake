@@ -139,7 +139,7 @@ extension PlayerController {
     /// Keys the preview answers from any focus (dispatchPlainAppKey): F toggles fullscreen, R arms or disarms Record,
     /// Esc cancels a take or disarms Record.
     public func globalKey(_ k: EditorKey) -> Bool {
-        if k.code == .escape, !k.command, !k.alt { return recordEscape() }
+        if recordEscapeKey(k) { return true }
         guard !k.command, !k.alt, !k.shift, !k.isRepeat, case .char(let ch) = k.code else { return false }
         switch ch {
         case "f", "F": view.isFullscreen.toggle(); needsDisplay?(); return true

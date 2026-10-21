@@ -160,6 +160,42 @@ final class RecordMotionTests: XCTestCase {
         XCTAssertFalse(r.c.isRecording)
     }
 
+    func testAFlickReleasedBeforeTheNextFrameStillCommits() throws {
+        let r = try rig()
+        r.c.toggleRecording()
+        r.c.pointerDown(x: 70, y: 75)
+        r.c.pointerMove(x: 100, y: 75)   // no draw between the press and the release
+        r.c.pointerUp(x: 100, y: 75)
+        XCTAssertEqual(r.commits.count, 1, r.c.view.toast?.message ?? "")
+        let keys = try Self.positionKeys(r.doc, clip: "B")
+        XCTAssertGreaterThanOrEqual(Set(keys.map(\.frame)).count, 2, "start and end are keyed: \(keys)")
+    }
+
+    func testAWheelOnlyTakeCommitsDepth() throws {
+        let r = try rig()
+        r.c.toggleRecording()
+        r.c.pointerDown(x: 70, y: 75)
+        for _ in 1...4 { XCTAssertTrue(r.c.scroll(x: 70, y: 75, dx: 0, dy: 20, zoom: false)); r.pb.tick(0.1); r.c.frameTick() }
+        r.c.pointerUp(x: 70, y: 75)
+        XCTAssertEqual(r.commits.count, 1, "the wheel engages the take: \(r.c.view.toast?.message ?? "")")
+        let clip = try XCTUnwrap(r.doc.sequence.tracks.flatMap(\.clips).first { $0.id == "B" })
+        XCTAssertFalse(clip.parameterTracks.isEmpty, "depth keys are written")
+    }
+
+    func testAModifierTakeWritesNoPositionKeys() throws {
+        let r = try rig()
+        r.c.toggleRecording()
+        r.c.modifiers = .alt
+        r.c.pointerDown(x: 70, y: 75)
+        r.pb.tick(0.1); r.c.frameTick()   // a frame before the first move
+        for i in 1...6 { r.step(70 + Double(i) * 10, 75) }
+        r.c.pointerUp(x: 130, y: 75)
+        XCTAssertEqual(r.commits.count, 1, r.c.view.toast?.message ?? "")
+        XCTAssertTrue(try Self.positionKeys(r.doc, clip: "B").isEmpty, "an ⌥ take records rotation only")
+        let clip = try XCTUnwrap(r.doc.sequence.tracks.flatMap(\.clips).first { $0.id == "B" })
+        XCTAssertTrue(clip.parameterTracks.contains { $0.parameterId.contains("rotation") }, "\(clip.parameterTracks.map(\.parameterId))")
+    }
+
     func testAHeldPressThatNeverMovesWritesNothing() throws {
         let r = try rig()
         r.c.toggleRecording()
@@ -219,8 +255,8 @@ final class RecordMotionTests: XCTestCase {
         GestureSample(time: time, properties: NativeOrderedMap([("x", x), ("y", y)]))
     }
 
-    static func positionKeys(_ doc: NativeProjectDocument) throws -> [(frame: Double, value: String)] {
-        let clip = try XCTUnwrap(doc.sequence.tracks.flatMap(\.clips).first { $0.id == "A" })
+    static func positionKeys(_ doc: NativeProjectDocument, clip id: String = "A") throws -> [(frame: Double, value: String)] {
+        let clip = try XCTUnwrap(doc.sequence.tracks.flatMap(\.clips).first { $0.id == id })
         return clip.parameterTracks.filter { $0.parameterId.hasPrefix("transform.position") }.flatMap { t in
             t.keyframes.map { (frame: $0.frame, value: "\($0.value)") }
         }
