@@ -137,6 +137,13 @@ public enum PropertyValueTier: Equatable, Sendable {
     public var labelColor: CanvasColor { PanelTheme.rowLabel }
     /// The value in the accent once the user changed it (Principle 2), else the field's own ink.
     public var valueColor: CanvasColor { self == .explicitCustom ? PanelTheme.accent : PanelTheme.neutral100 }
+    /// A value's ink as drawn: `neutral600` when disabled, the field's ink while typed, the accent while scrubbed or
+    /// dragged, else `valueColor`.
+    func valueInk(disabled: Bool, typing: Bool = false, adjusting: Bool) -> CanvasColor {
+        if disabled { return PanelTheme.neutral600 }
+        if typing { return PanelTheme.neutral100 }
+        return adjusting ? PanelTheme.accent : valueColor
+    }
 }
 
 

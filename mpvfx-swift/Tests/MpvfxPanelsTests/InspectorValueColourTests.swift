@@ -94,6 +94,39 @@ final class InspectorValueColourTests: XCTestCase {
         XCTAssertEqual(colour(c, "50%", value: true), PanelTheme.accent)
     }
 
+    /// Toggle and segmented rows label in the same grey, on or off.
+    func testToggleAndSegmentedLabelsAreGrey() {
+        let p = InspectorPanel(), c = PanelMeasureCanvas()
+        for on in [false, true] {
+            p.drawToggle(c, CanvasRect(x: 0, y: 0, width: 300, height: 30),
+                         InspectorRow.Toggle(key: "t\(on)", label: on ? "Loop on" : "Loop off", on: on, set: { _ in }))
+        }
+        p.drawSegmented(c, CanvasRect(x: 0, y: 40, width: 300, height: 32),
+                        InspectorRow.Segmented(key: "s", label: "Blend", options: [(key: "a", label: "Normal", active: true)], select: { _ in }))
+        XCTAssertEqual(colour(c, "Loop off"), PanelTheme.rowLabel)
+        XCTAssertEqual(colour(c, "Loop on"), PanelTheme.rowLabel)
+        XCTAssertEqual(colour(c, "Blend"), PanelTheme.rowLabel)
+    }
+
+    /// A changed value being typed reads in the field's ink, and disabled values stay neutral600 even when changed.
+    func testTypedAndDisabledValuesKeepTheirInk() throws {
+        let (p, _, c) = try makeInspector(open: "layout")
+        p.number("rotation")?.commit("15"); redraw(p, c)
+        XCTAssertTrue(p.pointerDown(try XCTUnwrap(p.hits.rect { $0 == .field("rotation") }).center))
+        redraw(p, c)
+        let draft = try XCTUnwrap(p.field?.draft)
+        XCTAssertEqual(colour(c, draft, value: true), PanelTheme.neutral100, "typed")
+
+        let q = InspectorPanel(), d = PanelMeasureCanvas()
+        q.drawNumber(d, CanvasRect(x: 0, y: 0, width: 300, height: 30),
+                     InspectorRow.Number(key: "n", label: "N", text: "7px", tier: .explicitCustom, commit: { _ in }, disabled: true), compact: false)
+        q.drawSlider(d, CanvasRect(x: 0, y: 40, width: 300, height: 28),
+                     InspectorRow.Slider(key: "s", label: "S", position: 50, min: 0, max: 100, display: "50%", format: { "\($0)" },
+                                         tier: .explicitCustom, commit: { _ in }, disabled: true))
+        XCTAssertEqual(colour(d, "7px", value: true), PanelTheme.neutral600, "disabled number")
+        XCTAssertEqual(colour(d, "50%", value: true), PanelTheme.neutral600, "disabled slider")
+    }
+
     /// Principle 6: the grey labels and the accent values reach WCAG AA (4.5:1) on the inspector's inset body and on
     /// the compact fields' panel grey, in both modes.
     func testLabelAndValueContrastIsAA() {

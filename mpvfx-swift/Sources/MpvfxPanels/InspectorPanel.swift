@@ -460,8 +460,8 @@ public final class InspectorPanel {
         if editing, let f = self.field { text = f.draft }
         let tr = CanvasRect(x: field.x, y: field.y, width: field.width, height: 16.5)
         if editing { c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput) }
-        let ink = n.disabled ? PanelTheme.neutral600 : editing ? PanelTheme.neutral100 : scrub?.key == n.key ? PanelTheme.accent : n.tier.valueColor
-        PanelDraw.text(c, text, in: tr, font: font, color: ink, align: .right)
+        PanelDraw.text(c, text, in: tr, font: font,
+                       color: n.tier.valueInk(disabled: n.disabled, typing: editing, adjusting: scrub?.key == n.key), align: .right)
         if editing {   // caret after the draft
             c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent)
         }
@@ -530,8 +530,8 @@ public final class InspectorPanel {
 
     /// FlatSlider (`min-h-[28px] gap-2.5`): 86px grey label (rowLabel), `h-5 flex-1` track (2px bg-panel-hover line; a
     /// 1×4 text-5 centre tick; a text-5 fill from the left only for a custom value), knob 7px text-4 (8px white
-    /// when custom), `w-11` mono 10 value in the tier colour (the accent once changed, and while dragged), `w-3.5`
-    /// reset slot. An optional settings gear sits 6px after it.
+    /// when custom), `w-11` mono 10 value in the tier colour (the accent once changed, and while dragged;
+    /// `neutral600` when disabled), `w-3.5` reset slot. An optional settings gear sits 6px after it.
     func drawSlider(_ c: CanvasContext, _ r: CanvasRect, _ s: InspectorRow.Slider) {
         var row = r
         if let st = s.settings {
@@ -558,7 +558,7 @@ public final class InspectorPanel {
         let pos = dragging ? sliderDrag!.current : s.position
         let custom = s.tier == .explicitCustom || dragging
         PanelDraw.text(c, dragging ? s.format(pos) : s.display, in: valueRect, font: PanelTheme.mono(10),
-                       color: dragging ? PanelTheme.accent : s.tier.valueColor, align: .right)
+                       color: s.tier.valueInk(disabled: s.disabled, adjusting: dragging), align: .right)
         let track = CanvasRect(x: row.x + 96, y: row.midY - 10, width: max(10, valueRect.x - 10 - (row.x + 96)), height: 20)
         let span = max(1e-9, s.max - s.min)
         let pct = max(0, min(1, (pos - s.min) / span))
