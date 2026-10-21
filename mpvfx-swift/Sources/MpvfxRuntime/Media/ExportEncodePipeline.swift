@@ -51,15 +51,17 @@ final class ExportEncodePipeline: @unchecked Sendable {
         thread.start()
     }
 
-    /// Queues `frame`, then waits while `depth` frames are outstanding; throws the encoder's first failure.
-    func submit(_ frame: ExportPaintedFrame) throws {
+    /// Queues `frame`, then waits while `depth` frames are outstanding (with `drain`, until it is encoded); throws the
+    /// encoder's first failure.
+    func submit(_ frame: ExportPaintedFrame, drain: Bool = false) throws {
         condition.lock(); defer { condition.unlock() }
         if let failure { throw failure }
         queue.append(frame)
         outstanding += 1
         mostOutstanding = Swift.max(mostOutstanding, outstanding)
         condition.broadcast()
-        while outstanding >= depth && failure == nil { condition.wait() }
+        let limit = drain ? 1 : depth
+        while outstanding >= limit && failure == nil { condition.wait() }
         if let failure { throw failure }
     }
 

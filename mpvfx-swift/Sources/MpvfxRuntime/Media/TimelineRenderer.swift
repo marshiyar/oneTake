@@ -354,7 +354,9 @@ private func encodeNativeTimeline(_ encode: NativeTimelineEncode, _ input: Nativ
     do {
         for i in 0..<count {
             try input.cancellation?.throwIfCancelled()
-            try withAutoreleasePool { try pipeline.submit(painter.paint(i)) }
+            // Frame 0 encodes before frame 1 paints: the decoder's and the encoder's start-up buffers, the largest
+            // either allocates, are then never live at the same time (they set the export's peak memory otherwise).
+            try withAutoreleasePool { try pipeline.submit(painter.paint(i), drain: i == 0) }
         }
         try pipeline.finish()
     } catch {

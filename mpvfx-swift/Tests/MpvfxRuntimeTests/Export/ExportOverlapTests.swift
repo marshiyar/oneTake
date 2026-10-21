@@ -122,6 +122,8 @@ final class ExportOverlapTests: XCTestCase {
         hooked(&overlapped) { i in ahead.append(i - times.framesEncoded) }
         try renderNativeTimeline(overlapped)
         XCTAssertEqual(ahead.count, 40)
+        // Frame 0 is encoded before frame 1 paints: the decoder's and the encoder's start-up memory never overlap.
+        XCTAssertEqual(Array(ahead.prefix(2)), [0, 0], "\(ahead)")
         XCTAssertLessThanOrEqual(ahead.max() ?? 99, EXPORT_ENCODE_QUEUE_FRAMES - 1, "\(ahead)")
         XCTAssertEqual(EXPORT_ENCODE_QUEUE_FRAMES, 2)
         XCTAssertEqual(times.framesPainted, 40); XCTAssertEqual(times.framesEncoded, 40)
