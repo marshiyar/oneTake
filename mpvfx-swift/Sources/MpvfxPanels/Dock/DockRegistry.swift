@@ -116,6 +116,7 @@ public enum DockPanels {
     public static let timeline: DockPanelID = "timeline"
     public static let history: DockPanelID = "history"
     public static let info: DockPanelID = "info"
+    public static let scopes: DockPanelID = "scopes"
 
     /// Minimums follow `PanelFit` (the preview's 360 × 200 floor, the 200 / 280 pt side panels, the 100 pt timeline).
     public static let builtIn: [DockPanelSpec] = [
@@ -131,5 +132,7 @@ public enum DockPanels {
             .preferring(CanvasSize(0, 360)).alwaysOpen(),
         DockPanelSpec(id: history, title: "History", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
         DockPanelSpec(id: info, title: "Info", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
+        DockPanelSpec(id: scopes, title: "Scopes", defaultDock: .right, minSize: CanvasSize(240, 180))
+            .preferring(CanvasSize(360, 0)).closedByDefault(),
     ]
 }

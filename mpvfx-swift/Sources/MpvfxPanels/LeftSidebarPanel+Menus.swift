@@ -169,6 +169,8 @@ extension LeftSidebarPanel {
         case .library(let id):
             guard let l = activeLibrary, libraryAsset(id)?.available == true, !library.busy else { return }
             onLibrary?(.attach(libraryId: l.id, assetId: id))
+        case .textLook(let id):
+            if let look = TextLookPreset.preset(id) { onAddTextLook?(look) }
         case .export(let id):
             guard let l = activeLibrary, export(id)?.status == "complete", !library.busy else { return }
             onLibrary?(.saveOutput(libraryId: l.id, jobId: id))
@@ -185,6 +187,7 @@ extension LeftSidebarPanel {
         case .media(let id): return mediaItem(id).map(mediaEntries) ?? []
         case .library(let id): return libraryAsset(id).map(libraryEntries) ?? []
         case .export(let id): return export(id)?.status == "complete" ? [MenuEntry(label: "Save to…", shortcut: "Enter", action: .primary)] : []
+        case .textLook: return [MenuEntry(label: "Add at playhead", shortcut: "Enter", action: .primary)]
         }
     }
 
