@@ -104,4 +104,44 @@ final class MixerGraphTests: XCTestCase {
         XCTAssertEqual(back.sequence.tracks[1].mixerPan, 0.25)
         XCTAssertThrowsError(try parseNativeProjectDocument(try NativeJSONValue.parse(raw.replacingOccurrences(of: #""mixerGainDB":-6"#, with: #""mixerGainDB":100"#))))
     }
+    func testMetersRetainBusLookaheadAcrossBlocksAndSeeks() throws {
+        let samples = (0..<8192).map { Float($0 / 128 + 1) / 100 }
+        var track = AudioGraphTrack(id: "clip", stem: [samples, samples], start: 0, end: Double(samples.count) / 48000, groupId: "bus")
+        track.meterId = "audio"
+        let chain = try AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"denoise","id":"dn","params":{"amount":0.8,"learn":100}}]}"#)
+        var project = AudioGraphProject(duration: track.end, tracks: [track], groups: [AudioGraphGroup(id: "bus", fxChain: chain)])
+        project.quantizeIntermediates = false
+        let source = GraphAudioSource(project: project)
+        for block in 0..<8 {
+            _ = source.render(frames: 128)
+            let meter = try XCTUnwrap(source.meters["audio"])
+            XCTAssertEqual(meter.peak, Double(samples[block * 128]), accuracy: 0.000001)
+            XCTAssertEqual(meter.rms, Double(samples[block * 128]), accuracy: 0.000001)
+        }
+        source.seek(frame: 192)
+        XCTAssertTrue(source.meters.isEmpty)
+        _ = source.render(frames: 128)
+        let meter = try XCTUnwrap(source.meters["audio"])
+        let expected = samples[192..<320].map(Double.init)
+        XCTAssertEqual(meter.peak, expected.max() ?? 0, accuracy: 0.000001)
+        XCTAssertEqual(meter.rms, sqrt(expected.reduce(0) { $0 + $1 * $1 } / 128), accuracy: 0.000001)
+    }
+    func testStopClearsPublishedMetersAndRestartWaitsForNewBlock() throws {
+        let source = GraphAudioSource(project: try project())
+        let playback = AudioPlayback(output: NullAudioOutput(), source: source)
+        source.seek(0.5)
+        try playback.pump()
+        XCTAssertFalse(source.meters.isEmpty)
+        playback.stop()
+        XCTAssertTrue(source.meters.isEmpty)
+        _ = source.render(frames: 128) // A feeder already finishing at stop must not restore the snapshot.
+        XCTAssertTrue(source.meters.isEmpty)
+        source.seek(0.5)
+        XCTAssertTrue(source.meters.isEmpty)
+        try playback.pump()
+        XCTAssertGreaterThan(source.meters["t2"]?.peak ?? 0, 0)
+        source.seek(0.25)
+        XCTAssertTrue(source.meters.isEmpty, "a new stream clears the previous playback before rendering")
+    }
+
 }

@@ -96,14 +96,19 @@ public final class MixerPanel: DockedPanelView {
         selected = min(selected, tracks.count - 1)
         let t = tracks[selected]
         switch k.code {
-        case .up: selected = max(0, selected - 1); return true
-        case .down: selected = min(tracks.count - 1, selected + 1); return true
+        case .up: selected = max(0, selected - 1); list.reveal(selected); return true
+        case .down: selected = min(tracks.count - 1, selected + 1); list.reveal(selected); return true
         case .left, .right:
             let delta = k.code == .left ? -1.0 : 1.0
-            return editor.setTrackMixer(t.id, gainDB: min(12, max(-60, (t.mixerGainDB ?? 0) + (k.shift ? 0 : delta))),
+            _ = editor.setTrackMixer(t.id, gainDB: min(12, max(-60, (t.mixerGainDB ?? 0) + (k.shift ? 0 : delta))),
                                        pan: min(1, max(-1, (t.mixerPan ?? 0) + (k.shift ? delta * 0.1 : 0))))
-        case .char(let ch) where ch.lowercased() == "m": return editor.setTrackMuted(t.id, !editor.isTrackMuted(t.id))
-        case .char(let ch) where ch.lowercased() == "s": return editor.setTrackSoloed(t.id, t.soloed != true)
+            return true
+        case .char(let ch) where ch.lowercased() == "m":
+            if !k.isRepeat { _ = editor.setTrackMuted(t.id, !editor.isTrackMuted(t.id)) }
+            return true
+        case .char(let ch) where ch.lowercased() == "s":
+            if !k.isRepeat { _ = editor.setTrackSoloed(t.id, t.soloed != true) }
+            return true
         default: return false
         }
     }

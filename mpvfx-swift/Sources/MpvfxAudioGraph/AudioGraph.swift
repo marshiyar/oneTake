@@ -384,6 +384,7 @@ public final class AudioGraphRenderer {
     var groupStages: [String: GroupStage] = [:]
     let scale: Float
     let makeup: Float
+    let meteredTrackIDs: Set<String>
     public private(set) var position = 0
     /// Live-only tap after each clip fader/pan and before bus processing.
     public var collectsMeters = false
@@ -395,6 +396,7 @@ public final class AudioGraphRenderer {
 
     public init(_ project: AudioGraphProject) {
         self.project = project
+        meteredTrackIDs = Set(project.tracks.filter { $0.meterId != nil }.map(\.id))
         let sr = project.sampleRate
         let mutedGroups = Set(project.groups.filter(\.muted).map(\.id))
         var ungrouped: [FrameSource] = []
@@ -427,7 +429,10 @@ public final class AudioGraphRenderer {
     /// Next `frames` frames (clamped to the end), interleaved stereo.
     public func render(_ frames: Int) -> [Float] {
         let count = max(0, min(frames, totalFrames - position))
-        for stage in trackStages.values { stage.captureMeter = collectsMeters; stage.meterSamples.removeAll(keepingCapacity: true) }
+        for (id, stage) in trackStages {
+            stage.captureMeter = collectsMeters && meteredTrackIDs.contains(id)
+            if !stage.captureMeter { stage.meterSamples.removeAll(keepingCapacity: true) }
+        }
         var outL = [Float](repeating: 0, count: count), outR = outL
         var l = outL, r = outR
         for input in inputs {
@@ -440,6 +445,8 @@ public final class AudioGraphRenderer {
                 guard let id = t.meterId, let stage = trackStages[t.id] else { continue }
                 var samples = sums[id] ?? [Float](repeating: 0, count: count * 2)
                 for i in 0..<min(samples.count, stage.meterSamples.count) { samples[i] += stage.meterSamples[i] }
+                // Bus FX can pull ahead to compensate latency. Keep that input for the next timeline block.
+                stage.meterSamples.removeFirst(min(count * 2, stage.meterSamples.count))
                 sums[id] = samples
             }
             meters = sums.mapValues { samples in

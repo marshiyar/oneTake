@@ -46,7 +46,14 @@ public final class GraphAudioSource: AudioRenderSource {
         precondition(project.sampleRate.rounded() == project.sampleRate, "integral sample rate")
         format = AudioFormat(sampleRate: Int(project.sampleRate), channels: 2)
         self.project = project
-        renderer = AudioGraphRenderer(project)
+        renderer = Self.liveRenderer(project)
+    }
+
+    private static func liveRenderer(_ project: AudioGraphProject) -> AudioGraphRenderer {
+        let renderer = AudioGraphRenderer(project)
+        // Capture through pre-roll too: a bus may already have pulled future input. Only render publishes it.
+        renderer.collectsMeters = true
+        return renderer
     }
 
     /// Transport gain/mute have their own lock: the UI sets them every tick, and must never wait behind a seek
@@ -66,11 +73,22 @@ public final class GraphAudioSource: AudioRenderSource {
     public var meters: [String: AudioGraphRenderer.Meter] { meterLock.lock(); defer { meterLock.unlock() }; return liveMeters }
     private let meterLock = NSLock()
     private var liveMeters: [String: AudioGraphRenderer.Meter] = [:]
+    private var meterGeneration = 0
+    private var metersStopped = false
+
+    public func playbackStopped() { resetMeters(stopped: true) }
+
+    private func resetMeters(stopped: Bool) {
+        meterLock.lock()
+        liveMeters = [:]; meterGeneration += 1; metersStopped = stopped
+        meterLock.unlock()
+    }
     public var lastPreRoll: PreRoll? { lock.lock(); defer { lock.unlock() }; return lastPreRoll_ }
 
     public func seek(_ t: Double) { seek(frame: Int(((t.isFinite ? max(0, t) : 0) * project.sampleRate).rounded())) }
 
     public func seek(frame target: Int) {
+        resetMeters(stopped: false)
         lock.lock(); defer { lock.unlock() }
         seekGeneration += 1
         // A seek starts a new stream (the device was flushed, or the loop wrapped): nothing to fade from.
@@ -106,7 +124,7 @@ public final class GraphAudioSource: AudioRenderSource {
         arming = (target, version)
         lock.unlock()
         armQueue.async { [weak self] in
-            let r = AudioGraphRenderer(p)
+            let r = Self.liveRenderer(p)
             var left = target
             while left > 0 {
                 let n = min(left, Self.preRollChunk); _ = r.render(n); left -= n
@@ -164,12 +182,12 @@ public final class GraphAudioSource: AudioRenderSource {
         }
         lock.unlock()
         let start = DispatchTime.now().uptimeNanoseconds
-        var fresh = AudioGraphRenderer(newProject)
+        var fresh = Self.liveRenderer(newProject)
         while true {
             if currentTicket() != ticket { return }
             lock.lock()
             let target = min(renderer.position, fresh.totalFrames), gen = seekGeneration
-            if target < fresh.position { lock.unlock(); fresh = AudioGraphRenderer(newProject); continue }   // seeked backward meanwhile
+            if target < fresh.position { lock.unlock(); fresh = Self.liveRenderer(newProject); continue }   // seeked backward meanwhile
             if target - fresh.position <= Self.swapCatchUpFrames {
                 var left = target - fresh.position
                 while left > 0 { let n = min(left, Self.preRollChunk); _ = fresh.render(n); left -= n }
@@ -197,7 +215,7 @@ public final class GraphAudioSource: AudioRenderSource {
 
     func preRoll(to target0: Int, fresh: Bool) {
         let start = DispatchTime.now().uptimeNanoseconds
-        if fresh { renderer = AudioGraphRenderer(project) }
+        if fresh { renderer = Self.liveRenderer(project) }
         let from = renderer.position
         let target = max(from, min(target0, renderer.totalFrames))
         var left = target - from
@@ -250,13 +268,14 @@ public final class GraphAudioSource: AudioRenderSource {
     }
 
     public func render(frames: Int) -> [Float] {
+        meterLock.lock(); let generation = meterGeneration; meterLock.unlock()
         lock.lock()
-        renderer.collectsMeters = true
         var out = renderer.render(frames)
-        renderer.collectsMeters = false
         if out.count < frames * 2 { out += [Float](repeating: 0, count: frames * 2 - out.count) } // past the end: silence
         if fadingOut != nil { crossfadeFromOldGraph(&out, frames) }
-        meterLock.lock(); liveMeters = renderer.meters; meterLock.unlock()
+        meterLock.lock()
+        if generation == meterGeneration && !metersStopped { liveMeters = renderer.meters }
+        meterLock.unlock()
         renderedSinceSeek = true
         lock.unlock()
         applyTransportGain(&out, frames)
