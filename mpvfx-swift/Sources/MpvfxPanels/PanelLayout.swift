@@ -87,6 +87,8 @@ public struct PanelPreferences: Codable, Equatable, Sendable {
     public var timelineHeight: Double?
     /// What the Grade scopes read (`clip` | `program`); nothing saved is `clip`.
     public var scopeSource: ColorScopes.Source?
+    /// The dockable Scopes panel's selected scope; unknown future names fall back without discarding the layout.
+    public var scopePanelKind: String?
     public init() {}
 }
 
