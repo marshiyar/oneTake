@@ -57,7 +57,10 @@ extension KeyframeEasingPanel {
         let plot = box.insetBy(14)
         let ease = drag.flatMap { d -> NativeInterpolation? in if case .curveHandle(_, let p) = d { return .cubicBezier(p) }; return nil } ?? v ?? .linear
         let lo = min(0, curvePoints(v).map { min($0.y1, $0.y2) } ?? 0), hi = max(1, curvePoints(v).map { max($0.y1, $0.y2) } ?? 1)
-        func pt(_ x: Double, _ y: Double) -> CanvasPoint { CanvasPoint(plot.x + x * plot.width, plot.maxY - (y - lo) / (hi - lo) * plot.height) }
+        let range = frozenCurveRange ?? lo...hi
+        func pt(_ x: Double, _ y: Double) -> CanvasPoint {
+            CanvasPoint(plot.x + x * plot.width, plot.maxY - (y - range.lowerBound) / (range.upperBound - range.lowerBound) * plot.height)
+        }
         var line = CanvasPath()
         for i in 0...48 { let x = Double(i) / 48; let p = pt(x, KeyframeEase.progress(ease, at: x)); if i == 0 { line.move(to: p) } else { line.line(to: p) } }
         c.stroke(line, PanelTheme.accent, StrokeStyle(width: 1.5))
@@ -70,7 +73,7 @@ extension KeyframeEasingPanel {
                 hits.add(CanvasRect(x: h.x - 7, y: h.y - 7, width: 14, height: 14), .curveHandle(i + 1))
             }
         }
-        curveBox = (plot, lo...hi)
+        curveBox = (plot, range)
         drawPreview(c, CanvasRect(x: box.maxX + 10, y: r.y, width: max(0, r.maxX - box.maxX - 10), height: r.height), ease)
         return r.maxY
     }
@@ -112,7 +115,8 @@ extension KeyframeEasingPanel {
             place("\(p.name)  ×", .customPreset(p.id), active: current == p.outgoing)
             hits.add(CanvasRect(x: x - 4 - 18, y: y, width: 18, height: Self.rowH), .deletePreset(p.id))
         }
-        if field?.key == "presetName" {
+        if field?.key == "presetName" {   // wraps like a chip, so the field is never squeezed off the row
+            if x + 140 > maxX, x > r.x + Self.pad { x = r.x + Self.pad; y += Self.rowH + 4 }
             drawField(c, CanvasRect(x: x, y: y, width: min(140, maxX - x), height: Self.rowH), key: "presetName", text: "")
             x += 144
         } else {

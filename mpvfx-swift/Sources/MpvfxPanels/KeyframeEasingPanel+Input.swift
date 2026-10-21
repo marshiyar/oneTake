@@ -22,6 +22,7 @@ extension KeyframeEasingPanel {
     @discardableResult
     public func pointerDown(_ p: CanvasPoint) -> Bool {
         if dropdown.pointerDown(p) { return true }
+        guard bounds.contains(p) else { return false }   // a control scrolled out of view is not pressed
         let hit = hits.hit(p)
         if field != nil, case .field(let k)? = hit, k == field?.key { return true }
         commitField()
@@ -36,8 +37,8 @@ extension KeyframeEasingPanel {
         switch hit {
         case .copy: state.copy(editor, t)
         case .paste: edited(state.paste(editor, t))
-        case .speedHandle(let side): drag = speedDragStart(side, editor, t)
-        case .curveHandle(let i): drag = curvePoints(current).map { .curveHandle(i, $0) }
+        case .speedHandle(let side): drag = speedDragStart(side, editor, t); frozenSpeedRange = graphBox?.values
+        case .curveHandle(let i): drag = curvePoints(current).map { .curveHandle(i, $0) }; frozenCurveRange = curveBox?.range
         case .preset(let key): Self.presets.first { $0.key == key }.map { edited(KeyframeEasing.apply(editor, t, $0.value)) }
         case .customPreset(let id): editor.easingPresets.first { $0.id == id }.map { edited(KeyframeEasing.apply(editor, t, $0.outgoing)) }
         case .deletePreset(let id): edited(editor.deleteEasingPreset(id: id))
@@ -106,7 +107,7 @@ extension KeyframeEasingPanel {
 
     public func pointerUp(_ p: CanvasPoint) {
         guard let d = drag else { return }
-        drag = nil
+        drag = nil; frozenSpeedRange = nil; frozenCurveRange = nil
         guard let editor, let t = target else { return }
         switch d {
         case .pan: break
@@ -117,11 +118,16 @@ extension KeyframeEasingPanel {
         }
     }
 
-    /// The wheel over the graph: pan, or zoom with the command key. False elsewhere.
+    /// The wheel: over the graph it pans (zooms with the command key); elsewhere it scrolls a column taller than
+    /// the panel. False when nothing moves.
     @discardableResult
     public func scroll(_ p: CanvasPoint, dy: Double, zoom: Bool) -> Bool {
-        guard let b = graphBox, b.plot.insetBy(-8).contains(p) else { return false }
-        scrollGraph(dy: dy, zoom: zoom)
+        if let b = graphBox, b.plot.insetBy(-8).contains(p) {
+            scrollGraph(dy: dy, zoom: zoom)
+            return true
+        }
+        guard bounds.contains(p), maxScroll > 0 else { return false }
+        scrollY = min(maxScroll, max(0, scrollY + dy))
         return true
     }
 

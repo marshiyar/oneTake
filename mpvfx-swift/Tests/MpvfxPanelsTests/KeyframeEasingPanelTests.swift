@@ -60,7 +60,7 @@ final class KeyframeEasingPanelTests: XCTestCase {
         XCTAssertEqual(KeyframeEasingPanel.dock.id, "keyframe-easing")
         XCTAssertEqual(KeyframeEasingPanel.dock.title, "Keyframe Easing")
         XCTAssertEqual(KeyframeEasingPanel.dock.defaultEdge, .bottom)
-        XCTAssertEqual(KeyframeEasingPanel.dock.minimumSize, CanvasSize(360, 220))
+        XCTAssertEqual(KeyframeEasingPanel.dock.minimumSize, CanvasSize(360, 300))
     }
 
     func testEmptyStateWithoutAClip() throws {
@@ -204,5 +204,62 @@ final class KeyframeEasingPanelTests: XCTestCase {
         XCTAssertEqual(asked, 1); XCTAssertNotNil(p.previewPhase)
         XCTAssertTrue(p.tick(0.6)); XCTAssertFalse(p.tick(0.7))
         XCTAssertNil(p.previewPhase); XCTAssertFalse(p.tick(0.1), "at rest it asks for no frames")
+    }
+
+    func testSpeedHandleRangeStaysFixedWhileDragging() throws {
+        let (p, _) = try make()
+        p.pointerDown(try center(p, .speedHandle(.out)))
+        let b = try XCTUnwrap(p.graphBox), high = CanvasPoint(b.plot.midX, b.plot.y - 30)
+        var seen: [KeyframeEasingPanel.Drag?] = []
+        for _ in 0..<4 { p.pointerMove(high); draw(p); seen.append(p.drag) }
+        XCTAssertEqual(Set(seen.map { "\(String(describing: $0))" }).count, 1, "the same pointer position keeps the same speed")
+        p.pointerUp(high)
+        XCTAssertNil(p.frozenSpeedRange)
+    }
+
+    func testCurveHandleRangeStaysFixedWhileDragging() throws {
+        let (p, _) = try make()
+        p.pointerDown(try center(p, .curveHandle(1)))
+        let plot = try XCTUnwrap(p.curveBox?.plot), above = CanvasPoint(plot.midX, plot.y - 40)
+        var heights: [Double] = []
+        for _ in 0..<4 {
+            p.pointerMove(above); draw(p)
+            if case .curveHandle(_, let q)? = p.drag { heights.append(q.y1) }
+        }
+        XCTAssertEqual(heights.count, 4); XCTAssertEqual(Set(heights).count, 1, "Y1 does not drift while the pointer stays put")
+        p.pointerUp(above)
+        XCTAssertNil(p.frozenCurveRange)
+    }
+
+    func testANegativeEndSpeedStaysOnTheSpeedAxis() throws {
+        let (p, e) = try make()
+        XCTAssertTrue(e.setOutgoing([(ref(0), .cubicBezier(.init(x1: 0.3, y1: -0.5, x2: 0.7, y2: 1)))]))
+        draw(p)
+        let b = try XCTUnwrap(p.graphBox), h = try XCTUnwrap(p.hits.rect { $0 == .speedHandle(.out) })
+        XCTAssertLessThan(b.values.lowerBound, 0, "the axis reaches below 0")
+        XCTAssertTrue(b.plot.insetBy(-1).contains(CanvasPoint(h.midX, h.midY)), "the backwards handle is drawn inside the plot")
+    }
+
+    func testPresetNameFieldWrapsLikeAChip() throws {
+        let (p, e) = try make()
+        for name in ["A long preset name", "Another long one", "Third"] { XCTAssertNotNil(e.saveEasingPreset(name: name, outgoing: .linear)) }
+        draw(p)
+        try click(p, .savePreset)
+        let f = try XCTUnwrap(p.hits.rect { $0 == .field("presetName") })
+        XCTAssertGreaterThanOrEqual(f.width, 100, "the name field keeps its width")
+        XCTAssertLessThanOrEqual(f.maxX, box.maxX - KeyframeEasingPanel.pad + 0.5)
+    }
+
+    func testEveryControlIsReachableAtTheMinimumSize() throws {
+        let (p, _) = try make()
+        let small = CanvasRect(x: 0, y: 0, width: KeyframeEasingPanel.dock.minimumSize.width, height: KeyframeEasingPanel.dock.minimumSize.height)
+        p.draw(PanelMeasureCanvas(), in: small)
+        XCTAssertGreaterThan(p.maxScroll, 0, "the column is taller than the panel")
+        XCTAssertFalse(p.pointerDown(CanvasPoint(10, small.maxY + 50)), "a control below the panel is not pressed")
+        XCTAssertTrue(p.scroll(CanvasPoint(small.midX, small.maxY - 4), dy: 10_000, zoom: false))
+        p.draw(PanelMeasureCanvas(), in: small)
+        let last = try XCTUnwrap(p.hits.rect { $0 == .field("inVelocity") }, "a linear key: In speed is the last control")
+        XCTAssertTrue(small.contains(CanvasPoint(last.midX, last.midY)), "scrolled to the end, the last field is in view")
+        XCTAssertEqual(p.scrollY, p.maxScroll)
     }
 }

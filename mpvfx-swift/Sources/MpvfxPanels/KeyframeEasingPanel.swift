@@ -29,7 +29,7 @@ public final class KeyframeEasingPanel {
         public enum Edge: String, Sendable { case bottom, right, left }
         public let id: String, title: String, defaultEdge: Edge, minimumSize: CanvasSize
     }
-    public static let dock = Dock(id: "keyframe-easing", title: "Keyframe Easing", defaultEdge: .bottom, minimumSize: CanvasSize(360, 220))
+    public static let dock = Dock(id: "keyframe-easing", title: "Keyframe Easing", defaultEdge: .bottom, minimumSize: CanvasSize(360, 300))
 
     public enum Hit: Equatable {
         case property, graphMode(KeyframeEasingState.Graph), zoomIn, zoomOut, fit, copy, paste
@@ -60,6 +60,13 @@ public final class KeyframeEasingPanel {
     var graphBox: GraphBox?
     /// Last draw's segment-curve plot and its value range, for the handle drags.
     var curveBox: (plot: CanvasRect, range: ClosedRange<Double>)?
+    /// Value ranges captured when a handle drag starts, so the pointer maps through one scale until release
+    /// (a range that followed the handle would make it run away from the pointer).
+    var frozenSpeedRange: ClosedRange<Double>?
+    var frozenCurveRange: ClosedRange<Double>?
+    /// The tab layout scrolls when its column is taller than the panel (`contentHeight` from the last draw).
+    var scrollY = 0.0
+    var contentHeight = 0.0
 
     enum Drag: Equatable {
         case curveHandle(Int, CubicBezierControlPoints)
@@ -95,8 +102,14 @@ public final class KeyframeEasingPanel {
         c.withState {
             c.clip(r)
             guard let editor, let t = target else { return drawEmpty(c, r) }
-            let y = drawHeader(c, r, editor, t)
-            if r.width >= Self.wideLayout { drawWide(c, r, top: y, editor, t) } else { drawNarrow(c, r, top: y, editor, t) }
+            if r.width >= Self.wideLayout {
+                scrollY = 0
+                drawWide(c, r, top: drawHeader(c, r, editor, t), editor, t)
+            } else {
+                let shifted = CanvasRect(x: r.x, y: r.y - scrollY, width: r.width, height: r.height)
+                contentHeight = drawNarrow(c, shifted, top: drawHeader(c, shifted, editor, t), editor, t) + Self.pad - shifted.y
+                scrollY = min(scrollY, maxScroll)
+            }
         }
         dropdown.draw(c)
     }
@@ -112,12 +125,15 @@ public final class KeyframeEasingPanel {
     }
 
     /// The right panel's tab: everything in one column under a graph that takes about a third of the height.
-    func drawNarrow(_ c: CanvasContext, _ r: CanvasRect, top: Double, _ editor: TimelineEditor, _ t: KeyframeEasingTarget) {
+    /// Returns the bottom of the column.
+    func drawNarrow(_ c: CanvasContext, _ r: CanvasRect, top: Double, _ editor: TimelineEditor, _ t: KeyframeEasingTarget) -> Double {
         let gh = min(320, max(120, (r.maxY - top) * 0.36))
         drawGraph(c, CanvasRect(x: r.x + Self.pad, y: top, width: r.width - 2 * Self.pad, height: gh), editor, t)
         let y = drawCurveAndPresets(c, CanvasRect(x: r.x, y: top + gh + 8, width: r.width, height: r.maxY - top - gh - 8), editor, t)
-        _ = drawNumbersAndNotes(c, CanvasRect(x: r.x, y: y, width: r.width, height: max(0, r.maxY - y)), editor, t)
+        return drawNumbersAndNotes(c, CanvasRect(x: r.x, y: y, width: r.width, height: max(0, r.maxY - y)), editor, t)
     }
+
+    var maxScroll: Double { max(0, contentHeight - bounds.height) }
 
     func drawEmpty(_ c: CanvasContext, _ r: CanvasRect) {
         let lines = ["No keyframes to ease", "Select a clip with keyframes, or keys on the timeline."]

@@ -28,7 +28,7 @@ extension KeyframeEasingPanel {
         let frames = visibleFrames(s)
         let handles = state.graph == .speed ? speedHandles(editor, t) : []
         let series = state.graph == .value ? (0..<(s.values.first?.count ?? 0)).map { d in s.values.map { $0[d] } } : [s.speeds]
-        let values = valueRange(series.flatMap { $0 } + handles.map(\.velocity))
+        let values = frozenSpeedRange.flatMap { state.graph == .speed ? $0 : nil } ?? valueRange(series.flatMap { $0 } + handles.map(\.velocity))
         let box = GraphBox(plot: plot, frames: frames, values: values)
         graphBox = box
         drawAxisText(c, r, t, values)
@@ -43,19 +43,21 @@ extension KeyframeEasingPanel {
 
     /// The shown frame range: the keyed range, narrowed by zoom and moved by pan.
     func visibleFrames(_ s: KeyframeEasingGraph.Samples) -> ClosedRange<Double> {
-        let first = s.keyFrames.first ?? s.firstFrame, last = max(first + 1, s.keyFrames.last ?? first + 1)
+        let first = s.keyFrames.first ?? s.frames.first ?? 0, last = max(first + 1, s.keyFrames.last ?? first + 1)
         let span = (last - first) / state.zoom, start = first + state.pan * (last - first)
         return start...(start + span)
     }
 
-    /// Values padded by 8 % (a flat line gets ±1 so it sits in the middle); speed graphs start at 0.
+    /// Values padded by 8 % (a flat line gets ±1 so it sits in the middle). Speed graphs start at 0 unless a
+    /// handle runs backwards (an overshoot curve's negative end speed), which then shows below the axis.
     func valueRange(_ v: [Double]) -> ClosedRange<Double> {
         let finite = v.filter(\.isFinite)
         var lo = finite.min() ?? 0, hi = finite.max() ?? 1
-        if state.graph == .speed { lo = 0 }
-        if hi - lo < 1e-9 { lo -= 1; hi += 1 }
+        let speed = state.graph == .speed
+        if speed { lo = min(0, lo) }
+        if hi - lo < 1e-9 { lo -= speed && lo == 0 ? 0 : 1; hi += 1 }
         let pad = (hi - lo) * 0.08
-        return (state.graph == .speed ? lo : lo - pad)...(hi + pad)
+        return (speed && lo == 0 ? 0 : lo - pad)...(hi + pad)
     }
 
     static func seriesColor(_ i: Int) -> CanvasColor {
@@ -81,7 +83,7 @@ extension KeyframeEasingPanel {
     func drawSeries(_ c: CanvasContext, _ b: GraphBox, _ s: KeyframeEasingGraph.Samples, _ line: [Double], color: CanvasColor) {
         var path = CanvasPath()
         for (i, v) in line.enumerated() {
-            let p = point(b, frame: s.firstFrame + Double(i) * s.step, value: v)
+            let p = point(b, frame: s.frames[i], value: v)
             if i == 0 { path.move(to: p) } else { path.line(to: p) }
         }
         c.stroke(path, color, StrokeStyle(width: 1.5))
@@ -142,7 +144,7 @@ extension KeyframeEasingPanel {
         let len = max(1, next.frame - f.frame)
         let influence = side == .out ? (frame - f.frame) / len : (next.frame - frame) / len
         let velocity = b.values.lowerBound + (b.plot.maxY - p.y) / max(1, b.plot.height) * (b.values.upperBound - b.values.lowerBound)
-        return (min(1, max(KeyframeEase.influenceRange.lowerBound, influence)), max(0, velocity))
+        return (min(1, max(KeyframeEase.influenceRange.lowerBound, influence)), velocity)
     }
 
     /// ⌘-scroll zooms around the shown range's middle, plain scroll pans; both stay inside the keyed range.
