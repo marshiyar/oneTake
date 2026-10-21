@@ -82,6 +82,15 @@ final class KeyframeEasingModelTests: XCTestCase {
         XCTAssertEqual(e.undoStack.count, undo + 1)
     }
 
+    func testEditingOneSideKeepsTheOtherSideExactly() throws {
+        let e = try make()
+        XCTAssertTrue(e.setOutgoing([(ref(rot, 0), .cubicBezier(.init(x1: 0.42, y1: 0, x2: 1, y2: 2.5)))]))
+        XCTAssertTrue(KeyframeEasing.setSide(e, try target(e, [ref(rot, 0)]), .out, influence: 0.25, velocity: nil))
+        guard case .cubicBezier(let p)? = e.outgoing(ref(rot, 0)) else { return XCTFail("not a curve") }
+        XCTAssertEqual(p.x1, 0.25); XCTAssertEqual(p.y1, 0)
+        XCTAssertEqual(p.x2, 1, "x2 is not pulled to the 0.1 % reach"); XCTAssertEqual(p.y2, 2.5, "y2 is not clamped")
+    }
+
     func testInfluenceIsSetOnEveryKeyAndVelocityPerSegment() throws {
         let e = try make()
         // Rotation 0 → 90° over 30 frames at 30 fps: the linear speed is 90°/s.
@@ -101,7 +110,7 @@ final class KeyframeEasingModelTests: XCTestCase {
     func testGraphSamplesAreTheEngineValues() throws {
         let e = try make()
         let g = try XCTUnwrap(KeyframeEasingGraph.samples(e, try target(e, [ref(rot, 0)])))
-        XCTAssertEqual(g.firstFrame, 0); XCTAssertEqual(g.step, 1); XCTAssertEqual(g.values.count, 31)
+        XCTAssertEqual(g.frames.first, 0); XCTAssertEqual(g.frames, (0...30).map(Double.init)); XCTAssertEqual(g.values.count, 31)
         XCTAssertEqual(g.values[15], [45], "linear halfway"); XCTAssertEqual(g.values[30], [90])
         XCTAssertEqual(g.speeds[15], 90, accuracy: 1e-9, "degrees per second")
         XCTAssertTrue(KeyframeEasing.apply(e, try target(e, [ref(rot, 0)]), .cubicBezier(.init(x1: 0.42, y1: 0, x2: 0.58, y2: 1))))
@@ -115,6 +124,11 @@ final class KeyframeEasingModelTests: XCTestCase {
         XCTAssertTrue(upsert(e, rot, frame: 179, .number(0)))
         let g = try XCTUnwrap(KeyframeEasingGraph.samples(e, try target(e, [ref(rot, 0)]), maxSamples: 40))
         XCTAssertLessThanOrEqual(g.values.count, 41); XCTAssertEqual(g.values.count, g.speeds.count)
-        XCTAssertEqual(g.firstFrame + g.step * Double(g.values.count - 1), 179, accuracy: g.step, "covers the keyed range")
+        XCTAssertEqual(g.frames.count, g.values.count)
+        XCTAssertEqual(g.frames.last, 179, "the last sample is the last key, not past it")
+        let gap = try XCTUnwrap(g.frames.last) - g.frames[g.frames.count - 2]
+        XCTAssertLessThan(gap, g.frames[1] - g.frames[0], "the shortened final gap is kept")
+        // Rotation 90° → 0° over frames 30…179 is linear: the speed at the end key is that segment's speed.
+        XCTAssertEqual(try XCTUnwrap(g.speeds.last), 90 / (149.0 / 30), accuracy: 1e-6)
     }
 }

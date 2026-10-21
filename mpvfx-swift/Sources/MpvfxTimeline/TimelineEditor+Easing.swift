@@ -50,7 +50,7 @@ public extension TimelineEditor {
             if next[r] == nil { order.append(r) }
             next[r] = KeyframeEase.easyEase(cur, out: o, in: i)
         }
-        for r in refs.sorted(by: { ($0.parameterId, $0.frame) < ($1.parameterId, $1.frame) }) {
+        for r in refs.sorted(by: { $0.parameterId != $1.parameterId ? $0.parameterId < $1.parameterId : $0.frame < $1.frame }) {
             if out, nextKeyframe(r) != nil { ease(r, out: true, in: false) }
             if inSide, let prev = previousKeyframe(r) { ease(prev, out: false, in: true) }
         }
