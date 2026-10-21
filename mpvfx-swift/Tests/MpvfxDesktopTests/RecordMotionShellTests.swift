@@ -18,6 +18,7 @@ import MpvfxCanvas
 import MpvfxPanels
 import MpvfxPlayer
 import MpvfxTheme
+import MpvfxTimeline
 @testable import MpvfxDesktop
 
 /// Record motion in the whole editor at 1440×900: one take is one "Record motion" undo step, and the armed and
@@ -128,6 +129,33 @@ final class RecordMotionShellTests: XCTestCase {
             XCTAssertGreaterThan(redness, 15, "\(mode) the armed control is red-tinted: \(fill)", file: file, line: line)
         }
         XCTAssertEqual(v.recordOverlay?.state, recording ? .recording : .ready, file: file, line: line)
+    }
+
+    func testEscapeFromTheTimelineDisarmsRecord() throws {
+        let s = try makeSession()
+        try render(s, "record-setup")
+        _ = try selectLayer(s)
+        let timeline = try XCTUnwrap(s.shellInputs.first { $0 is TimelineInput })
+        XCTAssertTrue(timeline.keyDown(EditorKey(.char("r"))), "R arms from the timeline's focus")
+        XCTAssertTrue(s.player.isRecordArmed)
+        XCTAssertTrue(timeline.keyDown(EditorKey(.escape)))
+        XCTAssertFalse(s.player.isRecordArmed, "the timeline does not swallow Record's Esc")
+    }
+
+    func testTheArmedStateShowsOnTheRecordControl() throws {
+        let s = try makeSession()
+        try render(s, "record-setup")
+        _ = try selectLayer(s)
+        let v = s.player.view
+        let control = try XCTUnwrap(v.toolbar.layout(width: s.player.size.width, cropAvailable: v.cropAvailable, cropActive: false, s.player.measure)
+            .first { $0.0 == .record }?.1)
+        let origin = try XCTUnwrap(s.shell?.frames?.player)
+        let probe = (x: Int(origin.x + control.x + control.width - 3), y: Int(origin.y + control.y + control.height / 2))
+        let idle = try render(s, "record-idle").pixel(probe.x, probe.y)
+        s.player.toggleRecording()
+        let armed = try render(s, "record-armed").pixel(probe.x, probe.y)
+        XCTAssertLessThan(abs(Int(idle.r) - Int(idle.g)), 10, "idle control is neutral: \(idle)")
+        XCTAssertGreaterThan(Int(armed.r) - Int(armed.g), 15, "armed control is red-tinted: \(armed)")
     }
 }
 #endif

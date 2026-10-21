@@ -63,6 +63,13 @@ extension PlayerController {
         refreshRecordOverlay(); needsDisplay?()
     }
 
+    /// Esc for Record from any focus: hosts call it before panels that consume Esc (the timeline does), so Esc
+    /// cancels a take or disarms wherever the focus is. Returns whether Record used the key.
+    public func recordEscapeKey(_ k: EditorKey) -> Bool {
+        guard k.code == .escape, !k.command, !k.alt else { return false }
+        return recordEscape()
+    }
+
     /// Esc: cancels the take in progress, else disarms. Returns whether Record used the key.
     func recordEscape() -> Bool {
         if recorder != nil { cancelTake(); return true }
@@ -158,7 +165,7 @@ extension PlayerController {
             view.showToast("This layer can't be keyframed, so it can't be recorded", isError: true); return
         }
         recorder = GestureRecorder(clipId: e.id, startTime: start, fps: pb.fps, base: base, viewScale: view.scale(in: size),
-                                   pointer: p, anchored: true)
+                                   pointer: p, anchored: true, modifiers: modifiers)
         recordingStart = e
         recordingProjectId = doc.id
         pressPoint = p; dragEngaged = false
@@ -176,10 +183,14 @@ extension PlayerController {
         recorder?.pointerMoved(p, modifiers: modifiers)
     }
 
-    /// Release, pause or the clip's end: a take that moved is committed, a press that never moved writes nothing.
+    /// Release, pause or the clip's end: a take that moved (or used the wheel) is committed with its final pointer
+    /// state; a press that never moved writes nothing.
     func finishTake() {
-        guard recorder != nil else { return }
-        if dragEngaged { stopRecording(commit: true); return }
+        guard let r = recorder else { return }
+        if dragEngaged {
+            recorder?.finish(time: max(0, view.playback.currentTime - r.startTime))
+            stopRecording(commit: true); return
+        }
         stopRecording(commit: false)
         view.showToast("Nothing recorded: hold the button and drag the layer")
     }
