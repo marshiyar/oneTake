@@ -102,52 +102,76 @@ def path_token(token):
     return None
 
 
+def check_code_path(span, got, md_dir, where, findings, warnings, seen):
+    rel, last = got
+    seen["paths"] += 1
+    hit = resolves(md_dir, rel)
+    if not hit:
+        findings.append(f"{where}: path `{rel}` does not exist (from the root, {APP}/ or {md_dir or '.'}/)")
+        return
+    if not (last and os.path.isfile(hit)):
+        return
+    with open(hit, "rb") as fh:
+        count = fh.read().count(b"\n")
+    if last > count:
+        warnings.append(f"{where}: `{span}` points past the end of {os.path.relpath(hit, ROOT)} ({count} lines)")
+
+
+def check_code_spans(line, md_dir, where, basenames, findings, warnings, seen):
+    source_name = r"[\w.+-]+(" + "|".join(re.escape(e) for e in SOURCE_EXT) + r")"
+    for span in CODE_SPAN.findall(line):
+        got = path_token(span)
+        if got:
+            check_code_path(span, got, md_dir, where, findings, warnings, seen)
+        elif re.fullmatch(source_name, span.strip()):
+            seen["names"] += 1
+            if span.strip() not in basenames:
+                findings.append(f"{where}: file name `{span.strip()}` is not the name of any tracked file")
+
+
+def check_link(target, md_dir, where, findings, issues, seen):
+    rel_issue = re.search(r"(?:^|/)(?:issues|pull)/(\d+)$", target.split("#", 1)[0])
+    has_scheme = re.match(r"^[a-z][a-z0-9+.-]*:", target)
+    if rel_issue and not has_scheme:
+        issues.append((None, int(rel_issue.group(1)), where))
+        return
+    if has_scheme or target.startswith("#"):
+        match = ISSUE_URL.search(target)
+        if match:
+            issues.append((match.group(1), int(match.group(2)), where))
+        return
+    rel = target.split("#", 1)[0]
+    seen["links"] += 1 if rel else 0
+    if rel and not os.path.exists(os.path.normpath(os.path.join(ROOT, md_dir, rel))):
+        findings.append(f"{where}: link target `{target}` does not exist")
+
+
+def check_links(line, md_dir, where, findings, issues, seen):
+    for target in LINK.findall(line) + LINK_DEF.findall(line):
+        check_link(target, md_dir, where, findings, issues, seen)
+
+
+def collect_issue_references(line, where, issues):
+    bare = CODE_SPAN.sub("", LINK.sub("", line))
+    if not HEX_COLOUR.search(bare):
+        for num in BARE_ISSUE.findall(bare):
+            issues.append((None, int(num), where))
+    prose = CODE_SPAN.sub("", LINK.sub("", line)) if not LINK_DEF.match(line) else ""
+    for url in ISSUE_URL.finditer(prose):
+        issues.append((url.group(1), int(url.group(2)), where))
+    for num in REL_ISSUE.findall(ISSUE_URL.sub("", prose)):
+        issues.append((None, int(num), where))
+
+
 def check_file(md, basenames, findings, warnings, issues, seen):
     md_dir = os.path.dirname(md)
-    with open(os.path.join(ROOT, md), encoding="utf-8") as f:
-        lines = strip_fences(f.read())
-    for n, line in enumerate(lines, 1):
-        where = f"{md}:{n}"
-        for span in CODE_SPAN.findall(line):
-            got = path_token(span)
-            if got:
-                rel, last = got
-                seen["paths"] += 1
-                hit = resolves(md_dir, rel)
-                if not hit:
-                    findings.append(f"{where}: path `{rel}` does not exist (from the root, {APP}/ or {md_dir or '.'}/)")
-                elif last and os.path.isfile(hit):
-                    with open(hit, "rb") as fh:
-                        count = fh.read().count(b"\n")
-                    if last > count:
-                        warnings.append(f"{where}: `{span}` points past the end of {os.path.relpath(hit, ROOT)} ({count} lines)")
-            elif re.fullmatch(r"[\w.+-]+(" + "|".join(re.escape(e) for e in SOURCE_EXT) + r")", span.strip()):
-                seen["names"] += 1
-                if span.strip() not in basenames:
-                    findings.append(f"{where}: file name `{span.strip()}` is not the name of any tracked file")
-        for target in LINK.findall(line) + LINK_DEF.findall(line):
-            rel_issue = re.search(r"(?:^|/)(?:issues|pull)/(\d+)$", target.split("#", 1)[0])
-            if rel_issue and not re.match(r"^[a-z][a-z0-9+.-]*:", target):
-                issues.append((None, int(rel_issue.group(1)), where))
-                continue
-            if re.match(r"^[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
-                m = ISSUE_URL.search(target)
-                if m:
-                    issues.append((m.group(1), int(m.group(2)), where))
-                continue
-            rel = target.split("#", 1)[0]
-            seen["links"] += 1 if rel else 0
-            if rel and not os.path.exists(os.path.normpath(os.path.join(ROOT, md_dir, rel))):
-                findings.append(f"{where}: link target `{target}` does not exist")
-        bare = CODE_SPAN.sub("", LINK.sub("", line))   # a link carries its number in its URL, read below
-        if not HEX_COLOUR.search(bare):
-            for num in BARE_ISSUE.findall(bare):
-                issues.append((None, int(num), where))
-        prose = CODE_SPAN.sub("", LINK.sub("", line)) if not LINK_DEF.match(line) else ""
-        for url in ISSUE_URL.finditer(prose):
-            issues.append((url.group(1), int(url.group(2)), where))
-        for num in REL_ISSUE.findall(ISSUE_URL.sub("", prose)):
-            issues.append((None, int(num), where))
+    with open(os.path.join(ROOT, md), encoding="utf-8") as source:
+        lines = strip_fences(source.read())
+    for number, line in enumerate(lines, 1):
+        where = f"{md}:{number}"
+        check_code_spans(line, md_dir, where, basenames, findings, warnings, seen)
+        check_links(line, md_dir, where, findings, issues, seen)
+        collect_issue_references(line, where, issues)
 
 
 def known_numbers(repo):
@@ -159,33 +183,59 @@ def known_numbers(repo):
     return {int(x) for x in out.stdout.split()}
 
 
-def main():
+def parse_args():
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("files", nargs="*", help="Markdown files relative to the repository root (default: every tracked *.md)")
     ap.add_argument("--offline", action="store_true", help="do not check issue and pull request numbers")
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "marshiyar/oneTake"))
-    args = ap.parse_args()
-    tracked = tracked_files()
-    basenames = {os.path.basename(p) for p in tracked}
-    files = args.files or [p for p in tracked if p.endswith(".md") and not p.startswith(SKIP_DIRS)]
-    findings, warnings, issues, seen = [], [], [], {"paths": 0, "names": 0, "links": 0}
+    return ap.parse_args()
+
+
+def discover_files(args, tracked):
+    return args.files or [p for p in tracked if p.endswith(".md") and not p.startswith(SKIP_DIRS)]
+
+
+def check_files(files, basenames):
+    findings, warnings, issues = [], [], []
+    seen = {"paths": 0, "names": 0, "links": 0}
     for md in files:
         if not os.path.isfile(os.path.join(ROOT, md)):
             print(f"doc_refs: no such file {md}", file=sys.stderr)
-            return 2
+            return None
         check_file(md, basenames, findings, warnings, issues, seen)
+    return findings, warnings, issues, seen
+
+
+def check_issues(args, issues, findings):
     own = [(n, where) for repo, n, where in issues if repo is None or repo.lower() == args.repo.lower()]
     if own and not args.offline:
         known = known_numbers(args.repo)
         findings += [f"{where}: #{n} is not an issue or pull request of {args.repo}" for n, where in own if n not in known]
-    for w in warnings:
-        print(f"warning: {w}")
-    for f in findings:
-        print(f"broken: {f}")
-    checked = "" if args.offline else f", {len(own)} issue references"
+    return own
+
+
+def report(args, files, findings, warnings, seen, issue_count):
+    for warning in warnings:
+        print(f"warning: {warning}")
+    for finding in findings:
+        print(f"broken: {finding}")
+    checked = "" if args.offline else f", {issue_count} issue references"
     print(f"doc_refs: {len(files)} files, {seen['paths']} paths, {seen['names']} file names, {seen['links']} links{checked}: "
           f"{len(findings)} broken, {len(warnings)} warnings")
     return 1 if findings else 0
+
+
+def main():
+    args = parse_args()
+    tracked = tracked_files()
+    basenames = {os.path.basename(p) for p in tracked}
+    files = discover_files(args, tracked)
+    result = check_files(files, basenames)
+    if result is None:
+        return 2
+    findings, warnings, issues, seen = result
+    own = check_issues(args, issues, findings)
+    return report(args, files, findings, warnings, seen, len(own))
 
 
 if __name__ == "__main__":
