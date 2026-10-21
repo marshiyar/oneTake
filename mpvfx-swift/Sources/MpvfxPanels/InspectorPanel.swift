@@ -473,6 +473,12 @@ public final class InspectorPanel {
         for r in allRows() { if case .slider(let s) = r.kind, s.key == key { return s } }
         return nil
     }
+    /// Hit key suffix of a slider's settings gear (`.keyframe("<slider key>#gear")`).
+    static let gearSuffix = "#gear"
+    /// A slider's settings gear shares the hit kind under its own key (Vignette and Grain also keyframe).
+    func keyframeOrGearHit(_ k: String) {
+        if k.hasSuffix(Self.gearSuffix), let st = slider(String(k.dropLast(Self.gearSuffix.count)))?.settings { st.toggle() } else { keyframe(k)?.toggle() }
+    }
     func keyframe(_ key: String) -> InspectorRow.Keyframe? { number(key)?.keyframe ?? slider(key)?.keyframe }
     func reset(_ key: String) -> (() -> Void)? { number(key)?.reset ?? slider(key)?.reset }
     func toggle(_ key: String) -> InspectorRow.Toggle? {
@@ -551,17 +557,13 @@ public final class InspectorPanel {
     /// The keyframe gutter: ◆ (a Finish row's gear sits on its hit), ‹ ›, and the stopwatch.
     func pressKeyframe(_ hit: Hit) -> Bool {
         switch hit {
-        case .keyframe(let k): pressDiamond(k)
+        case .keyframe(let k): keyframeOrGearHit(k)
         case .kfPrev(let k): keyframe(k)?.prev?()
         case .kfNext(let k): keyframe(k)?.next?()
         case .stopwatch(let k): keyframe(k)?.stopwatch()
         default: return false
         }
         return true
-    }
-
-    func pressDiamond(_ k: String) {
-        if let st = slider(k)?.settings { st.toggle() } else { keyframe(k)?.toggle() }
     }
 
     /// A press on a control: a toggle, segment, button, effect node or a bespoke row's part.

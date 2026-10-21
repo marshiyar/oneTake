@@ -69,7 +69,7 @@ extension InspectorPanel {
 
     static func sliderAccessories(_ s: InspectorRow.Slider) -> Accessories {
         let custom = s.tier == .explicitCustom && s.reset != nil
-        return Accessories(key: s.key, keyframe: s.settings == nil ? s.keyframe : nil, resetGlyph: custom, resetHit: custom)
+        return Accessories(key: s.key, keyframe: s.keyframe, resetGlyph: custom, resetHit: custom)
     }
 
     static func numberAccessories(_ n: InspectorRow.Number, hovering: Bool) -> Accessories {
@@ -334,16 +334,20 @@ extension InspectorPanel {
     /// FlatSlider: the grey label (rowLabel) in the label column; the track (2px bg-panel-hover line, a 1×4 text-5
     /// centre tick, a text-5 fill from the left only for a custom value; knob 7px text-4, 8px white when custom) from
     /// the control column to the mono value ending at the value edge, in the tier colour; then the reset cell and the
-    /// keyframe gutter, which holds a settings gear instead on the Finish rows. Stacked: the label line on top with the
+    /// keyframe gutter, with a separate settings gear on the Finish rows. Stacked: the label line on top with the
     /// accessories, the track and value below.
     func drawSlider(_ c: CanvasContext, _ r: CanvasRect, _ s: InspectorRow.Slider, stacked: Bool = false) {
         let lines = stacked ? Self.stackedLines(r) : (r, r)
-        if let st = s.settings { drawGear(c, line: lines.0, key: s.key, active: st.active) }
-        let edge = drawAccessories(c, line: lines.0, Self.sliderAccessories(s))
+        if let st = s.settings {
+            let gearLine = CanvasRect(x: lines.0.x, y: lines.0.y, width: lines.0.width - Self.keyframeGutter - PanelGrid.itemGap - PanelGrid.minTarget - PanelGrid.itemGap, height: lines.0.height)
+            drawGear(c, line: gearLine, key: s.key + Self.gearSuffix, active: st.active)
+        }
+        let gearSpace = s.settings == nil ? 0.0 : PanelGrid.minTarget + PanelGrid.itemGap
+        let edge = drawAccessories(c, line: lines.0, Self.sliderAccessories(s)) - gearSpace
         let cols = PanelGrid.columns(lines.0)
         let labelW = stacked ? max(0, edge - lines.0.x - PanelGrid.columnGap) : cols.label.width
         PanelDraw.text(c, s.label, in: CanvasRect(x: lines.0.x, y: lines.0.midY - 8.25, width: labelW, height: 16.5), font: Self.rowFont, color: s.tier.labelColor)
-        drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: stacked ? lines.1.maxX : Self.valueEdge(lines.1))
+        drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: stacked ? lines.1.maxX : edge)
     }
 
     /// The settings gear in the gutter's last cell.
