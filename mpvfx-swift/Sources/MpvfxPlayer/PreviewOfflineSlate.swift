@@ -22,20 +22,30 @@ extension PreviewPainter {
     static let offlineSlateTitle = CanvasColor(r: 0.97, g: 0.44, b: 0.44)
     static let offlineSlateText = CanvasColor(r: 0.85, g: 0.85, b: 0.85)
 
-    /// Draws an offline layer (kind .offline) with the layer's scale and rotation about its box centre.
+    /// Draws an offline layer (kind .offline) where its picture would be: the layer's scale and rotation about its box
+    /// centre, or its 3D transform (depth, tilt, lens) through the same projection as a decoded picture.
     public static func drawOffline(_ layer: PreviewLayer, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
         guard layer.isVisible else { return }
         let box = toView(layer.box, frame: frame, scale: s)
+        let slate = {
+            c.withState {
+                c.fill(.rect(box), offlineSlateFill.withAlpha(layer.opacity))
+                c.clip(box)
+                drawHatch(c, in: box, color: offlineSlateHatch.withAlpha(offlineSlateHatch.a * layer.opacity))
+                drawSlateText(c, layer.offlineFileName ?? "", in: box, opacity: layer.opacity)
+            }
+        }
+        guard layer.transform3D.isIdentity else {
+            draw3D(layer, layer.transform3D, box: box, frame: frame, scale: s, on: c, content: slate)
+            return
+        }
         let cx = box.x + box.width / 2, cy = box.y + box.height / 2
         c.withState {
             c.translate(cx, cy)
             if layer.rotation != 0 { c.rotate(layer.rotation * .pi / 180) }
             if layer.scaleX != 1 || layer.scaleY != 1 { c.scale(layer.scaleX, layer.scaleY) }
             c.translate(-cx, -cy)
-            c.fill(.rect(box), offlineSlateFill.withAlpha(layer.opacity))
-            c.clip(box)
-            drawHatch(c, in: box, color: offlineSlateHatch.withAlpha(offlineSlateHatch.a * layer.opacity))
-            drawSlateText(c, layer.offlineFileName ?? "", in: box, opacity: layer.opacity)
+            slate()
         }
     }
 

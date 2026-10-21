@@ -106,8 +106,8 @@ public struct PreviewComposition {
     public let fps: Double
     /// Visual clips, bottom-most first: those with a media file on disk, and offline ones (kind .offline).
     public let entries: [Entry]
-    /// Assets whose media file was missing when the composition was built. Each source is statted once per build,
-    /// never per frame; a rebuild after the file comes back clears its mark.
+    /// Assets (video, image and sound) whose media file was missing when the composition was built. Each source is
+    /// statted once per build, never per frame; a rebuild after the file comes back clears its mark.
     public let offlineAssetIds: Set<String>
     public let engine: KeyframeEngine?
 
@@ -157,7 +157,7 @@ public struct PreviewComposition {
     }
 
     /// Builds the entry of a video or image clip, statting each media file once per composition: a clip whose file is
-    /// missing becomes an offline entry and its asset is recorded in `offline`.
+    /// missing becomes an offline entry and its asset (sound-only ones too) is recorded in `offline`.
     struct MediaEntries {
         let document: NativeProjectDocument
         let projectDir: URL?
@@ -173,14 +173,23 @@ public struct PreviewComposition {
             self.sizePending = sizePending; self.fileExists = fileExists
         }
 
-        mutating func entry(_ clip: NativeProjectClip, asset: NativeProjectAsset, layer: Double) -> Entry? {
-            guard asset.kind == .video || asset.kind == .image, let src = asset.source, !src.isEmpty else { return nil }
+        /// Stats `asset`'s media file (once per path) and records the asset when it is missing. Returns the resolved
+        /// path and whether the file is there; nil for assets with no media file (elements, text).
+        mutating func check(_ asset: NativeProjectAsset) -> (path: String, present: Bool)? {
+            guard asset.kind == .video || asset.kind == .image || asset.kind == .audio, let src = asset.source, !src.isEmpty else { return nil }
             let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
             let present = exists[path] ?? fileExists(path)
             exists[path] = present
-            guard present else {
+            if !present { offline.insert(asset.id) }
+            return (path, present)
+        }
+
+        /// The entry of a video or image clip; sound-only clips are checked (so they are marked offline) but not drawn.
+        mutating func entry(_ clip: NativeProjectClip, asset: NativeProjectAsset, layer: Double) -> Entry? {
+            guard let found = check(asset), asset.kind != .audio, let src = asset.source else { return nil }
+            let path = found.path
+            guard found.present else {
                 // Missing media: a slate in the clip's box (the known natural size, else the default box).
-                offline.insert(asset.id)
                 return Entry(clip: laidOut(clip, asset), kind: .offline, path: path, layer: layer,
                              offlineFileName: URL(fileURLWithPath: src).lastPathComponent)
             }
@@ -193,6 +202,21 @@ public struct PreviewComposition {
         private func laidOut(_ clip: NativeProjectClip, _ asset: NativeProjectAsset) -> NativeProjectClip {
             nativeClipWithNaturalLayout(clip, natural: naturalSize(asset), canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
         }
+    }
+
+    /// Assets whose media file is missing, as a composition of `document` built now would report them, without building
+    /// one: what a session re-checks while the document is unchanged (a file deleted or restored outside the app).
+    public static func offlineAssetIds(document: NativeProjectDocument, projectDir: URL?,
+                                       fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> Set<String> {
+        let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var media = MediaEntries(document: document, projectDir: projectDir, naturalSize: { _ in nil }, sizePending: { _ in false },
+                                 fileExists: fileExists)
+        for track in document.sequence.tracks {
+            for clip in track.clips where !isHidden(track: track, clip: clip) {
+                if let asset = assets[clip.assetId] { _ = media.check(asset) }
+            }
+        }
+        return media.offline
     }
 
     /// Hidden tracks and hidden clips (the timeline eye toggle) are left out of the picture, as export leaves them out.

@@ -41,8 +41,9 @@ final class OfflineMediaTests: XCTestCase {
         let comp = PreviewComposition(document: doc, projectDir: URL(fileURLWithPath: "/proj"), engine: nil,
                                       fileExists: { statted.append($0); return !$0.hasSuffix("gone.mp4") })
         XCTAssertEqual(comp.offlineAssetIds, ["gone"])
-        XCTAssertEqual(Set(statted), ["/proj/a.mp4", "/proj/b.mp4", "/proj/i.jpg", "/proj/gone.mp4"],
-                       "every resolved visual source is statted; audio is not drawn")
+        XCTAssertEqual(Set(statted), ["/proj/a.mp4", "/proj/b.mp4", "/proj/i.jpg", "/proj/gone.mp4", "/proj/m.wav"],
+                       "every resolved media source is statted, sound included")
+        XCTAssertEqual(statted.count, Set(statted).count, "each file once")
         let afterBuild = statted.count
         for t in stride(from: 0.0, to: 4.0, by: 0.1) { _ = comp.layers(at: t) }
         XCTAssertEqual(statted.count, afterBuild, "drawing frames never stats a file")
@@ -83,6 +84,35 @@ final class OfflineMediaTests: XCTestCase {
             return XCTFail("an offline clip has no graded frame")
         }
         XCTAssertTrue(presets.isAvailable(clipId: "A"), "a clip with its file still previews")
+    }
+
+    func testAMissingSoundFileIsMarkedOfflineButNotDrawn() throws {
+        let doc = try PreviewCompositorTests.document()
+        let missing: (String) -> Bool = { !$0.hasSuffix("gone.mp4") && !$0.hasSuffix("m.wav") }
+        let comp = PreviewComposition(document: doc, projectDir: URL(fileURLWithPath: "/proj"), engine: nil, fileExists: missing)
+        XCTAssertEqual(comp.offlineAssetIds, ["gone", "m"], "the timeline marks the audio clip too")
+        XCTAssertFalse(comp.entries.contains { $0.clip.id == "M" }, "sound is never a stage layer")
+        XCTAssertEqual(PreviewComposition.offlineAssetIds(document: doc, projectDir: URL(fileURLWithPath: "/proj"), fileExists: missing),
+                       comp.offlineAssetIds, "the session's re-check agrees with a rebuild")
+    }
+
+    func testAnOfflineSlateTakesTheClips3DTransform() {
+        // A tilted clip under a lens: the slate goes through the same projection (mesh cells and their transforms) as
+        // the decoded picture would.
+        var picture = PreviewLayer(clipId: "c", source: "/p/c.mp4", kind: .video, start: 0, end: 1, sourceIn: 0,
+                                   box: CanvasRect(x: 20, y: 10, width: 160, height: 80))
+        picture.transform3D = NativeTransform3D(rotationX: 0, rotationY: 35, z: 0, perspective: 600)
+        var slate = picture
+        slate.kind = .offline; slate.offlineFileName = "c.mp4"
+        let frame = CanvasRect(x: 0, y: 0, width: 400, height: 200)
+        func transforms(_ draw: (CanvasContext) -> Void) -> [PreviewRecordingCanvas.Op] {
+            let c = PreviewRecordingCanvas()
+            draw(c)
+            return c.ops.filter { if case .translate = $0 { return true }; if case .scale = $0 { return true }; if case .rotate = $0 { return true }; return false }
+        }
+        let projected = transforms { PreviewPainter.draw(picture, image: PreviewCompositorTests.solid(9, 9, 9), on: $0, frame: frame, scale: 2) }
+        XCTAssertFalse(projected.isEmpty)
+        XCTAssertEqual(transforms { PreviewPainter.drawOffline(slate, on: $0, frame: frame, scale: 2) }, projected)
     }
 
     func testMarksClearWhenTheFileReappearsAndTheCompositionIsRebuilt() throws {

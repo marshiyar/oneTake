@@ -41,6 +41,10 @@ final class EditorSession {
     let compositor: PreviewCompositor
     let engine: KeyframeRuntime?
     var composedDocument: NativeProjectDocument?
+    /// When the media files were last statted for the offline marks, and how often an unchanged document re-checks
+    /// them (a file deleted or restored outside the app): every few seconds at most, never per frame.
+    var mediaCheckedAt = Date.distantPast
+    var mediaRecheckSeconds = 2.0
     /// Natural pixel sizes probed for assets that have none cached (project-relative source -> size; EditorSession+NaturalSize).
     var naturalSizes: [String: NativeMediaNaturalSize] = [:]
     var naturalSizeProbes: Set<String> = []
@@ -372,15 +376,26 @@ final class EditorSession {
         editor.setCrop(clipId: id, NativeClipCrop(top: crop.top, right: crop.right, bottom: crop.bottom, left: crop.left))
     }
 
-    /// Rebuilds the compositor's layers when the document changed (media files are checked then, not per frame), and
-    /// marks the timeline's clips whose media is offline; a rebuild after a file comes back clears its mark.
+    /// Rebuilds the compositor's layers when the document changed, or when a media file was deleted or restored since
+    /// the last build (media files are checked then, not per frame), and marks the timeline's clips whose media is
+    /// offline; a rebuild after a file comes back clears its mark.
     func syncDecoderClips() {
-        guard editor.document != composedDocument else { return }
+        guard editor.document != composedDocument || mediaChangedOnDisk() else { return }
         composedDocument = editor.document
+        mediaCheckedAt = Date()
         let composition = PreviewComposition(document: editor.document, projectDir: projectDir, engine: engine,
                                              naturalSize: editor.naturalSize, sizePending: { [weak self] in self?.isSizePending($0) ?? false })
         compositor.composition = composition
         timeline.view.offlineAssetIds = composition.offlineAssetIds
+    }
+
+    /// Whether a media file appeared or disappeared since the composition was built; statted at most every
+    /// `mediaRecheckSeconds`.
+    func mediaChangedOnDisk() -> Bool {
+        let now = Date()
+        guard now.timeIntervalSince(mediaCheckedAt) >= mediaRecheckSeconds, let built = compositor.composition else { return false }
+        mediaCheckedAt = now
+        return PreviewComposition.offlineAssetIds(document: editor.document, projectDir: projectDir) != built.offlineAssetIds
     }
 
     func syncStage() {
