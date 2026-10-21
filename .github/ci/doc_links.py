@@ -83,8 +83,8 @@ def links(root):
     return found
 
 
-def request(url, method, timeout):
-    """(status, Location header) of one request, without following redirects; network failures raise."""
+def send(url, method, timeout, headers=None, body=None, read=False):
+    """(status, Location header, body if read) of one http(s) request, redirects not followed; failures raise."""
     parts = urllib.parse.urlsplit(url)
     connection = CONNECTIONS.get(parts.scheme)
     if connection is None:
@@ -92,9 +92,9 @@ def request(url, method, timeout):
     conn = connection(parts.netloc, timeout=timeout)
     try:
         target = urllib.parse.urlunsplit(("", "", parts.path or "/", parts.query, ""))
-        conn.request(method, target, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
+        conn.request(method, target, body=body, headers={"User-Agent": USER_AGENT, "Accept": "*/*", **(headers or {})})
         response = conn.getresponse()
-        return response.status, response.getheader("Location")
+        return response.status, response.getheader("Location"), response.read() if read else b""
     finally:
         conn.close()
 
@@ -102,7 +102,7 @@ def request(url, method, timeout):
 def status_of(url, method, timeout):
     """The HTTP status of url, redirects followed (at most MAX_REDIRECTS); network failures raise."""
     for _ in range(MAX_REDIRECTS + 1):
-        status, location = request(url, method, timeout)
+        status, location, _ = send(url, method, timeout)
         if status not in REDIRECTS or not location:
             return status
         url = urllib.parse.urljoin(url, location)
@@ -165,19 +165,13 @@ def sync_issue(dead, api, checked=None):
 
 
 def github_api(method, path, body=None):
-    conn = http.client.HTTPSConnection("api.github.com", timeout=30)
-    try:
-        conn.request(method, f"/repos/{os.environ['GITHUB_REPOSITORY']}/{path}",
-                     body=json.dumps(body) if body is not None else None, headers={
-                         "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-                         "Accept": "application/vnd.github+json", "User-Agent": USER_AGENT,
-                         "Content-Type": "application/json"})
-        response = conn.getresponse()
-        data = response.read()
-    finally:
-        conn.close()
-    if response.status >= 400:
-        raise RuntimeError(f"GitHub API {method} {path}: HTTP {response.status} {data[:300]!r}")
+    url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/{path}"
+    headers = {"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json",
+               "Content-Type": "application/json"}
+    payload = json.dumps(body) if body is not None else None
+    status, _, data = send(url, method, 30, headers=headers, body=payload, read=True)
+    if status >= 400:
+        raise RuntimeError(f"GitHub API {method} {path}: HTTP {status} {data[:300]!r}")
     return json.loads(data)
 
 

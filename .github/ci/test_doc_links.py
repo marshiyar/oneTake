@@ -33,30 +33,27 @@ CALLS = {}  # (method, path) -> requests the test server answered
 DEAD = {"https://example.org/gone": ("HTTP 404", ["README.md:3"])}
 
 
+# path -> the status the test server answers, from the request's method and how often (method, path) was asked
+ANSWERS = {
+    "/ok": lambda method, n: 200,
+    "/no-head": lambda method, n: 405 if method == "HEAD" else 200,
+    "/flaky": lambda method, n: 503 if n <= 2 else 200,
+    "/busy": lambda method, n: 429 if n <= 1 else 200,
+    "/moved": lambda method, n: 301,
+}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     """/ok answers both; /no-head refuses HEAD (405) and answers GET; /gone is 404; /flaky fails twice with 503;
-    /moved redirects to /ok."""
+    /busy is rate limited (429) once; /moved redirects to /ok."""
 
     def answer(self, body):
         key = (self.command, self.path)
         CALLS[key] = CALLS.get(key, 0) + 1
-        if self.path == "/moved":
-            self.send_response(301)
-            self.send_header("Location", "/ok")
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
-        if self.path == "/ok" or (self.path == "/no-head" and self.command == "GET"):
-            code = 200
-        elif self.path == "/no-head":
-            code = 405
-        elif self.path == "/flaky":
-            code = 503 if CALLS[key] <= 2 else 200
-        elif self.path == "/busy":
-            code = 429 if CALLS[key] <= 1 else 200
-        else:
-            code = 404
+        code = ANSWERS.get(self.path, lambda method, n: 404)(self.command, CALLS[key])
         self.send_response(code)
+        if code == 301:
+            self.send_header("Location", "/ok")
         self.send_header("Content-Length", "2")
         self.end_headers()
         if body:
@@ -130,8 +127,10 @@ class Links(unittest.TestCase):
         """Acceptance: every https:// link in tracked *.md files (fenced code and untracked files left out)."""
         with tempfile.TemporaryDirectory() as d:
             files = {
-                "README.md": "See [docs](https://example.org/a), <https://example.org/b>.\nAgain https://example.org/a)\n",
-                "docs/guide.md": "```\ncurl https://example.org/in-code\n```\nhttp://example.org/plain https://example.org/c.\n",
+                "README.md": ("See [docs](https://example.org/a), <https://example.org/b>.\n"
+                              "Again https://example.org/a)\n"),
+                "docs/guide.md": ("```\ncurl https://example.org/in-code\n```\n"
+                                  "http://example.org/plain https://example.org/c.\n"),
                 "notes.txt": "https://example.org/not-markdown\n",
             }
             for name, text in files.items():
