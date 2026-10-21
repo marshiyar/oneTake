@@ -59,6 +59,13 @@ extension EditorSession {
             self.timeline.playback.seek(time); self.timeline.syncFromPlayback()
         }
         installDockedPanel(router, id: DockPanels.markers, panel: markers)
+
+        let mixer = MixerPanel()
+        mixer.editor = editor
+        installDockedPanel(router, id: DockPanels.mixer, panel: mixer) { [weak self, weak mixer] in
+            guard let self, let mixer else { return }
+            mixer.meters = self.playback.isPlaying ? (self.graph?.meters ?? [:]).mapValues { ($0.peak, $0.rms) } : [:]
+        }
         let history = HistoryPanel()
         history.editor = editor
         installDockedPanel(router, id: DockPanels.history, panel: history)
