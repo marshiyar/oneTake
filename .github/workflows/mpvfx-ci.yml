@@ -751,7 +751,7 @@ jobs:
     needs: [changes, plan, checks, linux, linux-test, windows, windows-test, remote-shards, macos-runners, macos]
     if: always()
     runs-on: ubuntu-24.04
-    timeout-minutes: 50   # the wait for macos (runners-1) below, only for a pull request that touches macOS code
+    timeout-minutes: 5
     steps:
       - name: Every required job passed or was skipped
         env:
@@ -777,14 +777,16 @@ jobs:
         with:
           sparse-checkout: .github/ci
           persist-credentials: false
-      - name: macOS build required
+      # Owner ruling 2026-10-21: CI never holds a merge back waiting. A macOS build that already ran and failed fails
+      # ci-ok; one still running on OneTake-actionRunners-1 does not block (its `macos (runners-1)` status reports it).
+      - name: macOS build not red
         if: github.event_name == 'pull_request' && needs.changes.outputs.macos_code == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
           LOCAL: ${{ needs.macos.result }}
           SENT: ${{ needs.macos-runners.outputs.sent }}
-        run: python3 -I -B .github/ci/macos_gate.py wait
+        run: |
+          [ "$LOCAL" != failure ] || { echo "::error::the macOS build failed on this head"; exit 1; }
+          [ "$SENT" != true ] || echo "::notice::the macOS build runs on OneTake-actionRunners-1: see its macos (runners-1) status"
 
   publish:
     needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards]
