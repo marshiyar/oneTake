@@ -15,7 +15,7 @@ Required means the job is one of the jobs `ci-ok` waits for (`needs:` in `.githu
 a documentation-only pull request skips on purpose count as passed.
 
 | Workflow / job | Trigger | Required? | A failure means | Fix or re-run |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | **mpvfx-ci** / `changes` | PR into main, push to main, merge queue, nightly 06:17 UTC, v* tag, dispatch | required | The changed-file list could not be read (API error) | Re-run once. A PR whose files are all Markdown, `mpvfx-swift/docs/` or the licence files skips everything below |
 | mpvfx-ci / `plan` | as above, when code changed | required | Test shard keys could not be computed (`.github/ci/test-shards.py`, `swift package dump-package`) | Run `swift package dump-package` in `mpvfx-swift/`; a manifest error shows there |
 | mpvfx-ci / `checks` | as above | required | `scripts/test_fetch_binaries.py` failed, or a source file lacks its copyright block | `python3 mpvfx-swift/scripts/copyright.py --fix`, commit |
@@ -42,7 +42,7 @@ a documentation-only pull request skips on purpose count as passed.
 ### In review (not on main yet)
 
 | Workflow | Pull request | What it will check | Planned status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `linux-optional-headers.yml` | #99 | The Linux build without the Vulkan and PulseAudio headers (#78); #111 asks to make it required | advisory |
 | `doc-refs.yml` | #99 | Every path, link and #n reference in tracked Markdown exists | advisory |
 | `quality-ratchets.yml`, `pr-hygiene.yml` | [#114](https://github.com/marshiyar/oneTake/pull/114) | A crash-construct ratchet (count may only go down) and an advisory PR hygiene report | advisory |
@@ -129,3 +129,5 @@ python3 -I -B .github/ci/workflow_lint.py        # exit 0: every finding is allo
 
 It needs PyYAML (`python3-yaml` on Debian and Ubuntu; `pip install pyyaml` elsewhere). actionlint, run by
 pre-commit.ci, checks syntax and expressions; workflow-lint checks the rules above.
+
+<!-- markdownlint-disable-file MD043 -- the required-headings rule has no heading list configured, so any heading fails it -->

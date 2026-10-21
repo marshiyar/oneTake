@@ -37,3 +37,5 @@ Closes #
 ## Learn step
 
 <!-- One line: what you learned that the next contributor should know, or "nothing new". -->
+
+<!-- markdownlint-disable-file MD041 MD043 -- a PR body sits under the PR title, so it starts below a top-level heading; MD043 has no heading list configured -->

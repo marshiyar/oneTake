@@ -143,9 +143,13 @@ _Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping
 def load(path):
     with open(path, encoding="utf-8") as f:
         text = f.read()
-    doc = yaml.load(text, Loader=_Loader)   # noqa: S506 - a SafeLoader subclass
+    loader = _Loader(text)   # a SafeLoader subclass: what yaml.safe_load does, with line numbers kept
+    try:
+        doc = loader.get_single_data()
+    finally:
+        loader.dispose()
     if not isinstance(doc, dict):
-        raise ValueError("not a mapping at the top level")
+        raise TypeError("not a mapping at the top level")
     return text, doc
 
 
@@ -372,7 +376,7 @@ def lint_workflow(path, name):
     text, doc = load(path)
     jobs = doc.get("jobs") or {}
     if not isinstance(jobs, dict):
-        raise ValueError("`jobs` is not a mapping")
+        raise TypeError("`jobs` is not a mapping")
     out = []
     check_uses(name, text, jobs, out)
     on = triggers(doc)
@@ -470,7 +474,7 @@ def run(root, allow_path, base_allow_path=None):
     for p in paths:
         try:
             findings += lint_workflow(p, os.path.basename(p))
-        except (yaml.YAMLError, ValueError) as e:
+        except (yaml.YAMLError, TypeError) as e:
             print(f"workflow_lint: {os.path.relpath(p, root)}: {e}", file=sys.stderr)
             raise SystemExit(2) from None
     allow, problems = read_allow(allow_path)
