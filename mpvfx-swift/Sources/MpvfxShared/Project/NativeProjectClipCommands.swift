@@ -51,6 +51,7 @@ public enum NativeProjectClipFailureCode: String, Codable, Sendable {
     case invalidSplit = "invalid-split", nonIntegralSourceBoundary = "non-integral-source-boundary"
     case missingSplitBinding = "missing-split-binding", invalidSplitBinding = "invalid-split-binding"
     case duplicateSplitBinding = "duplicate-split-binding", generatedIdCollision = "generated-id-collision", documentMismatch = "document-mismatch"
+    case missingTransition = "missing-transition", invalidTransition = "invalid-transition", insufficientHandles = "insufficient-handles"
     case invalidSlip = "invalid-slip", invalidRoll = "invalid-roll"
 }
 
@@ -135,7 +136,7 @@ private func locateMoves(_ d: NativeProjectDocument, _ moves: [NativeProjectClip
 private func replaceClip(_ d: NativeProjectDocument, _ loc: ClipLocation, _ replacement: [NativeProjectClip], _ engine: KeyframeEngine?) throws -> NativeProjectDocument {
     var next = d
     next.sequence.tracks[loc.trackIndex].clips.replaceSubrange(loc.clipIndex...loc.clipIndex, with: replacement)
-    return try parseNativeProjectDocument(next, engine: engine)
+    return try parseNativeProjectDocument(reconcileNativeCutTransitions(next), engine: engine)
 }
 
 /// Rebase a parameter track to a playable subrange. The engine cuts the track (timing curves and motion paths included)
@@ -175,19 +176,20 @@ private func applyTrimIn(_ d: NativeProjectDocument, _ a: NativeProjectClipAddre
     do {
         // Overflow mapping: a 64-bit overflow is a NativeSourceTimeRangeError and lands in this catch like the other
         // range errors; both become an invalid-trim rejection.
-        if let ramp = clip.speedRamp, ramp.isSupported, delta != 0, kind.map({ nativeAssetConsumesSourceFrames($0) }) == true {
+        if let ramp = clip.speedRamp, ramp.isSupported, delta != 0, kind.map({ nativeClipConsumesSourceFrames(clip, $0) }) == true {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
                                                  playbackRate: rationalFromNumber(delta > 0 ? ramp.sourcePosition(atClipFrame: delta) / delta : ramp.speed(atClipFrame: 0)),
                                                  timelineFrames: delta)
         } else {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-                playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeAssetConsumesSourceFrames($0) } == true ? 0 : delta)
+                playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeClipConsumesSourceFrames(clip, $0) } == true ? 0 : delta)
         }
     } catch { return reject(d, .invalidTrim, errorMessage(error) ?? "Invalid source boundary") }
     let tracks = try rebasedTracks(clip, delta, clip.durationFrames, engine) { $0.id }
     var next = clip
     next.startFrame = startFrame; setSource(&next, position)
     next.durationFrames = clip.durationFrames - delta
+    next.moves = clip.movesFitted(toDuration: next.durationFrames)
     next.speedRamp = clip.speedRamp?.sliced(from: delta, until: clip.durationFrames)
     next.clampFades(movedEdge: .start)
     next.parameterTracks = tracks
@@ -202,7 +204,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     if !isSafeInteger(end) || nextDuration <= 0 { return reject(d, .invalidTrim, "Trim-out end must be an integer after the clip start") }
     let clip = loc.clip
     let asset = d.assets.first { $0.id == clip.assetId }!
-    if nativeAssetConsumesSourceFrames(asset.kind) {
+    if nativeClipConsumesSourceFrames(clip, asset.kind) {
         let fits: Bool
         do {
             if let ramp = clip.speedRamp, ramp.isSupported {
@@ -224,6 +226,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     let tracks = shrinking ? try rebasedTracks(clip, 0, nextDuration, engine) { $0.id } : clip.parameterTracks
     var next = clip
     next.durationFrames = nextDuration
+    next.moves = clip.movesFitted(toDuration: nextDuration)
     if shrinking { next.speedRamp = clip.speedRamp?.sliced(from: 0, until: nextDuration) }
     next.clampFades(movedEdge: .end)
     next.parameterTracks = tracks
@@ -245,12 +248,12 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     do {
         let asset = d.assets.first { $0.id == clip.assetId }!
         // Overflow mapping: as in trim-in, a 64-bit overflow is rejected like the other range errors (invalid-split).
-        if let ramp = clip.speedRamp, ramp.isSupported, nativeAssetConsumesSourceFrames(asset.kind) {
+        if let ramp = clip.speedRamp, ramp.isSupported, nativeClipConsumesSourceFrames(clip, asset.kind) {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
                                                  playbackRate: rationalFromNumber(ramp.sourcePosition(atClipFrame: local) / local), timelineFrames: local)
         } else {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-                playbackRate: clip.playbackRate, timelineFrames: nativeAssetConsumesSourceFrames(asset.kind) ? local : 0)
+                playbackRate: clip.playbackRate, timelineFrames: nativeClipConsumesSourceFrames(clip, asset.kind) ? local : 0)
         }
     } catch { return reject(d, .invalidSplit, errorMessage(error) ?? "Invalid source boundary") }
     if clip.binding != nil && rightBinding == nil {
@@ -264,19 +267,23 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     let rightTracks = try rebasedTracks(clip, local, clip.durationFrames, engine) { nativeSplitTrackId($0.id, rightId, $0.parameterId) }
     var left = clip
     left.durationFrames = local; left.parameterTracks = leftTracks
+    left.moves = clip.movesForSplitPart(.left, duration: local)
     left.speedRamp = clip.speedRamp?.sliced(from: 0, until: local)
     // The cut is a new edge on both parts: the left keeps the fade-in, the right the fade-out.
     left.fadeOutFrames = nil; left.clampFades(movedEdge: .end)
     left.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: leftTracks, fromFrame: 0, untilFrameExclusive: local)
     var right = clip
     right.id = rightId; right.startFrame = splitFrame; right.durationFrames = clip.durationFrames - local
+    right.moves = clip.movesForSplitPart(.right, duration: right.durationFrames)
     right.speedRamp = clip.speedRamp?.sliced(from: local, until: clip.durationFrames)
     setSource(&right, position)
     right.fadeInFrames = nil; right.clampFades(movedEdge: .start)
     if let rightBinding { right.binding = rightBinding }
     right.parameterTracks = rightTracks
     right.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: rightTracks, fromFrame: local, untilFrameExclusive: clip.durationFrames)
-    do { return try succeed(d, try replaceClip(d, loc, [left, right], engine), engine) }
+    var base = d
+    base.sequence.tracks[loc.trackIndex].transitions = nativeCutTransitionsAfterSplit(loc.track, clipId: clip.id, splitFrame: splitFrame, rightId: rightId)
+    do { return try succeed(d, try replaceClip(base, loc, [left, right], engine), engine) }
     catch let e as NativeProjectDocumentValidationError {
         if e.issues.contains(where: { $0.code == .duplicateBinding }) {
             return reject(d, .duplicateSplitBinding, "The right clip binding must be unique within the native project")
@@ -301,7 +308,7 @@ private func applyDeleteMany(_ d: NativeProjectDocument, _ addresses: [NativePro
         t.clips = t.clips.filter { !removed.contains(moveAddressKey(.init(sequenceId: d.sequence.id, trackId: t.id, clipId: $0.id))) }
         return t
     }
-    return try succeed(d, try parseNativeProjectDocument(next, engine: engine), engine)
+    return try succeed(d, try parseNativeProjectDocument(reconcileNativeCutTransitions(next), engine: engine), engine)
 }
 
 /// Pure native move command. Clips are copied only to change `startFrame`; all media-local state is retained exactly.
@@ -346,5 +353,5 @@ public func applyNativeProjectClipCommand(_ d: NativeProjectDocument, _ command:
         }.map(\.clip)
         return t
     }
-    return try succeed(d, try parseNativeProjectDocument(next, engine: engine), engine)
+    return try succeed(d, try parseNativeProjectDocument(reconcileNativeCutTransitions(next), engine: engine), engine)
 }

@@ -160,7 +160,7 @@ public final class PreviewCompositor: FrameSource {
                 lane.request(frame: frame, ahead: ahead, behind: behind, size: size)
                 used.insert(lane.key)
             }
-            let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : frame
+            let want = layer.isStill ? PreviewDecodeLane.stillFrame : frame
             guard let pick = picture(for: layer, want: want) else {
                 shown.append(Shown(clipId: layer.clipId, frame: nil, exact: false)); continue
             }
@@ -274,7 +274,7 @@ public final class PreviewCompositor: FrameSource {
 
     /// Frames to decode past the playhead per clip: about a third of a second, bounded by the cache budget.
     func lookahead(_ layers: [PreviewLayer], comp: PreviewComposition, scale s: Double, backing: Double, speed: Double) -> Int {
-        let videos = layers.filter { $0.kind == .video && $0.isVisible }
+        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.isVisible }
         guard !videos.isEmpty else { return 0 }
         let bytes = videos.reduce(0) { acc, l in let d = decodeSize(l, scale: s, backing: backing); return acc + d.width * d.height * 4 }
         let byBudget = cache.budgetBytes / 2 / max(bytes, 1)
@@ -284,7 +284,7 @@ public final class PreviewCompositor: FrameSource {
 
     /// Frames per reverse chunk: about two thirds of a second of playback, bounded by the cache budget.
     func reverseChunk(_ layers: [PreviewLayer], comp: PreviewComposition, scale s: Double, backing: Double, speed: Double) -> Int {
-        let videos = layers.filter { $0.kind == .video && $0.isVisible }
+        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.isVisible }
         guard !videos.isEmpty else { return 1 }
         let bytes = videos.reduce(0) { acc, l in let d = decodeSize(l, scale: s, backing: backing); return acc + d.width * d.height * 4 }
         let byBudget = cache.budgetBytes / 3 / max(bytes, 1)
@@ -331,7 +331,7 @@ public final class PreviewCompositor: FrameSource {
     func shownImage(_ layer: PreviewLayer, _ image: CanvasImage, frame: Int, time: Double, fps: Double, target: PreviewDecodeSize,
                     lane: String? = nil) -> (image: CanvasImage, grade: String?, current: Bool) {
         guard let g = layer.grade, g.isActive, image.width > 0, image.height > 0 else { return (image, nil, true) }
-        let shownFrame = layer.kind == .image ? Int((time * fps + 1e-6).rounded(.down)) : frame
+        let shownFrame = layer.isStill ? Int((time * fps + 1e-6).rounded(.down)) : frame
         let fit = target.containing(aspect: Double(image.width) / Double(image.height))
         let reduce = image.width * 10 > fit.width * 11 || image.height * 10 > fit.height * 11
         let gw = reduce ? fit.width : image.width, gh = reduce ? fit.height : image.height
@@ -348,7 +348,7 @@ public final class PreviewCompositor: FrameSource {
     /// `image` graded now on the calling thread at its own size (stills, thumbnails, tests).
     public func graded(_ layer: PreviewLayer, _ image: CanvasImage, frame: Int, time: Double, fps: Double) -> CanvasImage {
         guard let g = layer.grade, g.isActive else { return image }
-        let shownFrame = layer.kind == .image ? Int((time * fps + 1e-6).rounded(.down)) : frame
+        let shownFrame = layer.isStill ? Int((time * fps + 1e-6).rounded(.down)) : frame
         gradedNow += 1
         return grader.gradeNow(image, grade: g, time: Double(shownFrame) / fps)
     }
@@ -363,10 +363,10 @@ public final class PreviewCompositor: FrameSource {
     /// The decoded frame before grading, and the frame index it is.
     public func decodeRawNow(_ layer: PreviewLayer, time: Double, fps: Double, size: PreviewDecodeSize) -> (frame: Int, image: CanvasImage)? {
         guard let lane = lane(for: layer, fps: fps) else { return nil }
-        let f = layer.kind == .image ? PreviewDecodeLane.stillFrame : Int((time * fps + 1e-6).rounded(.down))
+        let f = layer.isStill ? PreviewDecodeLane.stillFrame : Int((time * fps + 1e-6).rounded(.down))
         lane.request(frame: f, ahead: 0, size: size)
         lane.wait()
-        let clamped = layer.kind == .image ? f : max(layer.startFrame, min(layer.endFrame - 1, f))
+        let clamped = layer.isStill ? f : max(layer.startFrame, min(layer.endFrame - 1, f))
         if let img = cache.frame(lane: layer.laneKey, frame: clamped) { return (clamped, img) }
         return cache.frame(lane: layer.laneKey, frame: f).map { (f, $0) }
     }

@@ -113,6 +113,7 @@ public final class RightPanel {
         // The group the user left open last time; Transform when nothing was saved.
         inspector.openGroupId = layout.prefs.openInspectorGroup ?? "layout"
         inspector.scopeSource = layout.prefs.scopeSource ?? .clip
+        if let order = layout.prefs.designGroupOrder { inspector.designOrder = DesignGroups.sanitized(order: order) }
         inspector.layout = layout
         inspector.onOpenEasing = { [weak self] clipId, refs in
             guard let self else { return }

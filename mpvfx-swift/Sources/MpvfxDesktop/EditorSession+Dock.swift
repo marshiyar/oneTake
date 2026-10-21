@@ -139,7 +139,7 @@ extension EditorShellRouter {
         let fallback = DockFile(workspaces: [DockFile.defaultWorkspace: DockDefaults.layout(registry, seeds: seeds)])
         var file = store.load(registry: registry, fallback: fallback)
         var layout = file.layout ?? DockDefaults.layout(registry, seeds: seeds)
-        for spec in registry.specs where !layout.isOpen(spec.id) && layout.closed[spec.id] == nil {
+        for spec in registry.specs where !spec.startsClosed && !layout.isOpen(spec.id) && layout.closed[spec.id] == nil {
             layout = Self.opening(spec.id, in: layout, registry: registry)
         }
         dock.setLayout(layout)

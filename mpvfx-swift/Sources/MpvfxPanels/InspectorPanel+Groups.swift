@@ -41,7 +41,22 @@ extension InspectorPanel {
         return editor.audioGroup(id)
     }
 
+    /// The groups this panel shows: the Design tab's, minus the ones living in their own dock panel and in the
+    /// user's order; or, for a detached panel (`pinnedPanel`), only that panel's groups.
     func buildGroups() -> [InspectorGroup] {
+        let all = buildAllGroups()
+        if let pinned = pinnedPanel { return all.filter { DesignGroups.panel(forGroup: $0.id) == pinned } }
+        let shown = all.filter { g in DesignGroups.panel(forGroup: g.id).map { !detachedPanels.contains($0) } ?? true }
+        let rank = DesignGroups.sanitized(order: designOrder)
+        // The ranked groups are reordered among their own slots; Text and Composition keep theirs.
+        func rankOf(_ g: InspectorGroup) -> Int? { DesignGroups.panel(forGroup: g.id).flatMap(rank.firstIndex(of:)) }
+        let ranked = shown.enumerated().compactMap { i, g in rankOf(g).map { (rank: $0, index: i, group: g) } }
+            .sorted { ($0.rank, $0.index) < ($1.rank, $1.index) }.map(\.group)
+        var next = ranked.makeIterator()
+        return shown.map { rankOf($0) == nil ? $0 : (next.next() ?? $0) }
+    }
+
+    private func buildAllGroups() -> [InspectorGroup] {
         if let editor, let g = selectedBus() { return [busFxGroup(editor, g)] }
         if let editor, showsComposition { return [compositionGroup(editor)] }
         guard let editor, let s = selected() else { return [] }
@@ -71,9 +86,9 @@ extension InspectorPanel {
         if ok { colorFieldError = nil; onEdited?() }
     }
     private func buildGroupTitle() -> String {
-        switch openGroupId {
+        switch pinnedPanel.flatMap({ DesignGroups.groups(of: $0).first }) ?? openGroupId {
         case "text": "Edit text"; case "layout": "Edit transform"; case "style": "Edit style"; case "grade": "Edit color grade"
-        case "effects": "Edit effects"; case "audio-fx": "Edit audio effects"; case "media": "Edit media"; default: "Edit properties"
+        case "effects", "clip-effects": "Edit effects"; case "audio-fx": "Edit audio effects"; case "media": "Edit media"; default: "Edit properties"
         }
     }
 
