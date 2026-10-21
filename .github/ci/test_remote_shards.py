@@ -91,6 +91,17 @@ class Plan(unittest.TestCase):
         self.assertIn('[ "$code" = 200 ] && installed=true', script)
         self.assertNotIn("set -e", script)
 
+    def test_the_installation_check_writes_only_its_output_line_to_stdout(self):
+        # Its stdout goes to $GITHUB_OUTPUT: an annotation there breaks the plan job ("Invalid format '::notice::...'").
+        with open(os.path.join(ROOT, ".github", "ci", "runners_app_installed.sh"), encoding="utf-8") as f:
+            lines = [line.strip() for line in f]
+        annotations = [line for line in lines if 'echo "::' in line]
+        self.assertTrue(annotations)
+        for line in annotations:
+            self.assertTrue(line.endswith(">&2"), line)
+        self.assertEqual([line for line in lines if line.startswith("echo ") and ">&2" not in line],
+                         ['echo "installed=$installed"'])
+
     def test_a_sent_shard_is_not_in_the_local_lists(self):
         run = self.pick["run"]
         self.assertIn('remote = {o: [s for s in run if remote_ok and s["runners"]]', run)
