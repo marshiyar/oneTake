@@ -612,7 +612,7 @@ public final class TimelineView {
 
     func drawRuler(_ c: CanvasContext, size: CanvasSize) {
         typealias L = TimelineLayout
-        let t = theme, pps = pixelsPerSecond
+        let t = theme
         c.fillRect(CanvasRect(x: 0, y: 0, width: size.width, height: L.rulerHeight), t.shellBackground)
         let ticks = rulerTicks(width: size.width)
         c.withState {
