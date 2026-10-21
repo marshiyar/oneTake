@@ -98,6 +98,39 @@ final class GradeKeyframeInspectorTests: XCTestCase {
         XCTAssertEqual(try keys(e, NativeGradeParameter.detailId("vignette")).map(\.frame), [30])
     }
 
+    // MARK: Review findings (PR #230)
+
+    func testStartingAnimationOnAPresetOnlyGradeKeysThePresetsValue() throws {
+        let (p, e) = try make()
+        var g = ColorGrading(); g.preset = "warm-daylight"
+        XCTAssertTrue(e.setColorGrading(clipId: "clip:a", g))
+        let warm = try XCTUnwrap(ColorGrading.preset("warm-daylight")?.adjust["exposure"])
+        redraw(p)
+        try click(p, .stopwatch("grade:adj:exposure"))
+        XCTAssertEqual(try keys(e, Self.exposure).map(\.value), [.number(warm)], "the key holds what the preset renders, not 0")
+    }
+
+    func testCopyGradeToCarriesTheAnimation() throws {
+        let (p, e) = try make()
+        try click(p, .stopwatch("grade:adj:exposure"))
+        XCTAssertGreaterThan(e.copyColorGrading(from: "clip:a", toAllProjectMedia: true), 0)
+        let target = try XCTUnwrap(e.clip("clip:b")).clip
+        XCTAssertEqual(target.parameterTracks.filter { $0.parameterId == Self.exposure }.map { $0.keyframes.map(\.frame) }, [[30]])
+    }
+
+    func testAWheelHueKeyedAcrossZeroTakesTheShortWay() throws {
+        let (p, e) = try make()
+        let hue = NativeGradeParameter.wheelId("shadows", "hue")
+        var g = try XCTUnwrap(e.colorGrading(clipId: "clip:a")); g.wheels["shadows"] = ColorGrading.Wheel(hue: 350, amount: 0.5)
+        XCTAssertTrue(e.setColorGrading(clipId: "clip:a", g))
+        redraw(p)
+        try click(p, .keyframe("grade:wheelkey:shadows"))
+        var next = e.gradeShown(clipId: "clip:a", time: 3); next.wheels["shadows"]?.hue = 10
+        XCTAssertTrue(e.commitGrade(clipId: "clip:a", time: 3, shown: e.gradeShown(clipId: "clip:a", time: 3), next: next))
+        XCTAssertEqual(try keys(e, hue).map(\.value), [.number(350), .number(370)], "10° is keyed as 370° after 350°")
+        XCTAssertEqual(e.gradeShown(clipId: "clip:a", time: 3).wheel("shadows").hue, 10, accuracy: 1e-9, "and shown as 10°")
+    }
+
     func testAStylizeEffectAmountKeys() throws {
         let (p, e) = try make()
         var g = try XCTUnwrap(e.colorGrading(clipId: "clip:a")); g.effects["bloom"] = 1

@@ -239,8 +239,20 @@ public extension TimelineEditor {
 
     /// "Copy grade to": the same grade on every visual clip of the same asset ("source-file") or of the project.
     @discardableResult
+    /// The target's parameter tracks with its grade tracks replaced by the source's (issue #179), renamed for the
+    /// target, so an animated grade copies as animated.
+    static func withGradeTracks(of src: NativeProjectClip, on target: NativeProjectClip) -> [NativeParameterTrack] {
+        var tracks = target.parameterTracks.filter { !NativeGradeParameter.isGradeParameter($0.parameterId) }
+        for var t in src.parameterTracks where NativeGradeParameter.isGradeParameter(t.parameterId) && !t.keyframes.isEmpty {
+            t.id = nativeParameterTrackId(clipId: target.id, parameterId: t.parameterId)
+            tracks.append(t)
+        }
+        return tracks
+    }
+
     func copyColorGrading(from clipId: String, toAllProjectMedia: Bool) -> Int {
-        guard let g = colorGrading(clipId: clipId), let src = clip(clipId)?.clip else { return 0 }
+        guard let src = clip(clipId)?.clip, let g = colorGrading(clipId: clipId) ?? (NativeGradeParameter.animatedIds(src).isEmpty ? nil : ColorGrading())
+        else { return 0 }
         let kinds = Dictionary(document.assets.map { ($0.id, $0.kind) }, uniquingKeysWith: { a, _ in a })
         var d = document; var count = 0
         for t in d.sequence.tracks.indices where t >= 0 && d.sequence.tracks[t].locked != true {
@@ -252,6 +264,7 @@ public extension TimelineEditor {
                                            enabled: g.enabled, parameters: g.json)
                 if let i = e.firstIndex(where: { $0.effectId == ColorGrading.effectId }) { e[i] = eff } else { e.append(eff) }
                 d.sequence.tracks[t].clips[ci].effects = e; count += 1
+                d.sequence.tracks[t].clips[ci].parameterTracks = Self.withGradeTracks(of: src, on: c)
             }
         }
         return count > 0 && commitValidated(d) ? count : 0

@@ -17,13 +17,16 @@ import MpvfxTimeline
 
 /// The grade's animatable values by parameter id (issue #179, `NativeGradeParameter`).
 extension ColorGrading {
+    /// The value the grade renders for an id: its own value, else its preset's (a compact grade such as
+    /// `{"preset":"warm-daylight"}` stores only the preset name), else the contract default.
     public func value(_ parameterId: String) -> Double? {
         guard let path = NativeGradeParameter.path(parameterId) else { return nil }
+        let p = preset.flatMap(Self.preset)
         switch (path.first, path.count) {
         case ("intensity", 1): return intensity
-        case ("adjust", 2): return adjustValue(path[1])
-        case ("details", 2): return detail(path[1])
-        case ("effects", 2): return effects[path[1]] ?? 0
+        case ("adjust", 2): return adjust[path[1]] ?? p?.adjust[path[1]] ?? 0
+        case ("details", 2): return details[path[1]] ?? p?.details[path[1]] ?? detail(path[1])
+        case ("effects", 2): return effects[path[1]] ?? p?.effects[path[1]] ?? 0
         case ("wheels", 3): return Self.wheelField(wheel(path[1]), path[2])
         default: return nil
         }
@@ -57,9 +60,24 @@ public extension TimelineEditor {
         var g = colorGrading(clipId: clipId) ?? ColorGrading()
         guard let c = clip(clipId)?.clip else { return g }
         for id in NativeGradeParameter.animatedIds(c) {
-            if let v = numberValue(clipId: clipId, id, time: time) { g.set(id, v) }
+            // Wheel hues are keyed unwrapped (see `gradeKeyValue`); the rows show them in 0…360.
+            if let v = numberValue(clipId: clipId, id, time: time) { g.set(id, Self.isWheelHue(id) ? Self.wrap360(v) : v) }
         }
         return g
+    }
+
+    static func isWheelHue(_ id: String) -> Bool { id.hasPrefix("grade.wheels.") && id.hasSuffix(".hue") }
+    static func wrap360(_ v: Double) -> Double { let r = v.truncatingRemainder(dividingBy: 360); return r < 0 ? r + 360 : r }
+
+    /// The value to key for `id` at `time`: a wheel hue is moved by whole turns to the turn nearest the previous key
+    /// (else the next), so 350° to 10° interpolates the short way across 0° through the numeric keyframe engine.
+    /// The grade wraps hue back into 0…360 when it renders.
+    func gradeKeyValue(clipId: String, _ id: String, _ v: Double, time: Double) -> Double {
+        guard Self.isWheelHue(id), let (_, c) = clip(clipId), let f = localFrame(clipId: clipId, time: time) else { return v }
+        let keys = c.parameterTracks.first { $0.parameterId == id }?.keyframes ?? []
+        let near = keys.last { $0.frame < f } ?? keys.first { $0.frame > f }
+        guard let near, case .number(let ref) = near.value else { return v }
+        return v + 360 * ((ref - v) / 360).rounded()
     }
 
     /// Commits an inspector edit of the shown grade: a changed animated value is keyed at the playhead, everything
@@ -75,7 +93,10 @@ public extension TimelineEditor {
         let keyed = animated.filter { next.value($0) != shown.value($0) }
         return withHistory("Edit color grade", coalesceKey: "grade-\(UUID().uuidString)") {
             var ok = false
-            for id in keyed { if let v = next.value(id) { ok = setParameter(clipId: clipId, id, .number(v), time: time) || ok } }
+            for id in keyed {
+                guard let v = next.value(id) else { continue }
+                ok = setParameter(clipId: clipId, id, .number(gradeKeyValue(clipId: clipId, id, v, time: time)), time: time) || ok
+            }
             if json != stored { ok = setColorGrading(clipId: clipId, json) || ok }
             return ok
         }
