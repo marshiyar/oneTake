@@ -99,6 +99,28 @@ final class DockCodecTests: XCTestCase {
         XCTAssertEqual(error(Self.edit(Self.split(groups))), .tooManyNodes)
     }
 
+    /// The limits themselves are allowed, degenerate trees collapse, and numbers JSON cannot hold never crash.
+    func testBoundaryTreesAndNumbers() throws {
+        var node = "{\"group\": {\"panels\": [\"media\"]}}"
+        for _ in 1..<DockCodec.maxDepth { node = Self.split([node, Self.emptyGroup]) }
+        assertDockInvariants(try XCTUnwrap(try file(Self.edit(node)).file.layout), registry)   // depth exactly 12
+        let groups = Array(repeating: Self.emptyGroup, count: DockCodec.maxNodes - 1)
+        assertDockInvariants(try XCTUnwrap(try file(Self.edit(Self.split(groups))).file.layout), registry)   // 256 nodes
+        for degenerate in [Self.split([]), Self.split([Self.emptyGroup]), "{\"split\": {}}", "{\"group\": {}}"] {
+            let l = try XCTUnwrap(try file(Self.edit(degenerate)).file.layout, degenerate)
+            assertDockInvariants(l, registry)
+            XCTAssertEqual(l.openPanels.sorted(), ["preview", "timeline"], degenerate)
+        }
+        for number in ["1e999", "-1e999", "1e-999", "0", "-0", "123456789012345678901234567890"] {
+            let json = "{\"split\": {\"axis\": \"row\", \"weights\": [\(number), 1], \"children\": [{\"group\": {\"panels\": [\"preview\"]}}, {\"group\": {\"panels\": [\"timeline\"]}}]}}"
+            switch decoded(Self.edit(json)) {
+            case .failure(let e):
+                guard case .malformed = e else { XCTFail("\(number): \(e)"); continue }
+            case .success(let d): d.file.workspaces.values.forEach { assertDockInvariants($0, registry) }
+            }
+        }
+    }
+
     // MARK: Content errors are repaired
 
     func testUnknownAndDuplicatePanelsAreDroppedAndMissingRequiredPanelsAdded() throws {
