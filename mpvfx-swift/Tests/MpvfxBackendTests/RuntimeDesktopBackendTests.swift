@@ -225,6 +225,21 @@ final class RuntimeDesktopBackendTests: XCTestCase {
         XCTAssertEqual(again.recentProjects().map(\.title), ["Alpha"])
     }
 
+    /// Clearing forgets every recorded folder, also one that is not there now (an unmounted drive), so it does not come back.
+    func testClearRecentProjectsForgetsFoldersThatAreAwayToo() async throws {
+        let b = backend()
+        let a = try b.createProject(name: "Alpha", directory: nil)
+        let away = try b.createProject(name: "Away", directory: root + "/drive/Away")
+        b.closeProject(id: away.id)
+        try FileManager.default.moveItem(atPath: root + "/drive", toPath: root + "/unmounted")
+        XCTAssertEqual(b.recentProjects().map(\.directory), [a.directory])
+        try b.clearRecentProjects()
+        try FileManager.default.moveItem(atPath: root + "/unmounted", toPath: root + "/drive")
+        XCTAssertEqual(b.recentProjects(), [])
+        try await b.close()
+        XCTAssertEqual(backend().recentProjects(), [], "cleared on disk as well")
+    }
+
     func testMediaPanelOperationsThroughTheBackend() async throws {
         // 2 s with sound muted from 0.5 s to 1.5 s.
         try Media.mov(root + "/media/talk.mov", (255, 0, 0), seconds: 2, audio: Media.tone(2) { $0 >= 0.5 && $0 < 1.5 })

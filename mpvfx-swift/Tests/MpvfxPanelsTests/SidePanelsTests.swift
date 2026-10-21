@@ -474,6 +474,30 @@ final class MediaBinTests: XCTestCase {
         _ = s.keyDown(EditorKey(.enter))
         XCTAssertEqual(cmds, [.reveal(libraryId: "L"), .createEvent(libraryId: "L", name: "Day 2")])
     }
+
+    /// "Open project…" asks for a folder; "Recent" lists the projects opened before and opens the one picked.
+    func testOpenProjectAndRecentProjects() throws {
+        let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
+        s.library.available = true
+        s.library.isStandalone = true
+        var cmds: [LibraryNavCommand] = []
+        s.onLibrary = { cmds.append($0) }
+        let c = PanelMeasureCanvas()
+        s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertTrue(c.drawnStrings.contains("Open project…"))
+        XCTAssertTrue(c.drawnStrings.contains("Recent"))
+        XCTAssertNil(s.hits.rect { $0 == .pickRecent }, "no recent projects: Recent is disabled")
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .openProject })))
+        XCTAssertEqual(cmds, [.openProject])
+
+        s.library.recentProjects = [.init(path: "/p/Alpha", name: "Alpha"), .init(path: "/q/Beta", name: "Beta")]
+        c.reset(); s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .pickRecent }))))
+        XCTAssertTrue(s.dropdown.isOpen)
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["Alpha", "Beta"])
+        s.dropdown.pick("/q/Beta")
+        XCTAssertEqual(cmds, [.openProject, .openRecentProject("/q/Beta")])
+    }
 }
 
 final class RightPanelTests: XCTestCase {

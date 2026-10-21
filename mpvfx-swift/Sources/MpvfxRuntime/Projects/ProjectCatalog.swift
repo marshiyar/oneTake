@@ -80,6 +80,12 @@ public final class RecentProjects: @unchecked Sendable {
         try persist(snapshot)
     }
 
+    /// Every recorded folder, also those `list()` leaves out because they are not there now (an unmounted drive).
+    public func removeAll() throws {
+        lock.withLock { paths = [] }
+        try persist([])
+    }
+
     private func persist(_ list: [String]) throws {
         try ProjectFS.mkdirRecursive(PosixPath.dirname(file))
         try libraryAtomicJson(file, .array(list.map { .string($0) }))

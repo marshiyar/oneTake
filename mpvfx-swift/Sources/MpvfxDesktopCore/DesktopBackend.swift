@@ -303,6 +303,8 @@ public protocol DesktopBackend: Sendable {
     /// Recently opened projects that still exist, newest first.
     func recentProjects() -> [DesktopProjectSummary]
     func forgetRecentProject(directory: String) throws
+    /// Forgets every recorded project, also those `recentProjects()` leaves out because they are not there now.
+    func clearRecentProjects() throws
 
     /// The project's media and fonts, grouped in panel order, used first; `query` searches names and descriptions.
     func listMedia(projectId: String, query: String?) throws -> [DesktopMediaEntry]
@@ -380,6 +382,7 @@ public struct NotImplementedBackend: DesktopBackend {
     public func listProjects() -> [DesktopProjectSummary] { [] }
     public func recentProjects() -> [DesktopProjectSummary] { [] }
     public func forgetRecentProject(directory: String) throws { throw DesktopError.notImplemented("Projects") }
+    public func clearRecentProjects() throws { throw DesktopError.notImplemented("Projects") }
     public func listMedia(projectId: String, query: String?) throws -> [DesktopMediaEntry] { throw DesktopError.notImplemented("Media") }
     public func mediaStreams(projectId: String, source: String) async throws -> DesktopMediaStreams { throw DesktopError.notImplemented("Media") }
     public func waveform(projectId: String, source: String, bars: Int) async throws -> [Double] { throw DesktopError.notImplemented("Waveforms") }
