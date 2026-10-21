@@ -533,6 +533,7 @@ public enum PreviewPainter {
         guard layer.transitionColorAmount > 0, let color = layer.transitionColor else { return }
         var p = CanvasPath(); p.addRect(rect)
         c.fill(p, color.withAlpha(color.a * min(1, layer.transitionColorAmount) * layer.opacity))
+    }
 
     private static func maskedText(_ text: NativeClipText, masks: [NativeClipMask], box: CanvasRect,
                                    scale: Double) -> CanvasImage? {
