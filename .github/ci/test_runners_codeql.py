@@ -13,13 +13,16 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for the CodeQL Swift hand-off to OneTake-app/OneTake-actionRunners-1 in codeql.yml: when it is sent, that the
-local swift job runs only when nothing was sent, and that codeql-swift.yml never uploads or holds a write token."""
+local swift job runs only when nothing was sent, and that the generated codeql-swift-source.yml never uploads,
+holds a write token, a secret or a cache."""
+import importlib.util
 import os
 import unittest
 
 import yaml
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))
 
 
 def workflow(name):
@@ -64,15 +67,7 @@ class Handoff(unittest.TestCase):
         self.assertEqual(swift["needs"], "swift-runners")
         self.assertTrue(swift["if"].strip().startswith("always()"))
         self.assertIn("needs.swift-runners.outputs.sent != 'true'", swift["if"])
-        self.assertEqual(swift["uses"], "./.github/workflows/codeql-swift.yml")
-
-    def test_the_local_upload_follows_the_local_analysis(self):
-        up = self.jobs["swift-upload"]
-        self.assertEqual(up["needs"], "swift")
-        self.assertIn("needs.swift.result == 'success'", up["if"])
-        self.assertEqual(up["permissions"]["security-events"], "write")
-        sarif = next(s for s in up["steps"] if "upload-sarif" in s.get("uses", ""))
-        self.assertEqual(sarif["with"]["category"], "/language:swift")
+        self.assertEqual(swift["runs-on"], "macos-26")
 
     def test_python_and_actions_stay_local_on_every_event(self):
         job = self.jobs["scripts-and-workflows"]
@@ -80,29 +75,43 @@ class Handoff(unittest.TestCase):
         self.assertEqual(job["strategy"]["matrix"]["language"], ["python", "actions"])
 
 
-class Reusable(unittest.TestCase):
+class Generated(unittest.TestCase):
     def setUp(self):
-        self.wf = workflow("codeql-swift.yml")
-        self.job = self.wf["jobs"]["analyze"]
+        self.wf = workflow("codeql-swift-source.yml")
+        self.job = self.wf["jobs"]["swift"]
 
-    def test_only_called_and_follows_the_source_inputs(self):
-        on = self.wf[True]   # PyYAML reads the key `on` as True
+    def test_is_what_the_generator_writes_from_codeql_yml(self):
+        spec = importlib.util.spec_from_file_location("source_workflows", os.path.join(HERE, "source_workflows.py"))
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        with open(os.path.join(ROOT, ".github", "workflows", "codeql.yml"), encoding="utf-8") as f:
+            want = gen.generate("codeql-swift-source.yml", f.read())
+        with open(os.path.join(ROOT, ".github", "workflows", "codeql-swift-source.yml"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), want, "stale: run python3 -I -B .github/ci/source_workflows.py")
+
+    def test_only_called_with_a_required_source(self):
+        on = self.wf["on"]   # the generator writes the key quoted, so PyYAML keeps it a string
         self.assertEqual(set(on), {"workflow_call"})
-        self.assertEqual(on["workflow_call"]["inputs"]["source_ref"]["default"], "")
+        for name in ("source_repository", "source_ref"):
+            self.assertIs(on["workflow_call"]["inputs"][name]["required"], True)
+        self.assertEqual(list(self.wf["jobs"]), ["swift"])
+        self.assertNotIn("if", self.job)
+        self.assertNotIn("needs", self.job)
         checkout = step(self.job, "actions/checkout")
-        self.assertEqual(checkout["with"]["repository"], "${{ inputs.source_repository || github.repository }}")
+        self.assertEqual(checkout["with"]["repository"], "${{ inputs.source_repository }}")
         self.assertEqual(checkout["with"]["ref"], "${{ inputs.source_ref }}")
         self.assertIs(checkout["with"]["persist-credentials"], False)
 
-    def test_never_uploads_and_never_holds_a_write_token_or_a_secret(self):
+    def test_never_uploads_and_never_holds_a_write_token_a_secret_or_a_cache(self):
         analyze = step(self.job, "github/codeql-action/analyze")
         self.assertEqual(analyze["with"]["upload"], "never")
         self.assertEqual(self.wf["permissions"], {"contents": "read"})
         self.assertNotIn("permissions", self.job)
-        with open(os.path.join(ROOT, ".github", "workflows", "codeql-swift.yml"), encoding="utf-8") as f:
+        self.assertFalse([s for s in self.job["steps"] if s.get("uses", "").startswith("actions/cache/")])
+        with open(os.path.join(ROOT, ".github", "workflows", "codeql-swift-source.yml"), encoding="utf-8") as f:
             self.assertNotIn("secrets.", f.read())
 
-    def test_the_sarif_file_is_the_artifact_the_uploaders_read(self):
+    def test_the_sarif_file_is_the_artifact_the_runners_repository_uploads(self):
         art = step(self.job, "actions/upload-artifact")
         self.assertEqual(art["with"]["name"], "sarif-swift")
         self.assertEqual(art["with"]["if-no-files-found"], "error")
