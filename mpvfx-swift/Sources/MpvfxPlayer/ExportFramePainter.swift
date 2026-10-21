@@ -119,6 +119,8 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
     public let painter: ExportFramePainter
     private var lanes: [String: Lane] = [:]
     private var failure: ExportFrameError?
+    /// Pictures asked of the engine so far (a still or a held frame is asked for once per lane).
+    public private(set) var framesDecoded = 0
 
     public init(_ request: NativeExportFrameRequest) throws {
         let composition = PreviewComposition(document: request.document, projectDir: URL(fileURLWithPath: request.projectDir),
@@ -145,11 +147,13 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
         do {
             var lane = try lanes[layer.laneKey] ?? Lane(reader: VideoFrameReader(path: layer.source), still: nil)
             defer { lanes[layer.laneKey] = lane }
-            let still = layer.kind == .image || lane.reader.info.isStill
+            let still = layer.isStill || lane.reader.info.isStill
             if still, let cached = lane.still, cached.width == width, cached.height == height { return cached }
             // The clip was checked against its media's length before export started; a last-frame rounding overshoot
-            // shows the final frame.
-            let t = still ? 0 : max(0, min(sourceTime, lane.reader.info.duration - 1e-6))
+            // shows the final frame. A held frame is read at its own source time, as the preview's still lane reads it.
+            let onePicture = layer.kind == .image || lane.reader.info.isStill
+            let t = onePicture ? 0 : max(0, min(sourceTime, lane.reader.info.duration - 1e-6))
+            framesDecoded += 1
             let frame = try lane.reader.frame(at: t, width: width, height: height)
             let image = CanvasImage(width: width, height: height, rgba: frame.rgba)
             if still { lane.still = image }

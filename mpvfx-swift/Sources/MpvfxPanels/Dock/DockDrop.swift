@@ -50,14 +50,16 @@ public enum DockDrop {
         public var layout: DockLayout
         public var geometry: DockGeometry
         public var tabs: [String: [DockTabBar.Tab]]
-        public init(layout: DockLayout, geometry: DockGeometry, tabs: [String: [DockTabBar.Tab]]) {
-            self.layout = layout; self.geometry = geometry; self.tabs = tabs
+        /// Resolves a panel that is not open yet (a Design group dragged in from outside the dock).
+        public var registry: DockRegistry
+        public init(layout: DockLayout, geometry: DockGeometry, tabs: [String: [DockTabBar.Tab]], registry: DockRegistry = .editor) {
+            self.layout = layout; self.geometry = geometry; self.tabs = tabs; self.registry = registry
         }
     }
 
     public static func preview(_ probe: Probe, scene: Scene) -> DockDropPreview? {
         guard scene.geometry.bounds.contains(probe.point), let candidate = candidate(probe, scene: scene) else { return nil }
-        return isUseful(candidate.target, dragging: probe.panel, layout: scene.layout) ? candidate : nil
+        return isUseful(candidate.target, dragging: probe.panel, scene: scene) ? candidate : nil
     }
 
     static func candidate(_ probe: Probe, scene: Scene) -> DockDropPreview? {
@@ -72,17 +74,21 @@ public enum DockDrop {
     }
 
     /// A drop that would change nothing (a lone tab onto its own bar) or that the layout refuses shows no overlay.
-    static func isUseful(_ target: DockDragTarget, dragging panel: DockPanelID, layout: DockLayout) -> Bool {
-        guard case .success(let after) = applying(target, dragging: panel, to: layout) else { return false }
-        return after != layout
+    static func isUseful(_ target: DockDragTarget, dragging panel: DockPanelID, scene: Scene) -> Bool {
+        guard case .success(let after) = applying(target, dragging: panel, to: scene.layout, registry: scene.registry) else { return false }
+        return after != scene.layout
     }
 
     /// The layout after the drop, or the operation's typed error.
-    public static func applying(_ target: DockDragTarget, dragging panel: DockPanelID, to layout: DockLayout) -> Result<DockLayout, DockOpError> {
+    public static func applying(_ target: DockDragTarget, dragging panel: DockPanelID, to layout: DockLayout,
+                                registry: DockRegistry) -> Result<DockLayout, DockOpError> {
         var copy = layout
         do {
             switch target {
-            case .move(let t): try copy.move(panel, to: t, fraction: fraction(for: t))
+            case .move(let t):
+                // A panel from outside the dock (a Design group header) is opened at the drop.
+                if copy.isOpen(panel) { try copy.move(panel, to: t, fraction: fraction(for: t)) }
+                else { try copy.dock(panel, at: t, registry: registry, fraction: fraction(for: t)) }
             case .swap(let other): try copy.swap(panel, other)
             }
             return .success(copy)
