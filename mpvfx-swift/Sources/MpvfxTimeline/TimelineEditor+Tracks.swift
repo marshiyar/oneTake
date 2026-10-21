@@ -159,6 +159,8 @@ public extension TimelineEditor {
         case let .trimIn(a, _), let .trimOut(a, _), let .delete(a): return locked.contains(a.trackId)
         case let .split(a, _, _): return locked.contains(a.trackId)
         case .deleteMany(let list): return list.contains { locked.contains($0.trackId) }
+        case let .slip(a, _): return locked.contains(a.trackId)
+        case .roll(let roll): return locked.contains(roll.outgoing.trackId) || locked.contains(roll.incoming.trackId)
         }
     }
 }
