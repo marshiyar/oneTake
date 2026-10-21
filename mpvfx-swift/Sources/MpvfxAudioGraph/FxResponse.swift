@@ -25,9 +25,9 @@ public enum AudioFxResponse {
     /// Gain in dB of one filter node at `frequency` Hz (nil: not a filter type).
     public static func gainDb(_ node: FxNode, at frequency: Double, sampleRate: Double = 48_000) -> Double? {
         guard filterTypes.contains(node.type) else { return nil }
-        let p = AudioFx.normalize(node.type, node.params)
+        let p = AudioFx.normalize(node.type, node.params, version: node.version ?? 1)
         let w = 2 * Double.pi * frequency / sampleRate
-        let (b, a) = coefficients(node.type, p, sampleRate: sampleRate)
+        let (b, a) = coefficients(node.type, p, sampleRate: sampleRate, version: node.version ?? 1)
         return 20 * log10(max(1e-12, magnitude(b, w) / max(1e-300, magnitude(a, w))))
     }
 
@@ -37,7 +37,7 @@ public enum AudioFxResponse {
     }
 
     /// Feedforward and feedback coefficients (a0 = 1) as the filter units build them.
-    static func coefficients(_ type: String, _ p: FxParams, sampleRate sr: Double) -> (b: [Double], a: [Double]) {
+    static func coefficients(_ type: String, _ p: FxParams, sampleRate sr: Double, version: Int = 1) -> (b: [Double], a: [Double]) {
         let f = p.num("frequency")
         if (type == "highpass" || type == "lowpass") && p["poles"]?.string == "1" {
             let k = tan(Double.pi * f / sr), g = type == "highpass" ? 1 / (1 + k) : k / (1 + k)
@@ -47,7 +47,7 @@ public enum AudioFxResponse {
         // BiquadUnit leaves Q at the filter's own default (1) for the shelves, which have no Q knob.
         // The filter's parameters are Float, so the coefficients are made from the Float-rounded values.
         let c = BiquadCoefficients.make(kind, frequency: Double(Float(f)) / (sr / 2), q: Double(Float(p["q"]?.number ?? 1)),
-                                        gain: Double(Float(p["gain"]?.number ?? 0)))
+                                        gain: Double(Float(p["gain"]?.number ?? 0)), linearPassQ: version >= 2)
         return ([c.b0, c.b1, c.b2], [1, c.a1, c.a2])
     }
 
@@ -61,15 +61,18 @@ public enum AudioFxResponse {
     /// Steady-state output level in dB of a dynamics node for a steady input level `inputDb` (the level its envelope
     /// follower settles on), before any mix with the dry signal; nil when `node` is not a dynamics type.
     public static func outputDb(_ node: FxNode, inputDb x: Double) -> Double? {
-        let p = AudioFx.normalize(node.type, node.params)
+        let p = AudioFx.normalize(node.type, node.params, version: node.version ?? 1)
         switch node.type {
         case "compressor":
             let knee = 20 * log10(jsMax(1.0001, p.num("knee")))
-            return x + kneeGain(x, p.num("threshold"), p.num("ratio"), knee) + p.num("makeup")
+            return x + ((node.version ?? 1) >= 2 ? currentKneeGain(x, p.num("threshold"), p.num("ratio"), p.num("knee")) : kneeGain(x, p.num("threshold"), p.num("ratio"), knee)) + p.num("makeup")
         case "limiter":
             return min(x, p.num("limit")) + p.num("level_out")
         case "gate":
             let threshold = p.num("threshold")
+            if (node.version ?? 1) >= 2 {
+                return x + max(p.num("range"), -currentKneeGain(2 * threshold - x, threshold, 1 / p.num("ratio"), p.num("knee")))
+            }
             guard x < threshold else { return x }
             return x + max(p.num("range"), -(threshold - x) * (p.num("ratio") - 1))
         default:

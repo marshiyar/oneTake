@@ -26,6 +26,7 @@ public enum FxTail {
         return lane.points.reduce(-Double.infinity) { jsMax($0, $1.v) }
     }
 
+    /// The current feedback ring recirculates per sample: each repeat is one `gap`, with no quantum added.
     static func delayTail(_ time: Double, _ feedback: Double) -> Double {
         let gap = min(5, time / 1000)
         if gap <= 0 { return 0 }

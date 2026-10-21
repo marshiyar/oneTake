@@ -40,8 +40,8 @@ final class GainUnit: FxUnit {
 final class BiquadUnit: FxUnit {
     let f: BiquadFilter
     let usesQ: Bool, usesGain: Bool
-    init(_ type: BiquadType, _ p: FxParams, _ sr: Double) {
-        f = BiquadFilter(type, sampleRate: sr)
+    init(_ type: BiquadType, _ p: FxParams, _ sr: Double, version: Int = 1) {
+        f = BiquadFilter(type, sampleRate: sr, linearPassQ: version >= 2)
         usesQ = [.peaking, .highpass, .lowpass].contains(type)
         usesGain = [.peaking, .lowshelf, .highshelf].contains(type)
         f.frequency.value = Float(n(p, "frequency"))
@@ -229,24 +229,24 @@ final class ReverbUnit: FxUnit {
 }
 
 /// `buildFxUnit`.
-func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, elapsed: Double = 0) -> FxUnit {
+func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, elapsed: Double = 0, version: Int = 1) -> FxUnit {
     guard let def = AudioFx.definition(type) else { fatalError("Unknown effect type: \(type)") }
-    let p = AudioFx.normalize(type, params)
+    let p = AudioFx.normalize(type, params, version: version)
     if (type == "highpass" || type == "lowpass") && p["poles"]?.string == "1" { return OnePoleUnit(highpass: type == "highpass", p, sr) }
     switch def.implementation {
     case "gain": return GainUnit(p, sr)
-    case "biquad-peaking": return BiquadUnit(.peaking, p, sr)
-    case "biquad-lowshelf": return BiquadUnit(.lowshelf, p, sr)
-    case "biquad-highshelf": return BiquadUnit(.highshelf, p, sr)
-    case "biquad-highpass": return BiquadUnit(.highpass, p, sr)
-    case "biquad-lowpass": return BiquadUnit(.lowpass, p, sr)
-    case "compressor": return ProcessorUnit(CompressorProcessor(p, sampleRate: sr))
+    case "biquad-peaking": return BiquadUnit(.peaking, p, sr, version: version)
+    case "biquad-lowshelf": return BiquadUnit(.lowshelf, p, sr, version: version)
+    case "biquad-highshelf": return BiquadUnit(.highshelf, p, sr, version: version)
+    case "biquad-highpass": return BiquadUnit(.highpass, p, sr, version: version)
+    case "biquad-lowpass": return BiquadUnit(.lowpass, p, sr, version: version)
+    case "compressor": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: false) : CompressorProcessor(p, sampleRate: sr))
     case "limiter": return ProcessorUnit(LimiterProcessor(p, sampleRate: sr))
-    case "gate": return ProcessorUnit(GateProcessor(p, sampleRate: sr))
+    case "gate": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: true) : GateProcessor(p, sampleRate: sr))
     case "bitcrusher": return ProcessorUnit(BitcrusherProcessor(p))
     case "pitch-shift": return ProcessorUnit(PitchShiftProcessor(p, sampleRate: sr))
     case "waveshaper": return WaveShaperUnit(p, sr)
-    case "delay-feedback": return FeedbackDelayUnit(p, sr)
+    case "delay-feedback": return version >= 2 ? ExactFeedbackDelayUnit(p, sr) : FeedbackDelayUnit(p, sr)
     case "chorus-lfo": return ChorusUnit(p, sr, elapsed: elapsed)
     case "allpass-phaser": return PhaserUnit(p, sr, elapsed: elapsed)
     case "convolver": return ReverbUnit(p, sr)
@@ -276,7 +276,7 @@ public final class FxChainProcessor {
         for node in chain.enabledNodes {
             let preset = node.fromPreset
             if let last = runs.last, last.presetId == preset {
-                let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate)
+                let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate, version: node.version ?? chain.version)
                 units.append(u)
                 runs[runs.count - 1].units.append(u)
                 if let id = node.id { byId[id] = u }
@@ -289,7 +289,7 @@ public final class FxChainProcessor {
                 run.dry = GainStage(1 - amount, sampleRate: sampleRate)
                 presetTargets[preset, default: []].append(contentsOf: mixTargets(run.wet!.gain, run.dry!.gain))
             }
-            let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate)
+            let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate, version: node.version ?? chain.version)
             units.append(u)
             run.units.append(u)
             if let id = node.id, byId[id] == nil { byId[id] = u } else if let id = node.id { byId[id] = u }
@@ -316,12 +316,13 @@ public final class FxChainProcessor {
     /// its first DSP block renders bit-identically to one built from `next`.
     /// Each setter glides its parameter (`ParamTimeline.glide`, `LiveEdit.glideSeconds`) once the unit has rendered.
     func parameterEdits(to next: FxChain) -> [() -> Void]? {
+        guard chain.version == next.version else { return nil }
         let a = chain.enabledNodes, b = next.enabledNodes
         guard a.count == b.count, a.count == units.count else { return nil }
         var edits: [() -> Void] = []
         for i in a.indices {
             var x = a[i], y = b[i]
-            let px = AudioFx.normalize(x.type, x.params), py = AudioFx.normalize(y.type, y.params)
+            let px = AudioFx.normalize(x.type, x.params, version: x.version ?? chain.version), py = AudioFx.normalize(y.type, y.params, version: y.version ?? next.version)
             x.params = nil; y.params = nil
             guard x == y else { return nil }
             if px == py { continue }
