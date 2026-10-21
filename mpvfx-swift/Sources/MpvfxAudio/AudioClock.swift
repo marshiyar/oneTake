@@ -128,7 +128,7 @@ public final class AudioPlayback {
                     block = source.render(frames: blockFrames)
                     pos += blockFrames
                 }
-                do { try output.write(block) } catch { lock.lock(); running = false; lock.unlock(); return false }
+                do { try output.write(block) } catch { lock.lock(); running = false; lock.unlock(); source.playbackStopped(); return false }
                 written += blockFrames
                 return true
             }
@@ -142,6 +142,7 @@ public final class AudioPlayback {
         let wasRunning = running
         running = false; generation += 1
         lock.unlock()
+        source.playbackStopped()
         if wasRunning { let t = currentTime; output.stop(); output.flush(); lock.lock(); originTime = t; marks = []; lock.unlock() }
         thread = nil
     }
