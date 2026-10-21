@@ -37,14 +37,15 @@ TITLE = "Dead documentation links"
 TIMEOUT = 10
 ATTEMPTS = 3
 BACKOFF = 5  # seconds before the second attempt, doubled before each later one
-RETRIED = {429, 500, 502, 503, 504}
 REDIRECTS = {301, 302, 303, 307, 308}
 MAX_REDIRECTS = 5
+URI_SAFE = "/%:@!$&'()*+,;=-._~?"  # kept as is when a non-ASCII path or query is percent-encoded
 # http.client, not urllib: it speaks HTTP and HTTPS only, so a link can never make the checker open a file:// path.
 CONNECTIONS = {"https": http.client.HTTPSConnection, "http": http.client.HTTPConnection}
 USER_AGENT = "MpVFX-doc-links/1 (+https://github.com/marshiyar/oneTake)"
 URL = re.compile(r"https://[^\s<>\[\]{}\"'`|\\]+")
-CODE_SPAN = re.compile(r"`[^`]*`")
+CODE_SPAN = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)")  # a run of n backticks closes only with n
+FENCE = re.compile(r"\s{0,3}(`{3,}|~{3,})")
 TRAILING = ".,;:!?*_~"
 
 
@@ -59,13 +60,17 @@ def trimmed(url):
 
 
 def urls_in(text):
-    """(line number, url) for each https:// link outside fenced code blocks and inline code spans."""
-    fenced = False
+    """(line number, url) for each https:// link outside fenced code blocks and inline code spans. A fence closes
+    only with its own marker, at least as long (```` ``` ```` inside a ~~~ block is content)."""
+    fence = None
     for n, line in enumerate(text.splitlines(), 1):
-        if line.lstrip().startswith(("```", "~~~")):
-            fenced = not fenced
+        marker = FENCE.match(line)
+        if fence:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
+                fence = None
             continue
-        if fenced:
+        if marker:
+            fence = marker[1]
             continue
         for m in URL.finditer(CODE_SPAN.sub("", line)):
             yield n, trimmed(m.group())
@@ -83,15 +88,23 @@ def links(root):
     return found
 
 
+def ascii_netloc(parts):
+    """The host (IDNA for a non-ASCII name) and port of a split URL, as http.client needs them."""
+    host = (parts.hostname or "").encode("idna").decode("ascii")
+    host = f"[{host}]" if ":" in host else host
+    return f"{host}:{parts.port}" if parts.port else host
+
+
 def send(url, method, timeout, headers=None, body=None, read=False):
     """(status, Location header, body if read) of one http(s) request, redirects not followed; failures raise."""
     parts = urllib.parse.urlsplit(url)
     connection = CONNECTIONS.get(parts.scheme)
     if connection is None:
         raise http.client.InvalidURL(f"not http(s): {url}")
-    conn = connection(parts.netloc, timeout=timeout)
+    conn = connection(ascii_netloc(parts), timeout=timeout)
     try:
-        target = urllib.parse.urlunsplit(("", "", parts.path or "/", parts.query, ""))
+        path = urllib.parse.quote(parts.path or "/", safe=URI_SAFE)
+        target = urllib.parse.urlunsplit(("", "", path, urllib.parse.quote(parts.query, safe=URI_SAFE), ""))
         conn.request(method, target, body=body, headers={"User-Agent": USER_AGENT, "Accept": "*/*", **(headers or {})})
         response = conn.getresponse()
         return response.status, response.getheader("Location"), response.read() if read else b""
@@ -103,8 +116,10 @@ def status_of(url, method, timeout):
     """The HTTP status of url, redirects followed (at most MAX_REDIRECTS); network failures raise."""
     for _ in range(MAX_REDIRECTS + 1):
         status, location, _ = send(url, method, timeout)
-        if status not in REDIRECTS or not location:
+        if status not in REDIRECTS:
             return status
+        if not location:
+            raise http.client.HTTPException(f"HTTP {status} without a Location")
         url = urllib.parse.urljoin(url, location)
     raise http.client.HTTPException(f"more than {MAX_REDIRECTS} redirects")
 
@@ -119,13 +134,13 @@ def check(url, sleep=time.sleep, timeout=TIMEOUT):
             status = status_of(url, "HEAD", timeout)
             if status >= 400:
                 status = status_of(url, "GET", timeout)
-        except (OSError, http.client.HTTPException) as e:
+        except (OSError, UnicodeError, http.client.HTTPException) as e:
             reason = f"unreachable: {e}"
             continue
         if status < 400:
             return None
         reason = f"HTTP {status}"
-        if status not in RETRIED:
+        if status != 429 and not 500 <= status <= 599:
             return reason
     return reason
 
@@ -150,10 +165,20 @@ def report(dead, checked=None):
                        "itself when the list is empty."), ""])
 
 
+def bot_issues(api, per_page=100, max_pages=50):
+    """Every issue and pull request github-actions[bot] opened, page by page (merge-train's PRs count too)."""
+    out = []
+    for page in range(1, max_pages + 1):
+        batch = api("GET", f"issues?state=all&creator=github-actions%5Bbot%5D&per_page={per_page}&page={page}")
+        out += batch
+        if len(batch) < per_page:
+            break
+    return out
+
+
 def sync_issue(dead, api, checked=None):
     """Write the result into the one issue titled TITLE: open (or reopen) it while links are dead, close it after."""
-    issues = [i for i in api("GET", "issues?state=all&creator=github-actions%5Bbot%5D&per_page=100")
-              if i.get("title") == TITLE and "pull_request" not in i]
+    issues = [i for i in bot_issues(api) if i.get("title") == TITLE and "pull_request" not in i]
     issue = max(issues, key=lambda i: i["number"], default=None)
     body = report(dead, checked)
     if dead and issue:

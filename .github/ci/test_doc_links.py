@@ -40,7 +40,11 @@ ANSWERS = {
     "/flaky": lambda method, n: 503 if n <= 2 else 200,
     "/busy": lambda method, n: 429 if n <= 1 else 200,
     "/moved": lambda method, n: 301,
+    "/loop": lambda method, n: 301,
+    "/nowhere": lambda method, n: 302,
+    "/storage": lambda method, n: 507 if n <= 1 else 200,
 }
+LOCATIONS = {"/moved": "/ok", "/loop": "/loop"}
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -52,8 +56,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         CALLS[key] = CALLS.get(key, 0) + 1
         code = ANSWERS.get(self.path, lambda method, n: 404)(self.command, CALLS[key])
         self.send_response(code)
-        if code == 301:
-            self.send_header("Location", "/ok")
+        if self.path in LOCATIONS:
+            self.send_header("Location", LOCATIONS[self.path])
         self.send_header("Content-Length", "2")
         self.end_headers()
         if body:
@@ -98,6 +102,19 @@ class Server(unittest.TestCase):
     def test_redirects_are_followed(self):
         self.assertIsNone(self.check("/moved"))
         self.assertEqual(CALLS[("HEAD", "/ok")], 1)
+
+    def test_redirect_loop_is_dead(self):
+        self.assertIn("redirects", self.check("/loop"))
+
+    def test_redirect_without_location_is_dead(self):
+        self.assertIn("without a Location", self.check("/nowhere"))
+
+    def test_every_5xx_is_retried(self):
+        self.assertIsNone(self.check("/storage"))
+
+    def test_non_ascii_link_is_encoded_not_a_crash(self):
+        self.assertEqual(self.check("/\u00e4rger"), "HTTP 404")
+        self.assertIn(("HEAD", "/%C3%A4rger"), CALLS)
 
     def test_only_http_and_https_are_fetched(self):
         self.assertTrue(doc_links.check("file:///etc/passwd", sleep=self.slept.append).startswith("unreachable"))
@@ -156,6 +173,16 @@ class Trim(unittest.TestCase):
                          ["https://e.org/x", "https://e.org/w/Foo_(bar)", "https://e.org/y"])
 
 
+class CodeAndFences(unittest.TestCase):
+    def test_multi_backtick_span_is_code(self):
+        line = "`` https://e.org/a`b `` and `https://e.org/c` but https://e.org/real"
+        self.assertEqual([u for _, u in doc_links.urls_in(line)], ["https://e.org/real"])
+
+    def test_fence_closes_only_with_its_own_marker(self):
+        text = "~~~\n```\nhttps://e.org/in\n```\n~~~\nhttps://e.org/out\n"
+        self.assertEqual(list(doc_links.urls_in(text)), [(6, "https://e.org/out")])
+
+
 class FakeAPI:
     """The GitHub REST calls doc_links makes, against an in-memory list of issues."""
 
@@ -166,7 +193,9 @@ class FakeAPI:
     def __call__(self, method, path, body=None):
         self.calls.append((method, path, body))
         if method == "GET":
-            return [i for i in self.issues if i["title"] == doc_links.TITLE]
+            query = dict(p.split("=") for p in path.split("?", 1)[1].split("&"))
+            size, page = int(query["per_page"]), int(query["page"])
+            return self.issues[(page - 1) * size:page * size]
         if method == "POST":
             issue = dict(body, number=100 + len(self.issues), state="open")
             self.issues.append(issue)
@@ -205,6 +234,13 @@ class Issue(unittest.TestCase):
         doc_links.sync_issue(DEAD, api)
         self.assertEqual(len(api.issues), 1)
         self.assertEqual(api.issues[0]["state"], "open")
+
+    def test_issue_beyond_the_first_page_is_found(self):
+        prs = [{"number": n, "title": "merge train", "state": "open", "pull_request": {}} for n in range(1, 151)]
+        api = FakeAPI(prs + [{"number": 200, "title": doc_links.TITLE, "state": "open", "body": "old"}])
+        doc_links.sync_issue({}, api)
+        self.assertEqual(api.issues[-1]["state"], "closed")
+        self.assertNotIn("POST", [c[0] for c in api.calls])
 
     def test_nothing_dead_and_no_issue_writes_nothing(self):
         api = FakeAPI()
