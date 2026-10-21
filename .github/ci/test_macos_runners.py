@@ -36,12 +36,13 @@ class Handoff(unittest.TestCase):
     def setUp(self):
         self.jobs = workflow("mpvfx-ci.yml")["jobs"]
 
-    def test_sent_for_main_pushes_and_labelled_same_repository_pull_requests_only(self):
+    def test_sent_for_main_pushes_the_nightly_and_labelled_same_repository_pull_requests_only(self):
         cond = self.jobs["macos-runners"]["if"]
         self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/main'", cond)
         self.assertIn("contains(github.event.pull_request.labels.*.name, 'macos')", cond)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", cond)
-        self.assertNotIn("schedule", cond)
+        self.assertIn("|| github.event_name == 'schedule'", cond)
+        self.assertNotIn("refs/tags", cond)   # a tag builds here: it is the official release
 
     def test_needs_both_secrets_before_minting_a_token(self):
         job = self.jobs["macos-runners"]
@@ -49,6 +50,12 @@ class Handoff(unittest.TestCase):
         self.assertEqual(set(have["env"]), {"APP_ID", "APP_KEY"})
         self.assertIn('[ -n "$APP_ID" ] && [ -n "$APP_KEY" ]', have["run"])
         self.assertEqual(step(job, "Runners App token")["if"], "steps.have.outputs.app == 'true'")
+
+    def test_the_nightly_asks_for_every_shard(self):
+        send = step(self.jobs["macos-runners"], "Hand the macOS build")
+        self.assertEqual(send["env"]["FULL"], "${{ github.event_name == 'schedule' }}")
+        self.assertIn('--arg full "$FULL"', send["run"])
+        self.assertIn("full: $full", send["run"])
 
     def test_dispatch_names_this_repository_and_the_commit(self):
         send = step(self.jobs["macos-runners"], "Hand the macOS build")
