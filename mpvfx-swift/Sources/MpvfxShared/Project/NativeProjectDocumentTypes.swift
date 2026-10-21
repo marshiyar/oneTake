@@ -184,6 +184,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// In, Out and Loop moves over the clip's own values (NativeClipMoves.swift); absent means none.
+    public var moves: NativeClipMoves? = nil
     /// A held source frame (`NativeClipHold`): the clip shows that one frame for its whole length; absent plays the source.
     public var holdSourceFrame: NativeClipHold? = nil
     /// How a media clip's picture fills its box (the inspector's Fit row); absent means Fit, the contain fit every
@@ -197,6 +199,10 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var scaleRatioLocked: Bool? = nil
     /// Parametric layer masks; absent means unmasked.
     public var masks: [NativeClipMask]? = nil
+    /// This clip's own canvas fill, or `inherit` for the project's (`NativeFill`); nil means the project's.
+    public var fill: NativeFill? = nil
+    /// Procedural picture on an element clip; uses the shared solid/gradient fill format.
+    public var generator: NativeFill? = nil
     /// The text, voice, rate and pitch an audio clip made from text was spoken with (`NativeClipNarration`); absent
     /// on every other clip.
     public var narration: NativeClipNarrationRecord? = nil
@@ -289,6 +295,8 @@ public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var assets: [NativeProjectAsset]; public var sequence: NativeProjectSequence
     /// The Easing panel's custom presets for this project (NativeEasingPreset.swift); nil writes no key.
     public var easingPresets: [NativeEasingPreset]? = nil
+    /// What fills the frame behind clips that do not cover it (`NativeFill`); nil writes no key (black bars).
+    public var compositionFill: NativeFill? = nil
 }
 
 public extension NativeProjectDocument {
@@ -345,7 +353,7 @@ public extension NativeProjectDocument {
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
-         unsupportedHoldNotice, undrawnTransitionsNotice].compactMap { $0 }
+         unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
     }
 }
 
@@ -360,8 +368,8 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
     case duplicateTransition = "duplicate-transition"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
-    case invalidSpeedRamp = "invalid-speed-ramp"
-    case invalidNarration = "invalid-narration"
+    case invalidSpeedRamp = "invalid-speed-ramp", invalidMove = "invalid-move"
+    case invalidNarration = "invalid-narration", invalidFill = "invalid-fill"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {

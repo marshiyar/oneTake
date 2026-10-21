@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxTimeline
+import MpvfxShared
 
 /// One item of the media bin: a project asset with what the card shows.
 public struct MediaBinItem: Equatable {
@@ -115,7 +116,10 @@ public final class LeftSidebarPanel {
     public var importing = false
 
     public var onImport: (() -> Void)?
+    public var onAddGenerator: ((NativeGeneratorKind) -> Void)?
     public var onAddAtPlayhead: ((String) -> Void)?
+    /// Instantiates a built-in text recipe as editable text at the playhead.
+    public var onAddTextLook: ((TextLookPreset) -> Void)?
     public var onRenameAsset: ((String, String) -> Void)?
     public var onDeleteAsset: ((String, Bool) -> Void)?
     public var onCopyPath: ((String) -> Void)?
@@ -137,7 +141,9 @@ public final class LeftSidebarPanel {
     public var hovered: Hit?
     public internal(set) var search: PanelTextField?
     public var searchQuery = ""
-    public var filter = MediaFilter()
+    /// The filter and sort choice; every change calls `onFilterChange` so the host can keep it for the next launch.
+    public var filter = MediaFilter() { didSet { if filter != oldValue { onFilterChange?(filter) } } }
+    public var onFilterChange: ((MediaFilter) -> Void)?
     /// The tile the arrows move and Enter acts on (a click selects; Escape clears).
     public internal(set) var selected: MediaTileRef?
     /// Tab order over the header controls and the grid (the selected tile, or the first one).
@@ -296,6 +302,8 @@ public final class LeftSidebarPanel {
 
     /// Ends a press: a drag stops (the host has already seen where it ended).
     public func pointerUp(_ p: CanvasPoint) {
+        if draggingAssetId == nil, let pressed = pressedAsset, let look = TextLookPreset.draggedPreset(pressed.id),
+           case .tile(.textLook(let id))? = hits.hit(p), id == look.id { onAddTextLook?(look) }
         pressedAsset = nil
         lastDraggedAssetId = draggingAssetId
         if draggingAssetId != nil { draggingAssetId = nil; onChange?() }
@@ -350,7 +358,9 @@ public final class LeftSidebarPanel {
         case .tile(let ref):
             selected = ref
             if case .media(let id) = ref { pressedAsset = (id, p) }
-            if let lc = lastClick, lc.ref == ref, time - lc.at < 0.4 { runPrimary(ref); lastClick = nil } else { lastClick = (ref, time) }
+            if case .textLook(let id) = ref { pressedAsset = (TextLookPreset.dragPrefix + id, p) }
+            if case .textLook = ref { lastClick = nil }
+            else if let lc = lastClick, lc.ref == ref, time - lc.at < 0.4 { runPrimary(ref); lastClick = nil } else { lastClick = (ref, time) }
         case .tileAction(let ref): selected = ref; runPrimary(ref)
         case .tileAudition, .auditionBar: _ = pressAudition(hit, at: p)
         default: break
