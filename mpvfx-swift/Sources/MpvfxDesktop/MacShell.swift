@@ -274,6 +274,13 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
             alert.addButton(withTitle: "Keep My Edits"); alert.addButton(withTitle: "Use the File on Disk")
             answer(alert.runModal() == .alertFirstButtonReturn)
         }
+        session.onProjectMoved = { message, answer in
+            let alert = NSAlert(); alert.alertStyle = .warning
+            alert.messageText = "The project folder is missing"
+            alert.informativeText = message
+            alert.addButton(withTitle: "Locate Folder…"); alert.addButton(withTitle: "Keep Editing")
+            answer(alert.runModal() == .alertFirstButtonReturn)
+        }
         session.redraw = { [weak host] in host?.invalidate() }
         let dialogs = MacDialogs()
         session.panels?.dialogs = dialogs
