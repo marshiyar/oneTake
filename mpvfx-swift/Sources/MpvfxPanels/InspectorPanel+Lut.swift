@@ -124,7 +124,7 @@ extension InspectorPanel {
                 self?.pickLut(option.value, grading, commit: commit)
             }
         }
-        let remove: InspectorRow.Button = InspectorRow.Button(
+        let remove = InspectorRow.Button(
             key: "lut.remove",
             label: "Remove",
             style: .muted,
@@ -178,15 +178,15 @@ extension InspectorPanel {
     }
 
     internal func drawLutToggle(_ canvas: CanvasContext, _ rect: CanvasRect, open: Bool) {
-        let rule: CanvasRect = CanvasRect(x: rect.x, y: rect.y, width: rect.width, height: 1)
+        let rule = CanvasRect(x: rect.x, y: rect.y, width: rect.width, height: 1)
         canvas.fillRect(rule.snapped, PanelTheme.panelHairline)
-        let row: CanvasRect = CanvasRect(
+        let row = CanvasRect(
             x: rect.x,
             y: rect.y + LutLayout.ruleGap,
             width: rect.width,
             height: LutLayout.rowHeight
         )
-        let label: CanvasRect = CanvasRect(
+        let label = CanvasRect(
             x: row.x,
             y: row.midY - LutLayout.textHalf,
             width: row.width - LutLayout.padding,
@@ -194,7 +194,7 @@ extension InspectorPanel {
         )
         let font: CanvasFont = PanelTheme.font(LutLayout.fontSize)
         PanelDraw.text(canvas, "Custom LUT", in: label, font: font, color: PanelTheme.text2)
-        let caret: CanvasRect = CanvasRect(
+        let caret = CanvasRect(
             x: row.maxX - LutLayout.caretSize,
             y: row.midY - LutLayout.caretHalf,
             width: LutLayout.caretSize,
@@ -234,7 +234,7 @@ extension InspectorPanel {
     }
 
     internal func drawLutPick(_ canvas: CanvasContext, _ rect: CanvasRect, name: String, removable: Bool) {
-        let label: CanvasRect = CanvasRect(
+        let label = CanvasRect(
             x: rect.x,
             y: rect.midY - LutLayout.textHalf,
             width: LutLayout.labelWidth,
@@ -245,7 +245,7 @@ extension InspectorPanel {
         if removable {
             let font: CanvasFont = PanelTheme.font(LutLayout.fontSize)
             let width: Double = canvas.measureText("Remove", font: font).width + LutLayout.padding
-            let button: CanvasRect = CanvasRect(
+            let button = CanvasRect(
                 x: right - width,
                 y: rect.midY - LutLayout.buttonHalf,
                 width: width,
@@ -258,7 +258,7 @@ extension InspectorPanel {
             addHit(button, .custom(Self.lutRowId, 1))
             right = button.x - LutLayout.gap
         }
-        let field: CanvasRect = CanvasRect(
+        let field = CanvasRect(
             x: rect.x + LutLayout.fieldInset,
             y: rect.midY - LutLayout.fieldHalf,
             width: max(0, right - rect.x - LutLayout.fieldInset),
@@ -286,7 +286,7 @@ extension InspectorPanel {
             let color: CanvasColor = failed ? PanelTheme.red400 : PanelTheme.rowLabel
             for (index, line) in lines.enumerated() {
                 let top: Double = rect.y + Double(index) * PanelGrid.lineHeight
-                let box: CanvasRect = CanvasRect(
+                let box = CanvasRect(
                     x: rect.x + LutLayout.fieldInset,
                     y: top,
                     width: rect.width - LutLayout.fieldInset,
