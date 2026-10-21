@@ -17,7 +17,7 @@ import MpvfxAudioGraph
 
 /// Builds the bus/FX graph project from an open document, mirroring what export feeds the mixer:
 /// audio/video clips with a resolvable file (detached-from video clips excluded), clip `audio.volume`,
-/// clip mute, `audioGroupId`, clip FX chain + automation, and the sequence's audio groups (volume, mute,
+/// clip fades, clip mute, `audioGroupId`, clip FX chain + automation, and the sequence's audio groups (volume, mute,
 /// FX chain, automation). Stems are decoded by `loadStem` (the media engine in the app, `decodeStem`; synthetic in tests).
 public enum DocumentAudioGraph {
     /// What a stem decode depends on; also the cache key, so an edit only re-decodes the clips it changed.
@@ -39,6 +39,8 @@ public enum DocumentAudioGraph {
         public struct Track: Equatable {
             public var id: String, stem: StemKey, start: Double, end: Double, volume: Double, muted: Bool
             public var fxChain: String?, automation: String?, groupId: String?
+            /// The clip's `fadeInFrames` / `fadeOutFrames` in seconds (0: none).
+            public var fadeIn: Double = 0, fadeOut: Double = 0
         }
     }
 
@@ -62,7 +64,8 @@ public enum DocumentAudioGraph {
                                preservesPitch: c.preservesPitch ?? true)
             tracks.append(.init(id: c.id, stem: stem,
                                 start: start, end: end, volume: volume, muted: c.muted,
-                                fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty))
+                                fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty,
+                                fadeIn: (c.fadeInFrames ?? 0) / fps, fadeOut: (c.fadeOutFrames ?? 0) / fps))
         }
         return Inputs(duration: duration, tracks: tracks, groups: doc.sequence.audioGroups ?? [])
     }
@@ -81,8 +84,10 @@ public enum DocumentAudioGraph {
         let tracks = inputs.tracks.compactMap { t -> AudioGraphTrack? in
             let stem: [[Float]]
             do { stem = try loadStem(t.stem) } catch { issues.append("clip \(t.id): audio not decodable (\(error))"); return nil }
-            return AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: t.volume, muted: t.muted,
-                                   fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
+            var track = AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: t.volume, muted: t.muted,
+                                        fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
+            track.fadeIn = t.fadeIn; track.fadeOut = t.fadeOut
+            return track
         }
         let groups = inputs.groups.map { g in
             AudioGraphGroup(id: g.id, volume: g.volume ?? 1, muted: g.muted ?? false,

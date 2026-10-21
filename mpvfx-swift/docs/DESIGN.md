@@ -22,7 +22,8 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
 4. **Dense, not cramped.** 12 px body text, 11 px secondary text, 24–28 px rows. Empty space is a sign that a panel
    has nothing to show; show a short hint there instead.
 5. **Time is timecode.** Times read `HH:MM:SS:FF` (or `MM:SS:FF` under an hour) in tabular figures, in the accent
-   colour where the user can scrub them.
+   colour where the user can scrub them. The timeline ruler always reads `HH:MM:SS:FF`, so a minute never looks
+   like an hour ([TIMELINE.md](TIMELINE.md)).
 6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; muted text at least 3:1.
    Light mode keeps the same contrast; its structure is tuned separately (see "Light mode").
 
