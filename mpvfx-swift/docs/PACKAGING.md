@@ -63,24 +63,47 @@ stab or local symbol. The engine libraries pinned in `binaries.lock` are held to
 runtime DLLs the Windows build redistributes are reported, not judged. The table of every binary is in the run's
 summary. The check is not required for merging: it reports on what was published.
 
-## Releases: nightly and official
+## Release channels: nightly, alpha, beta, rc, stable
 
 When every platform is green, one publish job (`.github/ci/publish.sh`) uploads all installers to a single GitHub
-release:
+release. Which release, and what it promises, follows from the ref the run is for:
 
-- **Nightly builds** are pre-releases named `nightly-<commit>` (the commit's first 7 hex digits), titled
-  `oneTake nightly <date> (<commit>)`, made by every green run of `main` (a push, the nightly run or a manual run).
-  A rerun on the same commit uploads into the same release. They are untested development builds, never marked
-  latest; only the newest 7 are kept.
-- **Official releases** come from pushing a `v*` tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`. The tag's
-  version (without the `v`) must equal `packaging/VERSION`, or the publish job fails before uploading anything. The
-  release is titled `oneTake <version>`, is the repository's "latest" release (`releases/latest`), and is never
-  deleted.
+| Channel | Made by | Release tag and title | Marked | Kept | macOS notarization | Promise |
+|---|---|---|---|---|---|---|
+| nightly | every green run of `main` | `nightly-<commit>`, "oneTake nightly <date> (<commit>)" | pre-release | newest 7 | warns when it fails | untested development build |
+| alpha | tag `v<X.Y.Z>-alpha.<N>` | that tag, "oneTake X.Y.Z alpha N" | pre-release | always | warns when it fails | early test build: features may be missing or change, projects may not open in later builds |
+| beta | tag `v<X.Y.Z>-beta.<N>` | that tag, "oneTake X.Y.Z beta N" | pre-release | always | warns when it fails | feature-complete test build for wider testing; expect bugs |
+| rc | tag `v<X.Y.Z>-rc.<N>` | that tag, "oneTake X.Y.Z RC N" | pre-release | always | required | becomes `vX.Y.Z` unless a blocking bug is found |
+| stable | tag `v<X.Y.Z>` | that tag, "oneTake X.Y.Z" | latest (`releases/latest`) | always | required | the official release |
+
+- `<X.Y.Z>` must equal `packaging/VERSION` (now `0.1.0`), or the publish job fails before uploading anything: bump
+  `VERSION` in a pull request first. `<N>` counts from 1 (`1`, `2`, ..., no leading zero).
+- Any other suffix after the hyphen (`v0.1.0-foo`, `v0.1.0-beta`, `v0.1.0-Beta.1`) is refused with an error naming the
+  valid forms; delete such a tag with `git push origin :refs/tags/<tag>` and push a valid one.
+- Alpha, beta and rc releases are never marked latest, so `releases/latest` stays on the newest stable release, and
+  they are never pruned (only `nightly-*` releases are). A rerun of the same commit or tag uploads into the same
+  release.
+- Notarization: on an rc or stable tag, a notarization that cannot be submitted (for example rejected Apple
+  credentials) fails the macOS job, so nothing is published. On `main`, alpha and beta it is a warning: the disk image
+  ships Developer ID signed but not notarized, and the release notes tell users that macOS will ask them to approve
+  the app the first time they open it (right-click > Open). The macos job records the outcome in
+  `dist/macos-notarization.txt` (in the `macos` artifact, never a release asset), which `publish.sh` reads.
+- The notes of an alpha, beta or rc release say which channel it is and that it is a test build, not a stable
+  release. `.github/ci/test_publish.py` checks every one of these decisions.
+
+**Cutting a release.** Wait until the commit you want is green on `main` (its nightly is published), then tag that
+commit and push the tag; the tag's own run builds, tests and publishes everything again from it:
+
+```sh
+git fetch origin && git checkout --detach origin/main     # the green commit
+git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1   # alpha
+git tag v0.1.0-beta.1  && git push origin v0.1.0-beta.1    # beta
+git tag v0.1.0-rc.1    && git push origin v0.1.0-rc.1      # release candidate (notarization required)
+git tag v0.1.0         && git push origin v0.1.0           # stable (notarization required; becomes latest)
+```
 
 Pull requests and other branches build and test but never publish. Older `build-main-*` releases from before this
 scheme are left as they are.
-
-## Releases: nightly and official
 
 ## Merging
 

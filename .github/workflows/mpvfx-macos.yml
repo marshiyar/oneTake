@@ -13,8 +13,10 @@ name: mpvfx-macos
 # Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
 # are optional and reach only runs of main and of tags, never a pull-request branch however its run was started: set,
 # the disk image is signed with a Developer ID and notarized; unset, it is ad-hoc signed. A rejected notarization
-# (for example an expired app-specific password) fails a tag run and is a warning on main, where the image ships
-# signed but not notarized and the Gatekeeper assessment is skipped.
+# (for example an expired app-specific password) fails a stable tag (v<X.Y.Z>) or a release-candidate tag
+# (v<X.Y.Z>-rc.<N>) run and is a warning on main and on alpha and beta tags, where the image ships signed but not
+# notarized and the Gatekeeper assessment is skipped. dist/macos-notarization.txt (in the macos artifact, never a
+# release asset) says notarized or not-notarized, so the release notes can tell users how to open the app.
 
 on:
   workflow_call:
@@ -228,8 +230,9 @@ jobs:
       - name: Package (disk image with the engine libraries in Contents/Frameworks)
         id: package
         env:
-          # A release tag must be notarized; on main a rejected notarization login is a warning (owner, 2026-10-21).
-          NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}
+          # A stable tag (v<X.Y.Z>, no hyphen) or a release candidate (v<X.Y.Z>-rc.<N>) must be notarized; on main
+          # and on alpha and beta tags a rejected notarization login is a warning (owner, 2026-10-21).
+          NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/v') && (!contains(github.ref, '-') || contains(github.ref, '-rc.')) && '1' || '0' }}
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
           APPLE_ID: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
           APPLE_APP_PASSWORD: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
@@ -242,6 +245,8 @@ jobs:
           sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" "$mode" | tee "$RUNNER_TEMP/package.log"
           if [ "$mode" = developer-id ] && [ ! -e "$GITHUB_WORKSPACE/dist/.not-notarized" ]; then notarized=true; else notarized=false; fi
           echo "notarized=$notarized" >> "$GITHUB_OUTPUT"
+          # Read by .github/ci/publish.sh for the release notes; not one of the files it uploads.
+          if [ "$notarized" = true ]; then echo notarized; else echo not-notarized; fi > "$GITHUB_WORKSPACE/dist/macos-notarization.txt"
           rm -f "$GITHUB_WORKSPACE/dist/.not-notarized"
           ls -l "$GITHUB_WORKSPACE/dist"
       - name: Launch smoke from the installed disk image
@@ -294,6 +299,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/mac-smoke.png
+            dist/macos-notarization.txt
           if-no-files-found: ignore
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
