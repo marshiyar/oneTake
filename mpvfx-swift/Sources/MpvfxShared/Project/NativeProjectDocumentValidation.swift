@@ -165,6 +165,9 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if !validFraction {
                 pushIssue(&issues, .invalidClip, "\(clipPath).sourceInFraction", "Source fraction must be a nonnegative rational smaller than one")
             }
+            if let name = clip["name"], name.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                pushIssue(&issues, .invalidClip, "\(clipPath).name", "Clip name must be a non-empty string")
+            }
             if clip["hidden"] != nil && clip["hidden"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).hidden", "Hidden must be a boolean")
             }

@@ -177,6 +177,7 @@ their shape (`PlayerView+Outlines.swift`).
 | Move, trim, split, multi-select, marquee, razor (⇧ splits all tracks), delete | done |
 | Slip (Y tool, ⌘/Ctrl+⌥ drag) and roll (roll tool, ⇧ drag on a shared edge) | done (one track; no two-up source monitor during the slip) |
 | Ripple edits, close gap / close all gaps, track add/remove/reorder, snapping, copy/paste | done |
+| Clip names and enable/disable (#445) | done: F2 / Rename… gives a clip its own saved label without changing its media filename; Shift+E / Enable/Disable skips the clip in preview and export (picture and sound), keeping its placement. Undoable; locked tracks refuse edits. The clip menu scrolls inside short panes and supports keyboard navigation (`ClipIdentityTests`, `DisabledClipAudioTests`, `TimelineClipMenuOverflowTests`) | close |
 | Toolbar: tools, snap, keyframe, auto-keyframe, split, remove silence, add beat, track height 32–96, zoom slider/in/out/percent (1e3a90f) | partial: everything works except Add beat, which stays disabled until beat analysis exists |
 | Remove silence (backend silence detection → one undo step, result toast) | done (de10f47) |
 | Add beat at playhead, beat strip (drag to move, ⌥-click delete), music beat analysis, beat edits persisted | missing (unowned: needs a native beat analysis and the beat file) |

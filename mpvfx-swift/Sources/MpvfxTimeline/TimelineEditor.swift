@@ -74,7 +74,7 @@ public final class TimelineEditor {
                 let t = entry.element
                 var track = TimelineTrackModel(id: t.id, name: Self.trackName(t, displayNumber: display + 1, assets: assets), kind: t.kind.rawValue, clips: t.clips.map { c in
                     let a = assets[c.assetId]
-                    var m = TimelineClipModel(id: c.id, name: a?.name ?? c.assetId, start: c.startFrame / f, duration: c.durationFrames / f,
+                    var m = TimelineClipModel(id: c.id, name: c.name ?? a?.name ?? c.assetId, start: c.startFrame / f, duration: c.durationFrames / f,
                                               kind: TimelineClipKind(rawValue: a?.kind.rawValue ?? "element") ?? .element,
                                               keyframes: c.parameterTracks.flatMap { $0.keyframes.map { $0.frame / f } }.sorted(),
                                               effectCount: c.effects.count)

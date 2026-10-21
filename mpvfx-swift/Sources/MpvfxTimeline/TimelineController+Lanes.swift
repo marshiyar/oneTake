@@ -57,9 +57,11 @@ public extension TimelineController {
                                                muted: c.muted, canReattach: canReattach, canDetach: canDetach, canMute: c.canMute,
                                                canPaste: clipboard != nil, canPasteGrade: gradeClipboard != nil,
                                                gradePasteReason: gradeClipboard == nil ? "Copy a grade before pasting" : nil,
-                                               keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil)
+                                               keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil,
+                                               disabled: c.hidden)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
-        if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
+        if viewport.height > 0 { m.maximumHeight = viewport.height }
+        if m.x + TimelineClipMenu.width > viewport.width { m.x = max(0, viewport.width - TimelineClipMenu.width) }
         if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }
         view.clipMenu = m
     }
@@ -98,6 +100,8 @@ public extension TimelineController {
         case .duplicate:
             view.selection = [id]
             return duplicateSelection()
+        case .rename: return requestRenameClip(id)
+        case .disable: return editor.setClipsHidden([id], !editor.isClipHidden(id))
         case .keepPitch: return editor.setPreservesPitch(clipId: id, !editor.preservesPitch(clipId: id))
         case .thumbnails:
             setThumbnailsEnabled(!view.thumbnailsEnabled)   // thumbnailMode is timeline-wide (adaptive / hidden)

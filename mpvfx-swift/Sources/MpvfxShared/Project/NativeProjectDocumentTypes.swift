@@ -160,6 +160,8 @@ public struct NativeCropPivotSegment: Codable, Equatable, Sendable {
 
 public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var id: String; public var assetId: String
+    /// Optional timeline label, independent of the source asset name.
+    public var name: String? = nil
     public var audioGroupId: String?; public var audioFxChain: String?; public var audioAutomation: String?
     public var audioDetachedFrom: String?
     public var binding: NativeClipDomBinding?
