@@ -47,6 +47,8 @@ public struct PreviewLayer: Equatable, Sendable {
     /// Degrees, clockwise, about the box centre (includes auto-rotate along the motion path).
     public var rotation: Double
     public var opacity: Double
+    /// How the layer combines with the ones under it (`clip.style.blend`).
+    public var blend = NativeBlendMode.normal
     public var crop: CropInsets
     /// Part of `rotation` that comes from auto-rotate along the motion path (not from transform.rotation).
     public var motionRotation = 0.0
@@ -322,6 +324,7 @@ public struct PreviewComposition {
         // An animated grade decides on its own (nil there means no active grade at this frame, not "use the static one").
         out.grade = e.gradeAnimation.map { $0.renderer(e.clip, values: values) } ?? e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
+        out.blend = c.style?.blendMode ?? .normal
         out.text = e.kind == .text ? c.text : nil
         out.offlineFileName = e.offlineFileName
         out.fit = c.fit
@@ -407,6 +410,17 @@ public enum PreviewPainter {
 
     static func draw(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
         guard layer.isVisible else { return }
+        // A blended layer is painted alone, then mixed with the backdrop pixel by pixel: only a raster canvas can be
+        // read back, so the preview paints a frame holding a blended layer on one (PreviewCompositor.draw).
+        if layer.blend != .normal, let raster = c as? RasterCanvas {
+            var plain = layer; plain.blend = .normal
+            raster.drawBlended(layer.blend) { drawPlain(plain, image: image, on: $0, frame: frame, scale: s) }
+            return
+        }
+        drawPlain(layer, image: image, on: c, frame: frame, scale: s)
+    }
+
+    private static func drawPlain(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
         let box = toView(layer.box, frame: frame, scale: s)
         let cx = box.x + box.width / 2, cy = box.y + box.height / 2
         let t3 = layer.transform3D

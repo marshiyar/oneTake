@@ -28,18 +28,23 @@ public struct NativeClipStyle: Codable, Equatable, Hashable, Sendable {
     public var strokeColor: String?
     /// Box shadows, drawn under the clip, first one on top.
     public var shadows: [NativeClipShadow]?
+    /// How the clip's picture combines with what is under it (`NativeBlendMode` raw value); absent: normal.
+    public var blend: String?
 
     public init(fill: String? = nil, strokeWidth: Double? = nil, strokeStyle: String? = nil, strokeColor: String? = nil,
-                shadows: [NativeClipShadow]? = nil) {
+                shadows: [NativeClipShadow]? = nil, blend: String? = nil) {
         self.fill = fill; self.strokeWidth = strokeWidth; self.strokeStyle = strokeStyle; self.strokeColor = strokeColor
-        self.shadows = shadows
+        self.shadows = shadows; self.blend = blend
     }
+
+    /// The blend mode to draw with; an absent or unknown name draws normal.
+    public var blendMode: NativeBlendMode { blend.flatMap(NativeBlendMode.init(rawValue:)) ?? .normal }
 
     public static let defaultStrokeColor = "#ffffff2e"   // rgba(255, 255, 255, 0.18)
     public static let strokeStyles = ["none", "solid"]
 
     /// Nothing set: the clip draws exactly as without a style.
-    public var isEmpty: Bool { fill == nil && strokeWidth == nil && strokeStyle == nil && strokeColor == nil && (shadows ?? []).isEmpty }
+    public var isEmpty: Bool { fill == nil && strokeWidth == nil && strokeStyle == nil && strokeColor == nil && (shadows ?? []).isEmpty && blend == nil }
     /// Stroke width that actually draws (a width with style `none` draws nothing).
     public var visibleStrokeWidth: Double {
         guard let w = strokeWidth, w > 0, (strokeStyle ?? "solid") != "none" else { return 0 }
@@ -104,6 +109,9 @@ func validateNativeClipStyle(_ style: NativeJSONValue?, _ path: String, _ issues
     number(style["strokeWidth"], "\(path).strokeWidth", nonNegative: true)
     if let s = style["strokeStyle"], s.stringValue.map(NativeClipStyle.strokeStyles.contains) != true {
         pushIssue(&issues, .invalidClip, "\(path).strokeStyle", "Stroke style must be none or solid")
+    }
+    if let b = style["blend"], b.stringValue.flatMap(NativeBlendMode.init(rawValue:)) == nil {
+        pushIssue(&issues, .invalidClip, "\(path).blend", "Blend must be one of \(NativeBlendMode.allCases.map(\.rawValue).joined(separator: ", "))")
     }
     if let raw = style["shadows"] {
         guard let list = raw.arrayValue else { return pushIssue(&issues, .invalidClip, "\(path).shadows", "Shadows must be an array") }
