@@ -212,6 +212,9 @@ public enum ThemeTokens {
     public static let panelBorderPair = ThemePair(0x000000, 0xC8C8CE)
     public static let panelBorderInputPair = ThemePair(0x333333, 0xB4B4BC)
     public static let panelHairlinePair = ThemePair(0x141414, 0xDCDCE0)
+    /// The checkerboard behind a transparent colour (colour swatches, the picker's alpha bar): 4 pt cells of the two.
+    public static let checkerLightPair = ThemePair(0x3A3A3A, 0xFFFFFF)
+    public static let checkerDarkPair = ThemePair(0x262626, 0xD4D4D8)
     /// Panel text ramp (text0 strongest). Light values keep each step at or above its dark contrast.
     public static let textPairs: [ThemePair] = [
         ThemePair(0xFAFAFA, 0x09090B), ThemePair(0xE4E4E7, 0x27272A), ThemePair(0xA1A1AA, 0x4A4A52),

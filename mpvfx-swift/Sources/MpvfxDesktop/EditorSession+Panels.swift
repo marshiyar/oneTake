@@ -474,6 +474,7 @@ final class SessionPanels {
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
+        wireStageFrame(inspector, renderer)
         wireScopes(inspector, clip: renderer)
     }
 
