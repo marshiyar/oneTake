@@ -1,0 +1,185 @@
+# Integrate (.github/ci/integrate.py): combine conflicted pull requests into ONE mergeable pull request.
+#
+# Every open pull request into main labelled `merge-conflict` (drafts included, never `hold`, head in this repository),
+# or the numbers given to a manual run, is merged one after the other onto the bot's branch `integrate/batch` (reset to
+# main each run; stacked pull requests follow their base) with the conflicts bot's safe resolutions, regenerated
+# *-source.yml workflows and git rerere (the resolution cache is kept between runs). One pull request that stays
+# conflicted is skipped. The whole batch is then built once; a build error drops the pull requests that changed the
+# failing files, at most 3 times. The result is pushed, opened as one pull request, and (input `merge`, default on)
+# squash-merged (needs OWNER_TOKEN); the combined pull requests are closed and the skipped ones labelled
+# `needs-resolution`.
+#
+# Three jobs keep pull request code away from every secret. `plan` and `publish` run main's script only; `build`
+# runs the toolchain over the merged pull request code with a read-only token and hands over plain files (a JSON
+# result and a git bundle), which `publish` checks against live pull request state before pushing with the review
+# App's token (secrets AGENT_APP_ID, AGENT_APP_PRIVATE_KEY): it builds main + one commit authored as the owner and
+# pushes it. A squash merge is authored by whoever opened the pull request, so the pull request is opened and merged
+# with the optional secret OWNER_TOKEN (a fine-grained token of the owner with contents and pull-requests write on
+# this repository). Without it nothing is opened or merged and the summary says the branch is ready; a person then
+# runs `python3 .github/ci/integrate.py land --repo marshiyar/oneTake` with their own gh login.
+# There is no pull_request_target trigger: pull request commits are only fetched and merged with git (hooks off).
+# A push that GitHub refuses (for example a batch that changes workflow files) fails the run with the error.
+name: integrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      prs:
+        description: 'Pull request numbers, space separated (empty: every open one labelled merge-conflict)'
+        required: false
+        default: ''
+        type: string
+      merge:
+        description: 'Squash-merge the integration pull request when the build gate passes'
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: '0 */2 * * *'
+
+permissions: {}
+
+concurrency:
+  group: integrate
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      any: ${{ steps.plan.outputs.any }}
+      base: ${{ steps.plan.outputs.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/ci
+      - name: Pick the pull requests
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          INTEGRATE_PRS: ${{ inputs.prs }}
+        run: python3 -I -B .github/ci/integrate.py plan --out "$RUNNER_TEMP/plan.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: integrate-plan
+          path: ${{ runner.temp }}/plan.json
+          retention-days: 3
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-24.04
+    container: swift:6.3.3-noble
+    timeout-minutes: 60
+    permissions:
+      contents: read       # no secret and no write scope: this job builds pull request code
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: System packages
+        working-directory: /
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+            git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
+            xvfb xauth dbus-x11 python3 python3-yaml file patchelf libvulkan-dev mesa-vulkan-drivers glslang-tools spirv-tools
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.base }}
+          persist-credentials: false
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: integrate-plan
+          path: ${{ runner.temp }}/in
+      - name: Restore the conflict resolutions (git rerere)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .git/rr-cache
+          key: integrate-rerere-${{ github.run_id }}
+          restore-keys: integrate-rerere-
+      - name: Restore the build cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.build
+          key: integrate-build-${{ github.run_id }}
+          restore-keys: |
+            integrate-build-
+            linux-release-main-
+      - name: Toolchain version
+        run: swift --version
+      - name: Merge, build once, drop what the build blames
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          python3 -I -B .github/ci/integrate.py build --plan "$RUNNER_TEMP/in/plan.json" \
+            --out "$RUNNER_TEMP/out/result.json" --bundle "$RUNNER_TEMP/out/batch.bundle"
+      - name: Save the conflict resolutions
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .git/rr-cache
+          key: integrate-rerere-${{ github.run_id }}
+      - name: Save the build cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.build
+          key: integrate-build-${{ github.run_id }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: integrate-result
+          path: |
+            ${{ runner.temp }}/out/result.json
+            ${{ runner.temp }}/out/batch.bundle
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: [plan, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions: {}   # the App token below does the writing
+    steps:
+      - name: Token for the review App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          permission-contents: write        # push integrate/batch, squash-merge
+          permission-pull-requests: write   # open, update, merge and close pull requests
+          permission-issues: write          # labels
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.base }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: integrate-plan
+          path: ${{ runner.temp }}/in
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: integrate-result
+          path: ${{ runner.temp }}/in
+      - name: Push the batch, open the pull request, merge it
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PUSH_TOKEN: ${{ steps.app.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OWNER_TOKEN: ${{ secrets.OWNER_TOKEN }}   # optional; see the header
+          INTEGRATE_MERGE: ${{ github.event_name != 'workflow_dispatch' || inputs.merge }}
+        run: |
+          python3 -I -B .github/ci/integrate.py publish --plan "$RUNNER_TEMP/in/plan.json" \
+            --result "$RUNNER_TEMP/in/result.json" --bundle "$RUNNER_TEMP/in/batch.bundle"

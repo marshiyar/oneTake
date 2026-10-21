@@ -73,6 +73,10 @@ public struct ColorGradeParams: Equatable, Sendable {
     public var intensity = 1.0
     public var adjust: [String: Double] = Self.adjustZero
     public var wheels: [String: Wheel] = ["shadows": Wheel(), "midtones": Wheel(), "highlights": Wheel()]
+    /// Lift, gamma, gain and offset (`balance`); neutral when absent.
+    public var balance: [String: Wheel] = ["lift": Wheel(), "gamma": Wheel(), "gain": Wheel(), "offset": Wheel()]
+    /// The luma contrast pivots on.
+    public var pivot = GradeValues.defaultPivot
     public var curves: [String: [[Double]]] = ["master": Self.curveIdentity, "red": Self.curveIdentity, "green": Self.curveIdentity, "blue": Self.curveIdentity]
     public var hueCurves: [String: [[Double]]] = ["hueVsHue": [], "hueVsSaturation": [], "hueVsLuma": []]
     public var secondaries: [Secondary] = []
@@ -186,6 +190,9 @@ public struct ColorGradeParams: Equatable, Sendable {
             wheels[k] = Wheel(hue: Self.wrapDegrees(x?["hue"]), amount: Self.limited(x?["amount"], fallback: 0, GradeValues.wheelAmountLimit),
                               level: Self.limited(x?["level"], fallback: 0, GradeValues.wheelLevelLimit))
         }
+        let b = Self.object(o["balance"])
+        for k in GradeValues.balanceKeys { balance[k] = Self.wheel(Self.object(b?[k])) }
+        pivot = Self.limited(o["pivot"], fallback: GradeValues.defaultPivot, 0...1)
         let c = Self.object(o["curves"])
         for k in Self.curveKeys { curves[k] = Self.normalizeCurve(c?[k]) }
         let h = Self.object(o["hueCurves"])
@@ -250,6 +257,9 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     // MARK: Activity (isHfColorGradingActive)
 
+    public var hasBalance: Bool {
+        GradeValues.balanceKeys.contains { k in let w = balance[k] ?? Wheel(); return abs(w.amount) > 0.0001 || abs(w.level) > 0.0001 }
+    }
     public var hasWheelGrade: Bool { Self.wheelKeys.contains { k in let w = wheels[k] ?? Wheel(); return abs(w.amount) > 0.0001 || abs(w.level) > 0.0001 } }
     public var hasRgbCurves: Bool { Self.curveKeys.contains { k in (curves[k] ?? []).contains { abs($0[0] - $0[1]) > 0.0001 } } }
     public var hasHueCurves: Bool { Self.hueCurveKeys.contains { k in (hueCurves[k] ?? []).contains { abs($0[1]) > 0.0001 } } }
@@ -261,7 +271,7 @@ public struct ColorGradeParams: Equatable, Sendable {
         if abs(detail("vignette")) > 0.0001 || abs(detail("grain")) > 0.0001 || Self.activeEffectKeys.contains(where: { abs(effect($0)) > 0.0001 }) { return true }
         if intensity == 0 { return false }
         if let lut, lut.intensity != 0 { return true }
-        return Self.adjustKeys.contains { abs(adjust($0)) > 0.0001 } || hasWheelGrade || hasRgbCurves || hasHueCurves || hasSecondaryCorrections
+        return Self.adjustKeys.contains { abs(adjust($0)) > 0.0001 } || hasWheelGrade || hasBalance || hasRgbCurves || hasHueCurves || hasSecondaryCorrections
     }
 
     /// Whether the picture changes over time on a still frame (grain, film dust, tape, glitch, waving hatch lines).
@@ -284,6 +294,10 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     // MARK: Helpers
 
+    static func wheel(_ x: NativeJSONObject?) -> Wheel {
+        Wheel(hue: wrapDegrees(x?["hue"]), amount: limited(x?["amount"], fallback: 0, GradeValues.wheelAmountLimit),
+              level: limited(x?["level"], fallback: 0, GradeValues.wheelLevelLimit))
+    }
     static func object(_ v: NativeJSONValue?) -> NativeJSONObject? { if case .object(let o)? = v { return o }; return nil }
     /// The reading rules are `GradeValues` (MpvfxShared), shared with the inspector so it shows what renders.
     static func number(_ v: NativeJSONValue?) -> Double? { GradeValues.number(v) }

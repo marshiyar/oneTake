@@ -21,8 +21,9 @@ import MpvfxTheme
 import MpvfxTimeline
 @testable import MpvfxDesktop
 
-/// Record motion in the whole editor at 1440×900: one take is one "Record motion" undo step. Set
-/// `MPVFX_SNAPSHOT_DIR` to also write the window.
+/// Record motion in the whole editor at 1440×900: one take is one "Record motion" undo step, and the armed and
+/// recording states show on the Record control and round the stage in dark and light. Set `MPVFX_SNAPSHOT_DIR`
+/// to also write `record-<state>-<mode>.png`.
 final class RecordMotionShellTests: XCTestCase {
     static let size = CanvasSize(1440, 900)
     var dirs: [String] = []
@@ -93,6 +94,41 @@ final class RecordMotionShellTests: XCTestCase {
         XCTAssertEqual(s.editor.undoLabel, "Record motion")
         XCTAssertTrue(s.editor.undo())
         XCTAssertEqual(s.editor.document, before, "undo puts every key back")
+    }
+
+    func testArmedAndRecordingStatesInDarkAndLight() throws {
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            let s = try makeSession()
+            try render(s, "record-setup-\(mode.rawValue)")
+            let p = try selectLayer(s)
+            s.player.toggleRecording()
+            let armed = try render(s, "record-armed-\(mode.rawValue)")
+            try assertRecordChrome(s, armed, recording: false, mode: mode)
+            try drag(s, from: p, frames: 6)
+            let recording = try render(s, "record-recording-\(mode.rawValue)")
+            try assertRecordChrome(s, recording, recording: true, mode: mode)
+            s.player.pointerUp(x: p.x + 36, y: p.y + 12)
+        }
+    }
+
+    /// The red outline left of the stage frame and the Record control's fill, in window pixels.
+    func assertRecordChrome(_ s: EditorSession, _ t: CairoImageTarget, recording: Bool, mode: ThemeMode,
+                            file: StaticString = #filePath, line: UInt = #line) throws {
+        let origin = try XCTUnwrap(s.shell?.frames?.player, file: file, line: line)
+        let v = s.player.view, frame = v.frameRect(in: s.player.size)
+        let outline = t.pixel(Int(origin.x + frame.x - 1), Int(origin.y + frame.y + frame.height / 2))
+        XCTAssertGreaterThan(Int(outline.r) - Int(outline.g), 80, "\(mode) red stage outline: \(outline)", file: file, line: line)
+        let control = try XCTUnwrap(v.toolbar.layout(width: s.player.size.width, cropAvailable: v.cropAvailable, cropActive: false, s.player.measure)
+            .first { $0.0 == .record }?.1, file: file, line: line)
+        let fill = t.pixel(Int(origin.x + control.x + control.width - 4), Int(origin.y + control.y + control.height / 2))
+        let redness = Int(fill.r) - Int(fill.g)
+        if recording {
+            XCTAssertGreaterThan(redness, 120, "\(mode) the control is solid red while recording: \(fill)", file: file, line: line)
+        } else {
+            XCTAssertGreaterThan(redness, 15, "\(mode) the armed control is red-tinted: \(fill)", file: file, line: line)
+        }
+        XCTAssertEqual(v.recordOverlay?.state, recording ? .recording : .ready, file: file, line: line)
     }
 
     func testEscapeFromTheTimelineDisarmsRecord() throws {

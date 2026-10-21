@@ -267,6 +267,7 @@ public final class PlayerView {
                 c.drawText(after, at: .init(frame.maxX - tw - 10, frame.y + 10), font: CanvasFont(size: 11, weight: .semibold), color: PanelTheme.stageInk)
             }
             drawStageFeedback(c, size: size, frame: frame)
+            drawRecordOverlay(c, size: size, frame: frame)
             drawZoomChrome(c, size: size)
         }
         if !isFullscreen { toolbar.draw(c, width: size.width, cropAvailable: cropAvailable, cropActive: cropActive) }
