@@ -25,11 +25,10 @@ public struct GradeUIState: Equatable {
     public var lutOpen = false
     public var finishSettings: String?        // "vignette" | "grain"
     public var copyToProject = false
-    /// Live values while a wheel / curve point is dragged (committed on release).
+    /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
     /// Geometry from the last draw (rows are rebuilt per event, so it lives here).
-    var wheelRects: [CanvasRect] = []
     var curveBox = CanvasRect(x: 0, y: 0, width: 1, height: 1)
     /// Scopes disclosure (closed by default) and its mode (waveform first).
     public var scopesOpen = false
@@ -79,7 +78,7 @@ extension InspectorPanel {
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
         let presets = ColorGrading.gradePresets
-        let lut = g.lut
+        let lut = g.lut, version = g.version
         // Sections `space-y-3`: Scopes, then the preset block (`space-y-1.5`) whose "Retry look previews" link shows
         // while the look frames are unavailable (an inline button on an 18px line).
         rows.append(.init(.custom(scopesRow(s.id))))
@@ -90,7 +89,7 @@ extension InspectorPanel {
         }
         rows.append(.init(.custom(presetGrid(presets, selected: g.preset, preview: { [weak self] id, w, h in
             self?.lookPreview(PresetPreviewRequest(clipId: s.id, presetId: id, lutSrc: lut?.src, lutIntensity: lut?.intensity ?? 1,
-                                                   pixelWidth: w, pixelHeight: h)) ?? .failed(.noRenderer)
+                                                   pixelWidth: w, pixelHeight: h, version: version)) ?? .failed(.noRenderer)
         }, onPick: { p in commit(g.applying(p)) }))))
         gap(6)
         rows.append(.init(.slider(.init(key: "grade:amount", label: "Amount", position: g.intensity * 100, min: 0, max: 100,
@@ -109,17 +108,26 @@ extension InspectorPanel {
                                             tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
                                             commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
                                             reset: { var n = g; n.adjust[a.key] = 0; commit(n) }))))   // 0, not nil: a missing key reads the preset's value
+            if a.key == "contrast" { gap(2); rows.append(pivotSlider(g, commit: commit)) }
         }
         gap(6)
         rows.append(.init(.section("Color wheels")))
         gap(6)
-        rows.append(.init(.custom(colorWheels(g, commit: commit))))
+        rows.append(.init(.custom(colorWheels(g, .balance, commit: commit)), controls: wheelFieldControls(g, .balance, commit: commit)))
+        if g.showsTonalWheels {   // a contract 2 grade's Shadows / Midtones / Highlights stay editable
+            gap(12)
+            rows.append(.init(.heading("Tonal wheels", trailing: nil)))
+            rows.append(.init(.custom(colorWheels(g, .tonal, commit: commit)), controls: wheelFieldControls(g, .tonal, commit: commit)))
+        }
         gap(6)
         rows.append(.init(.section("Curves")))
         gap(6)
         rows.append(.init(.custom(curveTabsRow())))
         gap(8)
-        rows.append(.init(.custom(curveGraph(g, commit: commit))))
+        var graph = curveGraph(g, commit: commit)
+        // Enter on the focused graph adds the midpoint (as with no focus); Space never adds a point (issue #171).
+        graph.keyPress = { [weak self] _, k in k.code == .space || (k.code == .enter && (self?.gradeKey(k) ?? true)) }
+        rows.append(.init(.custom(graph)))
         gap(8)
         rows.append(.init(.custom(curveFooter(g, commit: commit))))
         gap(6)
@@ -155,6 +163,16 @@ extension InspectorPanel {
         // not drawn: the native preview has no compare bypass or runtime handshake yet.
         group.reset = g.isAuthored ? { commit(ColorGrading()) } : nil
         return group
+    }
+
+    /// Contrast's pivot (issue #176): the luma that contrast leaves unchanged, 50% by default (how older grades draw).
+    func pivotSlider(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorRow {
+        let v = g.pivotValue * 100
+        let fmt: (Double) -> String = { "\(Int($0.rounded()))%" }
+        return .init(.slider(.init(key: "grade:adj:pivot", label: "Pivot", position: v, min: 0, max: 100, display: fmt(v), format: fmt,
+                                   tier: abs(v - 50) > 1e-6 ? .explicitCustom : .default, centerTick: true,
+                                   commit: { x in var n = g; n.pivot = (min(100, max(0, x)) * 10).rounded() / 1000; commit(n) },
+                                   reset: { var n = g; n.pivot = nil; commit(n) })))
     }
 
     func gradeClipboardRow() -> InspectorCustomRow {
@@ -378,101 +396,6 @@ extension InspectorPanel {
         let s = min(box.width / Double(w), box.height / Double(h))
         return CanvasRect(x: box.x + (box.width - Double(w) * s) / 2, y: box.y + (box.height - Double(h) * s) / 2,
                           width: Double(w) * s, height: Double(h) * s)
-    }
-
-    // MARK: Color wheels
-
-    /// Three `min-w-[88px] flex-1 space-y-1.5` columns `gap-2` apart. Each: label
-    /// (10 medium text-2) with a 10px reset; the 112px wheel (conic hue ring under a grey radial centre, 1px
-    /// border-input rim, 10px white-ringed puck at 46% × amount along the hue, hue 0 to the right, counter-
-    /// clockwise); the native `h-3` level range in the accent; the Hue / Amount / Level number fields.
-    func colorWheels(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorCustomRow {
-        let keys = ColorGrading.wheelKeys
-        let labels = ["Shadows", "Midtones", "Highlights"]
-        func wheelValue(_ k: String) -> ColorGrading.Wheel {
-            if let d = grade.wheelDraft, d.key == k { return d.wheel }
-            return g.wheel(k)
-        }
-        return InspectorCustomRow(id: "grade:wheels", height: 201.5, draw: { [weak self] c, r, panel in
-            guard let self else { return }
-            var geometry: [CanvasRect] = []
-            let gap = 8.0, colW = (r.width - gap * 2) / 3
-            var levels: [CanvasRect] = []
-            for (i, k) in keys.enumerated() {
-                let x = r.x + Double(i) * (colW + gap)
-                let w = wheelValue(k)
-                PanelDraw.text(c, labels[i], in: CanvasRect(x: x, y: r.y, width: colW - 14, height: 15), font: PanelTheme.font(10, .medium), color: PanelTheme.text2)
-                let reset = CanvasRect(x: x + colW - 10, y: r.y + 2.5, width: 10, height: 10)
-                PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("grade:wheels", 10 + i) ? PanelTheme.text1 : PanelTheme.text4)
-                panel.addHit(reset.insetBy(-3), .custom("grade:wheels", 10 + i))
-                let size = min(colW, 112)
-                let wr = CanvasRect(x: x + (colW - size) / 2, y: r.y + 21, width: size, height: size)
-                geometry.append(wr)
-                c.withState {
-                    c.clip(.roundedRect(wr, radius: size / 2))
-                    c.drawImage(HueWheelImage.image(), in: wr)
-                }
-                c.stroke(.roundedRect(wr.insetBy(0.5), radius: size / 2 - 0.5), PanelTheme.panelBorderInput, StrokeStyle(width: 1))
-                let hr = w.hue * .pi / 180, inner = size - 2
-                let px = wr.midX + cos(hr) * w.amount * 0.46 * inner, py = wr.midY - sin(hr) * w.amount * 0.46 * inner
-                c.stroke(.roundedRect(CanvasRect(x: px - 4, y: py - 4, width: 8, height: 8), radius: 4), PanelTheme.white, StrokeStyle(width: 2))
-                panel.addHit(wr, .custom("grade:wheels", i))
-                let lt = CanvasRect(x: x, y: wr.maxY + 6, width: colW, height: 12)
-                levels.append(lt)
-                Self.drawNativeRange(c, lt, fraction: (w.level + 1) / 2)
-                panel.addHit(lt.insetBy(-2), .custom("grade:wheels", 3 + i))
-                // GradingNumberField ×3 (`grid-cols-3 gap-1`): 8px uppercase text-5 label, mono 9 text-2 value right
-                // aligned over a border-input/50 underline.
-                let ny = lt.maxY + 6, cw = (colW - 8) / 3
-                for (j, (lab, val)) in [("HUE", Int(w.hue.rounded())), ("AMOUNT", Int((w.amount * 100).rounded())), ("LEVEL", Int((w.level * 100).rounded()))].enumerated() {
-                    let cx = x + Double(j) * (cw + 4)
-                    PanelDraw.text(c, lab, in: CanvasRect(x: cx, y: ny + 7, width: cw + 20, height: 12), font: PanelTheme.font(8), color: PanelTheme.text5)
-                    let field = CanvasRect(x: cx, y: ny + 26, width: cw, height: 18.5)
-                    PanelDraw.text(c, "\(val)", in: CanvasRect(x: field.x, y: field.y + 2, width: field.width, height: 13.5), font: PanelTheme.mono(9),
-                                   color: PanelTheme.text2, align: .right)
-                    c.fillRect(CanvasRect(x: field.x, y: field.maxY - 1, width: field.width, height: 1).snapped, PanelTheme.panelBorderInput.withAlpha(0.5))
-                }
-            }
-            geometry += levels
-            self.grade.wheelRects = geometry
-        }, pointer: { [weak self] part, p, phase in
-            guard let self else { return }
-            if part >= 10 { if phase == 0 { var n = g; n.wheels[keys[part - 10]] = nil; commit(n) }; return }
-            let idx = part % 3, key = keys[idx]
-            var w = wheelValue(key)
-            let geometry = self.grade.wheelRects
-            if part < 3, geometry.indices.contains(part) {   // wheelFromPointer: y up, hue from +x counter-clockwise
-                let wr = geometry[part], radius = max(1, wr.width / 2)
-                let dx = (p.x - wr.midX) / radius, dy = (wr.midY - p.y) / radius
-                var hue = atan2(dy, dx) * 180 / .pi; if hue < 0 { hue += 360 }; if hue >= 360 { hue -= 360 }
-                w.hue = (hue * 10).rounded() / 10
-                w.amount = (min(1, hypot(dx, dy)) * 1000).rounded() / 1000
-            } else if part >= 3, geometry.indices.contains(part) {
-                let lt = geometry[part]
-                w.level = ((max(0, min(1, (p.x - lt.x) / max(1, lt.width))) * 2 - 1) * 100).rounded() / 100
-            }
-            self.grade.wheelDraft = (key, w)
-            if phase == 2 { self.grade.wheelDraft = nil; var n = g; n.wheels[key] = w; commit(n) }
-        })
-    }
-
-    /// The reference's native range control in the accent colour (Linux): an 8px rounded track inset 1px, the filled part in the
-    /// accent with a darker 1px edge, the rest #efefef with a #b2b2b2 edge, and a 15px accent thumb.
-    static func drawNativeRange(_ c: CanvasContext, _ r: CanvasRect, fraction f: Double) {
-        let track = CanvasRect(x: r.x + 1, y: r.midY - 4, width: r.width - 1.7, height: 8)
-        let rad = 7.5
-        let cx = r.x + rad + (r.width - 2 * rad) * max(0, min(1, f))
-        c.withState {
-            c.clip(CanvasRect(x: cx, y: track.y, width: track.maxX - cx, height: track.height))
-            c.fillRoundedRect(track, radius: 4, CanvasColor(ThemeTokens.nativeRangeEdge))
-            c.fillRoundedRect(track.insetBy(1), radius: 3, CanvasColor(ThemeTokens.nativeRangeTrack))
-        }
-        c.withState {
-            c.clip(CanvasRect(x: track.x, y: track.y, width: cx - track.x, height: track.height))
-            c.fillRoundedRect(track, radius: 4, CanvasColor(ThemeTokens.accentEdgePair.now))
-            c.fillRoundedRect(track.insetBy(1), radius: 3, PanelTheme.accent)
-        }
-        c.fill(.roundedRect(CanvasRect(x: cx - rad, y: r.midY - rad, width: 2 * rad, height: 2 * rad), radius: rad), PanelTheme.accent)
     }
 
     // MARK: Curves (the curve modes and the curve graph)

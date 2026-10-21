@@ -73,6 +73,10 @@ public struct ColorGradeParams: Equatable, Sendable {
     public var intensity = 1.0
     public var adjust: [String: Double] = Self.adjustZero
     public var wheels: [String: Wheel] = ["shadows": Wheel(), "midtones": Wheel(), "highlights": Wheel()]
+    /// Lift, gamma, gain and offset (`balance`); neutral when absent.
+    public var balance: [String: Wheel] = ["lift": Wheel(), "gamma": Wheel(), "gain": Wheel(), "offset": Wheel()]
+    /// The luma contrast pivots on.
+    public var pivot = GradeValues.defaultPivot
     public var curves: [String: [[Double]]] = ["master": Self.curveIdentity, "red": Self.curveIdentity, "green": Self.curveIdentity, "blue": Self.curveIdentity]
     public var hueCurves: [String: [[Double]]] = ["hueVsHue": [], "hueVsSaturation": [], "hueVsLuma": []]
     public var secondaries: [Secondary] = []
@@ -100,19 +104,7 @@ public struct ColorGradeParams: Equatable, Sendable {
     public static let curveKeys = ["master", "red", "green", "blue"]
     public static let hueCurveKeys = ["hueVsHue", "hueVsSaturation", "hueVsLuma"]
     public static let detailKeys = GradeValues.detailKeys
-    public static let effectKeys = [
-        "blur", "pixelate", "chromaBleed", "tapeDamage", "tapeTracking", "tapeNoise", "tapeSpeed", "filmArtifacts",
-        "halftone", "halftoneSize", "twoInkPrint", "twoInkPrintSize", "ascii", "asciiSize", "asciiInvert", "asciiStyle",
-        "asciiColor", "asciiRotation", "dither", "ditherSize", "bloom", "bloomRadius", "monoScreen", "monoScreenSize",
-        "monoScreenAngle", "monoScreenSpread", "monoScreenShape", "monoScreenInvert", "scanlines", "scanlineCount",
-        "scanlineSoftness", "chromaticAberration", "chromaticAngle", "crtCurvature", "digitalGlitch", "digitalGlitchColorSplit",
-        "digitalGlitchLineTear", "digitalGlitchPixelate", "digitalGlitchBlockAmount", "digitalGlitchBlockDisplacement",
-        "digitalGlitchBlockOpacity", "digitalGlitchSpeed", "engraving", "engravingSpacing", "engravingMinThickness",
-        "engravingMaxThickness", "engravingAngle", "engravingContrast", "engravingSharpness", "engravingWave",
-        "engravingWaveFrequency", "crosshatch", "crosshatchSpacing", "crosshatchThickness", "crosshatchAngle",
-        "crosshatchContrast", "crosshatchEdges", "crosshatchLineWeight", "crosshatchWave", "crosshatchWaveFrequency",
-        "kuwahara", "kuwaharaRadius", "kuwaharaSharpness", "kuwaharaSaturation",
-    ]
+    public static let effectKeys = GradeValues.effectKeys
     /// The 18 stylize effects (HF_COLOR_GRADING_ACTIVE_EFFECT_KEYS); the other effect keys are their settings.
     public static let activeEffectKeys = ["blur", "pixelate", "chromaBleed", "tapeDamage", "filmArtifacts", "halftone", "twoInkPrint", "ascii", "dither",
                                           "bloom", "monoScreen", "scanlines", "chromaticAberration", "crtCurvature", "digitalGlitch", "engraving", "crosshatch", "kuwahara"]
@@ -121,23 +113,9 @@ public struct ColorGradeParams: Equatable, Sendable {
     public static let adjustLimits: [String: ClosedRange<Double>] = Dictionary(uniqueKeysWithValues: adjustKeys.map { ($0, GradeValues.adjustLimit($0)) })
     public static let detailDefaults: [String: Double] = GradeValues.detailDefaults
     public static let detailLimits: [String: ClosedRange<Double>] = Dictionary(uniqueKeysWithValues: detailKeys.map { ($0, GradeValues.detailLimit($0)) })
-    public static let effectDefaults: [String: Double] = [
-        "blur": 0, "pixelate": 0, "chromaBleed": 0, "tapeDamage": 0, "tapeTracking": 0, "tapeNoise": 1, "tapeSpeed": 0.5, "filmArtifacts": 0,
-        "halftone": 0, "halftoneSize": 0, "twoInkPrint": 0, "twoInkPrintSize": 0,
-        "ascii": 0, "asciiSize": 5.0 / 76, "asciiInvert": 0, "asciiStyle": 0, "asciiColor": 1, "asciiRotation": 0,
-        "dither": 0, "ditherSize": 0, "bloom": 0, "bloomRadius": 8,
-        "monoScreen": 0, "monoScreenSize": 0, "monoScreenAngle": 0, "monoScreenSpread": 0, "monoScreenShape": 0, "monoScreenInvert": 0,
-        "scanlines": 0, "scanlineCount": 0, "scanlineSoftness": 0, "chromaticAberration": 0, "chromaticAngle": 0, "crtCurvature": 0,
-        "digitalGlitch": 0, "digitalGlitchColorSplit": 0, "digitalGlitchLineTear": 0, "digitalGlitchPixelate": 0, "digitalGlitchBlockAmount": 0,
-        "digitalGlitchBlockDisplacement": 0, "digitalGlitchBlockOpacity": 0, "digitalGlitchSpeed": 0,
-        "engraving": 0, "engravingSpacing": 7.0 / 17, "engravingMinThickness": 0.2, "engravingMaxThickness": 3.2 / 7, "engravingAngle": 0.25,
-        "engravingContrast": 7.0 / 15, "engravingSharpness": 0.59, "engravingWave": 0.2, "engravingWaveFrequency": 2.0 / 9,
-        "crosshatch": 0, "crosshatchSpacing": 7.0 / 25, "crosshatchThickness": 0.25, "crosshatchAngle": 0.25, "crosshatchContrast": 1.0 / 3,
-        "crosshatchEdges": 0.5, "crosshatchLineWeight": 0, "crosshatchWave": 0.33, "crosshatchWaveFrequency": 2.0 / 9,
-        "kuwahara": 0, "kuwaharaRadius": 1.0 / 7, "kuwaharaSharpness": 5.0 / 16, "kuwaharaSaturation": 0.5,
-    ]
-    public static let effectLimitOverrides: [String: ClosedRange<Double>] = ["asciiStyle": 0...7, "bloom": 0...3, "bloomRadius": 1...100, "monoScreenShape": 0...4]
-    public static func effectLimit(_ k: String) -> ClosedRange<Double> { effectLimitOverrides[k] ?? 0...1 }
+    public static let effectDefaults: [String: Double] = GradeValues.effectDefaults
+    public static let effectLimitOverrides: [String: ClosedRange<Double>] = GradeValues.effectLimitOverrides
+    public static func effectLimit(_ k: String) -> ClosedRange<Double> { GradeValues.effectLimit(k) }
     public static let curveIdentity: [[Double]] = [[0, 0], [1, 1]]
     public static let maxCurvePoints = 16, maxSecondaries = 4
 
@@ -212,6 +190,9 @@ public struct ColorGradeParams: Equatable, Sendable {
             wheels[k] = Wheel(hue: Self.wrapDegrees(x?["hue"]), amount: Self.limited(x?["amount"], fallback: 0, GradeValues.wheelAmountLimit),
                               level: Self.limited(x?["level"], fallback: 0, GradeValues.wheelLevelLimit))
         }
+        let b = Self.object(o["balance"])
+        for k in GradeValues.balanceKeys { balance[k] = Self.wheel(Self.object(b?[k])) }
+        pivot = Self.limited(o["pivot"], fallback: GradeValues.defaultPivot, 0...1)
         let c = Self.object(o["curves"])
         for k in Self.curveKeys { curves[k] = Self.normalizeCurve(c?[k]) }
         let h = Self.object(o["hueCurves"])
@@ -276,6 +257,9 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     // MARK: Activity (isHfColorGradingActive)
 
+    public var hasBalance: Bool {
+        GradeValues.balanceKeys.contains { k in let w = balance[k] ?? Wheel(); return abs(w.amount) > 0.0001 || abs(w.level) > 0.0001 }
+    }
     public var hasWheelGrade: Bool { Self.wheelKeys.contains { k in let w = wheels[k] ?? Wheel(); return abs(w.amount) > 0.0001 || abs(w.level) > 0.0001 } }
     public var hasRgbCurves: Bool { Self.curveKeys.contains { k in (curves[k] ?? []).contains { abs($0[0] - $0[1]) > 0.0001 } } }
     public var hasHueCurves: Bool { Self.hueCurveKeys.contains { k in (hueCurves[k] ?? []).contains { abs($0[1]) > 0.0001 } } }
@@ -287,7 +271,7 @@ public struct ColorGradeParams: Equatable, Sendable {
         if abs(detail("vignette")) > 0.0001 || abs(detail("grain")) > 0.0001 || Self.activeEffectKeys.contains(where: { abs(effect($0)) > 0.0001 }) { return true }
         if intensity == 0 { return false }
         if let lut, lut.intensity != 0 { return true }
-        return Self.adjustKeys.contains { abs(adjust($0)) > 0.0001 } || hasWheelGrade || hasRgbCurves || hasHueCurves || hasSecondaryCorrections
+        return Self.adjustKeys.contains { abs(adjust($0)) > 0.0001 } || hasWheelGrade || hasBalance || hasRgbCurves || hasHueCurves || hasSecondaryCorrections
     }
 
     /// Whether the picture changes over time on a still frame (grain, film dust, tape, glitch, waving hatch lines).
@@ -310,6 +294,10 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     // MARK: Helpers
 
+    static func wheel(_ x: NativeJSONObject?) -> Wheel {
+        Wheel(hue: wrapDegrees(x?["hue"]), amount: limited(x?["amount"], fallback: 0, GradeValues.wheelAmountLimit),
+              level: limited(x?["level"], fallback: 0, GradeValues.wheelLevelLimit))
+    }
     static func object(_ v: NativeJSONValue?) -> NativeJSONObject? { if case .object(let o)? = v { return o }; return nil }
     /// The reading rules are `GradeValues` (MpvfxShared), shared with the inspector so it shows what renders.
     static func number(_ v: NativeJSONValue?) -> Double? { GradeValues.number(v) }

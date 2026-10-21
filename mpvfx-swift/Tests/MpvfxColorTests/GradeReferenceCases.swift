@@ -78,6 +78,12 @@ enum GradeReferenceCases {
         // Contract 3: Warmth and Tint as channel gains, in the primary and in a secondary.
         cases.append(Case(name: "v3.whiteBalance", json: #"{"version":3,"adjust":{"temperature":0.7,"tint":-0.4}}"#))
         cases.append(Case(name: "v3.secondaryWhiteBalance", json: #"{"version":3,"secondaries":[{"key":{"hue":{"center":0,"range":180,"softness":0}},"correction":{"temperature":-0.6,"tint":0.5}}]}"#))
+        // Lift / Gamma / Gain / Offset and the contrast pivot (issue #176).
+        for k in GradeValues.balanceKeys {
+            cases.append(Case(name: "balance.\(k)", json: #"{"balance":{"\#(k)":{"hue":200,"amount":0.7,"level":0.35}}}"#))
+        }
+        cases.append(Case(name: "balance.all", json: #"{"balance":{"lift":{"hue":30,"amount":0.4,"level":-0.3},"gamma":{"hue":300,"amount":0.5,"level":-0.6},"gain":{"hue":120,"amount":0.3,"level":0.5},"offset":{"hue":60,"amount":0.2,"level":-0.2}}}"#))
+        cases.append(Case(name: "pivot", json: #"{"adjust":{"contrast":0.6},"pivot":0.3}"#))
         cases.append(Case(name: "intensity", json: #"{"adjust":{"saturation":-1,"exposure":0.4},"intensity":0.4}"#))
         for k in ColorGradeParams.wheelKeys {
             cases.append(Case(name: "wheel.\(k)", json: #"{"wheels":{"\#(k)":{"hue":210,"amount":0.8,"level":0.3}}}"#))

@@ -464,7 +464,7 @@ final class SessionPanels {
             guard let self, let inspector else { return .unavailable }
             if !self.session.playback.isPlaying { self.presetPreviewTime = inspector.time }
             switch renderer.preview(clipId: req.clipId, presetId: req.presetId, lutSrc: req.lutSrc, lutIntensity: req.lutIntensity,
-                                    time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight) {
+                                    time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight, version: req.version) {
             case .ready(let img): return .ready(img)
             // Media that gave up decoding never sends a frame: answer "no picture" so the tile shows the sample.
             case .rendering: return renderer.decodeGaveUp(clipId: req.clipId) ? .unavailable : .rendering
