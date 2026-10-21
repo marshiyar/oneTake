@@ -90,7 +90,8 @@ Each step is its own pull request, small enough to review on screenshots.
    in `mint` and changes shape (filled lock and headphones, slashed eye, crossed speaker, filled tag), so its state
    is never colour alone. Video tags count from the bottom (`V1` is the base layer), audio tags from the top. *(done)*
 5. **Inspector** — label in grey, value in the accent when changed, a stopwatch toggle for animated properties and
-   the previous/add/next keyframe buttons on the same row.
+   the previous/add/next keyframe buttons on the same row. Labels are `text2`, not `text3`: 11 px labels are body
+   text and `text3` stays under 4.5:1 on the inspector's inset. *(done)*
 6. **Timeline extras** — coloured markers on the ruler, timecode on the playhead, audio meters docked beside the
    timeline.
 

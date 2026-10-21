@@ -1,0 +1,97 @@
+name: linux-no-vulkan
+
+# The package on a Linux machine without the Vulkan headers (issue #78). Package.swift adds CMpvfxVulkan only when
+# /usr/include/vulkan/vulkan.h exists, and MpvfxColor then grades on the CPU; mpvfx-ci.yml always installs the headers,
+# so only this job sees that build. It builds every target and test, runs MpvfxColorBench (GPU unavailable, CPU timed,
+# exit 0) and scans Sources/ and tools/ for a Vulkan type outside `#if canImport(CMpvfxVulkan)` (.github/ci/vulkan-guard.py).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mpvfx-swift/Package.swift'
+      - 'mpvfx-swift/Package.resolved'
+      - 'mpvfx-swift/binaries.lock'
+      - 'mpvfx-swift/Sources/**'
+      - 'mpvfx-swift/Tests/**'
+      - 'mpvfx-swift/tools/**'
+      - '.github/ci/vulkan-guard.py'
+      - '.github/ci/test_vulkan_guard.py'
+      - '.github/workflows/linux-no-vulkan.yml'
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', '**/docs/**', '.gitignore']
+  schedule:
+    - cron: '43 6 * * *'   # nightly: catches a runner image or base image that starts shipping the headers
+  workflow_dispatch:
+
+concurrency:
+  group: linux-no-vulkan-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    # The source scan and its tests; no Swift build.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: vulkan-guard tests
+        run: python3 -I -B .github/ci/test_vulkan_guard.py
+      - name: No Vulkan type outside canImport(CMpvfxVulkan)
+        run: python3 -I -B .github/ci/vulkan-guard.py mpvfx-swift
+
+  build:
+    runs-on: ubuntu-24.04
+    container: swift:6.3.3-noble
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: mpvfx-swift
+    steps:
+      - name: System packages (mpvfx-ci.yml's Linux set, Vulkan headers left out)
+        working-directory: /
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+            git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev python3
+      - name: Hide the Vulkan headers if any package brought them
+        working-directory: /
+        run: |
+          if [ -e /usr/include/vulkan ]; then mv /usr/include/vulkan /usr/include/vulkan.hidden-by-ci; fi
+          test ! -e /usr/include/vulkan/vulkan.h
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Engine libraries (binaries.lock)
+        run: python3 -I -B scripts/fetch-binaries.py
+      - name: Restore caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.build
+          key: linux-no-vulkan-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            linux-no-vulkan-${{ github.ref_name }}-
+            linux-no-vulkan-
+      - name: Toolchain version
+        run: swift --version
+      - name: Build every target and test without the Vulkan headers
+        run: swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
+      - name: MpvfxColorBench reports no GPU and times the CPU path
+        run: |
+          swift run --skip-build MpvfxColorBench 1 2>&1 | tee "$RUNNER_TEMP/bench.log"
+          test ${PIPESTATUS[0]} -eq 0
+          grep -q "GPU compute renderer unavailable" "$RUNNER_TEMP/bench.log"
+          grep -q "| 1920x1080 |" "$RUNNER_TEMP/bench.log"
+      - name: Save caches
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.build
+          key: linux-no-vulkan-${{ github.ref_name }}-${{ github.sha }}
