@@ -73,7 +73,7 @@ extension InspectorPanel {
         switch stageFrame?(Self.sampleFrameSize, Self.sampleFrameSize) ?? .unavailable {
         case .ready(let img): colorPicker?.frame = img; colorPicker?.framePending = false; colorPicker?.frameError = false
         case .rendering: colorPicker?.framePending = true
-        case .unavailable: colorPicker?.framePending = false; colorPicker?.frameError = true
+        case .unavailable, .failed: colorPicker?.framePending = false; colorPicker?.frameError = true
         }
     }
 

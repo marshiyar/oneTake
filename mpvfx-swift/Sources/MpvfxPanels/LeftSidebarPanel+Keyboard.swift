@@ -71,6 +71,7 @@ extension LeftSidebarPanel {
     }
 
     func keyNavigate(_ k: EditorKey) -> Bool {
+        if keyAudition(k) { return true }
         if isTabStop(focus.current), stripArrow(k) { return true }   // Left / Right / Home / End on the tab bar
         switch k.code {
         case .tab:

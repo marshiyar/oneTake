@@ -611,6 +611,7 @@ final class EditorSession {
         let loopChanged = audio.loop?.start != wantLoop?.start || audio.loop?.end != wantLoop?.end
         if loopChanged { audio.loop = wantLoop }
         if playback.wantsExternalClock {
+            panels?.endAuditionForTimeline()
             // A toggle/range change must discard sound already queued under the old loop policy,
             // especially a queued wrap when switching off. Ordinary device wraps never restart.
             if !audio.isPlaying || loopChanged || (!tickingPlayback && abs(audio.currentTime - playback.currentTime) > 0.25) {

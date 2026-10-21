@@ -146,6 +146,28 @@ mpvfx_hresult mpvfx_wasapi_write(MpvfxWasapi *w, const float *samples, uint32_t 
 mpvfx_hresult mpvfx_wasapi_position(MpvfxWasapi *w, uint64_t *frames);
 void mpvfx_wasapi_close(MpvfxWasapi *w);
 
+// MARK: WASAPI shared-mode capture (microphone)
+
+typedef struct MpvfxWasapiCapture MpvfxWasapiCapture;
+
+/// Called once per active capture endpoint with its id and friendly name (UTF-16, valid during the call only) and
+/// whether it is the default capture endpoint.
+typedef void (*mpvfx_capture_device_callback)(void *context, const uint16_t *id, const uint16_t *name, int32_t is_default);
+mpvfx_hresult mpvfx_wasapi_capture_devices(mpvfx_capture_device_callback cb, void *context);
+/// Opens the capture endpoint `device_id` (NULL: the default one) in shared mode for interleaved float32 at
+/// `sample_rate` x `channels` (the engine converts from the device's mix format). Not started. Fails with the HRESULT:
+/// E_ACCESSDENIED when Windows blocks microphone access, E_NOTFOUND when the endpoint is gone or none exists.
+mpvfx_hresult mpvfx_wasapi_capture_open(const uint16_t *device_id, uint32_t sample_rate, uint32_t channels, uint32_t buffer_ms,
+                                        MpvfxWasapiCapture **out);
+mpvfx_hresult mpvfx_wasapi_capture_start(MpvfxWasapiCapture *c);
+mpvfx_hresult mpvfx_wasapi_capture_stop(MpvfxWasapiCapture *c);
+/// Waits up to `timeout_ms` for audio and copies up to `max_frames` interleaved frames into `out`; `*got` is 0 when the
+/// wait timed out. AUDCLNT_E_NOT_INITIALIZED means the capture was stopped.
+mpvfx_hresult mpvfx_wasapi_capture_read(MpvfxWasapiCapture *c, float *out, uint32_t max_frames, uint32_t timeout_ms, uint32_t *got);
+/// Packets the device flagged as a data discontinuity (audio lost between two packets).
+mpvfx_hresult mpvfx_wasapi_capture_discontinuities(MpvfxWasapiCapture *c, uint64_t *count);
+void mpvfx_wasapi_capture_close(MpvfxWasapiCapture *c);
+
 // MARK: Shell dialogs (IFileOpenDialog / IFileSaveDialog)
 
 /// Called once per chosen path (UTF-16, NUL-terminated) with `context`.
