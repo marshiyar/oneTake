@@ -209,7 +209,7 @@ public final class ShortcutsPanel {
                 y += 20 + (hi == sec.hints.count - 1 ? 0 : 4)
             }
         }
-        y += 12
+        y = Self.layoutKeyframeLegend(&L, from: y) + 12
         L.height = y
         return L
     }

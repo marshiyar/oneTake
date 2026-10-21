@@ -107,6 +107,24 @@ public extension TimelineEditor {
         return editClipText(clipId: clipId) { $0.textTransform = transform == "none" ? nil : transform }
     }
 
+    /// Outlines and drop shadow (nil or an empty look removes it). One undo step; false when the look breaks a
+    /// document rule (more than two outlines, a width, offset or blur out of range, a colour that is not hex).
+    @discardableResult
+    func setTextLook(clipId: String, _ look: NativeTextLook?) -> Bool {
+        if let l = look, l.isSupported {
+            let o = l.outlines ?? []
+            guard o.count <= NativeTextLook.maxOutlines,
+                  o.allSatisfy({ NativeTextLook.outlineWidthRange.contains($0.width) && isNativeHexColor($0.color)
+                      && ($0.position.map(NativeTextLook.positions.contains) ?? true) }) else { return false }
+            if let sh = l.shadow {
+                guard isNativeHexColor(sh.color), NativeTextLook.shadowOffsetRange.contains(sh.resolvedX),
+                      NativeTextLook.shadowOffsetRange.contains(sh.resolvedY),
+                      NativeTextLook.shadowBlurRange.contains(sh.resolvedBlur) else { return false }
+            }
+        }
+        return editClipText(clipId: clipId) { $0.look = (look?.isEmpty ?? true) ? nil : look }
+    }
+
     @discardableResult
     func setTextFontStyle(clipId: String, _ style: String?) -> Bool {
         if let v = style, !NativeClipText.fontStyles.contains(v) { return false }
