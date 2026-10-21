@@ -8,7 +8,7 @@ The engine is `Sources/MpvfxScopes` (Foundation only, no UI); the tests are `Tes
 Every number below comes from these documents (each fetched 2026-10-21) or is derived from them by the formula given.
 
 | Document | Link | Used for |
-|---|---|---|
+| --- | --- | --- |
 | Rec. ITU-R BT.709-6 (06/2015) | <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.709-6-201506-I!!PDF-E.pdf> | item 1.2 transfer function; item 3.2 luma `0.2126 R' + 0.7152 G' + 0.0722 B'`; item 3.3 `CB = (B' - Y') / 1.8556`, `CR = (R' - Y') / 1.5748`; item 3.4 quantisation `D = INT[(219 E + 16) 2^(n-8)]`; item 4.6 10-bit black 64, nominal peak 940 |
 | Rec. ITU-R BT.601-7 (03/2011) | <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.601-7-201103-I!!PDF-E.pdf> | § 2.5.1 luma `0.299 R' + 0.587 G' + 0.114 B'`; § 2.5.2 divisors 1.772 and 1.402 |
 | Rec. ITU-R BT.2020-2 (10/2015) | <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.2020-2-201510-I!!PDF-E.pdf> | Table 4 luma `0.2627 R' + 0.6780 G' + 0.0593 B'`, divisors 1.8814 and 1.4746 |
@@ -45,7 +45,7 @@ Derived from the matrix, never typed in (`ScopeTargets`):
 No standard defines false-colour bands. MpvfxScopes uses these, on Y' (`FalseColor.bands`):
 
 | Band | Y' range | Colour |
-|---|---|---|
+| --- | --- | --- |
 | Crushed | 0 to 2 % | purple |
 | Near black | 2 to 10 % | blue |
 | Middle grey | 35.9 to 46.5 %: the BT.709 transfer function of 18 % reflectance, plus or minus 1/3 stop | green |
@@ -62,3 +62,5 @@ Levels between bands show the pixel's own luma as grey, so the picture stays rea
 Budget: a full-density 1080p frame in at most 25 ms (`ScopeEngineBudgetTests`). Measured 2026-10-21 on a shared 4-vCPU Intel Xeon @ 2.10 GHz Linux machine with other builds running (load average 3.2): 12.7 ms median at 1080p, 13.8 ms at 2160p (sampled to 1080p).
 
 The GPU renderers (`ColorRendering`: Metal, Vulkan, Direct3D 11) run grade jobs; a scope needs counting with atomics and a job type of its own on each host, so the scopes run on the CPU.
+
+<!-- markdownlint-disable-file MD043 -- the required-headings rule has no heading list configured, so any heading fails it -->
