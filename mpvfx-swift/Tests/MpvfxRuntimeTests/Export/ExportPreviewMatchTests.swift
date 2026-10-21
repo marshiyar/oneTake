@@ -42,12 +42,14 @@ final class ExportPreviewMatchTests: XCTestCase {
     }
     var root: String { Self.root }
 
+    /// The base clip's grade parameters in `document()` unless a test passes its own.
+    static let exposureGrade = #"{"adjust":{"exposure":0.6}}"#
     /// The base clip's grade keyed (issue #179): exposure 0 at its first frame to +1 at its last, linear.
     static let keyedExposure = #"[{"schemaVersion":1,"id":"param:exposure","parameterId":"grade.adjust.exposure","valueType":"number","frameRate":{"numerator":10,"denominator":1},"keyframes":[{"id":"k0","frame":0,"value":0,"outgoing":{"type":"linear"}},{"id":"k1","frame":19,"value":1,"outgoing":{"type":"linear"}}]}]"#
 
-    /// 96x48 at 10 fps, 2 s; `keyedGrade` animates the base clip's exposure (0 to +1) instead of its static +0.6.
-    func document(keyedGrade: Bool = false) throws -> NativeProjectDocument {
-        let text = Self.documentText.replacingOccurrences(of: "GRAY_EXPOSURE", with: keyedGrade ? "0" : "0.6")
+    /// 96x48 at 10 fps, 2 s; the base clip graded with `grade`, or with `keyedGrade` its exposure animated (0 to +1).
+    func document(grade: String = exposureGrade, keyedGrade: Bool = false) throws -> NativeProjectDocument {
+        let text = Self.documentText.replacingOccurrences(of: "GRAY_GRADE", with: keyedGrade ? #"{"adjust":{"exposure":0}}"# : grade)
             .replacingOccurrences(of: "GRAY_TRACKS", with: keyedGrade ? Self.keyedExposure : "[]")
         let engine = try KeyframeRuntime()
         installKeyframeEngine(engine)   // export evaluates parameter tracks through the installed engine
@@ -72,16 +74,18 @@ final class ExportPreviewMatchTests: XCTestCase {
               "effects":[],"parameterTracks":[]}]},
            {"id":"base","kind":"video","lane":{"authoredTrack":0,"displayTrack":2},"clips":[
              {"id":"gray","assetId":"gray","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,
-              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":{"adjust":{"exposure":GRAY_EXPOSURE}}}],
+              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":GRAY_GRADE}],
               "parameterTracks":GRAY_TRACKS}]},
            {"id":"music","kind":"audio","lane":{"authoredTrack":3,"displayTrack":3},"clips":[
              {"id":"tone","assetId":"tone","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,"effects":[],"parameterTracks":[]}]}]}}
         """#
 
-    func export(_ format: ExportFormat, keyedGrade: Bool = false) throws -> (input: NativeTimelineRenderInput, file: Exported) {
-        let output = "\(root)/match\(keyedGrade ? "-keyed" : "").\(format.rawValue)"
+    func export(_ format: ExportFormat, grade: String = exposureGrade, keyedGrade: Bool = false, name: String? = nil) throws
+        -> (input: NativeTimelineRenderInput, file: Exported) {
+        let output = "\(root)/\(name ?? "match\(keyedGrade ? "-keyed" : "")").\(format.rawValue)"
         try? FileManager.default.removeItem(atPath: output)
-        let input = NativeTimelineRenderInput(project: try document(keyedGrade: keyedGrade), projectDir: root, outputPath: output, format: format, quality: .high)
+        let input = NativeTimelineRenderInput(project: try document(grade: grade, keyedGrade: keyedGrade), projectDir: root, outputPath: output,
+                                              format: format, quality: .high)
         try renderNativeTimeline(input)
         return (input, Exported(path: output))
     }
@@ -113,6 +117,17 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertGreaterThan(Int(still[2]) - Int(still[0]), 40, "blue over the video: \(still)")
         XCTAssertGreaterThan(Int(video[1]), 150, "the +0.6 exposure grade lifts the video: \(video)")
         XCTAssertTrue(stride(from: 24, to: 44, by: 1).contains { y in (4..<64).contains { x in f.rgba[(y * 96 + x) * 4] > 240 } }, "white text ink")
+    }
+
+    /// Contract 3 Warmth and Tint (channel gains, issue #172) on the graded video: export is the preview at the first,
+    /// a middle and the last frame, and the warm grade shows.
+    func testContract3WarmthExportIsThePreviewFrameForFrame() throws {
+        let mov = try export(.mov, grade: #"{"version":3,"adjust":{"temperature":0.8,"tint":-0.3,"exposure":0.2}}"#, name: "warm")
+        let diffs = try pairs(mov, [0, 1.0, 1.9]).map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let f = try mov.file.rgba(1.0)
+        let video = Array(f.rgba[(36 * 96 + 80) * 4..<(36 * 96 + 80) * 4 + 3])
+        XCTAssertGreaterThan(Int(video[0]) - Int(video[2]), 20, "Warmth +80 warms the video: \(video)")
     }
 
     func testMp4ExportMatchesThePreviewWithinTheEncoderLoss() throws {

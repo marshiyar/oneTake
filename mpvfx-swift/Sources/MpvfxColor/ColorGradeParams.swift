@@ -50,6 +50,9 @@ public struct ColorGradeParams: Equatable, Sendable {
     }
 
     public var preset: String?
+    /// The grade contract the grade was written under (`version`; absent = 2). Contract 3 applies Warmth and Tint as
+    /// channel gains, so black stays black; a contract 2 grade keeps the additive offsets it was graded with.
+    public var version = 2
     public var intensity = 1.0
     public var adjust: [String: Double] = Self.adjustZero
     public var wheels: [String: Wheel] = ["shadows": Wheel(), "midtones": Wheel(), "highlights": Wheel()]
@@ -69,11 +72,16 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     // MARK: Contract
 
-    public static let adjustKeys = ["exposure", "contrast", "highlights", "shadows", "whites", "blacks", "temperature", "tint", "vibrance", "saturation"]
-    public static let wheelKeys = ["shadows", "midtones", "highlights"]
+    /// The contract new grades are written under (`ColorGrading.contractVersion` in MpvfxPanels).
+    public static let currentVersion = 3
+    /// Whether Warmth and Tint scale the channels (contract 3) rather than offset them.
+    public var whiteBalanceGains: Bool { version >= 3 }
+
+    public static let adjustKeys = GradeValues.adjustKeys
+    public static let wheelKeys = GradeValues.wheelKeys
     public static let curveKeys = ["master", "red", "green", "blue"]
     public static let hueCurveKeys = ["hueVsHue", "hueVsSaturation", "hueVsLuma"]
-    public static let detailKeys = ["vignette", "vignetteMidpoint", "vignetteRoundness", "vignetteFeather", "grain", "grainSize", "grainRoughness"]
+    public static let detailKeys = GradeValues.detailKeys
     public static let effectKeys = [
         "blur", "pixelate", "chromaBleed", "tapeDamage", "tapeTracking", "tapeNoise", "tapeSpeed", "filmArtifacts",
         "halftone", "halftoneSize", "twoInkPrint", "twoInkPrintSize", "ascii", "asciiSize", "asciiInvert", "asciiStyle",
@@ -92,10 +100,9 @@ public struct ColorGradeParams: Equatable, Sendable {
                                           "bloom", "monoScreen", "scanlines", "chromaticAberration", "crtCurvature", "digitalGlitch", "engraving", "crosshatch", "kuwahara"]
 
     public static let adjustZero: [String: Double] = Dictionary(uniqueKeysWithValues: adjustKeys.map { ($0, 0.0) })
-    public static let adjustLimits: [String: ClosedRange<Double>] = Dictionary(uniqueKeysWithValues: adjustKeys.map { ($0, $0 == "exposure" ? -2.0...2.0 : -1.0...1.0) })
-    public static let detailDefaults: [String: Double] = ["vignette": 0, "vignetteMidpoint": 0.5, "vignetteRoundness": 0, "vignetteFeather": 0.65,
-                                                          "grain": 0, "grainSize": 0.25, "grainRoughness": 0.5]
-    public static let detailLimits: [String: ClosedRange<Double>] = Dictionary(uniqueKeysWithValues: detailKeys.map { ($0, $0 == "vignetteRoundness" ? -1.0...1.0 : 0.0...1.0) })
+    public static let adjustLimits: [String: ClosedRange<Double>] = Dictionary(uniqueKeysWithValues: adjustKeys.map { ($0, GradeValues.adjustLimit($0)) })
+    public static let detailDefaults: [String: Double] = GradeValues.detailDefaults
+    public static let detailLimits: [String: ClosedRange<Double>] = Dictionary(uniqueKeysWithValues: detailKeys.map { ($0, GradeValues.detailLimit($0)) })
     public static let effectDefaults: [String: Double] = [
         "blur": 0, "pixelate": 0, "chromaBleed": 0, "tapeDamage": 0, "tapeTracking": 0, "tapeNoise": 1, "tapeSpeed": 0.5, "filmArtifacts": 0,
         "halftone": 0, "halftoneSize": 0, "twoInkPrint": 0, "twoInkPrintSize": 0,
@@ -172,17 +179,18 @@ public struct ColorGradeParams: Equatable, Sendable {
         }
         let p = Self.preset(named: presetId)
         preset = presetId
+        if let v = Self.number(o["version"]), v.isFinite, v >= 3 { version = 3 }
         let rawAdjust = Self.object(o["adjust"]), rawDetails = Self.object(o["details"]), rawEffects = Self.object(o["effects"])
-        for k in Self.adjustKeys { adjust[k] = Self.limited(rawAdjust?[k], fallback: p?.adjust[k] ?? Self.adjustZero[k], Self.adjustLimits[k]!) }
-        for k in Self.detailKeys { details[k] = Self.limited(rawDetails?[k], fallback: p?.details[k] ?? Self.detailDefaults[k], Self.detailLimits[k]!) }
+        for k in Self.adjustKeys { adjust[k] = Self.limited(rawAdjust?[k], fallback: p?.adjust[k] ?? Self.adjustZero[k], GradeValues.adjustLimit(k)) }
+        for k in Self.detailKeys { details[k] = Self.limited(rawDetails?[k], fallback: p?.details[k] ?? Self.detailDefaults[k], GradeValues.detailLimit(k)) }
         for k in Self.effectKeys { effects[k] = Self.limited(rawEffects?[k], fallback: p?.effects[k] ?? Self.effectDefaults[k], Self.effectLimit(k)) }
-        intensity = Self.number(o["intensity"]).map { $0.isFinite ? Swift.min(1, Swift.max(0, $0)) : (p?.intensity ?? 1) } ?? (p?.intensity ?? 1)
+        intensity = GradeValues.intensity(o["intensity"], fallback: p?.intensity ?? 1)
         // wheels
         let w = Self.object(o["wheels"])
         for k in Self.wheelKeys {
             let x = Self.object(w?[k])
-            wheels[k] = Wheel(hue: Self.wrapDegrees(x?["hue"]), amount: Self.limited(x?["amount"], fallback: 0, 0...1),
-                              level: Self.limited(x?["level"], fallback: 0, -1...1))
+            wheels[k] = Wheel(hue: Self.wrapDegrees(x?["hue"]), amount: Self.limited(x?["amount"], fallback: 0, GradeValues.wheelAmountLimit),
+                              level: Self.limited(x?["level"], fallback: 0, GradeValues.wheelLevelLimit))
         }
         let c = Self.object(o["curves"])
         for k in Self.curveKeys { curves[k] = Self.normalizeCurve(c?[k]) }
@@ -261,27 +269,12 @@ public struct ColorGradeParams: Equatable, Sendable {
     // MARK: Helpers
 
     static func object(_ v: NativeJSONValue?) -> NativeJSONObject? { if case .object(let o)? = v { return o }; return nil }
-    /// JS Number(value) for the JSON values a grade holds.
-    static func number(_ v: NativeJSONValue?) -> Double? {
-        switch v {
-        case .number(let d)?: return d
-        case .bool(let b)?: return b ? 1 : 0
-        case .string(let s)?: let t = s.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? 0 : (Double(t) ?? .nan)
-        case .null?: return 0
-        default: return nil
-        }
-    }
-    /// readLimitedValue(raw ?? fallback, limit): non-finite reads as 0.
+    /// The reading rules are `GradeValues` (MpvfxShared), shared with the inspector so it shows what renders.
+    static func number(_ v: NativeJSONValue?) -> Double? { GradeValues.number(v) }
     static func limited(_ v: NativeJSONValue?, fallback: Double?, _ limit: ClosedRange<Double>) -> Double {
-        let raw: Double?
-        if v == nil || v == .null { raw = fallback } else { raw = number(v) ?? .nan }
-        guard let x = raw, x.isFinite else { return 0 }
-        return Swift.min(limit.upperBound, Swift.max(limit.lowerBound, x))
+        GradeValues.limited(v, fallback: fallback, limit)
     }
-    static func wrapDegrees(_ v: NativeJSONValue?, fallback: Double = 0) -> Double {
-        guard let x = number(v), x.isFinite else { return fallback }
-        return (x.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
-    }
+    static func wrapDegrees(_ v: NativeJSONValue?, fallback: Double = 0) -> Double { GradeValues.wrapDegrees(v, fallback: fallback) }
     /// Parses the stored points; the clamping, ordering and end points are `GradeCurve`'s, which the curve graph
     /// draws with, so the graph shows the curve this renders.
     static func normalizeCurve(_ v: NativeJSONValue?) -> [[Double]] {
