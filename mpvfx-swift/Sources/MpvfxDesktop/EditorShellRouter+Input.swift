@@ -152,6 +152,7 @@ extension EditorShellRouter {
         guard let d = crossPaneDrag, d.isDragging(from: region) else { return }
         let target = self.region(at: x, y)
         let (tx, ty) = target.map { local($0, x, y) } ?? (x, y)
+        d.updateDragModifiers(modifiers)
         d.dragMoved(over: target, local: CanvasPoint(tx, ty), window: CanvasPoint(x, y))
         needsDisplay()
     }

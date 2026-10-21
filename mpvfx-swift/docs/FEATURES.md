@@ -64,6 +64,7 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Audio rows: icon, name, duration, waveform bars | done | exact |
 | Asset preview overlay / audition (play an asset) | missing (panels) | n/a |
 | Drag from bin to timeline (insert at drop time/track) | done: a 4 px drag starts it, the drop inserts at the pointer's time on the track under it when the kind fits and the track is unlocked (`EditorSession+AssetDrag.swift`); while over the tracks the drop outline shows (1 px accent/60 inside the tracks area, `AssetDropOutline`); edge auto-scroll during the drag is missing | close |
+| Option/Alt-drop a bin card onto a clip to replace its media | done: keeps timing, trim, transform, grade, moves and keyframes; reports missing source frames when too short; one undo step includes adding a new asset (`TimelineReplaceMediaTests`, `ReplaceMediaDragTests`). Keyboard replacement and a clip-menu chooser are not implemented | n/a |
 | Drag from bin to stage | done: the shell router keeps pointer capture and converts to player points; the player highlights the drop and inserts at the playhead | close |
 | Asset context menu: Add at playhead, Copy path, Rename, Delete (+ remove placements, undoable) | done | exact |
 | Double-click / Enter adds asset to timeline | done | n/a |
