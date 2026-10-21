@@ -35,8 +35,10 @@ RULES = [
     # VisualSpecTests reads the colour table of DESIGN.md: code, not documentation.
     (r"mpvfx-swift/docs/DESIGN\.md", ALL),
     (
-        r".*\.md|mpvfx-swift/docs/.*|LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE|(.*/)?\.gitignore"
-        r"|\.github/(ISSUE_TEMPLATE/.*|CODEOWNERS|FUNDING\.yml)",
+        (
+            r".*\.md|mpvfx-swift/docs/.*|LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE|(.*/)?\.gitignore"
+            r"|\.github/(ISSUE_TEMPLATE/.*|CODEOWNERS|FUNDING\.yml)"
+        ),
         DOCS,
     ),
     # CI: the workflow that runs the builds, and the scripts its build and test jobs call.
