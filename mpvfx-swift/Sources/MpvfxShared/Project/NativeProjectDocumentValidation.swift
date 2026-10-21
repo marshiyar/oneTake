@@ -242,18 +242,20 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }
             validateStaticParameters(clip["staticParameters"], "\(clipPath).staticParameters", &issues)
-            if let asset, assetKind == "video" || assetKind == "audio", isNonNegativeInteger(clip["sourceInFrame"]),
-               isPositiveInteger(clip["durationFrames"]), isPositiveInteger(asset["durationFrames"]), let playbackRate, validFraction {
+            if let asset, assetKind == "video" || assetKind == "audio",
+               let sourceInFrame = clip["sourceInFrame"]?.numberValue, isNonNegativeInteger(clip["sourceInFrame"]),
+               let durationFrames = clip["durationFrames"]?.numberValue, isPositiveInteger(clip["durationFrames"]),
+               let assetDurationFrames = asset["durationFrames"]?.numberValue, isPositiveInteger(asset["durationFrames"]),
+               let playbackRate, validFraction {
                 let f = fraction.map { NativePlaybackRate(numerator: $0["numerator"]!.numberValue!, denominator: $0["denominator"]!.numberValue!) }
                 let exceeds: Bool
                 do {
                     if let rawRamp = clip["speedRamp"],
                        let ramp = try? rawRamp.decode(NativeSpeedRamp.self), ramp.isSupported {
-                        let start = clip["sourceInFrame"]!.numberValue! + (f.map { $0.numerator / $0.denominator } ?? 0)
-                        exceeds = start + ramp.sourcePosition(atClipFrame: clip["durationFrames"]!.numberValue!) > asset["durationFrames"]!.numberValue!
+                        let start = sourceInFrame + (f.map { $0.numerator / $0.denominator } ?? 0)
+                        exceeds = start + ramp.sourcePosition(atClipFrame: durationFrames) > assetDurationFrames
                     } else {
-                        exceeds = try sourceRangeExceedsAsset(clip["sourceInFrame"]!.numberValue!, clip["durationFrames"]!.numberValue!,
-                                                              playbackRate, asset["durationFrames"]!.numberValue!, f)
+                        exceeds = try sourceRangeExceedsAsset(sourceInFrame, durationFrames, playbackRate, assetDurationFrames, f)
                     }
                 } catch {
                     // Overflow mapping: the exact answer needs more than 64 bits. The only way Int64 overflows with safe-integer

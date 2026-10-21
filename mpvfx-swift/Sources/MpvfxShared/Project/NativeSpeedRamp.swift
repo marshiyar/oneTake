@@ -117,7 +117,8 @@ public struct NativeSpeedRamp: Codable, Equatable, Sendable {
                 return a.speed + (b.speed - a.speed) * eased(x, a.ease)
             }
         }
-        return points.last!.speed
+        guard let last = points.last else { return 1 }
+        return last.speed
     }
 }
 
