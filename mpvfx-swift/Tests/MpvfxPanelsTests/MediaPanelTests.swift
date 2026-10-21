@@ -80,6 +80,8 @@ final class MediaPanelLayoutAuditTests: XCTestCase {
          ("hover", { $0.hovered = .tile(.media("media/b-roll.mov")) }),
          ("filtered", { $0.filter = MediaFilter(kind: .video, usage: .notInTimeline, sort: .name) }),
          ("naming", { $0.runMoreOption("newEvent") }),
+         ("auditioning video", { $0.audition = AuditionTileState(assetId: "media/b-roll.mov", position: 4, duration: 21) }),
+         ("auditioning audio", { $0.audition = AuditionTileState(assetId: "media/drive.wav", position: 4, duration: 92.5) }),
          ("error", { $0.library.error = "Could not open the library: permission denied for /Volumes/Footage/Untitled.mpvfxlibrary" })]
     }
 
@@ -95,6 +97,8 @@ final class MediaPanelLayoutAuditTests: XCTestCase {
     func nests(_ a: Hit, _ b: Hit) -> Bool {
         switch (a, b) {
         case (.tile(let x), .tileAction(let y)), (.tileAction(let y), .tile(let x)): return x == y
+        case (.tile(let x), .tileAudition(let y)), (.tileAudition(let y), .tile(let x)): return x == y
+        case (.tile(let x), .auditionBar(let y)), (.auditionBar(let y), .tile(let x)): return x == y
         case (.search, .clearSearch), (.clearSearch, .search): return true
         default: return false
         }

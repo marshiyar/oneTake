@@ -18,6 +18,7 @@ import MpvfxTimeline
 import MpvfxPlayer
 import MpvfxPanels
 import MpvfxDesktopCore
+import MpvfxAudio
 
 /// Host-side wiring of the side panels:
 /// the left sidebar (the Media panel) gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms
@@ -52,6 +53,9 @@ final class SessionPanels {
     private(set) var effectPreviews: EffectPreviewRenderer?
     private(set) var presetPreviewTime = 0.0
     private var panelsAnimating = false
+    /// The bin's audition (SessionPanels+Audition.swift): the player and the project it started in.
+    var auditionPlayer: AssetAuditionPlayer?
+    var auditionProjectId: String?
 
     init(session: EditorSession, layout: PanelLayoutState, userData: String) {
         self.session = session
@@ -102,6 +106,7 @@ final class SessionPanels {
         left.onCopyPath = { [weak self] path in self?.copyToClipboard?(path) }
         left.onLibrary = { [weak self] cmd in self?.runLibrary(cmd) }
         left.library.available = backend?.libraries != nil
+        wireAudition()
     }
 
     /// Re-reads the project's media (after import, rename, delete, a project switch, or an external change).
@@ -403,6 +408,7 @@ final class SessionPanels {
 
     /// After the session opened another project: everything per-project is re-read.
     func projectSwitched() {
+        stopAudition()
         media = []; probedDurations = [:]; probing = []; session.mediaThumbnails.reset()
         renders.reset()
         effectPreviews?.reset()   // sample tiles resolve LUT paths against the project folder
@@ -455,9 +461,9 @@ final class SessionPanels {
         var last = Date()
         func step() {
             let now = Date(), dt = now.timeIntervalSince(last); last = now
-            let a = right.tick(dt), b = left.tick(dt), r = rendersPanel.tick(dt)
+            let a = right.tick(dt), b = left.tick(dt), r = rendersPanel.tick(dt), p = pollAudition()
             redraw()
-            if a || b || r { _ = schedule(1.0 / 60, step) } else { panelsAnimating = false }
+            if a || b || r || p { _ = schedule(1.0 / 60, step) } else { panelsAnimating = false }
         }
         _ = schedule(1.0 / 60, step)
     }
