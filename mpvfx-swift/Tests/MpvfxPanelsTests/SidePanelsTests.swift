@@ -868,7 +868,7 @@ final class PanelTabStripTests: XCTestCase {
         XCTAssertEqual(tab.y, 0); XCTAssertEqual(tab.height, PanelTabStrip.height)
         let menu = try XCTUnwrap(s.hits.rect { $0 == .panelMenu })
         _ = s.pointerDown(center(menu))
-        XCTAssertEqual(s.dropdown.options.map(\.label), ["Import media…", "Hide panel"])
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["Import media…", "Add solid colour", "Add linear gradient", "Add radial gradient", "Hide panel"])
         s.dropdown.pick("import")
         XCTAssertEqual(imports, 1)
         let importButton = try XCTUnwrap(s.hits.rect { $0 == .importMedia })

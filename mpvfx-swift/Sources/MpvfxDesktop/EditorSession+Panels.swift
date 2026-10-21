@@ -110,6 +110,15 @@ final class SessionPanels {
         left.thumbnail = { [weak self] id in self?.thumbnail(id) }
         left.bars = { [weak self] id in self?.bars(id) }
         left.onImport = { [weak self] in self?.session.onImportRequested?() }
+        left.onAddGenerator = { [weak self] kind in
+            guard let self, let id = self.session.editor.addGenerator(kind, at: self.session.playback.currentTime) else { return }
+            self.session.timeline.view.selection = [id]
+            self.session.syncStage()
+            self.right.inspector.selection = [id]; self.right.inspector.audioGroupId = nil
+            self.right.inspector.openGroupId = "generator"
+            self.right.layout.setRightCollapsed(false); self.right.layout.setRightTab(.design)
+            self.redraw()
+        }
         left.onAddAtPlayhead = { [weak self] id in self?.addToTimeline(path: id, at: nil) }
         left.onAddTextLook = { [weak self] look in self?.session.addTextLook(look) }
         left.onRenameAsset = { [weak self] id, name in self?.renameAsset(path: id, newName: name) }
