@@ -56,6 +56,9 @@ public enum DocumentAudioGraph {
             public var fxChain: String?, automation: String?, groupId: String?
             /// Keyframed `audio.volume` (the clip's first track for it with keyframes; clip-local frames).
             public var volumeKeyframes: VolumeKeyframes? = nil
+            /// The clip's cut transition fades (nil: none); `start`/`end` and the stem already include the handle
+            /// media a dissolve plays past the clip's own edges.
+            public var transitionGain: AudioTransitionGain? = nil
             /// The clip's `fadeInFrames` / `fadeOutFrames` in seconds (0: none).
             public var fadeIn: Double = 0, fadeOut: Double = 0
         }
@@ -65,6 +68,8 @@ public enum DocumentAudioGraph {
     public struct VolumeKeyframes: Equatable, Sendable {
         public var track: NativeParameterTrack
         public var durationFrames: Double, fps: Double
+        /// Frames of transition handle media the stem plays before the clip's first frame.
+        public var leadFrames = 0.0
     }
 
     public static func inputs(_ doc: NativeProjectDocument, duration: Double, projectDir: URL?,
@@ -75,10 +80,13 @@ public enum DocumentAudioGraph {
         let silenced = soloSilencedClipIds(doc)
         let detached = Set(clips.compactMap { $0.audioDetachedFrom?.isEmpty == false ? $0.audioDetachedFrom : nil })
         var tracks: [Inputs.Track] = []
+        let transitions = audioTransitions(doc, clips: clips)
         for c in clips where !silenced.contains(c.id) {   // solo: the stems of unheard tracks are never decoded
             guard c.speedRamp?.isSupported != false else { continue }
             guard let a = assets[c.assetId], a.kind == .audio || a.kind == .video, let src = a.source else { continue }
             if a.kind == .video && detached.contains(c.id) { continue }
+            // A held frame is silent (and a hold from a newer version is not played either).
+            if c.holdSourceFrame != nil { continue }
             let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
             guard fileExists(path) else { continue }
             let start = c.startFrame / fps, end = (c.startFrame + c.durationFrames) / fps
@@ -88,14 +96,43 @@ public enum DocumentAudioGraph {
             let stem = StemKey(path: path, sourceIn: c.sourceInFrame / fps, duration: end - start, rate: rate,
                                preservesPitch: c.preservesPitch ?? true, speedRamp: c.speedRamp, timelineFPS: fps)
             let keyed = c.parameterTracks.first { $0.parameterId == volumeParameter && !$0.keyframes.isEmpty }
-            tracks.append(.init(id: c.id, stem: stem,
-                                start: start, end: end, volume: volume, muted: c.muted,
-                                fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty,
-                                volumeKeyframes: keyed.map { VolumeKeyframes(track: $0, durationFrames: c.durationFrames, fps: fps) },
-
-                                fadeIn: (c.fadeInFrames ?? 0) / fps, fadeOut: (c.fadeOutFrames ?? 0) / fps))
+            var track = Inputs.Track(id: c.id, stem: stem,
+                                     start: start, end: end, volume: volume, muted: c.muted,
+                                     fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty,
+                                     fadeIn: (c.fadeInFrames ?? 0) / fps, fadeOut: (c.fadeOutFrames ?? 0) / fps)
+            track.volumeKeyframes = keyed.map { VolumeKeyframes(track: $0, durationFrames: c.durationFrames, fps: fps) }
+            if let t = transitions[c.id] { applyTransitions(t, to: &track, fps: fps, rampedClip: c.speedRamp?.isSupported == true) }
+            tracks.append(track)
         }
         return Inputs(duration: duration, tracks: tracks, groups: doc.sequence.audioGroups ?? [])
+    }
+
+    /// The cut transitions each sounding clip follows: its own, or (detached audio) its linked video's at the edges
+    /// where the two still line up.
+    static func audioTransitions(_ doc: NativeProjectDocument, clips: [NativeProjectClip]) -> [String: NativeClipTransitions] {
+        var spans = nativeCutTransitionSpans(doc)
+        let byId = Dictionary(clips.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for c in clips where spans[c.id] == nil {
+            guard let videoId = c.audioDetachedFrom, let video = byId[videoId], let t = spans[videoId] else { continue }
+            var follows = NativeClipTransitions()
+            if c.startFrame == video.startFrame { follows.incoming = t.incoming }
+            if c.startFrame + c.durationFrames == video.startFrame + video.durationFrames { follows.outgoing = t.outgoing }
+            if follows.incoming != nil || follows.outgoing != nil { spans[c.id] = follows }
+        }
+        return spans
+    }
+
+
+    /// Widens the track over the handle media its transitions play and adds their equal-power fades.
+    /// A clip with a speed ramp keeps its own span (its ramp is timed from the clip start); only the fades apply.
+    static func applyTransitions(_ t: NativeClipTransitions, to track: inout Inputs.Track, fps: Double, rampedClip: Bool = false) {
+        let lead = rampedClip ? 0 : t.lead / fps, tail = rampedClip ? 0 : t.tail / fps
+        track.start -= lead; track.end += tail
+        track.stem.sourceIn -= lead * track.stem.rate; track.stem.duration = track.end - track.start
+        track.volumeKeyframes?.leadFrames = lead * fps
+        track.transitionGain = AudioTransitionGain(
+            fadeIn: t.incoming.map { AudioGainRamp(start: ($0.kind == .dissolve ? $0.startFrame : $0.cutFrame) / fps, end: $0.endFrame / fps, fadeIn: true) },
+            fadeOut: t.outgoing.map { AudioGainRamp(start: $0.startFrame / fps, end: ($0.kind == .dissolve ? $0.endFrame : $0.cutFrame) / fps, fadeIn: false) })
     }
 
     /// The clips solo leaves out of the mix: while any audio track is soloed, every clip on a track that is not a
@@ -133,6 +170,7 @@ public enum DocumentAudioGraph {
             }
             var track = AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: volume, muted: t.muted,
                                         fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
+            track.transitionGain = t.transitionGain
             track.fadeIn = t.fadeIn; track.fadeOut = t.fadeOut
             return track
         }
@@ -176,7 +214,7 @@ struct KeyframedVolume {
         for c in stem.indices {
             stem[c].withUnsafeMutableBufferPointer { buffer in
                 for i in 0..<buffer.count {
-                    let pos = Double(i) / samplesPerFrame
+                    let pos = Swift.max(0, Double(i) / samplesPerFrame - k.leadFrames)
                     let lo = Swift.min(frames - 1, Int(pos)), hi = Swift.min(frames - 1, lo + 1)
                     buffer[i] *= Float(gains[lo] + (gains[hi] - gains[lo]) * (pos - Double(lo)))
                 }

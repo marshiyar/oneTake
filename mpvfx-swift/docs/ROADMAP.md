@@ -96,7 +96,7 @@ Complete for everyday editing: captions, the remaining formats and the colourist
 | [#106](https://github.com/marshiyar/oneTake/issues/106) | Interface size up to 200% | buildable |
 
 After these: the full-size scope view and the remaining scopes (RGB histogram, overlay waveform, CIE, false colour),
-HDR export, caption styling and burn-in, cross-dissolve transitions (needs a document schema decision first), screen readers on Linux (AT-SPI) and Windows (UIA), reduced motion, 4K playback from proxies, and drawing frames from GPU textures instead of byte arrays.
+HDR export, caption styling and burn-in, cut transitions beyond the cross-dissolve and dip (#236: timeline UI, motion kinds, a Transitions tab; the document schema is in place), screen readers on Linux (AT-SPI) and Windows (UIA), reduced motion, 4K playback from proxies, and drawing frames from GPU textures instead of byte arrays.
 
 ## Not planned
 

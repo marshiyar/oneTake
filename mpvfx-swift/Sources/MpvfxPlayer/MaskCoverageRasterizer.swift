@@ -70,22 +70,29 @@ public enum MaskCoverageRasterizer {
         let expansion = m.expansion ?? 0, feather = m.feather ?? 0, opacity = m.opacity ?? 1
         let a = (m.angle ?? 0) * .pi / 180, ca = cos(a), sa = sin(a)
         var out = [Double](repeating: 0, count: w * h)
-        for y in 0..<h { for x in 0..<w {
-            let dx = Double(x) + 0.5 - cx, dy = Double(y) + 0.5 - cy
-            let rx = dx * ca + dy * sa, ry = -dx * sa + dy * ca
-            let distance: Double
-            switch m.kind {
-            case "ellipse":
-                let ax = max(0.0001, mw / 2 + expansion), ay = max(0.0001, mh / 2 + expansion)
-                distance = (1 - sqrt((rx / ax) * (rx / ax) + (ry / ay) * (ry / ay))) * min(ax, ay)
-            case "linear": distance = expansion - rx
-            case "band": distance = mw / 2 + expansion - abs(rx)
-            default:
-                let qx = mw / 2 + expansion - abs(rx), qy = mh / 2 + expansion - abs(ry)
-                distance = min(qx, qy)
+        let kind = m.kind
+        out.withUnsafeMutableBufferPointer { buf in
+            let base = SendablePointer(buf.baseAddress!)
+            DispatchQueue.concurrentPerform(iterations: h) { y in
+                let row = base.pointer + y * w
+                for x in 0..<w {
+                    let dx = Double(x) + 0.5 - cx, dy = Double(y) + 0.5 - cy
+                    let rx = dx * ca + dy * sa, ry = -dx * sa + dy * ca
+                    let distance: Double
+                    switch kind {
+                    case "ellipse":
+                        let ax = max(0.0001, mw / 2 + expansion), ay = max(0.0001, mh / 2 + expansion)
+                        distance = (1 - sqrt((rx / ax) * (rx / ax) + (ry / ay) * (ry / ay))) * min(ax, ay)
+                    case "linear": distance = expansion - rx
+                    case "band": distance = mw / 2 + expansion - abs(rx)
+                    default:
+                        let qx = mw / 2 + expansion - abs(rx), qy = mh / 2 + expansion - abs(ry)
+                        distance = min(qx, qy)
+                    }
+                    row[x] = distance >= 0 ? 1 : 0
+                }
             }
-            out[y * w + x] = distance >= 0 ? 1 : 0
-        }}
+        }
         if feather > 0 { out = gaussianBlur(out, width: w, height: h, sigma: feather / 2) }
         for i in out.indices {
             var value = out[i] * opacity
@@ -101,17 +108,84 @@ public enum MaskCoverageRasterizer {
         var kernel = [Double](), sum = 0.0
         for x in -radius...radius { let v = exp(-Double(x * x) / (2 * sigma * sigma)); kernel.append(v); sum += v }
         kernel = kernel.map { $0 / sum }
+        let taps = 2 * radius + 1
         var horizontal = [Double](repeating: 0, count: input.count), output = horizontal
-        for y in 0..<height { for x in 0..<width {
-            for k in -radius...radius { horizontal[y * width + x] += input[y * width + min(max(x + k, 0), width - 1)] * kernel[k + radius] }
-        }}
-        for y in 0..<height { for x in 0..<width {
-            for k in -radius...radius { output[y * width + x] += horizontal[min(max(y + k, 0), height - 1) * width + x] * kernel[k + radius] }
-        }}
+        // Value of every input row that is one repeated value (NaN otherwise); filled by the horizontal pass.
+        var rowValue = [Double](repeating: .nan, count: height)
+        input.withUnsafeBufferPointer { inBuf in
+        rowValue.withUnsafeMutableBufferPointer { rvBuf in
+        horizontal.withUnsafeMutableBufferPointer { hBuf in
+        kernel.withUnsafeBufferPointer { kBuf in
+            let src = inBuf.baseAddress!, dst = SendablePointer(hBuf.baseAddress!), kp = kBuf.baseAddress!
+            let rv = SendablePointer(rvBuf.baseAddress!)
+            DispatchQueue.concurrentPerform(iterations: height) { y in
+                let inRow = src + y * width, outRow = dst.pointer + y * width
+                // A constant row blurs to one value; summed in the same tap order as the general path.
+                var constant = true
+                for x in 1..<max(width, 1) where inRow[x] != inRow[0] { constant = false; break }
+                if constant {
+                    var acc = 0.0
+                    for t in 0..<taps { acc += inRow[0] * kp[t] }
+                    for x in 0..<width { outRow[x] = acc }
+                    rv.pointer[y] = inRow[0]
+                    return
+                }
+                // changes[i] counts value changes up to i; a window with none sums one repeated value.
+                var changes = [Int](repeating: 0, count: width)
+                for x in 1..<width { changes[x] = changes[x - 1] + (inRow[x] != inRow[x - 1] ? 1 : 0) }
+                var cachedValue = Double.nan, cachedSum = 0.0
+                for x in 0..<width {
+                    let lo = max(x - radius, 0), hi = min(x + radius, width - 1)
+                    if changes[hi] == changes[lo] {
+                        let v = inRow[x]
+                        if v == cachedValue { outRow[x] = cachedSum; continue }
+                        var acc = 0.0
+                        for t in 0..<taps { acc += v * kp[t] }
+                        cachedValue = v; cachedSum = acc; outRow[x] = acc
+                        continue
+                    }
+                    var acc = 0.0
+                    if x >= radius && x + radius < width {
+                        let p = inRow + (x - radius)
+                        for t in 0..<taps { acc += p[t] * kp[t] }
+                    } else {
+                        for t in 0..<taps { acc += inRow[min(max(x + t - radius, 0), width - 1)] * kp[t] }
+                    }
+                    outRow[x] = acc
+                }
+            }
+        }}}}
+        horizontal.withUnsafeBufferPointer { hBuf in
+        output.withUnsafeMutableBufferPointer { oBuf in
+        kernel.withUnsafeBufferPointer { kBuf in
+            let src = hBuf.baseAddress!, dst = SendablePointer(oBuf.baseAddress!), kp = kBuf.baseAddress!
+            DispatchQueue.concurrentPerform(iterations: height) { y in
+                let outRow = dst.pointer + y * width
+                // Window of identical constant rows: every column sums the same value in the same tap order.
+                let first = rowValue[min(max(y - radius, 0), height - 1)]
+                if !first.isNaN, (max(y - radius, 0)...min(y + radius, height - 1)).allSatisfy({ rowValue[$0] == first }) {
+                    var acc = 0.0
+                    for t in 0..<taps { acc += first * kp[t] }
+                    for x in 0..<width { outRow[x] = acc }
+                    return
+                }
+                for t in 0..<taps {
+                    let inRow = src + min(max(y + t - radius, 0), height - 1) * width
+                    let kv = kp[t]
+                    for x in 0..<width { outRow[x] += inRow[x] * kv }
+                }
+            }
+        }}}
         return output
     }
 }
 
 private extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
+}
+
+/// Row-disjoint writes from `DispatchQueue.concurrentPerform` never alias, so sharing the pointer is safe.
+private struct SendablePointer: @unchecked Sendable {
+    let pointer: UnsafeMutablePointer<Double>
+    init(_ pointer: UnsafeMutablePointer<Double>) { self.pointer = pointer }
 }

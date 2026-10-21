@@ -64,11 +64,13 @@ public struct UnavailableTranscriptionService: TranscriptionService {
     }
 }
 
-/// This system's service: the Speech framework's on-device recognizer on macOS. Linux has no on-device speech
-/// recognition, and Windows reports the same until its adapter lands (TODO(#344) the Windows desktop recognizer).
+/// This system's service: the Speech framework's on-device recognizer on macOS and the in-process desktop recognizer on
+/// Windows. Linux has no on-device speech recognition.
 public func defaultTranscriptionService() -> TranscriptionService {
     #if os(macOS)
     return makeMacSpeechTranscriptionService()
+    #elseif os(Windows)
+    return makeWindowsSpeechTranscriptionService()
     #else
     return UnavailableTranscriptionService(reason: .platformHasNoOnDeviceRecognizer)
     #endif

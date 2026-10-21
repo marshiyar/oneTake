@@ -124,7 +124,7 @@ public final class ProgramScopeRenderer: @unchecked Sendable {
 
     /// The raw picture the preview holds for `layer` at timeline frame `frameIndex`: exact, else the nearest cached.
     func cachedPicture(_ layer: PreviewLayer, frameIndex: Int) -> (frame: Int, image: CanvasImage)? {
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : frameIndex
+        let want = layer.isStill ? PreviewDecodeLane.stillFrame : frameIndex
         if let image = compositor.cache.frame(lane: layer.laneKey, frame: want) { return (want, image) }
         return compositor.cache.nearest(lane: layer.laneKey, to: want)
     }
