@@ -204,6 +204,11 @@ final class WindowsShell: EditorSaveChannel, @unchecked Sendable {
         host.onDrawError = { [weak self] error in self?.drawFailed(error) }
         self.host = host
         session.redraw = { [weak host] in host?.invalidate() }
+        session.documentStateChanged = { [weak self, weak session] in
+            guard let session, let window = self?.hwnd else { return }
+            _ = withWide(session.markedWindowTitle) { SetWindowTextW(window, $0) }
+        }
+        session.documentStateChanged()
         // Appearance: System follows the Windows app theme (AppsUseLightTheme); WM_SETTINGCHANGE "ImmersiveColorSet"
         // reports a switch, and the window frame follows the editor's mode.
         session.installAppearance(userData: paths.userData, systemPrefersDark: { mpvfx_system_prefers_dark() != 0 }) { mode in
@@ -235,6 +240,13 @@ final class WindowsShell: EditorSaveChannel, @unchecked Sendable {
         session.onExternalConflict = { [weak self] answer in
             let text = "It was changed outside MpVFX while you have unsaved edits.\n\nYes: keep my edits.\nNo: use the file on disk."
             let choice = withWide("The project file changed on disk") { t in
+                withWide(text) { m in MessageBoxW(self?.hwnd, m, t, UINT(MB_YESNO | MB_ICONWARNING)) }
+            }
+            answer(choice == IDYES)
+        }
+        session.onProjectMoved = { [weak self] message, answer in
+            let text = message + "\n\nYes: Locate Folder…\nNo: Keep Editing."
+            let choice = withWide("The project folder is missing") { t in
                 withWide(text) { m in MessageBoxW(self?.hwnd, m, t, UINT(MB_YESNO | MB_ICONWARNING)) }
             }
             answer(choice == IDYES)

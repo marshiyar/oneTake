@@ -71,11 +71,12 @@ public extension TimelineEditor {
     }
 
     /// The default box (fitTimelineAssetGeometry of the media's natural size) when the clip's size is untouched,
-    /// else nil (nativeClipNaturalLayout).
+    /// else nil (nativeClipFitLayout: also nil for a Fill or Stretch clip, whose untouched box is the canvas).
     func naturalLayout(clipId: String) -> NativeClipLayoutBox? {
         guard let (_, c) = clip(clipId), let asset = document.assets.first(where: { $0.id == c.assetId }),
               asset.kind == .video || asset.kind == .image else { return nil }
-        return nativeClipNaturalLayout(c, natural: naturalSize(asset), canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
+        return nativeClipFitLayout(c, natural: naturalSize(asset),
+                                   canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
     }
 
     /// The default box for the clip's media whether or not its size was edited (full canvas when unknown).

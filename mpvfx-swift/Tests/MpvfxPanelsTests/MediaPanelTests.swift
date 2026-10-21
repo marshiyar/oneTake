@@ -423,14 +423,14 @@ final class MediaPanelInteractionTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(r.y, s.binRect.y - 0.01); XCTAssertLessThanOrEqual(r.maxY, s.binRect.maxY + 0.01)
     }
 
-    /// Tab walks the controls left to right, top to bottom, then enters the grid at one tile; Enter presses the
+    /// Tab walks the controls left to right, top to bottom (the tab bar first, one stop), then enters the grid at one tile; Enter presses the
     /// focused control.
     func testTabWalksTheControlsThenTheGrid() throws {
         let s = MediaPanelFixture.panel()
         _ = drawn(s)
         var order: [LeftSidebarPanel.Hit] = []
-        for _ in 0..<8 { _ = s.keyDown(EditorKey(.tab)); _ = drawn(s); if let f = s.focus.current { order.append(f) } }
-        XCTAssertEqual(order, [.hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .tile(.media("media/\(MediaPanelFixture.long)"))])
+        for _ in 0..<9 { _ = s.keyDown(EditorKey(.tab)); _ = drawn(s); if let f = s.focus.current { order.append(f) } }
+        XCTAssertEqual(order, [.tab(.assets), .hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .tile(.media("media/\(MediaPanelFixture.long)"))])
         XCTAssertEqual(s.selected, .media("media/\(MediaPanelFixture.long)"), "entering the grid selects its tile")
         for _ in 0..<5 { _ = s.keyDown(EditorKey(.tab, shift: true)) }
         XCTAssertEqual(s.focus.current, .switcher)

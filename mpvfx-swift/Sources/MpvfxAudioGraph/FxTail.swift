@@ -41,6 +41,7 @@ public enum FxTail {
         case "delay": return knobMax(node, "mix", a) > 0 ? delayTail(knobMax(node, "time", a), knobMax(node, "feedback", a)) : 0
         case "chorus": return knobMax(node, "mix", a) > 0 ? knobMax(node, "delay", a) / 1000 : 0
         case "pitchshift": return knobMax(node, "mix", a) > 0 ? 0.2 : 0
+        case "denoise": return Double(DenoiseUnit.latency) / 20480 // the latency the chain stage drops from the start
         default: return 0
         }
     }

@@ -22,8 +22,10 @@ import MpvfxShared
 /// with crop, keyframed transform and opacity, at the display's pixel density.
 ///
 /// Drawing never waits for a decoder. Each layer shows its exact frame when cached, else the closest earlier
-/// frame of the same clip (playback drops frames instead of stalling), else nothing yet. While playing forward
-/// every visible clip decodes ahead of the playhead, and clips about to start are pre-rolled so cuts don't flash.
+/// frame of the same clip (playback drops frames instead of stalling), else the last picture the clip drew (a
+/// paused seek after the cache was trimmed), else nothing yet; `Shown.exact` is true only for the exact frame.
+/// While playing forward every visible clip decodes ahead of the playhead, and clips about to start are pre-rolled
+/// so cuts don't flash.
 /// Time comes from the transport, which follows the audio device clock when audio is playing, so picture stays
 /// in sync with sound by construction.
 ///
@@ -61,6 +63,12 @@ public final class PreviewCompositor: FrameSource {
     public private(set) var heldFrames = 0
     /// The lane each clip last drew from (a trim or retime switches lanes; the old frames bridge the gap).
     var shownLane: [String: String] = [:]
+    /// A raw decoded picture of a clip, the lane and frame it came from, and whether it is the frame being drawn.
+    struct Picture { var image: CanvasImage; var frame: Int; var lane: String; var exact: Bool }
+    /// The last picture each clip drew: the stand-in of last resort, when the clip's lanes have nothing cached near the
+    /// playhead (its frames evicted by other clips), so a paused seek does not blank the clip while its exact frame
+    /// decodes. Bounded: an eighth of the frame cache budget, clips the last draw drew, nothing under memory pressure.
+    let standIns: PreviewStandIns
     /// Grades frames for display off the main thread (latest request wins).
     public let grader = PreviewGrader()
     /// The renderer that grades preview frames.
@@ -76,6 +84,7 @@ public final class PreviewCompositor: FrameSource {
     public init(decodesMedia: Bool = true, cacheBudgetBytes: Int = MemoryBudget.previewFrames(), background: CanvasColor = CanvasColor(ThemeTokens.stageDefaultBackground)) {
         self.decodesMedia = decodesMedia
         cache = PreviewFrameCache(budgetBytes: cacheBudgetBytes)
+        standIns = PreviewStandIns(budgetBytes: cacheBudgetBytes / 8)
         placeholder = PlaceholderFrameSource(background: background)
         grader.onFinished = { [weak self] in self?.frameReady?() }
     }
@@ -88,6 +97,7 @@ public final class PreviewCompositor: FrameSource {
             cache.removeLane(lane); laneClip[lane] = nil
         }
         for clip in shownLane.keys where !live.contains(clip) { shownLane[clip] = nil }
+        standIns.keepOnly(live)
         grader.keepOnly(live)
     }
 
@@ -101,7 +111,7 @@ public final class PreviewCompositor: FrameSource {
     public func releaseAll() {
         stopAll()
         cache.removeAll()
-        laneClip = [:]; shownLane = [:]
+        laneClip = [:]; shownLane = [:]; standIns.removeAll()
     }
 
     deinit { for l in lanes.values { l.stop() } }
@@ -126,6 +136,10 @@ public final class PreviewCompositor: FrameSource {
         var used = Set<String>()
         var shown: [Shown] = []
         for layer in layers where layer.isVisible {
+            if layer.kind == .offline {   // missing media: a slate naming the file, never decoded
+                PreviewPainter.drawOffline(layer, on: c, frame: rect, scale: s)
+                shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
+            }
             if layer.kind == .text {   // text layers are laid out, not decoded
                 PreviewPainter.drawText(layer, on: c, frame: rect, scale: s)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
@@ -136,28 +150,16 @@ public final class PreviewCompositor: FrameSource {
                 used.insert(lane.key)
             }
             let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : frame
-            if let img = cache.frame(lane: layer.laneKey, frame: want) {
-                let g = shownImage(layer, img, frame: want, time: time, fps: comp.fps, target: size)
-                PreviewPainter.draw(layer, image: g.image, on: c, frame: rect, scale: s)
-                shown.append(Shown(clipId: layer.clipId, frame: want, exact: true, grade: g.grade, gradeCurrent: g.current))
-            } else if let held = cache.nearest(lane: layer.laneKey, to: want) {
-                let g = shownImage(layer, held.image, frame: held.frame, time: time, fps: comp.fps, target: size)
-                PreviewPainter.draw(layer, image: g.image, on: c, frame: rect, scale: s)
-                shown.append(Shown(clipId: layer.clipId, frame: held.frame, exact: false, grade: g.grade, gradeCurrent: g.current))
-                heldFrames += 1
-            } else if let prev = shownLane[layer.clipId], prev != layer.laneKey,
-                      let held = cache.frame(lane: prev, frame: want).map({ (frame: want, image: $0) }) ?? cache.nearest(lane: prev, to: want) {
-                // A trim or retime starts a new lane: keep showing the previous frames until the new ones are decoded.
-                let g = shownImage(layer, held.image, frame: held.frame, time: time, fps: comp.fps, target: size, lane: prev)
-                PreviewPainter.draw(layer, image: g.image, on: c, frame: rect, scale: s)
-                shown.append(Shown(clipId: layer.clipId, frame: held.frame, exact: false, grade: g.grade, gradeCurrent: g.current))
-                heldFrames += 1
-                continue
-            } else {
-                shown.append(Shown(clipId: layer.clipId, frame: nil, exact: false))
-                continue
+            guard let pick = picture(for: layer, want: want) else {
+                shown.append(Shown(clipId: layer.clipId, frame: nil, exact: false)); continue
             }
-            shownLane[layer.clipId] = layer.laneKey
+            let look = shownImage(layer, pick.image, frame: pick.frame, time: time, fps: comp.fps, target: size,
+                                  lane: pick.lane)
+            draw(layer, raw: pick.image, shown: look.image, shownIsCurrent: look.current, on: c, frame: rect, scale: s,
+                 context: context)
+            shown.append(Shown(clipId: layer.clipId, frame: pick.frame, exact: pick.exact,
+                               grade: look.grade, gradeCurrent: look.current))
+            drew(pick, for: layer)
         }
         // Pre-roll clips starting soon so their first frames are ready at the cut.
         if forward {
@@ -178,13 +180,71 @@ public final class PreviewCompositor: FrameSource {
             }
         }
         for (k, lane) in lanes where !used.contains(k) { lane.stop(); lanes[k] = nil }
-        lastShown = shown
+        lastShown = shown; cache.fitBudget(); grader.fitBudget()   // the caches count drawables this draw made
+        standIns.keepOnly(Set(shown.filter { $0.frame != nil }.map(\.clipId)))   // inactive clips keep no stand-in
 
         // Element clips (no media of their own) keep their labelled box; video/image clips whose file is missing
-        // draw nothing, like a media element with an unreadable source.
+        // were drawn above as offline slates.
         let mediaIds = Set(layers.map(\.clipId))
         let rest = elements.filter { !mediaIds.contains($0.id) && $0.kind == .element }
         if !rest.isEmpty { PlaceholderFrameSource.drawBoxes(c, rest) }
+    }
+
+    /// After `pick` was drawn for `layer`: counts a stand-in, keeps the clip's last picture and the lane it drew from.
+    func drew(_ pick: Picture, for layer: PreviewLayer) {
+        if !pick.exact { heldFrames += 1 }
+        standIns.store(pick, clip: layer.clipId)
+        // A picture from the clip's earlier lane bridges a trim or retime until its own lane draws.
+        if pick.lane == layer.laneKey { shownLane[layer.clipId] = layer.laneKey }
+    }
+
+    /// What a media layer draws for frame `want`: the exact frame, else the nearest cached frame of its lane, else a
+    /// stand-in from `standIn`. Never waits for a decoder.
+    func picture(for layer: PreviewLayer, want: Int) -> Picture? {
+        if let image = cache.frame(lane: layer.laneKey, frame: want) {
+            return Picture(image: image, frame: want, lane: layer.laneKey, exact: true)
+        }
+        if let held = cache.nearest(lane: layer.laneKey, to: want) {
+            return Picture(image: held.image, frame: held.frame, lane: layer.laneKey, exact: false)
+        }
+        return standIn(for: layer, want: want)
+    }
+
+    /// A picture for a layer whose lane has nothing cached: the frames of the lane the clip drew from before (a trim or
+    /// retime starts a new lane), else the last picture the clip drew. Never exact: the exact frame replaces it.
+    func standIn(for layer: PreviewLayer, want: Int) -> Picture? {
+        if let prev = shownLane[layer.clipId], prev != layer.laneKey {
+            if let image = cache.frame(lane: prev, frame: want) {
+                return Picture(image: image, frame: want, lane: prev, exact: false)
+            }
+            if let held = cache.nearest(lane: prev, to: want) {
+                return Picture(image: held.image, frame: held.frame, lane: prev, exact: false)
+            }
+        }
+        guard var last = standIns.picture(layer.clipId) else { return nil }
+        last.exact = false
+        return last
+    }
+
+    /// Compare is a presentation-only wipe. Both halves use the same cached decoded image; only the right half
+    /// asks `PreviewGrader` for the current look, so moving the divider cannot create or restart a decode lane.
+    func draw(_ layer: PreviewLayer, raw: CanvasImage, shown: CanvasImage, shownIsCurrent: Bool = true,
+              on c: CanvasContext, frame: CanvasRect, scale: Double, context: FrameDrawContext) {
+        guard context.compareClipId == layer.clipId else {
+            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+        }
+        let split = frame.x + frame.width * max(0, min(1, context.comparePosition))
+        // A completed grade from a previous request is useful during normal playback, but must never be paired
+        // with a different raw source frame in Compare. Until this frame's grade completes, show it raw on both sides.
+        let after = shownIsCurrent ? shown : raw
+        c.withState {
+            c.clip(CanvasRect(x: frame.x, y: frame.y, width: max(0, split - frame.x), height: frame.height))
+            PreviewPainter.draw(layer, image: raw, on: c, frame: frame, scale: scale)
+        }
+        c.withState {
+            c.clip(CanvasRect(x: split, y: frame.y, width: max(0, frame.maxX - split), height: frame.height))
+            PreviewPainter.draw(layer, image: after, on: c, frame: frame, scale: scale)
+        }
     }
 
     func decodeSize(_ layer: PreviewLayer, scale s: Double, backing: Double) -> PreviewDecodeSize {
@@ -214,7 +274,7 @@ public final class PreviewCompositor: FrameSource {
     public var maxReverseChunk = 48
 
     func lane(for layer: PreviewLayer, fps: Double) -> PreviewDecodeLane? {
-        guard decodesMedia, layer.kind != .text else { return nil }
+        guard decodesMedia, layer.kind != .text, layer.kind != .offline else { return nil }
         if let l = lanes[layer.laneKey] { return l }
         let l = PreviewDecodeLane(layer: layer, fps: fps, cache: cache)
         l.onFrame = { [weak self] in self?.frameReady?() }

@@ -26,7 +26,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
-          # The script and its tests, plus the workflow whose docs filter the tests compare against.
+          # The script and its tests, and platforms.py beside them (the documentation-only rules mpvfx-ci also uses).
+          # mpvfx-ci.yml too: the tests come from the base commit, and older ones compared its docs filter.
           sparse-checkout: |
             /.github/ci/
             /.github/workflows/mpvfx-ci.yml

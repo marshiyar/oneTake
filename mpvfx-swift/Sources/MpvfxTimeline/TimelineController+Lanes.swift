@@ -41,7 +41,9 @@ public extension TimelineController {
         let sounds = c.kind == .audio || (c.kind == .video && c.canMute)
         let entries = TimelineClipMenu.entries(kind: c.kind, splitEnabled: t > c.start && t < c.end, thumbnails: thumbs,
                                                muted: c.muted, canReattach: canReattach, canDetach: canDetach, canMute: c.canMute,
-                                               canPaste: clipboard != nil, keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil)
+                                               canPaste: clipboard != nil, canPasteGrade: gradeClipboard != nil,
+                                               gradePasteReason: gradeClipboard == nil ? "Copy a grade before pasting" : nil,
+                                               keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
         if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }
@@ -74,6 +76,11 @@ public extension TimelineController {
             return action == .copy || deleteSelection()
         case .paste:
             return pasteClipboard(onto: editor.address(clipId: id)?.trackId)
+        case .copyGrade:
+            view.selection = [id]; return copyGradeSelection()
+        case .pasteGrade:
+            if !view.selection.contains(id) { view.selection = [id] }
+            return pasteGradeSelection()
         case .duplicate:
             view.selection = [id]
             return duplicateSelection()
