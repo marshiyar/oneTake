@@ -82,7 +82,7 @@ class Handoff(unittest.TestCase):
         for name in ("linux", "macos"):
             job = self.jobs[name]
             self.assertEqual(job["needs"], "runners", name)
-            self.assertTrue(job["if"].strip().startswith("always()"), name)
+            self.assertTrue(job["if"].strip().startswith("!cancelled() && "), name)
             self.assertIn("needs.runners.outputs.sent != 'true'", job["if"], name)
             # main's own gate is kept: after CI only for this repository's green push to main
             self.assertIn("github.event.workflow_run.head_repository.full_name == github.repository", job["if"], name)

@@ -145,9 +145,10 @@ jobs:
   linux:
     # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
     # Runs here only when nothing was sent to OneTake-actionRunners-1 (job runners): every benchmark runs in one place.
+    # !cancelled(), not always(): cancelling the run still cancels it.
     needs: runners
     if: >-
-      always() && needs.runners.outputs.sent != 'true'
+      !cancelled() && needs.runners.outputs.sent != 'true'
       && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
@@ -258,9 +259,10 @@ jobs:
   macos:
     # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
     # Runs here only when nothing was sent to OneTake-actionRunners-1 (job runners): every benchmark runs in one place.
+    # !cancelled(), not always(): cancelling the run still cancels it.
     needs: runners
     if: >-
-      always() && needs.runners.outputs.sent != 'true'
+      !cancelled() && needs.runners.outputs.sent != 'true'
       && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: xcode-27
     timeout-minutes: 90

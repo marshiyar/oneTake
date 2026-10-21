@@ -66,13 +66,21 @@ class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoAuthRedirect)
 
 
+def _repo(repo):
+    return repo or REPO
+
+
+def _token(token):
+    return token or TOKEN
+
+
 def api(method, path, body=None, raw=False, limit=None, repo=None, token=None):
     """limit: with raw, the most bytes to read; a longer body raises ValueError. repo and token: another repository
     than $GITHUB_REPOSITORY, read with its own token."""
-    url = path if path.startswith("http") else f"{API}/repos/{repo or REPO}/{path.lstrip('/')}"
+    url = path if path.startswith("http") else f"{API}/repos/{_repo(repo)}/{path.lstrip('/')}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={
-        "Authorization": f"Bearer {token or TOKEN}", "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {_token(token)}", "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "mpvfx-agentbot"})
     if data is not None:
         req.add_header("Content-Type", "application/json")
@@ -571,21 +579,32 @@ def bench(run_id):
     print("bench: posted")
 
 
-def bench_runners(run_id, pr, head_sha):
-    """A pull request's bench run on the runners repository, reported back by its onetake-bench.yml (payload checked
-    here again: every value comes from a repository_dispatch)."""
-    if not (re.fullmatch(r"[0-9]{1,20}", run_id) and re.fullmatch(r"[0-9]{1,7}", pr) and
-            re.fullmatch(r"[0-9a-f]{40}", head_sha)):
+def _check_runners_args(run_id, pr, head_sha):
+    ok = (re.fullmatch(r"[0-9]{1,20}", run_id) and re.fullmatch(r"[0-9]{1,7}", pr) and
+          re.fullmatch(r"[0-9a-f]{40}", head_sha))
+    if not ok:
         raise ValueError("bench-runners: run id, pull request number or head sha is malformed")
     if not RUNNERS_TOKEN:
         raise ValueError("bench-runners: RUNNERS_TOKEN is not set")
-    run = api("GET", f"actions/runs/{run_id}", repo=RUNNERS_REPO, token=RUNNERS_TOKEN)
+
+
+def _not_this_pr_run(run, head_sha):
+    """Why `run` is not a pull request's onetake-bench run of `head_sha`, or None when it is."""
     m = RUNNERS_TITLE.match(run.get("display_title") or "")
     if not run.get("path", "").endswith("onetake-bench.yml") or not m or m.group(1) != "pr":
-        print(f"bench-runners: run {run_id} is not a pull request's onetake-bench run")
-        return
+        return "is not a pull request's onetake-bench run"
     if m.group(3) != head_sha:
-        print(f"bench-runners: run {run_id} benchmarked head {m.group(3)[:7]}, not {head_sha[:7]}; nothing posted")
+        return f"benchmarked head {m.group(3)[:7]}, not {head_sha[:7]}"
+    return None
+
+
+def bench_runners(run_id, pr, head_sha):
+    """A pull request's bench run on the runners repository, reported back by its onetake-bench.yml (payload checked
+    here again: every value comes from a repository_dispatch)."""
+    _check_runners_args(run_id, pr, head_sha)
+    why = _not_this_pr_run(api("GET", f"actions/runs/{run_id}", repo=RUNNERS_REPO, token=RUNNERS_TOKEN), head_sha)
+    if why:
+        print(f"bench-runners: run {run_id} {why}; nothing posted")
         return
     p = api("GET", f"pulls/{pr}")
     if p.get("state") != "open" or p.get("head", {}).get("sha") != head_sha:
