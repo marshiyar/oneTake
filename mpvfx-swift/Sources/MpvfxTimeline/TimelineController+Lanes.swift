@@ -26,7 +26,7 @@ public extension TimelineController {
 
     /// ⌘K: key every keyframeable property of the selected clips at the playhead; ⇧⌘K only the animated ones.
     /// One undo step. Handled (true) whenever a clip is selected, so the key never reaches playback.
-    @discardableResult public func keySelectedProperties(animatedOnly: Bool) -> Bool {
+    @discardableResult func keySelectedProperties(animatedOnly: Bool) -> Bool {
         guard let editor, !view.selection.isEmpty else { return false }
         if editor.keyProperties(clipIds: view.selection.sorted(), time: playback.currentTime, animatedOnly: animatedOnly) { needsDisplay?() }
         return true
