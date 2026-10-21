@@ -29,6 +29,7 @@ on:
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
+    # checkov:skip=CKV_GHA_7: the inputs only pick which sync pass runs (full, dry run, create options); nothing is built
     inputs:
       full:
         description: Resync every issue and pull request, closed ones included
