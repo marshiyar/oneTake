@@ -75,7 +75,7 @@ extension InspectorPanel {
         switch state {
         case nil: return "Off"
         case .rendering?: return "loading"
-        case .unavailable?: return "unavailable"
+        case .unavailable?, .failed?: return "unavailable"
         case .ready?:
             if scopeWorker.lastFailure != nil { return "unreadable frame" }
             return current ? "ready" : "analysing"

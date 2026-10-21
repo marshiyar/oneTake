@@ -45,6 +45,8 @@ final class SessionPanels {
     var renders = RenderQueueState()
     /// Grade preset tile thumbnails, and the composition time they show.
     private(set) var presetPreviews: PresetPreviewRenderer?
+    /// Effects catalog and look tile demos on the built-in sample picture.
+    private(set) var effectPreviews: EffectPreviewRenderer?
     private var presetPreviewTime = 0.0
     private var panelsAnimating = false
 
@@ -391,6 +393,7 @@ final class SessionPanels {
     func projectSwitched() {
         media = []; probedDurations = [:]; probing = []; session.mediaThumbnails.reset()
         renders.reset()
+        effectPreviews?.reset()   // sample tiles resolve LUT paths against the project folder
         syncItems()
         refreshMedia(); refreshLibraries(); refreshRenders(); refreshRecents()
         redraw()
@@ -421,6 +424,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         wirePresetPreviews(inspector)
+        wireEffectPreviews(inspector)
         wireRenders()
     }
 
@@ -452,12 +456,13 @@ final class SessionPanels {
             switch renderer.preview(clipId: req.clipId, presetId: req.presetId, lutSrc: req.lutSrc, lutIntensity: req.lutIntensity,
                                     time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight) {
             case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
+            // Media that gave up decoding never sends a frame: answer "no picture" so the tile shows the sample.
+            case .rendering: return renderer.decodeGaveUp(clipId: req.clipId) ? .unavailable : .rendering
             case .unavailable: return .unavailable
             }
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
-        inspector.onRetryPresetPreviews = { renderer.reset() }
+        inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
         // The scopes follow the playhead while playing too: the renderer drops a frame request a newer one replaced,
         // and the scope worker keeps only the newest frame, so they update as fast as frames are graded.
         inspector.scopeWorker.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
@@ -469,6 +474,28 @@ final class SessionPanels {
             case .rendering: return .rendering
             case .unavailable: return .unavailable
             }
+        }
+    }
+
+    /// Effects catalog tiles: the selected clip's frame with its grade plus each effect or look (the preset tiles'
+    /// PresetPreviewRenderer); when the clip has no picture, the built-in sample picture (EffectPreviewRenderer), which
+    /// is also what preset tiles fall back to. Both render off the UI thread; a finished tile redraws the panels.
+    private func wireEffectPreviews(_ inspector: InspectorPanel) {
+        let demos = EffectPreviewRenderer()
+        demos.projectDir = { [weak session] in session?.projectDir?.path }
+        demos.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
+        effectPreviews = demos
+        inspector.effectPreview = { [weak self, weak inspector] req in
+            if let self, let inspector, let frames = self.presetPreviews {
+                // Like the preset tiles: paused, follow the playhead; playing, keep the frame shown when playback began.
+                if !self.session.playback.isPlaying { self.presetPreviewTime = inspector.time }
+                switch frames.effectPreview(req, time: self.presetPreviewTime) {
+                case .ready(let img): return .ready(img)
+                case .rendering: return .rendering
+                case .unavailable: break   // no picture on the clip: the sample picture below
+                }
+            }
+            return demos.preview(req)
         }
     }
 

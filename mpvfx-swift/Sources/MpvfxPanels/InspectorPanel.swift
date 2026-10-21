@@ -114,6 +114,9 @@ public final class InspectorPanel {
     public var onImportLut: (() -> Void)?
     /// Host hook: the selected clip's current frame graded with a preset, for the Grade preset tiles (nil: no previews).
     public var presetPreview: ((PresetPreviewRequest) -> PresetPreviewState)?
+    /// Host hook: the built-in sample picture graded with a tile's look or effect, for the Effects catalog tiles and
+    /// for preset tiles whose clip has no picture (nil: those tiles show the "No preview renderer" placeholder).
+    public var effectPreview: ((EffectPreviewRequest) -> PresetPreviewState)?
     /// Whether the clip has a picture the preset tiles can show (nil: assume it does).
     public var presetPreviewsAvailable: ((String) -> Bool)?
     /// "Retry look previews" (the host drops what it holds and renders again).

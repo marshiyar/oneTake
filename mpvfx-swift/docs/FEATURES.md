@@ -48,19 +48,19 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 
 | Ability | Swift status | Visual |
 | --- | --- | --- |
-| Libraries header with New library / Open | done (panels UI over `DesktopBackend` libraries) | close |
-| Library / Event / Project pickers, New event, New project, switch project | done | close |
-| Import into event (copy into library / link originals), attach asset, relink | done | close |
-| Collapsible "Library media (N)" and "Library exports (N)" | done | close |
-| Export records "Save to…" | missing (panels) | n/a |
-| Show library in Finder; Open existing standalone project | done | close |
+| Media-first header row: the library ▸ event switcher (one menu of libraries and events), Import (the primary button) and "…" | done (panels UI over `DesktopBackend` libraries; `LeftSidebarPanel+Header.swift`, `MediaPanelTests`) | n/a |
+| "…" menu: New library, Open library, New event, Import into the event (copy into library / link originals), Show library in Finder (Files, File Explorer), the event's projects (switch), New project, Open project…, Open existing standalone project, Recent projects | done (`LeftSidebarPanel+Menus.swift`, `testMoreMenuRunsEveryLibraryAndProjectAction`) | n/a |
+| Library media (files of the event not yet in this project) and Exports as grid sections and filter choices; add to the timeline, relink and Save as… on the tile (hover button, context menu, Enter) | done (`MediaSections.swift`, `testLibraryMediaAndExportsAreSectionsWithoutDuplicates`, `testTileHoverActionAddsAttachesAndSaves`) | n/a |
+| Export records "Save to…" | partial: Save as… on a finished export's tile | n/a |
+| The standalone project status | done: the switcher's tooltip and status-line hint | n/a |
 | Tab bar Media / Scenes / Elements (Scenes only with sub-compositions, Elements only with blocks) | done (Elements never shows: blocks dropped) | exact |
 | Tab persisted, ←/→ and ⌘1/⌘2 tab switching | done | n/a |
 | "+ Import media" button (file dialog) | done | exact |
 | Drag-and-drop import from Finder / desktop onto the bin | done: MacCanvasHost (file URLs) and GtkCanvasHost (text/uri-list) hand dropped files to the session, which imports them through the backend (the bin lists them); dropped over the timeline's tracks the clips are also placed from the drop time on, one after another, with the drop outline while hovering (`EditorSession+AssetDrag.swift`). The import probes each picture's natural size (sample aspect, rotation, JPEG EXIF orientation) so the first frame drawn is already the fitted box on every insert path; a clip whose size is still probing is not drawn | close |
-| Search assets, "No assets match", Clear search | done | exact |
-| Categories Video / Images / Audio / Fonts with counts, used assets first | done | exact |
-| Video/image cards: real thumbnails, kind and duration badges, "Added" badge, middle-truncated name | done (shared `MediaThumbnails`, 4601932) | exact |
+| Search media, filter menu (kind, timeline use, order) with its summary line and Clear, "No media matches", Clear search / Clear filters | done (`testFilterNarrowsByKindAndTimelineUseAndSorts`, `testEmptyStatesOfferTheWayBack`) | n/a |
+| Sections Video / Images / Audio / Fonts / Library media / Exports with counts, timeline media first by default | done | n/a |
+| Tiles on one inset and grid (2 columns at 280 and 364 pt, 3 at 409 pt): thumbnails filling a 16:9 tile, duration badge, a check when in the timeline, "Missing" for a library file whose original is gone, names on two end-truncated lines with the full name in a tooltip; hover, selection and focus states | done (shared `MediaThumbnails`; `MediaPanelLayoutAuditTests`, `MediaPanelSnapshotTests`) | n/a |
+| Keyboard: Tab through the header and into the grid, arrows across and down the grid, Enter adds, Shift+Enter opens the tile's menu, Escape clears | done (`testKeyboardMovesTheSelectionAndRunsTheAction`, `testTabWalksTheControlsThenTheGrid`) | n/a |
 | Audio rows: icon, name, duration, waveform bars | done | exact |
 | Asset preview overlay / audition (play an asset) | missing (panels) | n/a |
 | Drag from bin to timeline (insert at drop time/track) | done: a 4 px drag starts it, the drop inserts at the pointer's time on the track under it when the kind fits and the track is unlocked (`EditorSession+AssetDrag.swift`); while over the tracks the drop outline shows (1 px accent/60 inside the tracks area, `AssetDropOutline`); edge auto-scroll during the drag is missing | close |
@@ -174,6 +174,7 @@ their shape (`PlayerView+Outlines.swift`).
 | Keyframe diamond context menu (delete, delete all, ease presets) | partial: right-click a diamond for Move to Playhead, Linear / Ease In / Ease Out / Ease In-Out / Hold (checked when every target key shares it), Edit Easing… (opens the inspector's easing editor, custom curve included, on the keys), Delete Keyframe(s) and Delete All Keyframes (the clip bar's channels, or the lane's group); it acts on the key selection when the diamond is part of it, each edit one undo step (`TimelineKeyframeMenu.swift`); "Edit Incoming Segment Ease…" is not ported |
 | Audio groups: create, header FX count, FX button / name open the bus rack, detach/reattach audio, mute | done |
 | Detach / Reattach audio from the clip menu: offered on any video clip with a media file (native clips carry no preview binding); detach probes the file for an audio stream, puts a linked audio clip on a new audio row with the same timing, trim, rate, gain, group, FX and automation and mutes the video (its Mute row hidden); reattach refuses after a move / trim / retime or a broken link with a message naming why; one undo step each; preview and export play the sound once | done |
+| Clip fades: fade-in and fade-out lengths on a clip (`fadeInFrames` / `fadeOutFrames`, independent of keyframes), a linear gain ramp on the clip's sound heard the same in playback and export; split keeps the fade-in on the left part and the fade-out on the right, trims and speed changes clamp them (#85) | partial: in the document, playback and export (`NativeClipFade.swift`, `AudioGraph.swift` `ClipFadeRamp`); video opacity and timeline fade handles not yet built |
 | Volume automation lanes, automation selection menu (Simplify), value input | partial: automation plays and exports; lane editing UI partial |
 | Filmstrips and waveforms from the shared media cache, Show thumbnails toggle (314d72a, 71fdbd6) | done |
 | Undo history persists across sessions per project (751c6c7) | done |
@@ -247,13 +248,13 @@ Every item of the owner's screenshot review, with its status now.
 
 | Item | Status |
 | --- | --- |
-| Libraries header with New library / Open | done |
-| Library picker; Event/"Media" picker + New event; Project picker + New project | done |
-| Collapsible "Library media (N)" and "Library exports (N)" | done |
-| Show library in Finder; Open existing standalone project | done |
-| "+ Import media" button; collapse-sidebar control | done |
-| Search assets field | done |
-| Media bin grouped by type with real thumbnails, duration badge, "Added" badge, filenames | done |
+| Libraries header with New library / Open | done; moved into the Media panel's "…" menu (2026-10-21) |
+| Library picker; Event/"Media" picker + New event; Project picker + New project | done; the library ▸ event switcher, projects and New event / New project in "…" (2026-10-21) |
+| Collapsible "Library media (N)" and "Library exports (N)" | done; now the Library media and Exports sections of the grid (2026-10-21) |
+| Show library in Finder; Open existing standalone project | done; in "…" (2026-10-21) |
+| "+ Import media" button; collapse-sidebar control | done; Import is the header row's primary button (2026-10-21) |
+| Search assets field | done; Search media with the filter menu (2026-10-21) |
+| Media bin grouped by type with real thumbnails, duration badge, "Added" badge, filenames | done; the "Added" badge is a check now, names wrap to two lines (2026-10-21) |
 | Player top bar: Record, Crop, snap/magnet toggle, grid/guides dropdown | done (preview) |
 | Real decoded video frame | done (preview) |
 | Selection outline with corner handles | done (preview) |
