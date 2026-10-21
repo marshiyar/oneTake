@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+#===----------------------------------------------------------------------===#
+#
+# This source file is part of MpVFX.
+#
+# Copyright (c) 2026 Arshiya Rahgozar.
+#
+# Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE or
+# http://www.apache.org/licenses/LICENSE-2.0) or the MIT license (LICENSE-MIT
+# or http://opensource.org/licenses/MIT), at your option.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+#===----------------------------------------------------------------------===#
 """Tests of doc_refs.py: each kind of broken reference is found, and what is not a reference is left alone."""
 import importlib.util, os, sys, tempfile, unittest
 
@@ -59,6 +72,15 @@ class DocRefsTests(unittest.TestCase):
                                    "https://github.com/other/repo/pull/7 and `#if os(Linux)`\n")
         self.assertEqual(sorted(((r or ""), n) for r, n, _ in issues),
                          [("", 12), ("marshiyar/oneTake", 34), ("other/repo", 7)])
+
+    def test_reference_style_links_are_checked(self):
+        f, _, _ = self.run_on("See [the guide][g].\n\n[g]: docs/Gone.md\n")
+        self.assertEqual(len(f), 1)
+        self.assertIn("docs/Gone.md", f[0])
+
+    def test_repository_relative_issue_references_are_collected(self):
+        _, _, issues = self.run_on("fixed in issues/41 and pull/99, see [it](../../issues/12)\n")
+        self.assertEqual(sorted(n for r, n, _ in issues if r is None), [12, 41, 99])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+#===----------------------------------------------------------------------===#
+#
+# This source file is part of MpVFX.
+#
+# Copyright (c) 2026 Arshiya Rahgozar.
+#
+# Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE or
+# http://www.apache.org/licenses/LICENSE-2.0) or the MIT license (LICENSE-MIT
+# or http://opensource.org/licenses/MIT), at your option.
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+#===----------------------------------------------------------------------===#
 """doc_refs.py [--offline] [--repo OWNER/NAME] [FILE.md]...: what the documentation points at exists.
 
 Reads each Markdown file (default: every tracked *.md outside the test fixtures) and checks three kinds of reference:
@@ -27,6 +40,8 @@ SKIP_DIRS = ("mpvfx-swift/Tests/EngineFixtures/",)
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 LINK = re.compile(r"\[[^\]\n]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 LINE_SUFFIX = re.compile(r"^(.*?):(\d+)(?:-(\d+))?$")
+LINK_DEF = re.compile(r"^ {0,3}\[[^\]\n]+\]:\s*<?([^\s>]+)>?")   # a reference-style link definition: [docs]: docs/X.md
+REL_ISSUE = re.compile(r"(?<![\w./-])(?:issues|pull)/(\d+)\b")   # issues/123 or pull/123, without the github.com prefix
 ISSUE_URL = re.compile(r"github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)")
 BARE_ISSUE = re.compile(r"(?<![\w/&#\]])#(\d{1,5})\b")
 # A line with a six-digit hex colour (`#306230`) is a palette, not a list of issues: its bare #n are not checked.
@@ -105,7 +120,11 @@ def check_file(md, basenames, findings, warnings, issues, seen):
                 seen["names"] += 1
                 if span.strip() not in basenames:
                     findings.append(f"{where}: file name `{span.strip()}` is not the name of any tracked file")
-        for target in LINK.findall(line):
+        for target in LINK.findall(line) + LINK_DEF.findall(line):
+            rel_issue = re.search(r"(?:^|/)(?:issues|pull)/(\d+)$", target.split("#", 1)[0])
+            if rel_issue and not re.match(r"^[a-z][a-z0-9+.-]*:", target):
+                issues.append((None, int(rel_issue.group(1)), where))
+                continue
             if re.match(r"^[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
                 m = ISSUE_URL.search(target)
                 if m:
@@ -119,8 +138,11 @@ def check_file(md, basenames, findings, warnings, issues, seen):
         if not HEX_COLOUR.search(bare):
             for num in BARE_ISSUE.findall(bare):
                 issues.append((None, int(num), where))
-        for url in ISSUE_URL.finditer(CODE_SPAN.sub("", LINK.sub("", line))):
+        prose = CODE_SPAN.sub("", LINK.sub("", line)) if not LINK_DEF.match(line) else ""
+        for url in ISSUE_URL.finditer(prose):
             issues.append((url.group(1), int(url.group(2)), where))
+        for num in REL_ISSUE.findall(ISSUE_URL.sub("", prose)):
+            issues.append((None, int(num), where))
 
 
 def known_numbers(repo):
