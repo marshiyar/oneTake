@@ -46,8 +46,10 @@ public struct NativeTextStyleLink: Codable, Equatable, Sendable {
         let record = NativeTextStyleRecord(version: version, kind: kind, spread: spread)
         try record.encode(to: encoder, fields: ["styleId", "overrides"]) { key, container in
             switch key {
-            case "styleId": try container.put(styleId, key)
-            default: try container.put(preservesEmptyOverrides || !overrides.isEmpty ? overrides : nil, key)
+            case "styleId":
+                try container.put(styleId, key)
+            default:
+                try container.put(preservesEmptyOverrides || !overrides.isEmpty ? overrides : nil, key)
             }
         }
     }

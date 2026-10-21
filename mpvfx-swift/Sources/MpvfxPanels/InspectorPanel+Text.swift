@@ -32,14 +32,19 @@ extension InspectorPanel {
                    format: @escaping (Double) -> String = { PanelFormat.number($0) },
                    commit: @escaping (String) -> Bool, scrub: ((Double) -> Bool)? = nil, reset: @escaping () -> Bool) -> InspectorRow {
             let explicit = isExplicit(key, fallback: explicit)
-            return .init(.number(InspectorRow.Number(
+            var row = InspectorRow.Number(
                 key: key, label: label, text: text, tier: tier(explicit),
-                commit: { [weak self] v in self?.edited(commit(v), label: "Edit text") },
-                reset: explicit ? { [weak self] in
+                commit: { [weak self] value in self?.edited(commit(value), label: "Edit text") })
+            if explicit {
+                row.reset = { [weak self] in
                     let changed = s.clip.textStyle == nil ? reset() : editor.resetTextStyleOverride(clipId: id, field: key)
                     self?.edited(changed, label: "Edit text")
-                } : nil,
-                scrub: step.flatMap { st in scrub.map { apply in (value, st, { [weak self] v in self?.edited(apply(v), label: "Edit text") }, format) } })))
+                }
+            }
+            if let step, let scrub {
+                row.scrub = (value, step, { [weak self] value in self?.edited(scrub(value), label: "Edit text") }, format)
+            }
+            return .init(.number(row))
         }
         var rows: [InspectorRow] = []
         // Content: one line in the field; "\n" types a line break.

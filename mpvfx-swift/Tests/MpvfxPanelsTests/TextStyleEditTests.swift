@@ -102,7 +102,7 @@ internal final class TextStyleEditTests: XCTestCase {
         XCTAssertTrue(destination.lastFailure?.message.contains("newer editor") == true)
     }
 
-    internal func testInspectorInheritanceTiersResetToStyleAndResolveSwatches() throws {
+    private func inheritedInspector() throws -> (TimelineEditor, [String], InspectorPanel) {
         let (editor, ids) = try editor()
         XCTAssertTrue(editor.saveTextStyle(clipId: ids[0], styleId: "style:title", name: "Title"))
         XCTAssertTrue(editor.applyTextStyle(styleId: "style:title", clipIds: ids))
@@ -112,29 +112,51 @@ internal final class TextStyleEditTests: XCTestCase {
         panel.editor = editor
         panel.selection = [ids[1]]
         panel.openGroupId = "text"
-        func draw() { panel.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 360, height: 2000)) }
-        draw()
+        redraw(panel)
+        return (editor, ids, panel)
+    }
+
+    private func redraw(_ panel: InspectorPanel) {
+        panel.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 360, height: 2000))
+    }
+
+    internal func testInspectorShowsInheritedValuesAndResolvedSwatches() throws {
+        let (editor, _, panel) = try inheritedInspector()
         for key in ["fontSize", "fontWeight", "textColor"] {
-            XCTAssertEqual(panel.number(key)?.tier, .default, key)
-            XCTAssertNil(panel.number(key)?.reset, key)
+            let row = try XCTUnwrap(panel.number(key))
+            XCTAssertEqual(row.tier, .default, key)
+            XCTAssertNil(row.reset, key)
         }
         XCTAssertEqual(panel.number("textColor")?.swatch?.color, "#ff0000")
         XCTAssertTrue(InspectorPanel.projectColors(editor.document).contains("#ff0000"))
         XCTAssertFalse(InspectorPanel.projectColors(editor.document).contains("#ffffff"))
-        XCTAssertTrue(editor.setTextFontSize(clipId: ids[1], nil))
-        XCTAssertTrue(editor.setTextColor(clipId: ids[1], nil))
-        draw()
-        XCTAssertEqual(panel.number("fontSize")?.tier, .explicitCustom)
-        XCTAssertEqual(panel.number("textColor")?.tier, .explicitCustom)
-        let count = editor.undoStack.count
-        try XCTUnwrap(panel.number("fontSize")?.reset)()
-        try XCTUnwrap(panel.number("textColor")?.reset)()
-        XCTAssertEqual(editor.undoStack.count, count + 2)
-        draw()
-        XCTAssertEqual(editor.clipText(clipId: ids[1])?.fontSize, editor.clipText(clipId: ids[0])?.fontSize)
-        XCTAssertEqual(editor.clipText(clipId: ids[1])?.color, "#ff0000")
-        XCTAssertEqual(panel.number("fontSize")?.tier, .default)
-        XCTAssertEqual(panel.number("textColor")?.tier, .default)
     }
 
+    internal func testInspectorSizeResetRemovesDefaultOverride() throws {
+        let (editor, ids, panel) = try inheritedInspector()
+        XCTAssertTrue(editor.setTextFontSize(clipId: ids[1], nil))
+        redraw(panel)
+        let row = try XCTUnwrap(panel.number("fontSize"))
+        XCTAssertEqual(row.tier, .explicitCustom)
+        let count = editor.undoStack.count
+        try XCTUnwrap(row.reset)()
+        XCTAssertEqual(editor.undoStack.count, count + 1)
+        redraw(panel)
+        XCTAssertEqual(editor.clipText(clipId: ids[1])?.fontSize, editor.clipText(clipId: ids[0])?.fontSize)
+        XCTAssertEqual(panel.number("fontSize")?.tier, .default)
+    }
+
+    internal func testInspectorColorResetRemovesDefaultOverride() throws {
+        let (editor, ids, panel) = try inheritedInspector()
+        XCTAssertTrue(editor.setTextColor(clipId: ids[1], nil))
+        redraw(panel)
+        let row = try XCTUnwrap(panel.number("textColor"))
+        XCTAssertEqual(row.tier, .explicitCustom)
+        let count = editor.undoStack.count
+        try XCTUnwrap(row.reset)()
+        XCTAssertEqual(editor.undoStack.count, count + 1)
+        redraw(panel)
+        XCTAssertEqual(editor.clipText(clipId: ids[1])?.color, "#ff0000")
+        XCTAssertEqual(panel.number("textColor")?.tier, .default)
+    }
 }

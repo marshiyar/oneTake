@@ -13,15 +13,17 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 
-extension NativeProjectDocument {
-    public func isUndrawnTextStyleClip(_ clip: NativeProjectClip) -> Bool {
-        clip.textStyle != nil && resolvedText(clip, textStyles ?? []) == nil
-    }
-    public var unsupportedTextStylesNotice: String? {
-        let count =
-            (textStyles ?? []).filter { !$0.isSupported }.count
+public extension NativeProjectDocument {
+    /// One notice for retained style or link contracts this editor cannot render.
+    var unsupportedTextStylesNotice: String? {
+        let count = (textStyles ?? []).filter { !$0.isSupported }.count
             + sequence.tracks.flatMap(\.clips).filter(isUndrawnTextStyleClip).count
         return count > 0
             ? "Text styles from a newer version are kept in the project but not drawn in preview or export." : nil
+    }
+
+    /// Whether a clip's linked typography is retained but cannot be resolved by this editor.
+    func isUndrawnTextStyleClip(_ clip: NativeProjectClip) -> Bool {
+        clip.textStyle != nil && resolvedText(clip, textStyles ?? []) == nil
     }
 }

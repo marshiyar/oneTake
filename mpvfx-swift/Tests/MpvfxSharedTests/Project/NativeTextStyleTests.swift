@@ -17,6 +17,7 @@ import XCTest
 
 internal final class NativeTextStyleTests: XCTestCase {
     private let engine = KeyframeEngineStandIn()
+
     private func document() throws -> NativeProjectDocument {
         var raw = validNativeDocument()
         raw["assets"]?.append(J(#"{"id":"asset:text","kind":"element","name":"Text","durationFrames":120}"#))
@@ -24,9 +25,12 @@ internal final class NativeTextStyleTests: XCTestCase {
             raw["sequence"]?["tracks"]?[0]?["clips"]?.append(
                 J(
                     """
-                    {"id":"text:\(number)","assetId":"asset:text","startFrame":\(number * 120),"durationFrames":120,"sourceInFrame":0,
-                    "effects":[],"parameterTracks":[],"text":{"content":"Words \(number)","color":"#ffffff","fontSize":40}}
-                    """))
+                    {"id":"text:\(number)","assetId":"asset:text","startFrame":\(number * 120),
+                    "durationFrames":120,"sourceInFrame":0,"effects":[],"parameterTracks":[],
+                    "text":{"content":"Words \(number)","color":"#ffffff","fontSize":40}}
+                    """
+                )
+            )
         }
         return try parseNativeProjectDocument(raw, engine: engine)
     }
@@ -77,29 +81,32 @@ internal final class NativeTextStyleTests: XCTestCase {
         raw["sequence"]?["tracks"]?[0]?["clips"]?[1]?["textStyle"]?["styleId"] = .string("missing")
         XCTAssertTrue(
             validateNativeProjectDocument(raw, engine: engine).contains {
-                $0.code == .invalidClip && $0.path.hasSuffix("textStyle.styleId")
-            })
+                issue in issue.code == .invalidClip && issue.path.hasSuffix("textStyle.styleId")
+            }
+        )
         raw = try NativeJSONValue.from(styled())
-        let duplicate = raw["textStyles"]![0]!
+        let styles = try XCTUnwrap(raw["textStyles"])
+        let duplicate = try XCTUnwrap(styles[0])
         raw["textStyles"]?.append(duplicate)
         XCTAssertTrue(
             validateNativeProjectDocument(raw, engine: engine).contains {
-                $0.code == .duplicateId && $0.path == "textStyles[1].id"
-            })
+                issue in issue.code == .duplicateId && issue.path == "textStyles[1].id"
+            }
+        )
     }
     internal func testFutureRecordsRetainJSONAreUndrawnAndProduceOneNotice() throws {
         var raw = try NativeJSONValue.from(styled())
         let future = J(#"{"v":2,"kind":"future-style","id":"style:title","payload":{"foo":[1,2]}}"#)
         raw["textStyles"] = .array([future])
         let document = try parseNativeProjectDocument(raw, engine: engine)
-        XCTAssertEqual(try NativeJSONValue.from(document.textStyles![0]), future)
+        XCTAssertEqual(try NativeJSONValue.from(XCTUnwrap(document.textStyles?.first)), future)
         XCTAssertNil(resolvedText(document.sequence.tracks[0].clips[1], document.textStyles ?? []))
         XCTAssertTrue(document.isUndrawnClip(document.sequence.tracks[0].clips[1]))
         XCTAssertEqual(document.undrawnContentNotices.count, 1)
         let link = J(#"{"v":5,"kind":"future-link","stuff":{"nested":true}}"#)
         raw["sequence"]?["tracks"]?[0]?["clips"]?[1]?["textStyle"] = link
         let futureDoc = try parseNativeProjectDocument(raw, engine: engine)
-        XCTAssertEqual(try NativeJSONValue.from(futureDoc.sequence.tracks[0].clips[1].textStyle!), link)
+        XCTAssertEqual(try NativeJSONValue.from(XCTUnwrap(futureDoc.sequence.tracks[0].clips[1].textStyle)), link)
     }
     internal func testInvalidStyleValuesAreRejectedTogether() throws {
         var raw = try NativeJSONValue.from(styled())
@@ -135,21 +142,30 @@ internal final class NativeTextStyleTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(document.unsupportedTextLooksNotice).contains("3 text looks"))
         let saved = try serializeNativeProjectDocument(document, engine: engine)
         document = try parseNativeProjectDocument(J(saved), engine: engine)
-        XCTAssertEqual(try NativeJSONValue.from(document.textStyles![0].text!.look!), futureLook)
+        XCTAssertEqual(try NativeJSONValue.from(XCTUnwrap(document.textStyles?.first?.text?.look)), futureLook)
         for index in 1...3 {
             document.sequence.tracks[0].clips[index].textStyle?.overrides = ["look"]
         }
         XCTAssertNil(document.unsupportedTextLooksNotice, "An overridden style look is not rendered")
     }
 
-    internal func testOrderedCodecPreservesUnknownKeysInCurrentStyleAndLink() throws {
+    internal func testOrderedCodecPreservesUnknownStyleKeys() throws {
         var raw = try NativeJSONValue.from(styled())
-        raw["textStyles"]?[0]?["custom"] = J(#"{"mixed":[true,"value",3]}"#)
+        let payload = J(#"{"mixed":[true,"value",3]}"#)
+        raw["textStyles"]?[0]?["custom"] = payload
+        let before = try serializeNativeProjectDocument(raw, engine: engine)
+        let document = try parseNativeProjectDocument(J(before), engine: engine)
+        XCTAssertEqual(try serializeNativeProjectDocument(document, engine: engine), before)
+        let style = try XCTUnwrap(document.textStyles?.first)
+        XCTAssertEqual(try NativeJSONValue.from(style)["custom"], payload)
+    }
+
+    internal func testOrderedCodecPreservesUnknownLinkKeys() throws {
+        var raw = try NativeJSONValue.from(styled())
         raw["sequence"]?["tracks"]?[0]?["clips"]?[1]?["textStyle"]?["customLink"] = .string("retained")
         let before = try serializeNativeProjectDocument(raw, engine: engine)
         let document = try parseNativeProjectDocument(J(before), engine: engine)
         XCTAssertEqual(try serializeNativeProjectDocument(document, engine: engine), before)
-        XCTAssertEqual(try NativeJSONValue.from(document.textStyles![0])["custom"], raw["textStyles"]?[0]?["custom"])
         let link = try XCTUnwrap(document.sequence.tracks[0].clips[1].textStyle)
         XCTAssertEqual(try NativeJSONValue.from(link)["customLink"], .string("retained"))
     }

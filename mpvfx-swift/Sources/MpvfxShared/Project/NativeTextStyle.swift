@@ -38,7 +38,11 @@ public struct NativeTextStyle: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: NativeAnyCodingKey.self)
         let record = try NativeTextStyleRecord(
-            decoder, container: container, persistent: ["id"], fields: ["name", "text"])
+            decoder,
+            container: container,
+            fields: ["name", "text"],
+            persistent: ["id"]
+        )
         version = record.version
         kind = record.kind
         spread = record.spread
@@ -51,11 +55,14 @@ public struct NativeTextStyle: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         let record = NativeTextStyleRecord(version: version, kind: kind, spread: spread)
-        try record.encode(to: encoder, persistent: ["id"], fields: ["name", "text"]) { key, container in
+        try record.encode(to: encoder, fields: ["name", "text"], persistent: ["id"]) { key, container in
             switch key {
-            case "id": try container.put(id, key)
-            case "name": try container.put(name, key)
-            default: try container.put(text, key)
+            case "id":
+                try container.put(id, key)
+            case "name":
+                try container.put(name, key)
+            default:
+                try container.put(text, key)
             }
         }
     }

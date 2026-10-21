@@ -23,22 +23,25 @@ internal final class TextStyleRenderingTests: XCTestCase {
         let raw = try NativeJSONValue.parse(
             """
             {"schemaVersion":1,"mediaEngine":"native","id":"project:text","revision":0,
-             "frameRate":{"numerator":30,"denominator":1},"canvas":{"width":320,"height":180,"background":"#000000"},
-             "assets":[{"id":"asset:title","kind":"element","name":"Title","durationFrames":60}],
-             "sequence":{"id":"sequence:main","name":"Main","tracks":[{"id":"track:1","kind":"video","clips":[
-             {"id":"clip:title","assetId":"asset:title","startFrame":0,"durationFrames":60,"sourceInFrame":0,
-              "staticParameters":{"layout.left":10,"layout.top":10,"layout.width":300,"layout.height":160},
-              "text":{"content":"Title","fontSize":40,"color":"#ffffff"},"effects":[],"parameterTracks":[]}]}]}}
-            """)
+            "frameRate":{"numerator":30,"denominator":1},"canvas":{"width":320,"height":180,"background":"#000000"},
+            "assets":[{"id":"asset:title","kind":"element","name":"Title","durationFrames":60}],
+            "sequence":{"id":"sequence:main","name":"Main","tracks":[{"id":"track:1","kind":"video","clips":[
+            {"id":"clip:title","assetId":"asset:title","startFrame":0,"durationFrames":60,"sourceInFrame":0,
+            "staticParameters":{"layout.left":10,"layout.top":10,"layout.width":300,"layout.height":160},
+            "text":{"content":"Title","fontSize":40,"color":"#ffffff"},"effects":[],"parameterTracks":[]}]}]}}
+            """
+        )
         return try parseNativeProjectDocument(raw, engine: try KeyframeRuntime())
     }
     internal func testDetachRendersIdenticalPixelsThroughPreviewAndExportComposition() throws {
         let engine = try KeyframeRuntime()
         var document = try document()
         document = try planNativeTextStyle(
-            document, .save(clipId: "clip:title", styleId: "style:title", name: "Title"), engine: engine)
+            document, .save(clipId: "clip:title", styleId: "style:title", name: "Title"), engine: engine
+        )
         document = try planNativeTextStyle(
-            document, .apply(styleId: "style:title", clipIds: ["clip:title"]), engine: engine)
+            document, .apply(styleId: "style:title", clipIds: ["clip:title"]), engine: engine
+        )
         document.textStyles?[0].text?.color = "#ff0000"
         let composition = PreviewComposition(document: document, projectDir: nil, engine: engine)
         XCTAssertEqual(composition.layers(at: 0)[0].text?.color, "#ff0000")

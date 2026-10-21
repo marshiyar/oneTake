@@ -16,7 +16,9 @@ import Foundation
 internal func validateNativeTextStyles(_ raw: NativeJSONValue?, _ issues: inout [NativeProjectDocumentValidationIssue])
     -> Set<String>
 {
-    guard let raw else { return [] }
+    guard let raw else {
+        return []
+    }
     guard let styles = raw.arrayValue else {
         pushIssue(&issues, .invalidRoot, "textStyles", "Text styles must be an array")
         return []
@@ -38,26 +40,34 @@ internal func validateNativeTextStyles(_ raw: NativeJSONValue?, _ issues: inout 
 }
 
 internal func validateNativeTextStyleLink(
-    _ clip: NativeJSONValue, _ ids: Set<String>, _ path: String,
+    _ clip: NativeJSONValue,
+    _ ids: Set<String>,
+    _ path: String,
     _ issues: inout [NativeProjectDocumentValidationIssue]
 ) {
-    guard let link = clip["textStyle"] else { return }
+    guard let link = clip["textStyle"] else {
+        return
+    }
     let path = "\(path).textStyle"
     guard validateTextStyleContract(link, path, &issues), link["v"] == .number(1), link["kind"] == .string("text-style")
-    else { return }
+    else {
+        return
+    }
     if clip["text"] == nil { pushIssue(&issues, .invalidClip, path, "Only text layers can link to a text style") }
     if link["styleId"]?.stringValue.map(ids.contains) != true {
         pushIssue(&issues, .invalidClip, "\(path).styleId", "Unknown text style id")
     }
     if let overrides = link["overrides"] {
         guard let fields = overrides.arrayValue else {
-            return pushIssue(&issues, .invalidClip, "\(path).overrides", "Overrides must be an array")
+            pushIssue(&issues, .invalidClip, "\(path).overrides", "Overrides must be an array")
+            return
         }
         var seen = Set<String>()
         for (index, field) in fields.enumerated() {
             guard let name = field.stringValue, NativeTextStyle.fields.contains(name), seen.insert(name).inserted else {
                 pushIssue(
-                    &issues, .invalidClip, "\(path).overrides[\(index)]", "Unknown or duplicate text style override")
+                    &issues, .invalidClip, "\(path).overrides[\(index)]", "Unknown or duplicate text style override"
+                )
                 continue
             }
         }
@@ -65,7 +75,8 @@ internal func validateNativeTextStyleLink(
 }
 
 private func validateTextStyleContract(
-    _ raw: NativeJSONValue, _ path: String,
+    _ raw: NativeJSONValue,
+    _ path: String,
     _ issues: inout [NativeProjectDocumentValidationIssue]
 ) -> Bool {
     guard raw.isRecord else {

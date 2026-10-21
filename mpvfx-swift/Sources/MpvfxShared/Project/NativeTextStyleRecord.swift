@@ -20,8 +20,10 @@ internal struct NativeTextStyleRecord {
     internal let spread: NativeSpreadKeys
 
     internal init(
-        _ decoder: Decoder, container: KeyedDecodingContainer<NativeAnyCodingKey>,
-        persistent: [String] = [], fields: [String]
+        _ decoder: Decoder,
+        container: KeyedDecodingContainer<NativeAnyCodingKey>,
+        fields: [String],
+        persistent: [String] = []
     ) throws {
         version = try container.req(Int.self, "v")
         kind = try container.req(String.self, "kind")
@@ -35,21 +37,26 @@ internal struct NativeTextStyleRecord {
         self.spread = spread
     }
 
+    private static func keys(version: Int, kind: String, persistent: [String], fields: [String]) -> [String] {
+        ["v", "kind"] + persistent + (version == 1 && kind == "text-style" ? fields : [])
+    }
+
     internal func encode(
-        to encoder: Encoder, persistent: [String] = [], fields: [String],
+        to encoder: Encoder,
+        fields: [String],
+        persistent: [String] = [],
         field: (String, inout KeyedEncodingContainer<NativeAnyCodingKey>) throws -> Void
     ) throws {
         let keys = Self.keys(version: version, kind: kind, persistent: persistent, fields: fields)
         try encodeSpread(encoder, spread, known: keys) { key, container in
             switch key {
-            case "v": try container.put(version, key)
-            case "kind": try container.put(kind, key)
-            default: try field(key, &container)
+            case "v":
+                try container.put(version, key)
+            case "kind":
+                try container.put(kind, key)
+            default:
+                try field(key, &container)
             }
         }
-    }
-
-    private static func keys(version: Int, kind: String, persistent: [String], fields: [String]) -> [String] {
-        ["v", "kind"] + persistent + (version == 1 && kind == "text-style" ? fields : [])
     }
 }
