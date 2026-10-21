@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import Foundation
 
 // Spectral noise reduction: a short-time Fourier transform (STFT) pass that subtracts a learned noise profile.

@@ -192,7 +192,8 @@ final class PanelSnapshotTests: XCTestCase {
             XCTAssertEqual(rects.first?.x ?? 0, 104, accuracy: 0.01); XCTAssertEqual(rects.last?.maxX ?? 0, 249, accuracy: 0.01)
             assertPixel(t, rects[0].midX, 29, scale: scale, "#4c8df0", tol: 10)
             assertPixel(t, rects[1].midX, 29, scale: scale, "#191919")
-            assertPixel(t, w - 36, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)   // 9px diamond centre in the second 24 pt cell
+            // The ◆ on a key is the property kind's mark (#201): a transform key, filled in keyframeTransformPair, in the second 24 pt cell.
+            assertPixel(t, w - 36, 48 + 0.5, scale: scale, "#f0e042", tol: 12)
         }
     }
 

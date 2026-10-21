@@ -19,7 +19,7 @@ import MpvfxTheme
 /// height, zoom. Drawn on a CanvasContext and hit-tested here; every action goes through the controller.
 public final class TimelineToolbar {
     public enum Item: Hashable, Sendable {
-        case select, razor, snap, keyframe, autoKeyframe, split, removeSilence, addBeat
+        case select, razor, slip, roll, snap, keyframe, autoKeyframe, split, removeSilence, addBeat
         case trackHeight, zoomOut, zoomSlider, zoomIn, zoomPercent
     }
     /// The TSX keyframe button's three looks (useKeyframeToggle state).
@@ -94,8 +94,7 @@ public final class TimelineToolbar {
     }
     public func isPressed(_ item: Item) -> Bool {
         switch item {
-        case .select: controller.tool == .select
-        case .razor: controller.tool == .razor
+        case .select, .razor, .slip, .roll: controller.tool == Self.tool(for: item)
         case .snap: controller.snapEnabled
         case .autoKeyframe: controller.autoKeyframeEnabled
         default: false
@@ -105,8 +104,7 @@ public final class TimelineToolbar {
     /// Tooltip text (the TSX Tooltip labels) for the host to show over `hovered`.
     public func tooltip(_ item: Item) -> String {
         switch item {
-        case .select: return "Selection tool (V)"
-        case .razor: return "Razor tool (B) — Shift+click splits all tracks"
+        case .select, .razor, .slip, .roll: return Self.toolTooltip(Self.tool(for: item))
         case .snap: return controller.snapEnabled ? "Snapping on (N)" : "Snapping off (N)"
         case .keyframe:
             switch keyframeState {
@@ -141,13 +139,13 @@ public final class TimelineToolbar {
         func box(_ x: Double, _ w: Double, _ h: Double = TimelineToolbar.button) -> CanvasRect { CanvasRect(x: x, y: midY - h / 2, width: w, height: h) }
         var out: [(Item, CanvasRect)] = []
         var x = Self.padX
-        var left: [Item] = [.select, .razor, .snap, .keyframe, .autoKeyframe, .split]
+        var left: [Item] = [.select, .razor, .slip, .roll, .snap, .keyframe, .autoKeyframe, .split]
         if onRemoveSilence != nil { left.append(.removeSilence) }
         left.append(.addBeat)
         for (i, item) in left.enumerated() {
             out.append((item, box(x, Self.button)))
             x += Self.button + Self.gap
-            if i == 1 { x += 4 + 1 + 4 + Self.gap }     // divider: mx-1 h-4 w-px
+            if i == 3 { x += 4 + 1 + 4 + Self.gap }     // divider after the tools: mx-1 h-4 w-px
         }
         // Right group: label(icon + gap-1 + mx-1 slider mx-1, mr-2) | − | mx-1 slider mx-1 | + | ml-1 percent.
         let labelW = Self.iconSize + 4 + 4 + Self.heightSliderWidth + 4
@@ -218,8 +216,7 @@ public final class TimelineToolbar {
     public func activate(_ item: Item) {
         guard isEnabled(item) else { return }
         switch item {
-        case .select: controller.tool = .select
-        case .razor: controller.tool = .razor
+        case .select, .razor, .slip, .roll: controller.tool = Self.tool(for: item)
         case .snap: controller.snapEnabled.toggle()
         case .keyframe: controller.togglePositionKeyframeOnSelection()
         case .autoKeyframe: controller.autoKeyframeEnabled.toggle()
@@ -244,8 +241,8 @@ public final class TimelineToolbar {
         c.fillRect(CanvasRect(x: 0, y: 0, width: width, height: Self.height), view.theme.shellBackground)
         c.fillRect(CanvasRect(x: 0, y: Self.height - 1, width: width, height: 1), CanvasColor(T.neutral800.alpha(0.6)))
         let items = layout(width: width)
-        if let razor = items.first(where: { $0.item == .razor })?.rect {
-            c.fillRect(CanvasRect(x: razor.maxX + Self.gap + 4, y: razor.centerY - 8, width: 1, height: 16), CanvasColor(T.neutral800))
+        if let lastTool = items.first(where: { $0.item == .roll })?.rect {
+            c.fillRect(CanvasRect(x: lastTool.maxX + Self.gap + 4, y: lastTool.centerY - 8, width: 1, height: 16), CanvasColor(T.neutral800))
         }
         for (item, r) in items { drawItem(c, item, r) }
     }
@@ -291,9 +288,7 @@ public final class TimelineToolbar {
         if let bg { c.fillRoundedRect(r, radius: 6, CanvasColor(bg)) }
         let col = CanvasColor(fg)
         switch item {
-        case .select:
-            c.fill(TimelineIconPath.parse("M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z", viewBox: 12, into: icon), col)
-        case .razor: Self.drawScissors(c, icon, col)
+        case .select, .razor, .slip, .roll: Self.drawToolGlyph(c, item, icon, col)
         case .snap: Self.drawMagnet(c, icon, col)
         case .keyframe:
             if keyframeState == .active { c.fill(TimelineIconPath.parse("M5 0.5L9.5 5L5 9.5L0.5 5Z", viewBox: 10, into: icon), col) }

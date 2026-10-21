@@ -81,13 +81,16 @@ extension InspectorPanel {
         let animated = editor.isAnimated(clipId: s.id, pid)
         let on = editor.hasKeyframe(clipId: s.id, pid, time: time)
         let t = time
-        return InspectorRow.Keyframe(
+        var kf = InspectorRow.Keyframe(
             state: on ? .onKey : (animated ? .animated : .none),
             toggle: { [weak self] in self?.edited(editor.toggleKeyframe(clipId: s.id, pid, time: t, fallback: fallback)) },
             stopwatch: { [weak self] in self?.edited(editor.setAnimated(clipId: s.id, [(pid, fallback)], !animated, time: t)) },
             // KeyframeNavigation: a stepper is live only when there is a keyframe that way.
             prev: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: false) : nil).map { v in { [weak self] in self?.onSeek?(v) } },
             next: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: true) : nil).map { v in { [weak self] in self?.onSeek?(v) } })
+        kf.kind = TimelineKeyframeCatalog.property(pid).kind
+        kf.ease = TimelineKeyframeEase(on ? editor.interpolation(clipId: s.id, pid, time: t) : nil)
+        return kf
     }
 
     /// Position's controls cover the vec2 track and the scalar x/y tracks (older and recorded projects), which preview

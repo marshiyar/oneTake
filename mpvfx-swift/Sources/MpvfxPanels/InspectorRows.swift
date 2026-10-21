@@ -27,6 +27,9 @@ public struct InspectorRow {
         public var stopwatch: () -> Void
         public var prev: (() -> Void)?
         public var next: (() -> Void)?
+        /// The property's kind and the playhead key's interpolation: the ◆ draws the timeline's mark for them.
+        public var kind: TimelineKeyframeKind = .transform
+        public var ease: TimelineKeyframeEase = .linear
     }
     public struct Number {
         public var key: String

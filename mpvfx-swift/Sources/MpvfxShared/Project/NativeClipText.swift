@@ -38,10 +38,13 @@ public struct NativeClipText: Codable, Equatable, Hashable, Sendable {
     public var textTransform: String?
     /// normal or italic (font style).
     public var fontStyle: String?
+    /// Outlines and a drop shadow around the letters (`NativeTextLook`); nil draws the plain fill.
+    public var look: NativeTextLook?
 
     public init(content: String, fontFamily: String? = nil, fontSize: Double? = nil, fontWeight: Int? = nil, color: String? = nil,
                 align: String? = nil, letterSpacing: Double? = nil, lineHeight: Double? = nil, textTransform: String? = nil,
-                fontStyle: String? = nil) {
+                fontStyle: String? = nil, look: NativeTextLook? = nil) {
+        self.look = look
         self.content = content; self.fontFamily = fontFamily; self.fontSize = fontSize; self.fontWeight = fontWeight
         self.color = color; self.align = align; self.letterSpacing = letterSpacing; self.lineHeight = lineHeight
         self.textTransform = textTransform; self.fontStyle = fontStyle
@@ -122,4 +125,5 @@ func validateNativeClipText(_ text: NativeJSONValue?, _ path: String, _ issues: 
     if let v = text["lineHeight"], v.numberValue.map({ $0.isFinite && $0 > 0 }) != true {
         pushIssue(&issues, .invalidClip, "\(path).lineHeight", "Line height must be a positive number")
     }
+    validateNativeTextLook(text["look"], "\(path).look", &issues)
 }

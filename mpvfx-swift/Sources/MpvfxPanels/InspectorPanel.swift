@@ -163,6 +163,8 @@ public final class InspectorPanel {
     /// Analyses scope frames off the draw thread; the host sets its `onReady` to redraw.
     public let scopeWorker = ScopeWorker()
     public var lutAssets: () -> [String] = { [] }
+    /// The grid size of the grade's LUT (its `src`), or why it could not be read; nil while unknown (InspectorPanel+Lut).
+    public var lutStatus: (String) -> LutStatus? = { _ in nil }
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,
                                  _ pick: @escaping (String) -> Void) -> Void)?
