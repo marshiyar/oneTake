@@ -619,7 +619,7 @@ final class RightPanelTests: XCTestCase {
         let c = PanelMeasureCanvas()
         r.draw(c, size: CanvasSize(409, 600))
         XCTAssertTrue(r.keyDown(EditorKey(.tab)))
-        XCTAssertEqual(r.focus.current, .design, "Tab starts at the strip's first tab")
+        XCTAssertEqual(r.focus.current, .renders, "Tab starts at the strip's selected tab: the tab bar is one stop (docs/DESIGN.md \"Tabs\")")
         var n = 0
         while r.focus.current != .export, n < 30 { _ = r.keyDown(EditorKey(.tab)); n += 1 }
         XCTAssertEqual(r.focus.current, .export)
