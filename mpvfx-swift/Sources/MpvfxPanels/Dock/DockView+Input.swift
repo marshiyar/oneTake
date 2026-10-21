@@ -92,7 +92,7 @@ extension DockView {
     }
 
     func moved(_ d: Drag, to p: CanvasPoint, swap: Bool) -> Drag {
-        let scene = DockDrop.Scene(layout: layout, geometry: geometry, tabs: tabs)
+        let scene = DockDrop.Scene(layout: layout, geometry: geometry, tabs: tabs, registry: registry)
         let preview = DockDrop.preview(DockDrop.Probe(point: p, panel: d.panel, swap: swap), scene: scene)
         return Drag(panel: d.panel, point: p, preview: preview, swap: swap)
     }
@@ -136,11 +136,30 @@ extension DockView {
         drag = nil
         // The drop is where the pointer is released, not where it last moved (a host may send no move before it).
         let d = moved(last, to: p, swap: last.swap)
-        if let target = d.preview?.target, case .success(let next) = DockDrop.applying(target, dragging: d.panel, to: layout) {
-            perform { $0 = next }
-            focused = d.panel
+        if let target = d.preview?.target {
+            if DesignGroups.isDesignPanel(d.panel), returnsToDesign(target) {
+                // Dropped on the Design tab: the group goes back there (its panel closes) instead of stacking.
+                perform { try $0.returnToDesign(d.panel, registry: registry) }
+            } else if case .success(let next) = DockDrop.applying(target, dragging: d.panel, to: layout, registry: registry) {
+                perform { $0 = next }
+                focused = d.panel
+            }
         }
         return true
+    }
+
+    /// Whether a drop lands on the Design tab's own tab strip or content (a stack into its group).
+    func returnsToDesign(_ target: DockDragTarget) -> Bool {
+        guard case .move(.stack(let id, _)) = target, let g = layout.root.group(id: id) else { return false }
+        return g.panels.contains(DockPanels.inspector)
+    }
+
+    /// Starts a drag of a panel that is not a tab: a Design group header pulled out of the Design tab. `p` is in
+    /// dock coordinates; moves and the release then go through `pointerMove` / `pointerUp` like a tab drag.
+    public func beginExternalDrag(_ panel: DockPanelID, at p: CanvasPoint, swap: Bool = false) {
+        guard registry.contains(panel), !layout.isOpen(panel) else { return }
+        press = nil
+        drag = moved(Drag(panel: panel, point: p, preview: nil), to: p, swap: swap)
     }
 
     /// Escape during a drag: the tab stays where it was.
