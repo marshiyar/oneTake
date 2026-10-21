@@ -36,7 +36,7 @@ import CoreGraphics
 //   MpvfxPreviewBench <scenario> <fixtures dir> <results file> [frames] [--no-realtime]
 //   MpvfxPreviewBench --make-clips <fixtures dir>   (writes the clips with the media engine's encoder; Clips.swift)
 //   (--no-realtime: playback only, for allocation counts under valgrind --tool=dhat)
-//   scenarios: 1080p, 4k, stacked, dissolve (Dissolve.swift), graded, scrub, export, export-serial
+//   scenarios: 1080p, 4k, stacked, graded, scrub, export, export-serial
 //   (export: 10 s of 1080p30 exported to MP4 through renderNativeTimeline, frames painted by PreviewExportFrames as
 //   the app installs it; export_fps, paint_ms and encode_ms per frame, peak RSS. export-serial: the same export
 //   painting and encoding in turn on one thread, the baseline measured on the same machine in the same run)
@@ -335,7 +335,6 @@ func scenario(_ name: String) -> (clips: [Clip], seconds: Double)? {
     case "graded": return ([Clip(file: "clip1080.mp4", track: 0, grade: typicalGrade)], 10)
     case "scrub": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
     case "export", "export-serial": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
-    case "dissolve": return ([Clip(file: "clip1080.mp4", track: 0), Clip(file: "clip1080b.mp4", track: 0)], 10)
     default: return nil
     }
 }
@@ -344,7 +343,7 @@ func main() throws {
     let args = CommandLine.arguments
     if args.count == 3 && args[1] == "--make-clips" { try makeClips(args[2]); return }
     guard args.count >= 4, let sc = scenario(args[1]) else {
-        print("usage: MpvfxPreviewBench <1080p|4k|stacked|dissolve|graded|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
+        print("usage: MpvfxPreviewBench <1080p|4k|stacked|graded|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
         print("       MpvfxPreviewBench --make-clips <fixtures dir>"); exit(2)
     }
     let (width, height) = (1280, 720)
@@ -356,7 +355,7 @@ func main() throws {
     }
     // Measured as peak_rss_mib is (getrusage / the peak working set), so the two compare on every OS.
     let startRSS = peakMiB()
-    let doc = args[1] == "dissolve" ? try dissolveDocument(dir: args[2]) : try document(sc.clips, dir: args[2], seconds: sc.seconds)
+    let doc = try document(sc.clips, dir: args[2], seconds: sc.seconds)
     let frames = args.count > 4 ? Int(args[4]) ?? 120 : Int(sc.seconds * 30) - 2
     var result: [String: String] = ["scenario": args[1], "display": "\(width)x\(height)"]
     let run = Run(doc, width: width, height: height)

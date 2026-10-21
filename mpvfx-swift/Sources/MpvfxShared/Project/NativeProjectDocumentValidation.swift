@@ -86,7 +86,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
     let audioGroupIds = validateAudioGroups(sequence["audioGroups"], &issues)
 
     var trackIds = Set<String>(), authoredLaneIds = Set<String>(), displayLaneIds = Set<Double>()
-    var clipIds = Set<String>(), bindingIdentities = Set<String>(), transitionIds = Set<String>()
+    var clipIds = Set<String>(), bindingIdentities = Set<String>()
     for (trackIndex, track) in tracks.enumerated() {
         let trackPath = "sequence.tracks[\(trackIndex)]"
         guard track.isRecord else { pushIssue(&issues, .invalidTrack, trackPath, "Track must be an object"); continue }
@@ -214,12 +214,11 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             validateNativeClipFades(clip, clipPath, &issues)
             validateNativeClipPresentation(clip, clipPath, &issues)
             validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
-            validateNativeClipNarration(clip["narration"], assetKind: asset == nil ? nil : assetKind, "\(clipPath).narration", &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }
             validateStaticParameters(clip["staticParameters"], "\(clipPath).staticParameters", &issues)
-            if validateNativeClipHold(clip, asset, clipPath, &issues), let asset, assetKind == "video" || assetKind == "audio",
+            if let asset, assetKind == "video" || assetKind == "audio",
                let sourceInFrame = clip["sourceInFrame"]?.numberValue, isNonNegativeInteger(clip["sourceInFrame"]),
                let durationFrames = clip["durationFrames"]?.numberValue, isPositiveInteger(clip["durationFrames"]),
                let assetDurationFrames = asset["durationFrames"]?.numberValue, isPositiveInteger(asset["durationFrames"]),
@@ -294,7 +293,6 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                                     isPositiveInteger(clip["durationFrames"]) ? clip["durationFrames"]!.numberValue! : nil,
                                     "\(clipPath).parameterTracks", &issues, engine: engine)
         }
-        validateNativeTrackTransitions(track, trackPath, &transitionIds, &issues)
     }
     return issues
 }
