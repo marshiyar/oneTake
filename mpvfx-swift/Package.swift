@@ -205,7 +205,7 @@ let package = Package(
                                                              "MpvfxBackend", "MpvfxTimeline", "MpvfxPlayer", "MpvfxRuntime", "MpvfxShared", mediaEngine]),
         // MpvfxPlayer + OneTakeMedia: the end-to-end export installs the app's frame renderer and decodes what it wrote.
         .testTarget(name: "MpvfxBackendTests", dependencies: ["MpvfxBackend", "MpvfxDesktopCore", "MpvfxRuntime", "MpvfxShared", "MpvfxPlayer", mediaEngine]),
-        .testTarget(name: "CSQLiteTests", dependencies: ["CSQLite", "MpvfxRuntime"]),
+        .testTarget(name: "CSQLiteTests", dependencies: ["CSQLite", "MpvfxRuntime"], swiftSettings: swift6),
         // MpvfxPlayer + OneTakeMedia: export tests paint with the app's frame renderer, build inputs and decode outputs
         // with the media engine (no FFmpeg).
         .testTarget(name: "MpvfxRuntimeTests", dependencies: ["MpvfxRuntime", "MpvfxShared", keyframeEngine, "MpvfxColor", "MpvfxPlayer", mediaEngine, "MpvfxCanvas"],

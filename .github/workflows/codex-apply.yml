@@ -47,13 +47,25 @@ jobs:
           [ "$1" = "$REPO" ] || { echo "::notice::the pull request comes from $1, not this repository: not applied"; exit 1; }
           [ "$4" = open ] || { echo "::notice::the pull request is $4: not applied"; exit 1; }
           echo "ref=$2" >> "$GITHUB_OUTPUT"; echo "sha=$3" >> "$GITHUB_OUTPUT"
+      # The pull request's files are checked out here with a token that can push, so the token is not left in the
+      # checkout's git config (persist-credentials: false): nothing in the tree sits next to a credential. Only the
+      # push step below authenticates, once, for that one command. No code from the tree is run.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.pr.outputs.sha }}
           fetch-depth: 1
-      # The checker comes from main, not from the pull request, so a PR cannot loosen it for itself.
+          persist-credentials: false
+      # The checker comes from main, not from the pull request, so a PR cannot loosen it for itself. Read through the
+      # API, which needs no git credentials in the checkout.
       - name: The checker from main
-        run: git fetch -q --depth 1 origin main && git show FETCH_HEAD:.github/ci/codex_patch.py > "$RUNNER_TEMP/codex_patch.py"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/.github/ci/codex_patch.py?ref=main" \
+            > "$RUNNER_TEMP/codex_patch.py"
+          [ -s "$RUNNER_TEMP/codex_patch.py" ] || { echo "::error::could not read the checker from main"; exit 1; }
       - name: Read and check the patch
         id: patch
         env:
@@ -68,6 +80,7 @@ jobs:
       - name: Apply, commit as the owner with Codex as co-author, push
         if: steps.patch.outputs.ok == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           REF: ${{ steps.pr.outputs.ref }}
           URL: ${{ github.event.comment.html_url }}
         run: |
@@ -80,7 +93,10 @@ jobs:
           git -c user.name="Arshiya Rahgozar" -c user.email="57055687+marshiyar@users.noreply.github.com" commit -q \
             -m "Apply Codex's change" -m "From $URL" \
             -m "Co-authored-by: chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"
-          git push -q origin "HEAD:refs/heads/$REF"
+          # The credential exists only for this command (the same header actions/checkout would have stored).
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push -q origin "HEAD:refs/heads/$REF"
           echo "pushed $(git rev-parse --short HEAD) to $REF"
       - name: Say what happened on the pull request
         if: always() && steps.pr.outcome == 'success'

@@ -160,7 +160,7 @@ final class MacCanvasHost: NSView {
         let scale = precise ? 1.0 : 53.0
         let dx = -Double(e.scrollingDeltaX) * scale, dy = -Double(e.scrollingDeltaY) * scale
         guard dx != 0 || dy != 0 else { return }
-        input?.scroll(dx: dx, dy: dy, x: p.x, ctrl: e.modifierFlags.contains(.control), shift: e.modifierFlags.contains(.shift), precise: precise)
+        input?.scroll(dx: dx, dy: dy, x: p.x, ctrl: Self.modifiers(e).zoomsWheel, shift: e.modifierFlags.contains(.shift), precise: precise)
     }
 
     /// Trackpad pinch arrives in Chromium as a ctrl+wheel; do the same so the timeline zooms.
