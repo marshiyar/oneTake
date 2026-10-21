@@ -228,8 +228,9 @@ An enabled clip effect with `effectId: "color-key"` stores this versioned object
 have the displayed defaults. RGB and all three amounts are finite numbers in `0...1`.
 The matte is `smoothstep(similarity, similarity + smoothness, distance)` where distance
 is Euclidean distance in BT.709 Cb/Cr coordinates. It multiplies the source alpha.
-Spill suppresses green above `max(red, blue)`; at `1` it removes all such excess without
-changing neutral pixels. Preview and export consume the same RGBA result.
+Spill suppresses the key colour's own hue in the graded colour: for the key's strongest
+channel (green, else blue, else red) it removes the amount by which that channel exceeds the
+larger of the other two; at `1` it removes all such excess without changing neutral pixels. Preview and export consume the same RGBA result.
 
 Objects with an unknown `v` or `kind` remain in the project unchanged but are not drawn.
 They do not change `schemaVersion`, which remains `1`.

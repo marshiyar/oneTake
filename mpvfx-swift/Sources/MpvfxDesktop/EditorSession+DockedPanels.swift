@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxPanels
+import MpvfxPlayer
 import MpvfxRuntime
 import MpvfxShared
 import MpvfxTimeline
@@ -58,6 +59,17 @@ extension EditorSession {
         feed.panel.onCopy = { [weak self] text in self?.panels?.copyToClipboard?(text) }
         installDockedPanel(router, id: DockPanels.info, panel: feed.panel) { [weak feed] in feed?.refresh() }
         clipInfoFeed = feed
+        let scopes = ScopesPanel(layout: router.layout)
+        let program = ProgramScopeRenderer(compositor: compositor)
+        let refresh: () -> Void = { [weak self] in self?.postToUI { [weak self] in self?.redraw() } }
+        program.onReady = refresh
+        scopes.worker.onReady = refresh
+        scopes.onChange = { [weak self] in self?.redraw() }
+        scopes.programFrame = { [weak self] width, height in
+            guard let self else { return .unavailable }
+            return PresetPreviewState(program.frame(at: self.playback.currentTime, pixelWidth: width, pixelHeight: height))
+        }
+        installDockedPanel(router, id: DockPanels.scopes, panel: scopes)
     }
 }
 

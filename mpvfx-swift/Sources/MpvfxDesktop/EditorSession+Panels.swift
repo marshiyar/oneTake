@@ -104,6 +104,7 @@ final class SessionPanels {
         left.bars = { [weak self] id in self?.bars(id) }
         left.onImport = { [weak self] in self?.session.onImportRequested?() }
         left.onAddAtPlayhead = { [weak self] id in self?.addToTimeline(path: id, at: nil) }
+        left.onAddTextLook = { [weak self] look in self?.session.addTextLook(look) }
         left.onRenameAsset = { [weak self] id, name in self?.renameAsset(path: id, newName: name) }
         left.onDeleteAsset = { [weak self] id, removeUsages in self?.deleteAsset(path: id, removeUsages: removeUsages) }
         left.onCopyPath = { [weak self] path in self?.copyToClipboard?(path) }
