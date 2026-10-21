@@ -81,8 +81,8 @@ final class TimelineTimecodeTextTests: XCTestCase {
         let t = texts(trackHeight: TimelineLayout.defaultTrackHeight)
         XCTAssertTrue(t.contains("a.mp4"))
         XCTAssertTrue(t.contains("00:02:15"), "2.5 s clip at 30 fps: \(t)")
-        XCTAssertEqual(t.filter { $0.hasPrefix("00:0") && $0 != "00:02:15" }, ["00:00:00", "00:01:00", "00:02:00", "00:03:00", "00:04:00"],
-                       "ruler ticks every second")
+        XCTAssertEqual(t.filter { $0.count == 11 }, ["00:00:00:00", "00:00:01:00", "00:00:02:00", "00:00:03:00", "00:00:04:00", "00:00:05:00"],
+                       "ruler ticks every second in HH:MM:SS:FF, through the 1 s margin after the 4 s end (docs/TIMELINE.md)")
     }
 
     func testShortRowsLeaveTheTimecodeOut() {
