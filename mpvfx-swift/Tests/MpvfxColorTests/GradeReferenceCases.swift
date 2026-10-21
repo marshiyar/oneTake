@@ -75,6 +75,9 @@ enum GradeReferenceCases {
             cases.append(Case(name: "adjust.\(k)+", json: #"{"adjust":{"\#(k)":0.6}}"#))
             cases.append(Case(name: "adjust.\(k)-", json: #"{"adjust":{"\#(k)":-0.45}}"#))
         }
+        // Contract 3: Warmth and Tint as channel gains, in the primary and in a secondary.
+        cases.append(Case(name: "v3.whiteBalance", json: #"{"version":3,"adjust":{"temperature":0.7,"tint":-0.4}}"#))
+        cases.append(Case(name: "v3.secondaryWhiteBalance", json: #"{"version":3,"secondaries":[{"key":{"hue":{"center":0,"range":180,"softness":0}},"correction":{"temperature":-0.6,"tint":0.5}}]}"#))
         cases.append(Case(name: "intensity", json: #"{"adjust":{"saturation":-1,"exposure":0.4},"intensity":0.4}"#))
         for k in ColorGradeParams.wheelKeys {
             cases.append(Case(name: "wheel.\(k)", json: #"{"wheels":{"\#(k)":{"hue":210,"amount":0.8,"level":0.3}}}"#))

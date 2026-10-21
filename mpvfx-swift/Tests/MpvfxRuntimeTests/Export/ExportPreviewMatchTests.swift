@@ -127,6 +127,17 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertGreaterThan(maxAbsDiff(frames[1].2, plain), 20, "the curves grade differs from the exposure grade")
     }
 
+    /// Contract 3 Warmth and Tint (channel gains, issue #172) on the graded video: export is the preview at the first,
+    /// a middle and the last frame, and the warm grade shows.
+    func testContract3WarmthExportIsThePreviewFrameForFrame() throws {
+        let mov = try export(.mov, grade: #"{"version":3,"adjust":{"temperature":0.8,"tint":-0.3,"exposure":0.2}}"#, name: "warm")
+        let diffs = try pairs(mov, [0, 1.0, 1.9]).map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let f = try mov.file.rgba(1.0)
+        let video = Array(f.rgba[(36 * 96 + 80) * 4..<(36 * 96 + 80) * 4 + 3])
+        XCTAssertGreaterThan(Int(video[0]) - Int(video[2]), 20, "Warmth +80 warms the video: \(video)")
+    }
+
     func testMp4ExportMatchesThePreviewWithinTheEncoderLoss() throws {
         let mp4 = try export(.mp4)
         try assertTimeline(mp4.file)

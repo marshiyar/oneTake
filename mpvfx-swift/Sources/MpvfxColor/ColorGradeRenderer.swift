@@ -122,6 +122,7 @@ public final class ColorGradeRenderer: Equatable, Sendable {
         u.shadowWheel = wheel("shadows"); u.midtoneWheel = wheel("midtones"); u.highlightWheel = wheel("highlights")
         for k in EK.allCases { u.e[k.rawValue] = f(g.effect(k.key)) }
         u.intensity = f(g.intensity)
+        u.whiteBalanceGains = g.whiteBalanceGains
         let pal = g.resolvedPalette
         let last = pal.last ?? "#ffffff"
         u.paletteSize = Float(pal.count)
@@ -151,7 +152,8 @@ public final class ColorGradeRenderer: Equatable, Sendable {
                 texels.append(V4(byte(s.saturation.min), byte(s.saturation.max), byte(s.saturation.softness / 0.5), 0))
                 texels.append(V4(byte(s.luma.min), byte(s.luma.max), byte(s.luma.softness / 0.5), 0))
                 texels.append(V4(signedByte(s.hueShift, 180), signedByte(s.saturationShift, 1), signedByte(s.lumaShift, 1), signedByte(s.temperature, 1)))
-                texels.append(V4(signedByte(s.tint, 1), byte(0.5), byte(0.5), 1))
+                // The second channel flags contract 3 (gain white balance): 1, else the older 0.5.
+                texels.append(V4(signedByte(s.tint, 1), byte(g.whiteBalanceGains ? 1 : 0.5), byte(0.5), 1))
             }
             p.secondaryTexels = texels
         }
@@ -201,6 +203,6 @@ extension ColorGradeParams {
         let c = ColorGradeParams.curveKeys.map { "\(curves[$0] ?? [])" }.joined(separator: ";")
         let h = ColorGradeParams.hueCurveKeys.map { "\(hueCurves[$0] ?? [])" }.joined(separator: ";")
         let s = secondaries.map { "\($0)" }.joined(separator: ";")
-        return "\(intensity)|\(d(adjust))|\(d(details))|\(d(effects))|\(w)|\(c)|\(h)|\(s)|\(palette ?? [])|\(lut.map { "\($0.src)@\($0.intensity)" } ?? "")"
+        return "v\(version)|\(intensity)|\(d(adjust))|\(d(details))|\(d(effects))|\(w)|\(c)|\(h)|\(s)|\(palette ?? [])|\(lut.map { "\($0.src)@\($0.intensity)" } ?? "")"
     }
 }
