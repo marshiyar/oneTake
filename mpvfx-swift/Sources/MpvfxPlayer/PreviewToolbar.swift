@@ -36,6 +36,8 @@ public final class PreviewToolbar {
     public var gridDivisions = 3
     public var snapToGrid = false
     public var gridPopoverOpen = false
+    public var compareEnabled = false
+    public var comparePosition = 0.5
     /// Gesture recording state, shown only when the host handles `onToggleRecording`.
     public enum Recording: Equatable { case idle, recording, preview }
     public var recording: Recording = .idle
@@ -46,7 +48,7 @@ public final class PreviewToolbar {
     public var onToggleRecording: (() -> Void)?
 
     public enum Item: Equatable {
-        case record, crop, cropReset, cropCancel, cropApply, snap, grid, gridOptions
+        case record, crop, cropReset, cropCancel, cropApply, compare, snap, grid, gridOptions
         case gridPreset(Int), snapToGridToggle, popover, cropGroup
     }
 
@@ -69,6 +71,7 @@ public final class PreviewToolbar {
         let g = out[0].1
         out.append((.gridOptions, CanvasRect(x: g.maxX + 2 - 11, y: g.maxY + 2 - 11, width: 11, height: 11)))
         place(.snap, Self.iconButton, Self.iconButton)
+        place(.compare, textWidth(c, "Compare", Self.label) + 16, 28.5)
         if cropActive {
             let apply = cropApplying ? "Applying…" : "Apply"
             let wApply = textWidth(c, apply, CanvasFont(size: 11, weight: .semibold)) + 16
@@ -135,6 +138,7 @@ public final class PreviewToolbar {
         case .gridPreset(let v): gridDivisions = v; gridVisible = true; gridPopoverOpen = false; onPrefsChange?(self)
         case .snapToGridToggle: snapToGrid.toggle(); onPrefsChange?(self)
         case .record: onToggleRecording?()
+        case .compare: compareEnabled.toggle()
         case .crop: return .start
         case .cropReset: return cropApplying ? nil : .reset
         case .cropCancel: return cropApplying ? nil : .cancel
@@ -144,11 +148,12 @@ public final class PreviewToolbar {
         return nil
     }
 
-    /// S toggles snap, G toggles the grid (unmodified keys).
+    /// S toggles snap, G toggles the grid, and backslash toggles Compare (unmodified keys).
     public func key(_ ch: Character) -> Bool {
         switch ch {
         case "s", "S": snapEnabled.toggle(); onPrefsChange?(self); return true
         case "g", "G": gridVisible.toggle(); onPrefsChange?(self); return true
+        case "\\": compareEnabled.toggle(); return true
         default: return false
         }
     }
@@ -184,6 +189,12 @@ public final class PreviewToolbar {
             let hov = hovered == .crop
             c.fillRoundedRect(r, radius: 6, Self.wash(hov ? 0.6 : 0.4))
             c.drawText("Crop", at: .init(r.x + 8, r.y + (r.height - 11) / 2), font: Self.label, color: white.withAlpha(hov ? 1 : 0.7))
+        }
+        if let r = rect(.compare) {
+            let hov = hovered == .compare
+            c.fillRoundedRect(r, radius: 6, compareEnabled ? Self.accent.withAlpha(0.2) : Self.wash(hov ? 0.6 : 0.4))
+            c.drawText("Compare", at: .init(r.x + 8, r.y + (r.height - 11) / 2), font: Self.label,
+                       color: compareEnabled ? Self.accent : white.withAlpha(hov ? 1 : 0.7))
         }
         if cropActive, let group = rect(.cropGroup) {
             c.fillRoundedRect(group, radius: 6, PanelTheme.black)

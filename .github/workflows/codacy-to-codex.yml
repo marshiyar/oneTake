@@ -1,0 +1,55 @@
+name: codacy-to-codex
+
+# Important Codacy findings go straight to Codex (.github/ci/codacy_to_codex.py). When codacy-production[bot] posts a
+# review or a review comment on a pull request from this repository, the script reads all of Codacy's comments on it
+# and, for each HIGH-risk or Security finding whose thread is open and unanswered, posts one `@codex` task as the
+# review App (secrets AGENT_APP_ID, AGENT_APP_PRIVATE_KEY): at most one per Codacy comment (hidden marker) and five
+# per pull request per hour. Codex's reply, one unified diff, is applied by codex-apply.yml.
+#
+# Nothing from the pull request runs here: the job checks out main's .github/ci only, so a pull request cannot change
+# the script that decides for itself, and the finding text is quoted as untrusted data. Fork pull requests are
+# skipped (they get no secrets either). The concurrency group is per pull request and per job, so only Codacy's runs
+# queue in it; a run it drops loses nothing, because every run rescans the whole pull request.
+
+on:
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  hand-off:
+    if: >-
+      (github.event.comment.user.login == 'codacy-production[bot]' ||
+       github.event.review.user.login == 'codacy-production[bot]') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.state == 'open'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: codacy-to-codex-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read   # check out main's .github/ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/ci
+      - name: Token for the review App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          permission-pull-requests: write   # read review comments and threads, post the task
+          permission-issues: write          # pull request conversation comments
+      - name: Hand the important findings to Codex
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          APP_LOGIN: ${{ steps.app.outputs.app-slug }}[bot]
+        run: python3 -I -B .github/ci/codacy_to_codex.py "$GITHUB_EVENT_PATH"
