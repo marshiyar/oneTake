@@ -276,7 +276,6 @@ public final class PlayerController {
     }
 
     func drag(_ g: Gesture, _ p: CanvasPoint, scale s: Double) {
-        let x = p.x, y = p.y
         switch g {
         case .pan, .marquee: break
         case let .move(id, start, x0, y0):
