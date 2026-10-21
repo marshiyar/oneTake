@@ -163,6 +163,18 @@ public final class LeftSidebarPanel {
 
     /// Tabs shown (getSidebarTabs): Media always; Scenes with sub-compositions; Elements with blocks (none natively).
     public var availableTabs: [LeftSidebarTab] { [.assets] }
+    /// In the dock: the dock's tab bar names the panel and its × closes it, so the strip keeps only Import media and
+    /// the panel menu (no Media tab, no hide button).
+    public var docked = false
+    /// The strip's tabs: none in the dock.
+    var stripTabs: [LeftSidebarTab] { docked ? [] : availableTabs }
+    /// The hide button's place; docked there is no hide button, so it is the menu button's.
+    func hideRect(_ strip: CanvasRect) -> CanvasRect { PanelTabStrip.buttonRect(strip, index: docked ? 0 : 1) }
+    func drawHideButton(_ c: CanvasContext, _ r: CanvasRect) {
+        guard !docked else { return }
+        PanelTabStrip.iconButton(c, r, icon: .sidebarHideLeft, hovered: hovered == .hideSidebar)
+        hits.add(r, .hideSidebar)
+    }
     public static let tabLabels: [LeftSidebarTab: String] = [.assets: "Media", .compositions: "Scenes", .blocks: "Elements"]
 
     var activeLibrary: LibraryNavModel.Library? {
@@ -220,17 +232,20 @@ public final class LeftSidebarPanel {
 
     // MARK: Tab strip (the tabs; hide and the panel menu at the right end)
 
+    /// Drawn (and so focused) in reading order: the tabs, Import media, hide, the panel menu.
     func drawTabStrip(_ c: CanvasContext, _ strip: CanvasRect) -> Double {
         PanelTabStrip.drawBackground(c, strip)
-        let tabs = availableTabs
-        let labels = tabs.map { Self.tabLabels[$0] ?? $0.rawValue }
-        for (i, rect) in PanelTabStrip.tabRects(c, strip, labels: labels).enumerated() {
-            PanelTabStrip.tab(c, rect, label: labels[i], active: tab == tabs[i], hovered: hovered == .tab(tabs[i]))
-            hits.add(rect, .tab(tabs[i]))
-        }
-        let hide = PanelTabStrip.buttonRect(strip, index: 1), menu = PanelTabStrip.buttonRect(strip, index: 0)
-        PanelTabStrip.iconButton(c, hide, icon: .sidebarHideLeft, hovered: hovered == .hideSidebar)
-        hits.add(hide, .hideSidebar)
+        let tabs = stripTabs
+        let hide = hideRect(strip), menu = PanelTabStrip.buttonRect(strip, index: 0)
+        let x = strip.x + PanelTabStrip.edgeInset
+        let bar = PanelTabBar(tabs: tabs.map { PanelTab(id: $0.rawValue, label: Self.tabLabels[$0] ?? $0.rawValue) },
+                              selected: tab.rawValue, style: .strip)
+        let laid = bar.layout(c, in: CanvasRect(x: x, y: strip.y, width: max(0, hide.x - 4 - x), height: strip.height))
+        var hover: PanelTabBar.Part?
+        if case .tab(let t)? = hovered { hover = .tab(t.rawValue) }
+        bar.draw(c, laid, hovered: hover)
+        for (r, part) in PanelTabBar.hitRects(laid) { if case .tab(let id) = part, let t = LeftSidebarTab(rawValue: id) { hits.add(r, .tab(t)) } }
+        drawHideButton(c, hide)
         PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == "\(Hit.panelMenu)")
         hits.add(menu, .panelMenu)
         return strip.height

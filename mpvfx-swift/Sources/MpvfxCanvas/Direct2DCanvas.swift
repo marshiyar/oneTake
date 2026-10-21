@@ -184,12 +184,37 @@ public final class Direct2DCanvas: CanvasContext {
 
     public func drawImage(_ image: CanvasImage, in rect: CanvasRect, opacity: Double) {
         guard image.width > 0, image.height > 0, opacity > 0 else { return }
+        var created: Int32 = 0
+        let target = self.target
+        let made = image.drawable(Direct2DBitmap.self, reuse: { mpvfx_d2d_bitmap_belongs_to($0.bitmap, target) != 0 }, make: {
+            let (bitmap, hr) = Direct2DBitmap.make(image, on: target)
+            created = hr
+            return bitmap
+        })
+        record("CreateBitmap", created)
+        guard let made else { return }
+        let destination = MpvfxRect(x: Float(rect.x), y: Float(rect.y), w: Float(rect.width), h: Float(rect.height))
+        record("DrawBitmap", mpvfx_d2d_draw_bitmap(target, made.bitmap, destination, Float(min(1, opacity))))
+    }
+}
+
+/// A `CanvasImage` as a premultiplied BGRA Direct2D bitmap of one render target, made once per image and target and
+/// drawn by every draw of it (and of its copies) there. Drawn on another target it is made again for that target.
+public final class Direct2DBitmap: CanvasDrawable {
+    let bitmap: OpaquePointer
+    public let byteCount: Int
+    init(_ bitmap: OpaquePointer) { self.bitmap = bitmap; byteCount = Int(mpvfx_d2d_bitmap_bytes(bitmap)) }
+    deinit { mpvfx_d2d_bitmap_release(bitmap) }
+
+    /// The bitmap, or nil with the failing HRESULT.
+    static func make(_ image: CanvasImage, on target: OpaquePointer) -> (Direct2DBitmap?, Int32) {
+        var out: OpaquePointer?
         let hr = image.rgba.withUnsafeBufferPointer {
             var pixels = MpvfxPixels(rgba: $0.baseAddress, width: UInt32(image.width), height: UInt32(image.height))
-            let destination = MpvfxRect(x: Float(rect.x), y: Float(rect.y), w: Float(rect.width), h: Float(rect.height))
-            return mpvfx_d2d_draw_rgba(target, &pixels, destination, Float(min(1, opacity)))
+            return mpvfx_d2d_bitmap_create(target, &pixels, &out)
         }
-        record("DrawBitmap", hr)
+        guard hr >= 0, let out else { return (nil, hr < 0 ? hr : -1) }
+        return (Direct2DBitmap(out), hr)
     }
 }
 
