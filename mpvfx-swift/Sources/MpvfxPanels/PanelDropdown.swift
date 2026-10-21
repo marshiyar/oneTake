@@ -39,6 +39,9 @@ public final class PanelDropdown {
         self.onPick = onPick; hovered = nil; scroll = 0
     }
     public func close() { key = nil; onPick = nil }
+    /// Highlights the selected option, as a native list opened from the keyboard does: the arrows move from it and
+    /// Enter keeps it.
+    public func highlightSelected() { hovered = options.firstIndex { $0.value == selected } }
     /// Picks `value` as a click on its item would: closes, then reports it.
     public func pick(_ value: String) {
         guard isOpen, options.contains(where: { $0.value == value }) else { return }
