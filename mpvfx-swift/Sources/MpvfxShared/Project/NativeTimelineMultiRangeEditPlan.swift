@@ -14,7 +14,7 @@
 // Multi-clip range edit plans: one trim or move of several selected clips.
 import Foundation
 
-public struct NativeTimelineMultiRangeEditChange: Equatable {
+public struct NativeTimelineMultiRangeEditChange: Equatable, Sendable {
     public var element: NativeSelectedElementReference; public var requestedStartSeconds: Double; public var requestedDurationSeconds: Double
     public init(element: NativeSelectedElementReference, requestedStartSeconds: Double, requestedDurationSeconds: Double) {
         self.element = element; self.requestedStartSeconds = requestedStartSeconds; self.requestedDurationSeconds = requestedDurationSeconds
@@ -26,7 +26,7 @@ public struct NativeTimelineMultiRangePlannedEdit: Equatable {
     public var sourceInFrame: Double; public var sourceInFraction: NativePlaybackRate?; public var compatibility: NativeTimelineCompatibilityRange
 }
 /// NativeTimelineRangeEditPlanFailureCode | "empty-change-set" | "duplicate-clip" | "binding-source-mismatch".
-public enum NativeTimelineMultiRangeEditPlanFailureCode: String {
+public enum NativeTimelineMultiRangeEditPlanFailureCode: String, Sendable {
     case invalidRange = "invalid-range", noChange = "no-change", unsupportedRangeChange = "unsupported-range-change"
     case missingSelectionId = "missing-selection-id", clipNotFound = "clip-not-found", ambiguousClip = "ambiguous-clip"
     case bindingSourceMismatch = "binding-source-mismatch", nativeCommandRejected = "native-command-rejected"

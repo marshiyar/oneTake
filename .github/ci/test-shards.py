@@ -46,9 +46,10 @@ SHARDS = [
     ("rest", None, "", "|".join([LIBRARY, LIVE_EDIT, SEEK, SEEK_SHORT, DETERMINISTIC])),  # 642 / 747 s
 ]
 PRODUCTS = {}   # no package products: the engines are prebuilt (binaries.lock)
-# Files outside Sources/ and Tests/ that tests read are inputs too: docs/DESIGN.md (VisualSpecTests checks its table).
+# Files outside Sources/ and Tests/ that tests read are inputs too: docs/DESIGN.md (VisualSpecTests checks its table)
+# and samples/getting-started (SampleProjectTests opens and exports the sample project).
 CI = ["../.github/ci/test-shards.py", "../.github/ci/run-shard.py", "binaries.lock", "scripts/fetch-binaries.py", "Package.swift", "Package.resolved", "scripts",
-      "docs/DESIGN.md"]
+      "docs/DESIGN.md", "samples/getting-started"]
 WORKFLOW = {"macos": "../.github/workflows/mpvfx-macos.yml", "linux": "../.github/workflows/mpvfx-ci.yml",
             "windows": "../.github/workflows/mpvfx-ci.yml"}
 
