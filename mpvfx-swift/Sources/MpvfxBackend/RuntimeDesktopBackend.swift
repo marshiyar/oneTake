@@ -161,6 +161,8 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
 
     public func forgetRecentProject(directory: String) throws { try mapErrors { try recents.remove(directory) } }
 
+    public func clearRecentProjects() throws { try mapErrors { try recents.removeAll() } }
+
     // MARK: Media
 
     /// Runs blocking media work off the caller's thread. Task cancellation sets the MediaCancellation, which the

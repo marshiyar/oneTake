@@ -86,6 +86,22 @@ scheme are left as they are.
 App (installed on this repository only; repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`) only writes the
 merge train's comments and labels and turns on auto-merge (`.github/workflows/merge-train.yml`); it approves nothing.
 
+## Codacy findings to Codex
+
+`.github/workflows/codacy-to-codex.yml` hands Codacy's important findings to Codex with no session in the loop.
+When `codacy-production[bot]` posts a review or a review comment on a pull request from this repository (never a
+fork), `.github/ci/codacy_to_codex.py`, checked out from `main`, reads all of Codacy's comments on it and posts, as the
+review App, one `@codex Fix this Codacy finding on this PR: <file>:<line> — ...` task for each finding that is:
+
+- HIGH risk (`:red_circle:`, or CRITICAL) or a Security finding; MEDIUM and LOW findings are left alone;
+- still on the diff, its thread not resolved and not replied to by anyone but Codacy;
+- not handed over before (the task carries `<!-- codacy-to-codex:<comment id> -->`, and only the App's comments count);
+- within five tasks per pull request per hour; the rest wait for Codacy's next comment.
+
+The finding text is quoted as plain text, without `@`, backticks or HTML, at most 600 characters. Codex replies with
+one unified diff, which `codex-apply.yml` applies as usual; `codex_patch.py` refuses a Codex change to
+`codacy_to_codex.py` itself, as it does for the other scripts that run with a token.
+
 ## macOS signing: one-time setup (owner)
 
 The workflow reads five repository secrets (Settings > Secrets and variables > Actions > New repository secret).

@@ -296,8 +296,8 @@ final class EditorSession {
     /// Set by the shell: show a file chooser and call importMedia(paths:).
     var onImportRequested: (() -> Void)?
 
-    /// Cmd+S / Ctrl+S saves now; Cmd+I / Ctrl+I imports media (when the shell offers a chooser); Cmd+, / Ctrl+, opens
-    /// and closes Settings (EditorSession+Settings).
+    /// Cmd+S / Ctrl+S saves now; Cmd+I / Ctrl+I imports media (when the shell offers a chooser); Cmd+O / Ctrl+O opens
+    /// a project folder (EditorSession+OpenProject); Cmd+, / Ctrl+, opens and closes Settings (EditorSession+Settings).
     func commandKey(_ k: EditorKey) -> Bool {
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
@@ -307,6 +307,8 @@ final class EditorSession {
         case "i":
             guard let onImportRequested, project != nil else { return false }
             onImportRequested(); return true
+        case "o":
+            return requestOpenProject()
         case ",":
             guard shell?.modal != nil else { return false }
             toggleSettings(); return true
