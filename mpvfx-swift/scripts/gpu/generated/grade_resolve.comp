@@ -1083,8 +1083,9 @@ float4 shade(float2 frag, P_ALL) {
     float alpha = sampleColor.w;
     if (U(keyEnabled) > 0.0f) {
         float3 key = V3(U(keyR), U(keyG), U(keyB));
-        float y = lumaOf(graded), keyY = lumaOf(key);
-        float2 chroma = V2((graded.z - y) / 1.8556f, (graded.x - y) / 1.5748f);
+        float3 source = sampleColor.xyz;
+        float y = lumaOf(source), keyY = lumaOf(key);
+        float2 chroma = V2((source.z - y) / 1.8556f, (source.x - y) / 1.5748f);
         float2 keyChroma = V2((key.z - keyY) / 1.8556f, (key.x - keyY) / 1.5748f);
         float distance = SQRT(POW(chroma.x - keyChroma.x, 2.0f) + POW(chroma.y - keyChroma.y, 2.0f));
         alpha *= smoothstepf(U(keySimilarity), U(keySimilarity) + FMAX(U(keySmoothness), 0.000001f), distance);
