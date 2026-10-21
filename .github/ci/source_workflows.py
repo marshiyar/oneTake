@@ -39,7 +39,8 @@ import yaml
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 CHECKOUT = "actions/checkout@"
-CACHE = "actions/cache/"
+CACHE = re.compile(r"^actions/cache(/[a-z]+)?@")   # actions/cache@, actions/cache/restore@, actions/cache/save@
+SECRET = re.compile(r"\bsecrets\s*[.\[]")          # ${{ secrets.X }} and ${{ secrets['X'] }}
 UPLOAD_ARTIFACT = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"   # v7.0.2, as every workflow pins it
 
 
@@ -82,12 +83,12 @@ def _no_secrets(value):
         return {k: _no_secrets(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_no_secrets(v) for v in value]
-    return "" if isinstance(value, str) and "secrets." in value else value
+    return "" if isinstance(value, str) and SECRET.search(value) else value
 
 
 def _step(step):
     uses = step.get("uses", "")
-    if uses.startswith(CACHE):
+    if CACHE.match(uses):
         return None
     step = _no_secrets(dict(step))
     if uses.startswith(CHECKOUT):
@@ -145,7 +146,7 @@ def generate(target, source):
     if more:
         out["jobs"] = more[0](out["jobs"])
     text = yaml.dump(out, Dumper=_Dumper, sort_keys=False, width=10**6, allow_unicode=True)
-    if "secrets." in text:
+    if SECRET.search(text):
         raise ValueError(f"{target}: a secret is still referenced")
     return _header(src_name) + _pin_comments(source, text)
 
