@@ -51,6 +51,13 @@ extension EditorSession {
 
     /// The panels that read the document: History, and the ones added next to it.
     func installDocumentPanels(_ router: EditorShellRouter) {
+        let markers = MarkersPanel()
+        markers.editor = editor
+        markers.onJump = { [weak self] time in
+            guard let self else { return }
+            self.timeline.playback.seek(time); self.timeline.syncFromPlayback()
+        }
+        installDockedPanel(router, id: DockPanels.markers, panel: markers)
         let history = HistoryPanel()
         history.editor = editor
         installDockedPanel(router, id: DockPanels.history, panel: history)

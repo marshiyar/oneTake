@@ -79,6 +79,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         pushIssue(&issues, .invalidTrack, "sequence.durationFrames", "Sequence duration must be a positive integer")
     }
     validateNativeCaptionTrack(sequence["captions"], "sequence.captions", &issues)
+    validateNativeSequenceMarkers(sequence["markers"], &issues)
     validateNativeFill(input["compositionFill"], "compositionFill", allowInherit: false, assets: assetsById, &issues)
     guard let tracks = sequence["tracks"]?.arrayValue else {
         pushIssue(&issues, .invalidTrack, "sequence.tracks", "Tracks must be an array"); return issues

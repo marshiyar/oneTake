@@ -287,3 +287,5 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+Sequence markers (#409): M in the focused timeline adds a named marker at the playhead. The Window menu opens the dockable Markers panel (`markers`), initially closed. Click/Enter jumps; double-click/F2 edits the name, Tab chooses time in seconds, #RRGGBB color and note, Enter saves, Escape cancels, Delete removes. Add/edit/delete each undo in one step. Optional `sequence.markers` preserves older projects and unknown marker fields. Coverage: `Tests/MpvfxPanelsTests/MarkersPanelTests.swift`.

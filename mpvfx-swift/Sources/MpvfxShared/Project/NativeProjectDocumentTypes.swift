@@ -271,6 +271,8 @@ public struct NativeProjectSequence: Codable, Equatable, Sendable {
     /// The caption track (`NativeCaptionTrack.swift`); absent in a project without captions and in every project
     /// written before captions existed, which open unchanged.
     public var captions: NativeCaptionTrack? = nil
+    /// Sequence markers use seconds from the start; absent in older projects.
+    public var markers: [NativeSequenceMarker]? = nil
 }
 
 /// The timeline kind a document stores in `mediaEngine`. Every document is a native timeline drawn by the Swift
