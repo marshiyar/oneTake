@@ -41,6 +41,7 @@ extension EditorSession {
         router.panes[.timeline] = ShellPane(input: ti) { c, size in region.draw(c, size: size) }
         router.needsDisplay = { [weak self] in self?.redraw() }
         installPanels(router, userData: userData)
+        installDocumentPanels(router)
         installSettings(router, userData: userData)
         installTimelineHooks()
         router.restoreDock(store: dockStore, seeds: Self.dockSeeds(layout.prefs))
