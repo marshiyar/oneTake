@@ -50,6 +50,9 @@ public struct ColorGradeParams: Equatable, Sendable {
     }
 
     public var preset: String?
+    /// The grade contract the grade was written under (`version`; absent = 2). Contract 3 applies Warmth and Tint as
+    /// channel gains, so black stays black; a contract 2 grade keeps the additive offsets it was graded with.
+    public var version = 2
     public var intensity = 1.0
     public var adjust: [String: Double] = Self.adjustZero
     public var wheels: [String: Wheel] = ["shadows": Wheel(), "midtones": Wheel(), "highlights": Wheel()]
@@ -68,6 +71,11 @@ public struct ColorGradeParams: Equatable, Sendable {
     public func effect(_ k: String) -> Double { effects[k] ?? Self.effectDefaults[k] ?? 0 }
 
     // MARK: Contract
+
+    /// The contract new grades are written under (`ColorGrading.contractVersion` in MpvfxPanels).
+    public static let currentVersion = 3
+    /// Whether Warmth and Tint scale the channels (contract 3) rather than offset them.
+    public var whiteBalanceGains: Bool { version >= 3 }
 
     public static let adjustKeys = GradeValues.adjustKeys
     public static let wheelKeys = GradeValues.wheelKeys
@@ -171,6 +179,7 @@ public struct ColorGradeParams: Equatable, Sendable {
         }
         let p = Self.preset(named: presetId)
         preset = presetId
+        if let v = Self.number(o["version"]), v.isFinite, v >= 3 { version = 3 }
         let rawAdjust = Self.object(o["adjust"]), rawDetails = Self.object(o["details"]), rawEffects = Self.object(o["effects"])
         for k in Self.adjustKeys { adjust[k] = Self.limited(rawAdjust?[k], fallback: p?.adjust[k] ?? Self.adjustZero[k], GradeValues.adjustLimit(k)) }
         for k in Self.detailKeys { details[k] = Self.limited(rawDetails?[k], fallback: p?.details[k] ?? Self.detailDefaults[k], GradeValues.detailLimit(k)) }
