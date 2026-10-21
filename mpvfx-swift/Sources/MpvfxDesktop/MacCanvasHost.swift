@@ -25,6 +25,7 @@ final class MacCanvasHost: NSView {
     /// Cursor for a point (resize seams); nil = arrow.
     var cursorAt: ((Double, Double) -> NSCursor?)?
     var lastSize = CanvasSize(0, 0)
+    var accessibilityControls: (() -> [CanvasAccessibilityControl])?
     /// A file drag from Finder moved over the canvas (nil: it left).
     var onFilesDragged: ((CanvasPoint?) -> Void)?
     /// Files dropped from Finder (local paths, view points).
@@ -41,6 +42,15 @@ final class MacCanvasHost: NSView {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func accessibilityChildren() -> [Any]? {
+        accessibilityControls?().map { control in
+            let local = NSRect(x: control.frame.x, y: control.frame.y, width: control.frame.width, height: control.frame.height)
+            let screen = window?.convertToScreen(convert(local, to: nil)) ?? local
+            return MacCanvasAccessibilitySwitch(parent: self, label: control.label, value: control.value,
+                                                frame: screen, press: control.press)
+        }
+    }
 
     func invalidate() { needsDisplay = true }
 
@@ -150,7 +160,7 @@ final class MacCanvasHost: NSView {
         let scale = precise ? 1.0 : 53.0
         let dx = -Double(e.scrollingDeltaX) * scale, dy = -Double(e.scrollingDeltaY) * scale
         guard dx != 0 || dy != 0 else { return }
-        input?.scroll(dx: dx, dy: dy, x: p.x, ctrl: e.modifierFlags.contains(.control), shift: e.modifierFlags.contains(.shift), precise: precise)
+        input?.scroll(dx: dx, dy: dy, x: p.x, ctrl: Self.modifiers(e).zoomsWheel, shift: e.modifierFlags.contains(.shift), precise: precise)
     }
 
     /// Trackpad pinch arrives in Chromium as a ctrl+wheel; do the same so the timeline zooms.
@@ -177,6 +187,10 @@ final class MacCanvasHost: NSView {
         input?.keyUp(k)
     }
 
+    /// F1…F12 as AppKit reports them in `charactersIgnoringModifiers`.
+    static let functionKeys = [NSF1FunctionKey, NSF2FunctionKey, NSF3FunctionKey, NSF4FunctionKey, NSF5FunctionKey, NSF6FunctionKey,
+                               NSF7FunctionKey, NSF8FunctionKey, NSF9FunctionKey, NSF10FunctionKey, NSF11FunctionKey, NSF12FunctionKey]
+
     static func key(_ e: NSEvent) -> EditorKey? {
         let code: EditorKey.Code
         switch e.keyCode {
@@ -193,14 +207,31 @@ final class MacCanvasHost: NSView {
         case 36, 76: code = .enter      // return, keypad enter
         case 48: code = .tab
         default:
-            // Shift is kept (like a GDK keyval), other modifiers are not; function keys are private-use scalars.
-            guard let scalar = e.charactersIgnoringModifiers?.unicodeScalars.first,
-                  scalar.value > 32, !(0xF700...0xF8FF).contains(scalar.value) else { return nil }
+            // Shift is kept (like a GDK keyval), other modifiers are not; function keys are private-use scalars:
+            // F1…F12 become EditorKey.Code.function, the others are dropped.
+            guard let scalar = e.charactersIgnoringModifiers?.unicodeScalars.first, scalar.value > 32 else { return nil }
+            if let n = Self.functionKeys.firstIndex(of: Int(scalar.value)) { code = .function(n + 1); break }
+            guard !(0xF700...0xF8FF).contains(scalar.value) else { return nil }
             code = .char(Character(scalar))
         }
         let f = e.modifierFlags
         return EditorKey(code, shift: f.contains(.shift), ctrl: f.contains(.control), alt: f.contains(.option),
                          meta: f.contains(.command), isRepeat: e.type == .keyDown && e.isARepeat)
     }
+}
+
+private final class MacCanvasAccessibilitySwitch: NSAccessibilityElement {
+    private let action: () -> Void
+    init(parent: Any, label: String, value: Bool, frame: NSRect, press: @escaping () -> Void) {
+        action = press
+        super.init()
+        // NSAccessibilityElement's role/frame/label/parent constructor is a class method, not an init.
+        setAccessibilityRole(.checkBox)
+        setAccessibilityLabel(label)
+        setAccessibilityParent(parent)
+        setAccessibilityFrameInParentSpace(frame)
+        setAccessibilityValue(value)
+    }
+    override func accessibilityPerformPress() -> Bool { action(); return true }
 }
 #endif

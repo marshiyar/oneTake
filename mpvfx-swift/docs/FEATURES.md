@@ -48,19 +48,19 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 
 | Ability | Swift status | Visual |
 | --- | --- | --- |
-| Libraries header with New library / Open | done (panels UI over `DesktopBackend` libraries) | close |
-| Library / Event / Project pickers, New event, New project, switch project | done | close |
-| Import into event (copy into library / link originals), attach asset, relink | done | close |
-| Collapsible "Library media (N)" and "Library exports (N)" | done | close |
-| Export records "Save to…" | missing (panels) | n/a |
-| Show library in Finder; Open existing standalone project | done | close |
+| Media-first header row: the library ▸ event switcher (one menu of libraries and events), Import (the primary button) and "…" | done (panels UI over `DesktopBackend` libraries; `LeftSidebarPanel+Header.swift`, `MediaPanelTests`) | n/a |
+| "…" menu: New library, Open library, New event, Import into the event (copy into library / link originals), Show library in Finder (Files, File Explorer), the event's projects (switch), New project, Open project…, Open existing standalone project, Recent projects | done (`LeftSidebarPanel+Menus.swift`, `testMoreMenuRunsEveryLibraryAndProjectAction`) | n/a |
+| Library media (files of the event not yet in this project) and Exports as grid sections and filter choices; add to the timeline, relink and Save as… on the tile (hover button, context menu, Enter) | done (`MediaSections.swift`, `testLibraryMediaAndExportsAreSectionsWithoutDuplicates`, `testTileHoverActionAddsAttachesAndSaves`) | n/a |
+| Export records "Save to…" | partial: Save as… on a finished export's tile | n/a |
+| The standalone project status | done: the switcher's tooltip and status-line hint | n/a |
 | Tab bar Media / Scenes / Elements (Scenes only with sub-compositions, Elements only with blocks) | done (Elements never shows: blocks dropped) | exact |
 | Tab persisted, ←/→ and ⌘1/⌘2 tab switching | done | n/a |
 | "+ Import media" button (file dialog) | done | exact |
 | Drag-and-drop import from Finder / desktop onto the bin | done: MacCanvasHost (file URLs) and GtkCanvasHost (text/uri-list) hand dropped files to the session, which imports them through the backend (the bin lists them); dropped over the timeline's tracks the clips are also placed from the drop time on, one after another, with the drop outline while hovering (`EditorSession+AssetDrag.swift`). The import probes each picture's natural size (sample aspect, rotation, JPEG EXIF orientation) so the first frame drawn is already the fitted box on every insert path; a clip whose size is still probing is not drawn | close |
-| Search assets, "No assets match", Clear search | done | exact |
-| Categories Video / Images / Audio / Fonts with counts, used assets first | done | exact |
-| Video/image cards: real thumbnails, kind and duration badges, "Added" badge, middle-truncated name | done (shared `MediaThumbnails`, 4601932) | exact |
+| Search media, filter menu (kind, timeline use, order) with its summary line and Clear, "No media matches", Clear search / Clear filters | done (`testFilterNarrowsByKindAndTimelineUseAndSorts`, `testEmptyStatesOfferTheWayBack`) | n/a |
+| Sections Video / Images / Audio / Fonts / Library media / Exports with counts, timeline media first by default | done | n/a |
+| Tiles on one inset and grid (2 columns at 280 and 364 pt, 3 at 409 pt): thumbnails filling a 16:9 tile, duration badge, a check when in the timeline, "Missing" for a library file whose original is gone, names on two end-truncated lines with the full name in a tooltip; hover, selection and focus states | done (shared `MediaThumbnails`; `MediaPanelLayoutAuditTests`, `MediaPanelSnapshotTests`) | n/a |
+| Keyboard: Tab through the header and into the grid, arrows across and down the grid, Enter adds, Shift+Enter opens the tile's menu, Escape clears | done (`testKeyboardMovesTheSelectionAndRunsTheAction`, `testTabWalksTheControlsThenTheGrid`) | n/a |
 | Audio rows: icon, name, duration, waveform bars | done | exact |
 | Asset preview overlay / audition (play an asset) | missing (panels) | n/a |
 | Drag from bin to timeline (insert at drop time/track) | done: a 4 px drag starts it, the drop inserts at the pointer's time on the track under it when the kind fits and the track is unlocked (`EditorSession+AssetDrag.swift`); while over the tracks the drop outline shows (1 px accent/60 inside the tracks area, `AssetDropOutline`); edge auto-scroll during the drag is missing | close |
@@ -89,7 +89,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Transform: flex align/justify/direction/gap | dropped: flex layout of web containers has no native counterpart | n/a |
 | Keyframe diamond and prev/next per property | done: with the stopwatch (start / stop animating, keeping the playhead's value) on the same row | close |
 | Keyframe easing presets (hold / linear / ease in/out) | done (setOutgoing) | close |
-| Keyframe easing custom curve handles, per-segment ease list, apply to all | partial: custom curve handles work; per-segment ease lists and apply to all are missing (panels) | close |
+| Keyframe easing custom curve handles, per-segment ease list, apply to all | done in the Keyframe Easing panel (the right panel's Easing tab; the inspector's "Easing…", the keyframe menu's "Edit Easing…", the ☰ menu and macOS View > Keyframe Easing open it): value and speed graphs with draggable speed handles, zoom and pan, the segment curve with handles and a motion preview, presets plus the project's own (saved in `project.json`), copy / paste, influence and speed numbers, F9 / ⇧F9 / ⌘⇧F9 easy ease; every edit applies to every selected key in one undo step. Spring and bounce (#192) and separate dimensions (#193) are shown disabled until the engine or the document supports them (`docs/KEYFRAME_EASING.md`) | close |
 | Ease curve editor (cubic bezier handles, spring, bounce params) | partial: cubic bezier handles work; spring and bounce parameters are missing (panels) | close |
 | Arc motion (needs 2+ position keyframes; auto-rotate; reset control points) | done: Transform group rows (the note under 2 keyframes, Arc Motion switch, Auto-Rotate, curviness 0-3 per segment) write `setMotionPath` / `setAutoRotate`; preview and export draw the same curved path, and export now adds the auto-rotate tangent like the preview (it ignored it before); one audit test per control. Not ported: Reset of hand-placed bezier control points (no stage handles for them) | close |
 | 3D transform: tilt X/Y, roll, depth, perspective, scale; cube widget; keyframe; reset orientation | missing (panels; recording writes 3D rotation, the inspector has no rows) | n/a |
@@ -101,7 +101,8 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Mask inset rows | missing (panels) | n/a |
 | Clip timing: start, end, duration | removed on purpose (2026-10-13): the timeline rows move, trim and split clips; speed stays as Rate in Media (see §13) | n/a |
 | Media: volume, muted, rate, media start, play video sound | done | exact |
-| Media: loop, fit, object position | missing in the native document (panels + preview) | n/a |
+| Media: fit (Fit, Fill, Stretch) | done: the Media group's Fit select on video and image clips, one undo step, with the reset back to Fit; saved as `clip.fit` (absent = Fit, so older projects open and save unchanged). Fill covers the box keeping the aspect and clips the overflow; Stretch maps the picture onto the box; an untouched Fill or Stretch clip's box is the whole frame. Preview and export draw it with one painter (`NativeClipLayout.swift` `nativeMediaRect`, `PreviewComposition.swift`, `InspectorPanel+MediaFit.swift`) | close |
+| Media: loop, object position | missing in the native document (panels + preview) | n/a |
 | Text: content, multiple fields, font picker, size, weight, color, align, letter spacing, line height, case/style | partial: native text layers (`clip.text` on a Text element asset; T adds one at the playhead). The Text group comes first, in this order: Content (`\n` breaks a line), Font (family name), Size, Weight (number or label), Letter spacing (px/em), Line height (multiple, %, px, normal), Align L/C/R/J, Case · Style, Color (hex). Preview and export draw one layout (`TextLayout`: wrap at the box width, half-leading line boxes, justify, per-character spacing); export rasterizes it with the preview's renderer into a still the clip renders like an image, so transform, crop, style and opacity apply. Missing: several text fields per layer, the font picker popover, the colour picker | close |
 | Import local font files | partial: fonts import into the media bin (Fonts category); a text layer uses an installed family by name, not an imported file yet | n/a |
 | Grade: presets, intensity, primary adjust, color wheels (shadows/midtones/highlights with hue/amount/level and reset) | done; renders in preview and export (color-engine, 3fe63d2 / 5dbd897), on the GPU (Metal) on macOS, graded off the main thread at display size in preview | close |
@@ -134,7 +135,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Move / resize / rotate handles, crop handles, marquee, shift multi-select, group move | done (player) |
 | Snap guides & toolbar, grid overlay (thirds/quarters/center, snap to grid) | done (player) |
 | Arrow-key nudge (1 / 10 px, one commit per burst), Esc cancels a drag | done (player) |
-| Gesture recording (position, rotation, 3D rotation, opacity, scale, depth) with trail, auto-stop, one undo step | done (player; `GestureRecording.swift`) |
+| Record motion (position, rotation, 3D rotation, opacity, scale, depth): Record or R arms; a press on the selected layer or a handle starts a take that plays from the playhead, the layer keeps its grab offset, release commits one "Record motion" undo step, Esc cancels or disarms; locked and hidden layers refused; one sample per frame, simplified | done (player; `PlayerController+Record.swift`, `GestureRecording.swift`; `RecordMotionTests`, `RecordMotionShellTests`) |
 | Canvas context menu (z-order, delete) with the crossed-sibling flash | partial: z-order and delete work; copy and paste are missing |
 | Asset drop on the stage (insert at playhead) | done: bin cards drag into it (`EditorSession+AssetDrag.swift`) |
 | Preview zoom / pan (wheel, pinch, middle-button drag), zoom readout, fit button | done (player, hosts forward the middle button) |
@@ -171,9 +172,10 @@ their shape (`PlayerView+Outlines.swift`).
 | Remove silence (backend silence detection → one undo step, result toast) | done (de10f47) |
 | Add beat at playhead, beat strip (drag to move, ⌥-click delete), music beat analysis, beat edits persisted | missing (unowned: needs a native beat analysis and the beat file) |
 | Keyframe lanes, keyframe navigation in lane headers, group keyframe toggle (6671f11) | done |
-| Keyframe diamond context menu (delete, delete all, ease presets) | partial: right-click a diamond for Move to Playhead, Linear / Ease In / Ease Out / Ease In-Out / Hold (checked when every target key shares it), Edit Easing… (opens the inspector's easing editor, custom curve included, on the keys), Delete Keyframe(s) and Delete All Keyframes (the clip bar's channels, or the lane's group); it acts on the key selection when the diamond is part of it, each edit one undo step (`TimelineKeyframeMenu.swift`); "Edit Incoming Segment Ease…" is not ported |
+| Keyframe diamond context menu (delete, delete all, ease presets) | partial: right-click a diamond for Move to Playhead, Linear / Ease In / Ease Out / Ease In-Out / Hold (checked when every target key shares it), Edit Easing… (opens the Keyframe Easing panel on the keys), Delete Keyframe(s) and Delete All Keyframes (the clip bar's channels, or the lane's group); it acts on the key selection when the diamond is part of it, each edit one undo step (`TimelineKeyframeMenu.swift`); "Edit Incoming Segment Ease…" is not ported |
 | Audio groups: create, header FX count, FX button / name open the bus rack, detach/reattach audio, mute | done |
 | Detach / Reattach audio from the clip menu: offered on any video clip with a media file (native clips carry no preview binding); detach probes the file for an audio stream, puts a linked audio clip on a new audio row with the same timing, trim, rate, gain, group, FX and automation and mutes the video (its Mute row hidden); reattach refuses after a move / trim / retime or a broken link with a message naming why; one undo step each; preview and export play the sound once | done |
+| Clip fades: fade-in and fade-out lengths on a clip (`fadeInFrames` / `fadeOutFrames`, independent of keyframes), a linear gain ramp on the clip's sound heard the same in playback and export; split keeps the fade-in on the left part and the fade-out on the right, trims and speed changes clamp them (#85) | partial: in the document, playback and export (`NativeClipFade.swift`, `AudioGraph.swift` `ClipFadeRamp`); video opacity and timeline fade handles not yet built |
 | Volume automation lanes, automation selection menu (Simplify), value input | partial: automation plays and exports; lane editing UI partial |
 | Filmstrips and waveforms from the shared media cache, Show thumbnails toggle (314d72a, 71fdbd6) | done |
 | Undo history persists across sessions per project (751c6c7) | done |
@@ -222,7 +224,8 @@ The timeline lane's 314d72a added its own filmstrip cache; 71fdbd6 moved strips 
 
 | Ability | Swift status |
 | --- | --- |
-| Gesture recording (Record button, trail, auto-stop, one undo step) | done (preview) |
+| Record motion (Record control with armed and recording states, stage outline and banner, trail, auto-stop, one undo step) | done (preview) |
+| Captions: caption track in the document, SRT import and export (backend) | partial: no menu entry yet (see `STATUS.md`) |
 | Captions: overlay, caption timeline, caption editing, caption property panel, Edit captions entry in the preview | missing (unowned) |
 | Telemetry, crash prompt, feedback card | not part of the product |
 | Packaging and installers | partial: macOS disk image, Windows per-user setup.exe and Linux .deb; CI has built, installed and launched all three, and their smoke checks passed (see `STATUS.md`) |
@@ -247,13 +250,13 @@ Every item of the owner's screenshot review, with its status now.
 
 | Item | Status |
 | --- | --- |
-| Libraries header with New library / Open | done |
-| Library picker; Event/"Media" picker + New event; Project picker + New project | done |
-| Collapsible "Library media (N)" and "Library exports (N)" | done |
-| Show library in Finder; Open existing standalone project | done |
-| "+ Import media" button; collapse-sidebar control | done |
-| Search assets field | done |
-| Media bin grouped by type with real thumbnails, duration badge, "Added" badge, filenames | done |
+| Libraries header with New library / Open | done; moved into the Media panel's "…" menu (2026-10-21) |
+| Library picker; Event/"Media" picker + New event; Project picker + New project | done; the library ▸ event switcher, projects and New event / New project in "…" (2026-10-21) |
+| Collapsible "Library media (N)" and "Library exports (N)" | done; now the Library media and Exports sections of the grid (2026-10-21) |
+| Show library in Finder; Open existing standalone project | done; in "…" (2026-10-21) |
+| "+ Import media" button; collapse-sidebar control | done; Import is the header row's primary button (2026-10-21) |
+| Search assets field | done; Search media with the filter menu (2026-10-21) |
+| Media bin grouped by type with real thumbnails, duration badge, "Added" badge, filenames | done; the "Added" badge is a check now, names wrap to two lines (2026-10-21) |
 | Player top bar: Record, Crop, snap/magnet toggle, grid/guides dropdown | done (preview) |
 | Real decoded video frame | done (preview) |
 | Selection outline with corner handles | done (preview) |

@@ -25,11 +25,10 @@ public struct GradeUIState: Equatable {
     public var lutOpen = false
     public var finishSettings: String?        // "vignette" | "grain"
     public var copyToProject = false
-    /// Live values while a wheel / curve point is dragged (committed on release).
+    /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
     /// Geometry from the last draw (rows are rebuilt per event, so it lives here).
-    var wheelRects: [CanvasRect] = []
     var curveBox = CanvasRect(x: 0, y: 0, width: 1, height: 1)
     /// Scopes disclosure (closed by default) and its mode (waveform first).
     public var scopesOpen = false
@@ -54,6 +53,15 @@ public struct GradeUIState: Equatable {
 /// Grade group: presets, Amount, Primary, Color wheels, Curves (7 modes),
 /// Secondary color, Custom LUT, Finish, Copy grade to. Edits write the clip's color-grading effect (undoable).
 extension InspectorPanel {
+    var isGradePasteEnabled: Bool {
+        guard onPasteGrade != nil, gradeClipboardAvailable, let editor else { return false }
+        let kinds = Dictionary(editor.document.assets.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first })
+        return selection.contains { id in
+            guard let clip = editor.clip(id)?.clip else { return false }
+            return kinds[clip.assetId] == .video || kinds[clip.assetId] == .image
+        }
+    }
+
     /// Curve tabs; `color` is the tab's line/point token (ThemeTokens.curve*Pair), so light mode draws dark ink.
     static let curveTabs: [(key: String, label: String, color: ThemePair, hue: Bool, min: Double, max: Double)] = [
         ("master", "Master", ThemeTokens.curveMasterPair, false, 0, 1), ("red", "R", ThemeTokens.curveRedPair, false, 0, 1),
@@ -70,7 +78,7 @@ extension InspectorPanel {
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
         let presets = ColorGrading.gradePresets
-        let lut = g.lut
+        let lut = g.lut, version = g.version
         // Sections `space-y-3`: Scopes, then the preset block (`space-y-1.5`) whose "Retry look previews" link shows
         // while the look frames are unavailable (an inline button on an 18px line).
         rows.append(.init(.custom(scopesRow(s.id))))
@@ -80,8 +88,8 @@ extension InspectorPanel {
             gap(6)
         }
         rows.append(.init(.custom(presetGrid(presets, selected: g.preset, preview: { [weak self] id, w, h in
-            self?.presetPreview?(PresetPreviewRequest(clipId: s.id, presetId: id, lutSrc: lut?.src, lutIntensity: lut?.intensity ?? 1,
-                                                      pixelWidth: w, pixelHeight: h)) ?? .unavailable
+            self?.lookPreview(PresetPreviewRequest(clipId: s.id, presetId: id, lutSrc: lut?.src, lutIntensity: lut?.intensity ?? 1,
+                                                   pixelWidth: w, pixelHeight: h, version: version)) ?? .failed(.noRenderer)
         }, onPick: { p in commit(g.applying(p)) }))))
         gap(6)
         rows.append(.init(.slider(.init(key: "grade:amount", label: "Amount", position: g.intensity * 100, min: 0, max: 100,
@@ -99,18 +107,27 @@ extension InspectorPanel {
             rows.append(.init(.slider(.init(key: "grade:adj:\(a.key)", label: a.label, position: v, min: a.min, max: a.max, display: fmt(v), format: fmt,
                                             tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
                                             commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
-                                            reset: { var n = g; n.adjust[a.key] = nil; commit(n) }))))
+                                            reset: { var n = g; n.adjust[a.key] = 0; commit(n) }))))   // 0, not nil: a missing key reads the preset's value
+            if a.key == "contrast" { gap(2); rows.append(pivotSlider(g, commit: commit)) }
         }
         gap(6)
         rows.append(.init(.section("Color wheels")))
         gap(6)
-        rows.append(.init(.custom(colorWheels(g, commit: commit))))
+        rows.append(.init(.custom(colorWheels(g, .balance, commit: commit)), controls: wheelFieldControls(g, .balance, commit: commit)))
+        if g.showsTonalWheels {   // a contract 2 grade's Shadows / Midtones / Highlights stay editable
+            gap(12)
+            rows.append(.init(.heading("Tonal wheels", trailing: nil)))
+            rows.append(.init(.custom(colorWheels(g, .tonal, commit: commit)), controls: wheelFieldControls(g, .tonal, commit: commit)))
+        }
         gap(6)
         rows.append(.init(.section("Curves")))
         gap(6)
         rows.append(.init(.custom(curveTabsRow())))
         gap(8)
-        rows.append(.init(.custom(curveGraph(g, commit: commit))))
+        var graph = curveGraph(g, commit: commit)
+        // Enter on the focused graph adds the midpoint (as with no focus); Space never adds a point (issue #171).
+        graph.keyPress = { [weak self] _, k in k.code == .space || (k.code == .enter && (self?.gradeKey(k) ?? true)) }
+        rows.append(.init(.custom(graph)))
         gap(8)
         rows.append(.init(.custom(curveFooter(g, commit: commit))))
         gap(6)
@@ -131,29 +148,66 @@ extension InspectorPanel {
         // Copy grade to: `flex justify-between border-t border-panel-hairline pt-1.5`, a 11px text-2 label with a
         // mono 11px text-0 select on a border-input/50 underline (clicking flips the two scopes), Apply in accent.
         gap(6)
+        rows.append(.init(.custom(gradeClipboardRow())))
+        gap(4)
         rows.append(.init(.custom(copyGradeRow(g, apply: { [weak self] in
             guard let self else { return }
             self.edited(editor.copyColorGrading(from: s.id, toAllProjectMedia: self.grade.copyToProject) > 0)
         }))))
-        let summary = "\(g.preset ?? "neutral") · \(Int((g.intensity * 100).rounded()))%"
+        let summary = g.enabled ? "\(g.preset ?? "neutral") · \(Int((g.intensity * 100).rounded()))%" : "off"
         var group = InspectorGroup(id: "grade", title: "Grade", summary: summary, rows: rows, spacing: 0)
+        group.enabled = g.enabled
+        group.accessibilityLabel = "Grade enabled"
+        group.setEnabled = { v in var n = g; n.enabled = v; commit(n) }
         // FlatColorGradingAccessory's reset (RotateCcw 12, text-3). Hold-to-compare and the runtime status pill are
         // not drawn: the native preview has no compare bypass or runtime handshake yet.
         group.reset = g.isAuthored ? { commit(ColorGrading()) } : nil
         return group
     }
 
+    /// Contrast's pivot (issue #176): the luma that contrast leaves unchanged, 50% by default (how older grades draw).
+    func pivotSlider(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorRow {
+        let v = g.pivotValue * 100
+        let fmt: (Double) -> String = { "\(Int($0.rounded()))%" }
+        return .init(.slider(.init(key: "grade:adj:pivot", label: "Pivot", position: v, min: 0, max: 100, display: fmt(v), format: fmt,
+                                   tier: abs(v - 50) > 1e-6 ? .explicitCustom : .default, centerTick: true,
+                                   commit: { x in var n = g; n.pivot = (min(100, max(0, x)) * 10).rounded() / 1000; commit(n) },
+                                   reset: { var n = g; n.pivot = nil; commit(n) })))
+    }
+
+    func gradeClipboardRow() -> InspectorCustomRow {
+        InspectorCustomRow(id: "grade:clipboard", height: 28, draw: { [weak self] c, r, panel in
+            guard let self else { return }
+            let pasteEnabled = self.isGradePasteEnabled
+            let gap = 6.0, width = (r.width - gap) / 2
+            let copy = CanvasRect(x: r.x, y: r.y + 2, width: width, height: 24)
+            let paste = CanvasRect(x: copy.maxX + gap, y: copy.y, width: width, height: 24)
+            PanelDraw.smallButton(c, copy, label: "Copy grade",
+                                  fill: panel.hovered == .custom("grade:clipboard", 0) ? PanelTheme.panelHover : PanelTheme.panelSurface,
+                                  color: PanelTheme.text1)
+            PanelDraw.smallButton(c, paste, label: "Paste grade",
+                                  fill: panel.hovered == .custom("grade:clipboard", 1) ? PanelTheme.panelHover : PanelTheme.panelSurface,
+                                  color: pasteEnabled ? PanelTheme.text1 : PanelTheme.text4)
+            panel.addHit(copy, .custom("grade:clipboard", 0))
+            if pasteEnabled { panel.addHit(paste, .custom("grade:clipboard", 1)) }
+        }, pointer: { [weak self] part, _, phase in
+            guard let self, phase == 0 else { return }
+            _ = part == 0 ? onCopyGrade?() : onPasteGrade?()
+            onEdited?()
+        })
+    }
+
     func copyGradeRow(_ g: ColorGrading, apply: @escaping () -> Void) -> InspectorCustomRow {
-        InspectorCustomRow(id: "grade:copyto", height: 24.5, draw: { [weak self] c, r, panel in
+        InspectorCustomRow(id: "grade:copyto", height: 32, draw: { [weak self] c, r, panel in
             guard let self else { return }
             c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-            let line = CanvasRect(x: r.x, y: r.y + 7, width: r.width, height: 16.5)
+            let line = CanvasRect(x: r.x, y: r.y + 5, width: r.width, height: 24)
             let label = "Copy grade to"
             let lw = c.measureText(label, font: PanelTheme.font(11)).width
             PanelDraw.text(c, label, in: CanvasRect(x: line.x, y: line.y, width: lw + 1, height: 16.5), font: PanelTheme.font(11), color: PanelTheme.text2)
             let option = self.grade.copyToProject ? "All project media" : "Current file media"
             let ow = c.measureText(option, font: PanelTheme.mono(11)).width + 18
-            let sel = CanvasRect(x: line.x + lw + 6, y: line.y, width: ow, height: 16.5)
+            let sel = CanvasRect(x: line.x + lw + 6, y: line.y, width: ow, height: 24)
             let hot = panel.hovered == .custom("grade:copyto", 0)
             PanelDraw.text(c, option, in: CanvasRect(x: sel.x, y: sel.y, width: ow - 14, height: 16.5), font: PanelTheme.mono(11), color: PanelTheme.text0)
             PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: sel.maxX - 11, y: sel.midY - 5, width: 10, height: 10), color: PanelTheme.text3)
@@ -161,7 +215,7 @@ extension InspectorPanel {
                        hot ? PanelTheme.panelBorderInput : PanelTheme.panelBorderInput.withAlpha(0.5))
             panel.addHit(sel.insetBy(-2), .custom("grade:copyto", 0))
             let aw = c.measureText("Apply", font: PanelTheme.font(11, .medium)).width
-            let ap = CanvasRect(x: r.maxX - aw, y: line.y, width: aw, height: 16.5)
+            let ap = CanvasRect(x: r.maxX - aw - 8, y: line.y, width: aw + 8, height: 24)
             let enabled = g.isAuthored
             PanelDraw.text(c, "Apply", in: ap, font: PanelTheme.font(11, .medium),
                            color: enabled ? (panel.hovered == .custom("grade:copyto", 1) ? PanelTheme.accent.withAlpha(0.8) : PanelTheme.accent) : PanelTheme.accent.withAlpha(0.5))
@@ -179,7 +233,7 @@ extension InspectorPanel {
                                       display: "\(Int(v.rounded()))%", format: { "\(Int($0.rounded()))%" },
                                       tier: abs(v - def) > 1e-6 ? .explicitCustom : .default,
                                       commit: { x in var n = g; n.details[key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
-                                      reset: { var n = g; n.details[key] = nil; commit(n) })
+                                      reset: { var n = g; n.details[key] = ColorGrading.defaultDetail(key); commit(n) })   // explicit, as above
         if gear {   // Vignette settings / Grain settings
             row.settings = (grade.finishSettings == key, { [weak self] in
                 guard let self else { return }
@@ -198,62 +252,72 @@ extension InspectorPanel {
     func scopesRow(_ clipId: String) -> InspectorCustomRow {
         let open = grade.scopesOpen
         let canvasH = (bodyContentWidth - 2) * Double(ColorScopes.bitmapHeight) / Double(ColorScopes.bitmapWidth) + 2
-        let height = open ? 28 + 23.5 + 6 + canvasH + 7 : 35
-        return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, panel in
+        let height = open ? 28 + Self.scopeTabsHeight + 6 + canvasH + 7 : 35
+        return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, _ in
             guard let self else { return }
             let state: PresetPreviewState? = open ? (self.scopeFrame?(clipId, ColorScopes.bitmapWidth, ColorScopes.bitmapWidth) ?? .unavailable) : nil
-            let status: String
-            switch state {
-            case nil: status = "Off"
-            case .ready?: status = "ready"
-            case .rendering?: status = "loading"
-            case .unavailable?: status = "unavailable"
-            }
             let head = CanvasRect(x: r.x, y: r.y, width: r.width, height: 28)
-            let refreshW = open ? 18.0 + 8 : 0
-            let toggle = CanvasRect(x: head.x, y: head.y, width: head.width - refreshW, height: 28)
-            PanelDraw.text(c, "Scopes", in: CanvasRect(x: toggle.x, y: toggle.midY - 8.25, width: 80, height: 16.5),
-                           font: PanelTheme.font(11), color: PanelTheme.text2)
-            let sw = c.measureText(status, font: PanelTheme.font(9)).width
-            PanelDraw.text(c, status, in: CanvasRect(x: toggle.maxX - sw - 0.5, y: toggle.midY - 6.75, width: sw + 1, height: 13.5),
-                           font: PanelTheme.font(9), color: PanelTheme.text5)
-            panel.addHit(toggle, .custom("grade:scopes", 0))
-            if open {
-                let rb = CanvasRect(x: head.maxX - 18, y: head.midY - 9, width: 18, height: 18)
-                PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4), color: panel.hovered == .custom("grade:scopes", 1) ? PanelTheme.text1 : PanelTheme.text4)
-                panel.addHit(rb, .custom("grade:scopes", 1))
-                var x = r.x
-                for (i, m) in ColorScopes.Mode.allCases.enumerated() {
-                    let on = self.grade.scopeMode == m
-                    let tw = c.measureText(m.label, font: PanelTheme.font(9)).width
-                    let tab = CanvasRect(x: x, y: head.maxY, width: tw, height: 23.5)
-                    let hov = panel.hovered == .custom("grade:scopes", 2 + i)
-                    PanelDraw.text(c, m.label, in: CanvasRect(x: tab.x, y: tab.y + 4, width: tw + 1, height: 13.5), font: PanelTheme.font(9),
-                                   color: on ? PanelTheme.text1 : (hov ? PanelTheme.text2 : PanelTheme.text4))
-                    if on { c.fillRect(CanvasRect(x: tab.x, y: tab.maxY - 2, width: tw, height: 2), PanelTheme.accent) }
-                    panel.addHit(tab, .custom("grade:scopes", 2 + i))
-                    x += tw + 8
-                }
-                let box = CanvasRect(x: r.x, y: head.maxY + 23.5 + 6, width: r.width, height: canvasH)
-                c.fillRect(box, PanelTheme.stageScrim)   // scopes draw on black in both modes
-                var frame: CanvasImage?
-                if case .ready(let img)? = state { frame = img }
-                c.drawImage(self.scopeBitmap(frame), in: box.insetBy(1))
-                c.strokeRect(box.insetBy(0.5), PanelTheme.panelHairline, width: 1)
-            }
+            self.drawScopesHead(c, head, status: Self.scopesStatus(state), open: open)
+            if open { self.drawScopesBody(c, CanvasRect(x: r.x, y: head.maxY, width: r.width, height: Self.scopeTabsHeight + 6 + canvasH), state) }
             c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
-            switch part {
-            case 0: self.grade.scopesOpen.toggle(); self.grade.scopeMemo = nil
-            case 1: self.grade.scopeMemo = nil
-            default:
-                let modes = ColorScopes.Mode.allCases
-                if modes.indices.contains(part - 2) { self.grade.scopeMode = modes[part - 2] }
-            }
+            self.scopesPressed(part)
             self.onEdited?()
         })
     }
+
+    static func scopesStatus(_ state: PresetPreviewState?) -> String {
+        switch state {
+        case nil: "Off"
+        case .ready?: "ready"
+        case .rendering?: "loading"
+        case .unavailable?, .failed?: "unavailable"
+        }
+    }
+
+    /// "Scopes" and its status (the toggle, part 0), and while open the refresh button (part 1).
+    func drawScopesHead(_ c: CanvasContext, _ head: CanvasRect, status: String, open: Bool) {
+        let refreshW = open ? 18.0 + 8 : 0
+        let toggle = CanvasRect(x: head.x, y: head.y, width: head.width - refreshW, height: head.height)
+        PanelDraw.text(c, "Scopes", in: CanvasRect(x: toggle.x, y: toggle.midY - 8.25, width: 80, height: 16.5),
+                       font: PanelTheme.font(11), color: PanelTheme.text2)
+        let sw = c.measureText(status, font: PanelTheme.font(9)).width
+        PanelDraw.text(c, status, in: CanvasRect(x: toggle.maxX - sw - 0.5, y: toggle.midY - 6.75, width: sw + 1, height: 13.5),
+                       font: PanelTheme.font(9), color: PanelTheme.text5)
+        addHit(toggle, .custom("grade:scopes", 0))
+        guard open else { return }
+        let rb = CanvasRect(x: head.maxX - 18, y: head.midY - 9, width: 18, height: 18)
+        PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4), color: hovered == .custom("grade:scopes", 1) ? PanelTheme.text1 : PanelTheme.text4)
+        addHit(rb, .custom("grade:scopes", 1))
+    }
+
+    /// The mode tabs (parts 2…) and, 6 below them, the scope of the graded frame on black.
+    func drawScopesBody(_ c: CanvasContext, _ r: CanvasRect, _ state: PresetPreviewState?) {
+        drawInlineTabs(c, PanelTabBar(tabs: Self.scopeTabs, selected: grade.scopeMode.label, style: .inline), row: ("grade:scopes", base: 2),
+                       in: CanvasRect(x: r.x, y: r.y, width: r.width, height: Self.scopeTabsHeight))
+        let box = CanvasRect(x: r.x, y: r.y + Self.scopeTabsHeight + 6, width: r.width, height: r.height - Self.scopeTabsHeight - 6)
+        c.fillRect(box, PanelTheme.stageScrim)   // scopes draw on black in both modes
+        var frame: CanvasImage?
+        if case .ready(let img)? = state { frame = img }
+        c.drawImage(scopeBitmap(frame), in: box.insetBy(1))
+        c.strokeRect(box.insetBy(0.5), PanelTheme.panelHairline, width: 1)
+    }
+
+    func scopesPressed(_ part: Int) {
+        switch part {
+        case 0: grade.scopesOpen.toggle(); grade.scopeMemo = nil
+        case 1: grade.scopeMemo = nil
+        default:
+            let modes = ColorScopes.Mode.allCases
+            let pick: (Int) -> Void = { [weak self] i in if modes.indices.contains(i) { self?.grade.scopeMode = modes[i]; self?.onEdited?() } }
+            if let i = inlineTab("grade:scopes", part: part, select: pick) { pick(i) }
+        }
+    }
+    /// Keyed by label: the scope modes have no other stable string, and the label is what the overflow menu lists.
+    /// The scope mode tabs, by label (the mode's label is its tab id).
+    static var scopeTabs: [PanelTab] { ColorScopes.Mode.allCases.map { PanelTab(id: $0.label, label: $0.label) } }
+    static let scopeTabsHeight = PanelGrid.rowHeight
 
     /// The scope bitmap for the current mode, redrawn only when the frame or the mode changed.
     func scopeBitmap(_ frame: CanvasImage?) -> CanvasImage {
@@ -287,8 +351,8 @@ extension InspectorPanel {
 
     /// FLAT_PREVIEW_GRID (`repeat(auto-fill,minmax(120px,1fr)) gap-1`): bordered tiles, a 16:9 `bg-black/20`
     /// preview over the label (`px-2 py-1.5 text-[10px]`). The selected tile: `border-panel-accent
-    /// bg-panel-accent/10 text-panel-text-0`; the rest hairline-bordered, text-3. The preview area stays empty
-    /// until a rendered look frame exists.
+    /// bg-panel-accent/10 text-panel-text-0`; the rest hairline-bordered, text-3. The preview area shows the look
+    /// frame, its "Rendering" caption, or a placeholder with the reason (`drawPreviewFrame`), never nothing.
     /// FLAT_PREVIEW_GRID height: ceil(count / columns) rows of (1 + 16:9 frame + 27 label + 1) tiles, `gap` apart.
     static func previewGridHeight(count: Int, width: Double, columns: Int = 3, gap: Double = 4) -> Double {
         guard count > 0 else { return 0 }
@@ -315,15 +379,9 @@ extension InspectorPanel {
                 let hov = panel.hovered == .custom("grade:presets", i)
                 if on { c.fillRect(tr, PanelTheme.accent.withAlpha(0.1)) }
                 let sw = CanvasRect(x: tr.x + 1, y: tr.y + 1, width: tr.width - 2, height: (tr.width - 2) * 9 / 16)
-                c.fillRect(sw, PanelTheme.stageScrim.withAlpha(0.2))
-                // The look frame, `object-contain` in the 16:9 frame, at the tile's device pixels.
-                let k = max(1, c.deviceScale)
-                if case .ready(let img) = preview(p.id, Int((sw.width * k).rounded()), Int((sw.height * k).rounded())) {
-                    c.withState {
-                        c.clip(sw)
-                        c.drawImage(img, in: Self.containRect(img.width, img.height, in: sw))
-                    }
-                }
+                // The look frame, `object-contain` in the 16:9 frame, at the tile's device pixels (capped).
+                let px = Self.tilePixels(sw, scale: c.deviceScale)
+                Self.drawPreviewFrame(c, sw, preview(p.id, px.width, px.height))
                 PanelDraw.text(c, p.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(10),
                                color: on ? PanelTheme.text0 : (hov ? PanelTheme.text1 : PanelTheme.text3))
                 c.strokeRect(tr.insetBy(0.5), on ? PanelTheme.accent : (hov ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)
@@ -340,123 +398,22 @@ extension InspectorPanel {
                           width: Double(w) * s, height: Double(h) * s)
     }
 
-    // MARK: Color wheels
-
-    /// Three `min-w-[88px] flex-1 space-y-1.5` columns `gap-2` apart. Each: label
-    /// (10 medium text-2) with a 10px reset; the 112px wheel (conic hue ring under a grey radial centre, 1px
-    /// border-input rim, 10px white-ringed puck at 46% × amount along the hue, hue 0 to the right, counter-
-    /// clockwise); the native `h-3` level range in the accent; the Hue / Amount / Level number fields.
-    func colorWheels(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorCustomRow {
-        let keys = ColorGrading.wheelKeys
-        let labels = ["Shadows", "Midtones", "Highlights"]
-        func wheelValue(_ k: String) -> ColorGrading.Wheel {
-            if let d = grade.wheelDraft, d.key == k { return d.wheel }
-            return g.wheel(k)
-        }
-        return InspectorCustomRow(id: "grade:wheels", height: 201.5, draw: { [weak self] c, r, panel in
-            guard let self else { return }
-            var geometry: [CanvasRect] = []
-            let gap = 8.0, colW = (r.width - gap * 2) / 3
-            var levels: [CanvasRect] = []
-            for (i, k) in keys.enumerated() {
-                let x = r.x + Double(i) * (colW + gap)
-                let w = wheelValue(k)
-                PanelDraw.text(c, labels[i], in: CanvasRect(x: x, y: r.y, width: colW - 14, height: 15), font: PanelTheme.font(10, .medium), color: PanelTheme.text2)
-                let reset = CanvasRect(x: x + colW - 10, y: r.y + 2.5, width: 10, height: 10)
-                PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("grade:wheels", 10 + i) ? PanelTheme.text1 : PanelTheme.text4)
-                panel.addHit(reset.insetBy(-3), .custom("grade:wheels", 10 + i))
-                let size = min(colW, 112)
-                let wr = CanvasRect(x: x + (colW - size) / 2, y: r.y + 21, width: size, height: size)
-                geometry.append(wr)
-                c.withState {
-                    c.clip(.roundedRect(wr, radius: size / 2))
-                    c.drawImage(HueWheelImage.image(), in: wr)
-                }
-                c.stroke(.roundedRect(wr.insetBy(0.5), radius: size / 2 - 0.5), PanelTheme.panelBorderInput, StrokeStyle(width: 1))
-                let hr = w.hue * .pi / 180, inner = size - 2
-                let px = wr.midX + cos(hr) * w.amount * 0.46 * inner, py = wr.midY - sin(hr) * w.amount * 0.46 * inner
-                c.stroke(.roundedRect(CanvasRect(x: px - 4, y: py - 4, width: 8, height: 8), radius: 4), PanelTheme.white, StrokeStyle(width: 2))
-                panel.addHit(wr, .custom("grade:wheels", i))
-                let lt = CanvasRect(x: x, y: wr.maxY + 6, width: colW, height: 12)
-                levels.append(lt)
-                Self.drawNativeRange(c, lt, fraction: (w.level + 1) / 2)
-                panel.addHit(lt.insetBy(-2), .custom("grade:wheels", 3 + i))
-                // GradingNumberField ×3 (`grid-cols-3 gap-1`): 8px uppercase text-5 label, mono 9 text-2 value right
-                // aligned over a border-input/50 underline.
-                let ny = lt.maxY + 6, cw = (colW - 8) / 3
-                for (j, (lab, val)) in [("HUE", Int(w.hue.rounded())), ("AMOUNT", Int((w.amount * 100).rounded())), ("LEVEL", Int((w.level * 100).rounded()))].enumerated() {
-                    let cx = x + Double(j) * (cw + 4)
-                    PanelDraw.text(c, lab, in: CanvasRect(x: cx, y: ny + 7, width: cw + 20, height: 12), font: PanelTheme.font(8), color: PanelTheme.text5)
-                    let field = CanvasRect(x: cx, y: ny + 26, width: cw, height: 18.5)
-                    PanelDraw.text(c, "\(val)", in: CanvasRect(x: field.x, y: field.y + 2, width: field.width, height: 13.5), font: PanelTheme.mono(9),
-                                   color: PanelTheme.text2, align: .right)
-                    c.fillRect(CanvasRect(x: field.x, y: field.maxY - 1, width: field.width, height: 1).snapped, PanelTheme.panelBorderInput.withAlpha(0.5))
-                }
-            }
-            geometry += levels
-            self.grade.wheelRects = geometry
-        }, pointer: { [weak self] part, p, phase in
-            guard let self else { return }
-            if part >= 10 { if phase == 0 { var n = g; n.wheels[keys[part - 10]] = nil; commit(n) }; return }
-            let idx = part % 3, key = keys[idx]
-            var w = wheelValue(key)
-            let geometry = self.grade.wheelRects
-            if part < 3, geometry.indices.contains(part) {   // wheelFromPointer: y up, hue from +x counter-clockwise
-                let wr = geometry[part], radius = max(1, wr.width / 2)
-                let dx = (p.x - wr.midX) / radius, dy = (wr.midY - p.y) / radius
-                var hue = atan2(dy, dx) * 180 / .pi; if hue < 0 { hue += 360 }; if hue >= 360 { hue -= 360 }
-                w.hue = (hue * 10).rounded() / 10
-                w.amount = (min(1, hypot(dx, dy)) * 1000).rounded() / 1000
-            } else if part >= 3, geometry.indices.contains(part) {
-                let lt = geometry[part]
-                w.level = ((max(0, min(1, (p.x - lt.x) / max(1, lt.width))) * 2 - 1) * 100).rounded() / 100
-            }
-            self.grade.wheelDraft = (key, w)
-            if phase == 2 { self.grade.wheelDraft = nil; var n = g; n.wheels[key] = w; commit(n) }
-        })
-    }
-
-    /// The reference's native range control in the accent colour (Linux): an 8px rounded track inset 1px, the filled part in the
-    /// accent with a darker 1px edge, the rest #efefef with a #b2b2b2 edge, and a 15px accent thumb.
-    static func drawNativeRange(_ c: CanvasContext, _ r: CanvasRect, fraction f: Double) {
-        let track = CanvasRect(x: r.x + 1, y: r.midY - 4, width: r.width - 1.7, height: 8)
-        let rad = 7.5
-        let cx = r.x + rad + (r.width - 2 * rad) * max(0, min(1, f))
-        c.withState {
-            c.clip(CanvasRect(x: cx, y: track.y, width: track.maxX - cx, height: track.height))
-            c.fillRoundedRect(track, radius: 4, CanvasColor(ThemeTokens.nativeRangeEdge))
-            c.fillRoundedRect(track.insetBy(1), radius: 3, CanvasColor(ThemeTokens.nativeRangeTrack))
-        }
-        c.withState {
-            c.clip(CanvasRect(x: track.x, y: track.y, width: cx - track.x, height: track.height))
-            c.fillRoundedRect(track, radius: 4, CanvasColor(ThemeTokens.accentEdgePair.now))
-            c.fillRoundedRect(track.insetBy(1), radius: 3, PanelTheme.accent)
-        }
-        c.fill(.roundedRect(CanvasRect(x: cx - rad, y: r.midY - rad, width: 2 * rad, height: 2 * rad), radius: rad), PanelTheme.accent)
-    }
-
     // MARK: Curves (the curve modes and the curve graph)
 
-    /// Curve tabs (`flex flex-wrap gap-x-2 border-b border-panel-hairline`): `border-b-2 px-0.5 py-1 text-[9px]`,
-    /// active text-1 over the accent, the rest text-4 (hover text-2).
+    /// The curve tabs on the shared inline tab bar (`PanelTabBar`): a 32 pt line over a hairline, overflow behind a
+    /// chevron when the panel is narrow, one Tab stop with arrow keys.
     func curveTabsRow() -> InspectorCustomRow {
-        InspectorCustomRow(id: "grade:curvetabs", height: 24.5, draw: { [weak self] c, r, panel in
+        let tabs = Self.curveTabs.map { PanelTab(id: $0.key, label: $0.label) }
+        let pick: (Int) -> Void = { [weak self] i in
+            guard let self, Self.curveTabs.indices.contains(i) else { return }
+            self.grade.curveTab = Self.curveTabs[i].key; self.grade.selectedPoint = nil; self.onEdited?()
+        }
+        return InspectorCustomRow(id: "grade:curvetabs", height: PanelGrid.rowHeight, draw: { [weak self] c, r, _ in
             guard let self else { return }
-            var x = r.x
-            c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-            for (i, t) in Self.curveTabs.enumerated() {
-                let w = c.measureText(t.label, font: PanelTheme.font(9)).width + 4
-                let tr = CanvasRect(x: x, y: r.y, width: w, height: 23.5)
-                let on = self.grade.curveTab == t.key
-                PanelDraw.text(c, t.label, in: CanvasRect(x: tr.x, y: tr.y + 4, width: w, height: 13.5), font: PanelTheme.font(9),
-                               color: on ? PanelTheme.text1 : (panel.hovered == .custom("grade:curvetabs", i) ? PanelTheme.text2 : PanelTheme.text4), align: .center)
-                if on { c.fillRect(CanvasRect(x: tr.x, y: tr.maxY - 2, width: tr.width, height: 2), PanelTheme.accent) }
-                panel.addHit(tr, .custom("grade:curvetabs", i))
-                x = tr.maxX + 8
-            }
+            self.drawInlineTabs(c, PanelTabBar(tabs: tabs, selected: self.grade.curveTab, style: .inline), row: ("grade:curvetabs", base: 0), in: r)
         }, pointer: { [weak self] part, _, phase in
-            guard let self, phase == 0, Self.curveTabs.indices.contains(part) else { return }
-            self.grade.curveTab = Self.curveTabs[part].key; self.grade.selectedPoint = nil
+            guard let self, phase == 0, let i = self.inlineTab("grade:curvetabs", part: part, select: pick) else { return }
+            pick(i)
         })
     }
 

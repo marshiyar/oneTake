@@ -15,14 +15,14 @@
 import Foundation
 
 /// A nested/expanded row reports master time for a source-local clip; the planner rejects it.
-public struct NativeTimelineSplitElement: Equatable {
+public struct NativeTimelineSplitElement: Equatable, Sendable {
     public var reference: NativeSelectedElementReference
     public var expandedParentStart: Double?; public var expandedHostKey: String?; public var parentCompositionId: String?
     public init(_ reference: NativeSelectedElementReference, expandedParentStart: Double? = nil, expandedHostKey: String? = nil, parentCompositionId: String? = nil) {
         self.reference = reference; self.expandedParentStart = expandedParentStart; self.expandedHostKey = expandedHostKey; self.parentCompositionId = parentCompositionId
     }
 }
-public struct NativeTimelineSplitRequest: Equatable {
+public struct NativeTimelineSplitRequest: Equatable, Sendable {
     public var element: NativeTimelineSplitElement; public var requestedSplitSeconds: Double; public var rightBinding: NativeClipDomBinding?
     public init(element: NativeTimelineSplitElement, requestedSplitSeconds: Double, rightBinding: NativeClipDomBinding? = nil) {
         self.element = element; self.requestedSplitSeconds = requestedSplitSeconds; self.rightBinding = rightBinding
@@ -33,7 +33,7 @@ public struct NativeTimelinePlannedSplit: Equatable {
     public var rightBinding: NativeClipDomBinding?; public var splitFrame: Double
     public var compatibilitySplitSeconds: Double; public var compatibilitySplitTime: String
 }
-public enum NativeTimelineSplitPlanFailureCode: String {
+public enum NativeTimelineSplitPlanFailureCode: String, Sendable {
     case emptySplitSet = "empty-split-set", invalidSplitTime = "invalid-split-time", ambiguousLocalTime = "ambiguous-local-time"
     case missingSelectionId = "missing-selection-id", clipNotFound = "clip-not-found", ambiguousClip = "ambiguous-clip"
     case duplicateClip = "duplicate-clip", unboundClip = "unbound-clip", bindingSourceMismatch = "binding-source-mismatch"
