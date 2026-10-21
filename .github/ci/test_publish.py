@@ -25,7 +25,6 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUBLISH = os.path.join(HERE, "publish.sh")
 SHA = "0123456789abcdef0123456789abcdef01234567"
-BASH = shutil.which("bash") or "/bin/bash"
 
 DUMP = 'decide; printf "mode=%s\\nchannel=%s\\ntag=%s\\ntitle=%s\\nflags=%s\\n" ' \
        '"$mode" "$channel" "$tag" "$title" "${flags[*]-}"'
@@ -36,7 +35,7 @@ class Base(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.dir)
         os.makedirs(os.path.join(self.dir, "mpvfx-swift", "packaging"))
-        with open(os.path.join(self.dir, "mpvfx-swift", "packaging", "VERSION"), "w") as f:
+        with open(os.path.join(self.dir, "mpvfx-swift", "packaging", "VERSION"), "w", encoding="utf-8") as f:
             f.write("0.1.0\n")
 
     def bash(self, script, ref_type="tag", ref="", extra_env=None, stdin=""):
@@ -45,8 +44,16 @@ class Base(unittest.TestCase):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "GITHUB_REF_TYPE": ref_type, "GITHUB_REF_NAME": ref,
                "GITHUB_SHA": SHA, "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "42", "PUBLISH_SH": PUBLISH}
         env.update(extra_env or {})
-        return subprocess.run([BASH, "-c", '. "$PUBLISH_SH"; ' + script], cwd=self.dir, env=env, input=stdin,
-                              capture_output=True, text=True, timeout=30, check=False)
+        env["SNIPPET"] = script
+        return subprocess.run(["bash", "-c", '. "$PUBLISH_SH"; eval "$SNIPPET"'], cwd=self.dir, env=env,
+                              input=stdin, capture_output=True, text=True, timeout=30, check=False)
+
+    def stub_gh(self, body):
+        """A stand-in gh: publish.sh's calls go to a shell function running this script (no executable file)."""
+        path = os.path.join(self.dir, "gh-stub.sh")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(body)
+        return path
 
     def decide(self, ref, ref_type="tag"):
         r = self.bash(DUMP, ref_type, ref)
@@ -130,10 +137,10 @@ class Notes(Base):
         if marker is not None or hidden_marker:
             os.makedirs(os.path.join(self.dir, "dist"), exist_ok=True)
         if marker is not None:
-            with open(os.path.join(self.dir, "dist", "macos-notarization.txt"), "w") as f:
+            with open(os.path.join(self.dir, "dist", "macos-notarization.txt"), "w", encoding="utf-8") as f:
                 f.write(marker + "\n")
         if hidden_marker:
-            open(os.path.join(self.dir, "dist", ".not-notarized"), "w").close()
+            open(os.path.join(self.dir, "dist", ".not-notarized"), "w", encoding="utf-8").close()
         r = self.bash(NOTES, ref_type, ref, {"ASSETS": "\n".join(assets), "CHANGES": changes})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout
@@ -217,7 +224,7 @@ class Notarization(unittest.TestCase):
     """Notarization never blocks a build on any ref (owner, 2026-10-21); the marker reaches the publish job."""
 
     def test_workflow_never_requires_notarization(self):
-        with open(os.path.join(HERE, "..", "workflows", "mpvfx-macos.yml")) as f:
+        with open(os.path.join(HERE, "..", "workflows", "mpvfx-macos.yml"), encoding="utf-8") as f:
             text = f.read()
         values = [line.split(":", 1)[1].strip() for line in text.splitlines()
                   if line.strip().startswith("NOTARIZE_REQUIRED:")]
@@ -226,7 +233,7 @@ class Notarization(unittest.TestCase):
 
     def test_package_script_marks_a_rejected_verdict(self):
         path = os.path.join(HERE, "..", "..", "mpvfx-swift", "packaging", "macos", "package.sh")
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             text = f.read()
         verdict = text[text.index('grep -q \'"status" *: *"Accepted"\''):text.index("xcrun stapler staple")]
         self.assertIn('NOTARIZE_REQUIRED:-1}" = 1', verdict)
@@ -282,37 +289,32 @@ class Main(Base):
     """main() against a stand-in gh: the order of the calls and the notes it writes."""
 
     def test_beta_publish_creates_uploads_then_edits_notes(self):
-        bindir = os.path.join(self.dir, "bin")
-        os.makedirs(bindir)
         os.makedirs(os.path.join(self.dir, "dist"))
         for a in ("MpVFX-0.1.0-macos-arm64.dmg", "mac-smoke.png"):
-            open(os.path.join(self.dir, "dist", a), "w").close()
+            open(os.path.join(self.dir, "dist", a), "w", encoding="utf-8").close()
         log = os.path.join(self.dir, "gh.log")
         notes_copy = os.path.join(self.dir, "notes.md")
-        with open(os.path.join(bindir, "gh"), "w") as f:
-            f.write('#!/bin/bash\n'
-                    'echo "$*" >> "$GH_LOG"\n'
-                    'case "$1 $2" in\n'
-                    '  "release view") [[ " $* " == *" --json "* ]] && exit 0; exit 1 ;;\n'
-                    '  "release list") printf "%s\\n" nightly-aaaaaaa v0.1.0-beta.1 v0.1.0-alpha.1 ;;\n'
-                    '  "release edit") while [ $# -gt 0 ]; do [ "$1" = --notes-file ] && cp "$2" "$NOTES_COPY";'
-                    ' shift; done ;;\n'
-                    '  "api repos/o/r/compare/v0.1.0-beta.1..."*) printf "2\\nFix export (#12)\\nAdd beta channel (#11)\\n" ;;\n'
-                    'esac\n')
-        os.chmod(os.path.join(bindir, "gh"), 0o700)
-        r = self.bash('main dist/*.dmg dist/*.deb dist/*-smoke.png', "tag", "v0.1.0-beta.2",
-                      {"PATH": bindir + os.pathsep + os.environ.get("PATH", ""), "GH_LOG": log,
-                       "NOTES_COPY": notes_copy})
+        stub = self.stub_gh('echo "$*" >> "$GH_LOG"\n'
+                            'case "$1 $2" in\n'
+                            '  "release view") [[ " $* " == *" --json "* ]] && exit 0; exit 1 ;;\n'
+                            '  "release list") printf "%s\\n" nightly-aaaaaaa v0.1.0-beta.1 v0.1.0-alpha.1 ;;\n'
+                            '  "release edit") while [ $# -gt 0 ]; do [ "$1" = --notes-file ] && cp "$2" "$NOTES_COPY";'
+                            ' shift; done ;;\n'
+                            '  "api repos/o/r/compare/v0.1.0-beta.1..."*)'
+                            ' printf "2\\nFix export (#12)\\nAdd beta channel (#11)\\n" ;;\n'
+                            'esac\n')
+        r = self.bash('gh() { bash "$GH_STUB" "$@"; }; main dist/*.dmg dist/*.deb dist/*-smoke.png', "tag",
+                      "v0.1.0-beta.2", {"GH_STUB": stub, "GH_LOG": log, "NOTES_COPY": notes_copy})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        with open(log) as f:
+        with open(log, encoding="utf-8") as f:
             calls = [line.split()[:2] for line in f]
         verbs = [" ".join(c) for c in calls if c[0] == "release"]
         self.assertEqual(verbs[-4:-1], ["release create", "release upload", "release edit"])
-        with open(log) as f:
+        with open(log, encoding="utf-8") as f:
             create = next(line for line in f if line.startswith("release create"))
         self.assertIn("--prerelease --latest=false", create)
         self.assertIn("--title oneTake 0.1.0 beta 2", create)
-        with open(notes_copy) as f:
+        with open(notes_copy, encoding="utf-8") as f:
             text = f.read()
         self.assertTrue(text.startswith("> [!NOTE]\n> **Beta**:"), text)
         self.assertIn("Since [v0.1.0-beta.1](https://github.com/o/r/releases/tag/v0.1.0-beta.1):", text)
@@ -323,20 +325,15 @@ class Main(Base):
 
 class Prune(Base):
     def test_only_old_nightlies_are_deleted(self):
-        bindir = os.path.join(self.dir, "bin")
-        os.makedirs(bindir)
         log = os.path.join(self.dir, "gh.log")
         # The stand-in ignores --jq and lists every tag, so the case guard in prune_nightlies is what is tested.
-        with open(os.path.join(bindir, "gh"), "w") as f:
-            f.write('#!/bin/sh\n'
-                    'if [ "$1 $2" = "release list" ]; then\n'
-                    '  printf "%s\\n" nightly-aaaaaaa v0.1.0 v0.1.0-alpha.1 v0.1.0-beta.2 v0.1.0-rc.1 nightly-bbbbbbb\n'
-                    'else echo "$@" >> "$GH_LOG"; fi\n')
-        os.chmod(os.path.join(bindir, "gh"), 0o700)
-        r = self.bash("prune_nightlies", extra_env={"PATH": bindir + os.pathsep + os.environ.get("PATH", ""),
-                                                    "GH_LOG": log})
+        stub = self.stub_gh('if [ "$1 $2" = "release list" ]; then\n'
+                            '  printf "%s\\n" nightly-aaaaaaa v0.1.0 v0.1.0-alpha.1 v0.1.0-beta.2 v0.1.0-rc.1'
+                            ' nightly-bbbbbbb\n'
+                            'else echo "$@" >> "$GH_LOG"; fi\n')
+        r = self.bash('gh() { bash "$GH_STUB" "$@"; }; prune_nightlies', extra_env={"GH_STUB": stub, "GH_LOG": log})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        with open(log) as f:
+        with open(log, encoding="utf-8") as f:
             deleted = [line.split()[2] for line in f]
         self.assertEqual(deleted, ["nightly-aaaaaaa", "nightly-bbbbbbb"])
 

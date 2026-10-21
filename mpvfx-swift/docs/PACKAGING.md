@@ -69,7 +69,7 @@ When every platform is green, one publish job (`.github/ci/publish.sh`) uploads 
 release. Which release, and what it promises, follows from the ref the run is for:
 
 | Channel | Made by | Release tag and title | Marked | Kept | Promise |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | nightly | every green run of `main` | `nightly-<commit>`, "oneTake nightly <date> (<commit>), development build" | pre-release | newest 7 | untested development build |
 | alpha | tag `v<X.Y.Z>-alpha.<N>` | that tag, "oneTake X.Y.Z alpha N" | pre-release | always | early test build: features may be missing or change, projects may not open in later builds |
 | beta | tag `v<X.Y.Z>-beta.<N>` | that tag, "oneTake X.Y.Z beta N" | pre-release | always | feature-complete test build for wider testing; expect bugs |
