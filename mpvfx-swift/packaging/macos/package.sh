@@ -20,8 +20,10 @@
 # The signing mode is required and there is no fallback between the two:
 #   developer-id  sign with the "Developer ID Application" identity in the keychain (packaging/macos/import-cert.sh puts
 #                 one there in CI), notarize with Apple and staple the ticket. The identity and the notarization
-#                 credentials come from the environment the workflow sets; any of them missing, or Apple not accepting
-#                 the image, fails the run.
+#                 credentials come from the environment the workflow sets. A missing identity always fails the run.
+#                 Missing notarization credentials, a failed submission or Apple not accepting the image fail it only
+#                 when NOTARIZE_REQUIRED=1 (the default); with NOTARIZE_REQUIRED=0 (CI, every ref) the image ships
+#                 Developer ID signed, not notarized, and <dist-dir>/.not-notarized says so.
 #   adhoc         an ad-hoc signature for testing on this machine (pull requests); Gatekeeper blocks it elsewhere.
 # MPVFX_BUILD (build number, default: git short sha) and MPVFX_VERSION (default: packaging/VERSION).
 # MPVFX_SYMBOLS_DIR: when set, the binary's dSYM is written there (<name>.dSYM.tar.gz) before the binary is stripped;
@@ -33,8 +35,13 @@ mode=${2:?usage: package.sh <dist-dir> developer-id|adhoc}
 case "$mode" in
   developer-id)
     [ -n "${MACOS_SIGN_IDENTITY:-}" ] || { echo "developer-id: no signing identity in the environment" >&2; exit 1; }
-    [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] \
-      || { echo "developer-id: notarization credentials missing from the environment" >&2; exit 1; } ;;
+    if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+      if [ "${NOTARIZE_REQUIRED:-1}" = 1 ]; then
+        echo "developer-id: notarization credentials missing from the environment" >&2; exit 1
+      fi
+      echo "::warning::notarization credentials (APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID) are not all set; the disk image is signed, not notarized"
+      skip_notarize=1
+    fi ;;
   adhoc) ;;
   *) echo "unknown signing mode: $mode (developer-id or adhoc)" >&2; exit 1 ;;
 esac
@@ -140,6 +147,10 @@ if [ "$mode" = developer-id ]; then
   # owner 2026-10-21): a submission that never reaches Apple's verdict (rejected login, network) or a verdict other
   # than Accepted otherwise ships the image Developer ID signed, not notarized, and "$dist/.not-notarized" says so.
   # A failed signature (codesign above) or a damaged image (hdiutil above, stapler below) always fails.
+  if [ "${skip_notarize:-0}" = 1 ]; then
+    : > "$dist/.not-notarized"
+    rm -rf "$work"; echo "$dmg"; exit 0
+  fi
   if ! xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
     --team-id "$APPLE_TEAM_ID" --wait --timeout 30m --output-format json > "$work/notary.json"; then
     cat "$work/notary.json"; echo

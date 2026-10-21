@@ -240,6 +240,19 @@ class Notarization(unittest.TestCase):
         self.assertIn(': > "$dist/.not-notarized"', verdict)
         self.assertIn("exit 0", verdict)
 
+    def test_package_script_signs_without_credentials(self):
+        path = os.path.join(HERE, "..", "..", "mpvfx-swift", "packaging", "macos", "package.sh")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        creds = text[text.index('if [ -z "${APPLE_ID:-}" ]'):text.index("  adhoc) ;;")]
+        self.assertIn('NOTARIZE_REQUIRED:-1}" = 1', creds)
+        self.assertIn("skip_notarize=1", creds)
+        skip = text[text.index('if [ "${skip_notarize:-0}" = 1 ]'):text.index("xcrun notarytool submit")]
+        self.assertIn(': > "$dist/.not-notarized"', skip)
+        # The image is signed before the skip, so a missing credential never ships it unsigned.
+        self.assertLess(text.index('codesign --force --sign "$MACOS_SIGN_IDENTITY" --timestamp "$dmg"'),
+                        text.index('if [ "${skip_notarize:-0}" = 1 ]'))
+
 
 class Changes(Base):
     def test_channel_of(self):

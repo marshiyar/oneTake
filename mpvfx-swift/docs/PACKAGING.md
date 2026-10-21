@@ -84,8 +84,8 @@ release. Which release, and what it promises, follows from the ref the run is fo
   they are never pruned (only `nightly-*` releases are). A rerun of the same commit or tag uploads into the same
   release.
 - Notarization never blocks a release, on any channel (owner, 2026-10-21; CI sets `NOTARIZE_REQUIRED=0` on every
-  ref). A submission that fails (for example rejected Apple credentials) and a verdict other than Accepted are both
-  warnings: `package.sh` writes `dist/.not-notarized`, the disk image ships Developer ID signed but not notarized,
+  ref). Missing `APPLE_*` secrets (with the certificate set), a submission that fails (for example rejected Apple
+  credentials) and a verdict other than Accepted are all warnings: `package.sh` writes `dist/.not-notarized`, the disk image ships Developer ID signed but not notarized,
   the Gatekeeper assessment in the smoke step is skipped, and the release notes say "not notarized: right-click →
   Open the first time". A failed signature or a damaged image still fails the macOS job, so nothing is published.
   The macos job turns the marker into `dist/macos-notarization.txt` (in the `macos` artifact, never a release asset;
