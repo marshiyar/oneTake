@@ -161,6 +161,14 @@ Without them the image is still built, ad-hoc signed and not notarized.
 4. Run `mpvfx-macos`. The log shows `notarytool ... "status": "Accepted"` and `The staple and validate action
    worked!`, and the smoke step's `spctl --assess` prints `source=Notarized Developer ID`.
 
+## The placeholder sound pack
+
+`sounds/placeholder.mpvfxsounds` (8 generated sounds, 1.96 MB, licence `placeholder-owned`: owned by the project, for
+testing only; record in `sounds/ASSETS.md`) goes into release packages only until the commissioned sound set
+replaces it (the packaging step that copies it arrives with the browser slice, #264). Remove it from the package inputs in
+the same change that adds the commissioned set. The installed app
+reads bundled packs read-only and user packs from `<userData>/sound-packs/`.
+
 ## Building an installer by hand
 
 From `mpvfx-swift/`, after `python3 scripts/fetch-binaries.py`:

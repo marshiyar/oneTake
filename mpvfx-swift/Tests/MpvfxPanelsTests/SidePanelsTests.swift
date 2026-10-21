@@ -558,6 +558,124 @@ final class MediaBinTests: XCTestCase {
         XCTAssertEqual(cmds, [.reveal(libraryId: "L"), .createEvent(libraryId: "L", name: "Day 2")])
     }
 
+    /// "Library exports": a completed export offers "Save to…", which asks the host to save that export; a failed or
+    /// running one offers nothing, and while a library command runs the button is disabled (#40).
+    func testLibraryExportsOfferSaveToForCompletedExportsOnly() throws {
+        let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
+        s.library.available = true
+        s.library.libraries = [.init(id: "L", name: "test", events: [.init(id: "E", name: "Media")], projects: [.init(id: "P", name: "jk", eventId: "E")],
+                                     exports: [.init(id: "J1", label: "render-1.mp4", status: "complete"),
+                                               .init(id: "J2", label: "render-2.mp4", status: "failed"),
+                                               .init(id: "J3", label: "J3", status: "rendering")])]
+        s.library.currentProjectId = "P"
+        var cmds: [LibraryNavCommand] = []
+        s.onLibrary = { cmds.append($0) }
+        let c = PanelMeasureCanvas()
+        s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertTrue(s.secondaryClick(center(try XCTUnwrap(s.hits.rect { $0 == .tile(.export("J1")) }))))
+        c.reset(); s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertTrue(c.drawnStrings.contains("Save to…"))
+        XCTAssertNotNil(s.hits.rect { $0 == .tile(.export("J2")) })
+        XCTAssertTrue(s.menuEntries(.export("J2")).isEmpty)
+        XCTAssertTrue(s.menuEntries(.export("J3")).isEmpty)
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .menuItem("J1", 0) })))
+        XCTAssertEqual(cmds, [.saveOutput(libraryId: "L", jobId: "J1")])
+        s.library.busy = true
+        c.reset(); s.draw(c, size: CanvasSize(370, 900))
+        s.runPrimary(.export("J1"))
+        XCTAssertEqual(cmds, [.saveOutput(libraryId: "L", jobId: "J1")], "disabled while a library command runs")
+    }
+
+    private func keys(_ text: String) -> [EditorKey] { text.map { $0 == " " ? EditorKey(.space) : EditorKey(.char($0)) } }
+    private func typeKeys(_ s: LeftSidebarPanel, _ keys: [EditorKey]) { keys.forEach { _ = s.keyDown($0) } }
+
+    private func renameNavigator(_ cmds: @escaping (LibraryNavCommand) -> Void) -> LeftSidebarPanel {
+        let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
+        s.library.available = true
+        s.library.libraries = [.init(id: "L", name: "test", events: [.init(id: "E", name: "Media")],
+                                     projects: [.init(id: "P", name: "jk", eventId: "E")])]
+        s.library.currentProjectId = "P"
+        s.onLibrary = cmds
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        return s
+    }
+
+    /// "Rename event…" and "Rename project…" in the More menu open the name row on the current name; Enter sends the rename of
+    /// the shown event or the current project with the trimmed name, and Escape sends nothing (#40).
+    func testLibraryNavigatorRenamesTheShownEventAndTheCurrentProject() throws {
+        var cmds: [LibraryNavCommand] = []
+        let s = renameNavigator { cmds.append($0) }
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
+        s.dropdown.pick("renameEvent")
+        let c = PanelMeasureCanvas()
+        s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertEqual(c.drawnStrings.filter { $0 == "Rename" }.count, 1, "the name row's confirm")
+        XCTAssertNotNil(s.hits.rect { $0 == .createField })
+        XCTAssertTrue(s.isEditingText)
+        typeKeys(s, Array(repeating: EditorKey(.backspace), count: 5) + keys("Day 2 ") + [EditorKey(.enter)])
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
+        s.dropdown.pick("renameProject")
+        typeKeys(s, keys(" v2") + [EditorKey(.enter)])
+        XCTAssertEqual(cmds, [.renameEvent(libraryId: "L", eventId: "E", name: "Day 2"),
+                              .renameProject(libraryId: "L", projectId: "P", name: "jk v2")])
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
+        s.dropdown.pick("renameProject")
+        _ = s.keyDown(EditorKey(.escape))
+        XCTAssertFalse(s.isEditingText)
+        XCTAssertEqual(cmds.count, 2, "Escape renames nothing")
+    }
+
+    /// The open Rename row keeps its target: switching the event picker before Enter still renames the event the row
+    /// was opened for (Codex review on #146).
+    func testRenameKeepsItsTargetWhenThePickerChanges() throws {
+        var cmds: [LibraryNavCommand] = []
+        let s = renameNavigator { cmds.append($0) }
+        s.library.libraries[0].events.append(.init(id: "E2", name: "B-roll"))
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
+        s.dropdown.pick("renameEvent")
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .switcher }))))
+        s.dropdown.pick("event:E2")
+        typeKeys(s, keys(" day") + [EditorKey(.enter)])
+        XCTAssertEqual(cmds, [.renameEvent(libraryId: "L", eventId: "E", name: "Media day")])
+    }
+
+    /// While a library command runs the open name row cannot be sent (it would be dropped): Enter keeps the row and its
+    /// draft, Rename is disabled, and once the library is idle Enter sends it (Codex review on #146).
+    func testOpenNameRowWaitsWhileTheLibraryIsBusy() throws {
+        var cmds: [LibraryNavCommand] = []
+        let s = renameNavigator { cmds.append($0) }
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
+        s.dropdown.pick("renameProject")
+        typeKeys(s, keys(" v2"))
+        s.library.busy = true
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        XCTAssertNil(s.hits.rect { $0 == .createConfirm }, "the row's Rename is disabled")
+        typeKeys(s, [EditorKey(.enter)])
+        XCTAssertEqual(cmds, [])
+        XCTAssertTrue(s.isEditingText, "the row and its draft stay")
+        s.library.busy = false
+        typeKeys(s, [EditorKey(.enter)])
+        XCTAssertEqual(cmds, [.renameProject(libraryId: "L", projectId: "P", name: "jk v2")])
+    }
+
+    /// Rename is offered only for something shown: no project rename without a current project in the shown event,
+    /// and neither while a library command runs.
+    func testLibraryNavigatorRenameNeedsATargetAndAnIdleLibrary() throws {
+        let s = renameNavigator { _ in }
+        s.library.currentProjectId = nil
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        XCTAssertFalse(try XCTUnwrap(s.libraryOptions().first { $0.value == "renameEvent" }).disabled)
+        XCTAssertTrue(try XCTUnwrap(s.projectOptions().first { $0.value == "renameProject" }).disabled)
+        s.library.currentProjectId = "P"
+        s.library.busy = true
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        XCTAssertTrue(try XCTUnwrap(s.libraryOptions().first { $0.value == "renameEvent" }).disabled)
+        XCTAssertTrue(try XCTUnwrap(s.projectOptions().first { $0.value == "renameProject" }).disabled)
+    }
+
     /// "Open project…" asks for a folder; the recent projects are a group of the "…" menu and open the one picked.
     func testOpenProjectAndRecentProjects() throws {
         let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
@@ -722,12 +840,12 @@ final class PanelTabStripTests: XCTestCase {
         XCTAssertTrue(r.pointerMove(center(menu)))
         XCTAssertEqual(r.hint, "Panel menu")
         _ = r.pointerDown(center(menu))
-        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide panel"], "nothing finished to hide yet")
+        XCTAssertEqual(r.dropdown.options.map(\.label), ["Keyframe easing", "Hide panel"], "nothing finished to hide yet; Keyframe easing opens the Easing tab")
         r.dropdown.close()
         r.jobs = [.init(id: "1", name: "Main.mp4", status: .complete), .init(id: "2", name: "Next.mp4", status: .rendering)]
         c.reset(); r.draw(c, size: CanvasSize(409, 800))
         _ = r.pointerDown(center(menu))
-        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide finished renders", "Hide panel"])
+        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide finished renders", "Keyframe easing", "Hide panel"])
         r.dropdown.pick("hideFinished")
         XCTAssertEqual(actions, [.hideFinished])
         _ = r.pointerDown(center(menu))

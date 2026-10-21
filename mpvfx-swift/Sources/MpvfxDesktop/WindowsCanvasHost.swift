@@ -164,6 +164,7 @@ final class WindowsCanvasHost {
         case WM_MOUSEMOVE:
             lastPoint = p
             input?.pointerMove(x: p.x, y: p.y, modifiers: Self.modifiers())
+            showCursor(at: p)   // the move may change the stage's cursor; WM_SETCURSOR came before it
             return 0
         case WM_RBUTTONDOWN:
             SetFocus(hwnd)
@@ -208,24 +209,30 @@ final class WindowsCanvasHost {
         var pt = POINT()
         GetCursorPos(&pt)
         ScreenToClient(hwnd, &pt)
-        let id: Int
-        switch cursorAt(Double(pt.x) / scale, Double(pt.y) / scale) {
-        case .arrow: id = 32512           // IDC_ARROW
-        case .columnResize: id = 32644    // IDC_SIZEWE
-        case .rowResize: id = 32645       // IDC_SIZENS
-        }
+        let id = cursorAt(Double(pt.x) / scale, Double(pt.y) / scale).windowsCursorId
         SetCursor(LoadCursorW(nil, UnsafePointer<WCHAR>(bitPattern: id)))
         return 1
     }
 
+    /// Sets the cursor for a client point (logical px) straight after the input it follows.
+    private func showCursor(at p: (x: Double, y: Double)) {
+        guard let cursorAt else { return }
+        SetCursor(LoadCursorW(nil, UnsafePointer<WCHAR>(bitPattern: cursorAt(p.x, p.y).windowsCursorId)))
+    }
+
     // MARK: Keys
 
-    /// Virtual keys with their own EditorKey code.
-    private static let namedKeys: [Int32: EditorKey.Code] = [
-        Int32(VK_SPACE): .space, Int32(VK_LEFT): .left, Int32(VK_RIGHT): .right, Int32(VK_UP): .up, Int32(VK_DOWN): .down,
-        Int32(VK_HOME): .home, Int32(VK_END): .end, Int32(VK_DELETE): .delete, Int32(VK_BACK): .backspace,
-        Int32(VK_ESCAPE): .escape, Int32(VK_RETURN): .enter, Int32(VK_TAB): .tab,
-    ]
+    /// Virtual keys with their own EditorKey code, F1…F12 included (EditorKey.Code.function).
+    private static let namedKeys: [Int32: EditorKey.Code] = {
+        var keys: [Int32: EditorKey.Code] = [
+            Int32(VK_SPACE): .space, Int32(VK_LEFT): .left, Int32(VK_RIGHT): .right, Int32(VK_UP): .up, Int32(VK_DOWN): .down,
+            Int32(VK_HOME): .home, Int32(VK_END): .end, Int32(VK_DELETE): .delete, Int32(VK_BACK): .backspace,
+            Int32(VK_ESCAPE): .escape, Int32(VK_RETURN): .enter, Int32(VK_TAB): .tab,
+        ]
+        let fkeys = [VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12]
+        for (i, vk) in fkeys.enumerated() { keys[Int32(vk)] = .function(i + 1) }
+        return keys
+    }()
 
     /// The character a key types with Shift (and Caps Lock) applied but not Ctrl or Alt, so Ctrl+Z reads as "z" as
     /// GTK's keyval does.
@@ -256,6 +263,7 @@ final class WindowsCanvasHost {
             var m = Self.modifiers()
             if down { m.insert(.alt) } else { m.remove(.alt) }
             input?.pointerMove(x: p.x, y: p.y, modifiers: m)
+            showCursor(at: p)
         }
         guard let k = Self.editorKey(vk, lp), let input else { return nil }
         if down { return input.keyDown(k) ? 0 : nil }

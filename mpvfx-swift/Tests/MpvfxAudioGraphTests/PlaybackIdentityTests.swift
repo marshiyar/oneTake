@@ -41,7 +41,8 @@ final class PlaybackIdentityTests: XCTestCase {
          {"type":"saturate","id":"n8","params":{"type":"atan","oversample":4,"threshold":-6}},
          {"type":"bitcrush","id":"n9","params":{"bits":10,"samples":2,"mix":0.4}},
          {"type":"pitchshift","id":"n10","params":{"semitones":3,"mix":0.5}},
-         {"type":"limiter","id":"n11","params":{"limit":-2}}]}
+         {"type":"limiter","id":"n11","params":{"limit":-2}},
+         {"type":"denoise","id":"n12","params":{"amount":0.8,"learn":100}}]}
         """#)
         let chainB = try! AudioFx.parseChain(#"""
         {"version":1,"nodes":[

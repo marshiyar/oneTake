@@ -29,15 +29,16 @@ public struct KeyframeEasingTarget: Equatable {
     /// Properties the panel eases: the Transform group's and keyed volume (TimelineEditor.keyframeEasingGroup).
     public static let easedParameterIds = TimelineEditor.transformEasedParameterIds + [TimelineEditor.volumeId]
 
-    /// Property: the earliest selected key's on this clip, else `chosen` when it is animated, else the first
-    /// animated one. Nil without a clip or an animated easable property.
+    /// Property: `chosen` when selected keys include it, else the earliest selected key's on this clip, else
+    /// `chosen` when it is animated, else the first animated one. Nil without a clip or an animated easable property.
     public static func resolve(_ editor: TimelineEditor, clipId: String?, selected: Set<TimelineKeyframeRef>, time: Double,
                                chosen: String?) -> KeyframeEasingTarget? {
         guard let clipId, editor.clip(clipId) != nil else { return nil }
         let properties = easedParameterIds.filter { editor.isAnimated(clipId: clipId, $0) }
         let picked = selected.filter { $0.clipId == clipId && properties.contains($0.parameterId) && editor.outgoing($0) != nil }
             .sorted(by: Self.inTimeOrder)
-        let pid = picked.first?.parameterId ?? chosen.flatMap { properties.contains($0) ? $0 : nil } ?? properties.first
+        let pid = picked.first(where: { $0.parameterId == chosen })?.parameterId ?? picked.first?.parameterId
+            ?? chosen.flatMap { properties.contains($0) ? $0 : nil } ?? properties.first
         guard let pid else { return nil }
         let refs = picked.filter { $0.parameterId == pid }
         if !refs.isEmpty { return .init(clipId: clipId, parameterId: pid, properties: properties, refs: refs, fromSelection: true) }
@@ -55,6 +56,9 @@ public struct KeyframeEasingTarget: Equatable {
 public final class KeyframeEasingState {
     public enum Graph: String, CaseIterable, Sendable { case value, speed }
     public var chosenProperty: String?
+    /// The timeline selection when the user picked `chosenProperty` in the panel: while the host keeps syncing that
+    /// same selection, the pick holds even though the selected keys belong to another property.
+    public var pinnedSelection: Set<TimelineKeyframeRef>?
     public private(set) var clipboard: NativeInterpolation?
     public var graph: Graph = .speed
     /// Time zoom (1 = the whole keyed range) and pan (the shown range's start, as a fraction of the keyed range).

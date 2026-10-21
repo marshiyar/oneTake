@@ -25,10 +25,23 @@ public enum DocumentAudioGraph {
     /// What a stem decode depends on; also the cache key, so an edit only re-decodes the clips it changed.
     public struct StemKey: Hashable, Sendable {
         public var path: String, sourceIn: Double, duration: Double, rate: Double
+        public var speedRamp: NativeSpeedRamp?
+        public var timelineFPS: Double
         /// The clip's `preservesPitch`: true plays `rate` as tempo, false resamples so the pitch follows the speed.
         public var preservesPitch: Bool
-        public init(path: String, sourceIn: Double, duration: Double, rate: Double, preservesPitch: Bool = true) {
+        public init(path: String, sourceIn: Double, duration: Double, rate: Double, preservesPitch: Bool = true,
+                    speedRamp: NativeSpeedRamp? = nil, timelineFPS: Double = 30) {
             self.path = path; self.sourceIn = sourceIn; self.duration = duration; self.rate = rate; self.preservesPitch = preservesPitch
+            self.speedRamp = speedRamp; self.timelineFPS = timelineFPS
+        }
+        public static func == (lhs: StemKey, rhs: StemKey) -> Bool {
+            lhs.path == rhs.path && lhs.sourceIn == rhs.sourceIn && lhs.duration == rhs.duration && lhs.rate == rhs.rate &&
+                lhs.preservesPitch == rhs.preservesPitch && lhs.speedRamp == rhs.speedRamp && lhs.timelineFPS == rhs.timelineFPS
+        }
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(path); hasher.combine(sourceIn); hasher.combine(duration); hasher.combine(rate)
+            hasher.combine(preservesPitch); hasher.combine(timelineFPS)
+            hasher.combine(speedRamp)
         }
     }
 
@@ -59,9 +72,11 @@ public enum DocumentAudioGraph {
         let fps = doc.frameRate.numerator / max(doc.frameRate.denominator, 1e-9)
         let assets = Dictionary(doc.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let clips = doc.sequence.tracks.flatMap(\.clips)
+        let silenced = soloSilencedClipIds(doc)
         let detached = Set(clips.compactMap { $0.audioDetachedFrom?.isEmpty == false ? $0.audioDetachedFrom : nil })
         var tracks: [Inputs.Track] = []
-        for c in clips {
+        for c in clips where !silenced.contains(c.id) {   // solo: the stems of unheard tracks are never decoded
+            guard c.speedRamp?.isSupported != false else { continue }
             guard let a = assets[c.assetId], a.kind == .audio || a.kind == .video, let src = a.source else { continue }
             if a.kind == .video && detached.contains(c.id) { continue }
             let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
@@ -71,7 +86,7 @@ public enum DocumentAudioGraph {
             var volume = 1.0
             if case .number(let v)? = c.staticParameters?["audio.volume"] { volume = max(0, v) }
             let stem = StemKey(path: path, sourceIn: c.sourceInFrame / fps, duration: end - start, rate: rate,
-                               preservesPitch: c.preservesPitch ?? true)
+                               preservesPitch: c.preservesPitch ?? true, speedRamp: c.speedRamp, timelineFPS: fps)
             let keyed = c.parameterTracks.first { $0.parameterId == volumeParameter && !$0.keyframes.isEmpty }
             tracks.append(.init(id: c.id, stem: stem,
                                 start: start, end: end, volume: volume, muted: c.muted,
@@ -81,6 +96,14 @@ public enum DocumentAudioGraph {
                                 fadeIn: (c.fadeInFrames ?? 0) / fps, fadeOut: (c.fadeOutFrames ?? 0) / fps))
         }
         return Inputs(duration: duration, tracks: tracks, groups: doc.sequence.audioGroups ?? [])
+    }
+
+    /// The clips solo leaves out of the mix: while any audio track is soloed, every clip on a track that is not a
+    /// soloed audio track. `soloed` on a video or mixed track (which has no solo button) is ignored.
+    public static func soloSilencedClipIds(_ doc: NativeProjectDocument) -> Set<String> {
+        let soloed = Set(doc.sequence.tracks.filter { $0.kind == .audio && $0.soloed == true }.map(\.id))
+        guard !soloed.isEmpty else { return [] }
+        return Set(doc.sequence.tracks.filter { !soloed.contains($0.id) }.flatMap(\.clips).map(\.id))
     }
 
     public static let volumeParameter = "audio.volume"

@@ -72,6 +72,7 @@ final class GtkCanvasHost {
             let h = Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue()
             h.lastPoint = (ev.x, ev.y)
             h.input?.pointerMove(x: ev.x, y: ev.y, modifiers: GtkCanvasHost.modifiers(ev.state))
+            h.updateCursor(ev.x, ev.y)
             return 1
         } as EvCB, to: GCallback.self), me)
         _ = mpvfx_connect(raw(widget), "scroll-event", unsafeBitCast({ (_, e, d) -> gboolean in
@@ -134,6 +135,10 @@ final class GtkCanvasHost {
         return out
     }
 
+    /// F1…F12 in order (EditorKey.Code.function).
+    static let functionKeys: [Int32] = [GDK_KEY_F1, GDK_KEY_F2, GDK_KEY_F3, GDK_KEY_F4, GDK_KEY_F5, GDK_KEY_F6,
+                                        GDK_KEY_F7, GDK_KEY_F8, GDK_KEY_F9, GDK_KEY_F10, GDK_KEY_F11, GDK_KEY_F12]
+
     static func key(_ ev: GdkEventKey, isRepeat: Bool) -> EditorKey? {
         let s = ev.state
         let code: EditorKey.Code
@@ -150,6 +155,7 @@ final class GtkCanvasHost {
         case GDK_KEY_Escape: code = .escape
         case GDK_KEY_Return: code = .enter
         case GDK_KEY_Tab, GDK_KEY_ISO_Left_Tab: code = .tab   // ⇧Tab arrives as ISO_Left_Tab
+        case let v where functionKeys.contains(v): code = .function((functionKeys.firstIndex(of: v) ?? 0) + 1)
         default:
             let u = gdk_keyval_to_unicode(ev.keyval)
             guard u > 32, let scalar = Unicode.Scalar(u) else { return nil }
@@ -169,6 +175,7 @@ final class GtkCanvasHost {
         var m = Self.modifiers(ev.state)
         if pressed { m.insert(.alt) } else { m.remove(.alt) }
         input?.pointerMove(x: p.x, y: p.y, modifiers: m)
+        updateCursor(p.x, p.y)   // the re-sent move may change what the stage asks for
     }
 
     static func modifiers(_ s: guint) -> PointerModifiers {
@@ -178,6 +185,21 @@ final class GtkCanvasHost {
         if s & (GDK_META_MASK.rawValue | GDK_SUPER_MASK.rawValue) != 0 { m.insert(.meta) }
         if s & GDK_CONTROL_MASK.rawValue != 0 { m.insert(.ctrl) }
         return m
+    }
+
+    /// Cursor for a point (seams, the preview stage); nil: the default arrow everywhere.
+    var cursorAt: ((Double, Double) -> EditorShellRouter.Cursor)?
+    private var shownCursor = EditorShellRouter.Cursor.arrow
+
+    /// Sets the window's cursor by its CSS name when the shape under the pointer changed.
+    func updateCursor(_ x: Double, _ y: Double) {
+        guard let cursorAt, let window = gtk_widget_get_window(widget) else { return }
+        let want = cursorAt(x, y)
+        guard want != shownCursor else { return }
+        shownCursor = want
+        let cursor = gdk_cursor_new_from_name(gdk_window_get_display(window), want.cssName)
+        gdk_window_set_cursor(window, cursor)
+        if let cursor { g_object_unref(UnsafeMutableRawPointer(cursor)) }
     }
 
     func setMinimumSize(width: Int32, height: Int32) { gtk_widget_set_size_request(widget, width, height) }

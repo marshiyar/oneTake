@@ -102,6 +102,8 @@ The clipboard lives for the session.
 
 ## 6. Slices
 
+All four are built (2026-10-21); each is its own pull request, stacked in this order.
+
 1. Ease maths + engine parity tests (MpvfxShared).
 2. Custom presets in `project.json` (MpvfxShared) and the panel model with its edits (MpvfxPanels).
 3. The panel view, the Easing tab, the inspector "Easing…" button (MpvfxPanels).

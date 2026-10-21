@@ -27,6 +27,7 @@ extension EditorSession {
         let dockStore = DockLayoutStore(userData: userData)
         let router = EditorShellRouter(layout: layout, dock: DockView(layout: DockDefaults.layout(.editor), registry: .editor))
         router.isFullscreen = { [weak self] in self?.player.view.isFullscreen ?? false }
+        router.stageCursor = { [weak self] in self?.player.stageCursor ?? .arrow }
         installPreview(userData: userData)
         // Track height, zoom and the magnet persist with the UI preferences.
         let region = TimelineRegion(controller: timeline, preferences: FileTimelineUIPreferencesStore(
@@ -39,8 +40,11 @@ extension EditorSession {
         shellInputs = [ti, pi]
         router.panes[.player] = ShellPane(input: pi) { [weak self] c, size in self?.drawPlayer(c, size: size) }
         router.panes[.timeline] = ShellPane(input: ti) { c, size in region.draw(c, size: size) }
+        router.panes[.timeline]?.hint = { [weak region] in region?.hint }
         router.needsDisplay = { [weak self] in self?.redraw() }
+        router.saveFailureStatus = { [weak self] in self?.saveFailureStatus }
         installPanels(router, userData: userData)
+        installDocumentPanels(router)
         installSettings(router, userData: userData)
         installTimelineHooks()
         router.restoreDock(store: dockStore, seeds: Self.dockSeeds(layout.prefs))

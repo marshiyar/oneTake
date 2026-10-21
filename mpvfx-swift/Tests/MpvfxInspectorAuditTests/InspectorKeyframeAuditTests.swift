@@ -97,26 +97,13 @@ extension InspectorRenderAuditTests {
         select("M", time: 2); slide("volume", AudioGainFader.position(gain: 0.5))
         XCTAssertEqual(editor.keyframeFrames(clipId: "M", TimelineEditor.volumeId), [0, 20])
         select("M", time: 1)
-        guard case .segmented(let s)? = find("easing") else { return XCTFail("no easing row for keyed volume") }
-        XCTAssertEqual(s.options.first { $0.active }?.key, "linear")
-        pick("easing", "hold")
+        guard case .button? = find("openEasing") else { return XCTFail("no Easing… button for keyed volume") }
+        XCTAssertEqual(editor.outgoing(TimelineKeyframeRef(clipId: "M", parameterId: TimelineEditor.volumeId, frame: 0)), .linear)
+        ease("hold")
         XCTAssertEqual(editor.outgoing(TimelineKeyframeRef(clipId: "M", parameterId: TimelineEditor.volumeId, frame: 0)), .hold)
         XCTAssertEqual(editor.numberValue(clipId: "M", TimelineEditor.volumeId, time: 1) ?? 0, 1, accuracy: 1e-9, "hold keeps the first gain")
     }
 
-    func testShowKeyframeEasingOpensTheGroupThatEditsTheKeys() {
-        let volume = TimelineKeyframeRef(clipId: "M", parameterId: TimelineEditor.volumeId, frame: 0)
-        XCTAssertTrue(inspector.showKeyframeEasing(clipId: "M", refs: [volume]))
-        XCTAssertEqual(inspector.selection, ["M"]); XCTAssertEqual(inspector.openGroupId, "media")
-        XCTAssertEqual(inspector.selectedKeyframes, [volume])
-        let position = TimelineKeyframeRef(clipId: "V", parameterId: TimelineEditor.positionId, frame: 0)
-        XCTAssertTrue(inspector.showKeyframeEasing(clipId: "V", refs: [position]))
-        XCTAssertEqual(inspector.selection, ["V"]); XCTAssertEqual(inspector.openGroupId, "layout")
-        // A parameter without an easing editor leaves the panel as it was.
-        let zIndex = TimelineKeyframeRef(clipId: "M", parameterId: "layout.zIndex", frame: 0)
-        XCTAssertFalse(inspector.showKeyframeEasing(clipId: "M", refs: [zIndex]))
-        XCTAssertEqual(inspector.selection, ["V"]); XCTAssertEqual(inspector.selectedKeyframes, [position])
-    }
 
     func testStopwatchIsDrawnOnTheRowAndClicks() {
         inspector.openGroupId = "layout"
@@ -168,25 +155,6 @@ extension InspectorRenderAuditTests {
         XCTAssertEqual(editor.clip("V")?.clip.cropPivotSegments ?? [], [], "no marker left on the removed keys")
     }
 
-    func testShowKeyframeEasingScrollsAnOpenGroupToItsEasingRows() {
-        XCTAssertTrue(upsert(TimelineEditor.rotationId, frame: 0, .number(0))); XCTAssertTrue(upsert(TimelineEditor.rotationId, frame: 20, .number(90)))
-        inspector.openGroupId = "layout"
-        let c = AuditCanvas(), box = CanvasRect(x: 0, y: 0, width: 300, height: 320)
-        inspector.draw(c, in: box)
-        XCTAssertEqual(inspector.bodyScroll, 0)
-        let easing: (InspectorPanel.Hit) -> Bool = { if case .segment("easing", _) = $0 { return true }; return false }
-        func easingVisible() -> Bool { inspector.hits.rect(where: easing).map { $0.y >= 0 && $0.maxY <= box.height } ?? false }
-        XCTAssertFalse(easingVisible(), "the easing rows start below a short panel")
-        XCTAssertTrue(inspector.showKeyframeEasing(clipId: "V", refs: [TimelineKeyframeRef(clipId: "V", parameterId: TimelineEditor.rotationId, frame: 0)]))
-        inspector.draw(c, in: box); inspector.draw(c, in: box)
-        XCTAssertGreaterThan(inspector.bodyScroll, 0)
-        XCTAssertTrue(easingVisible(), "Edit Easing scrolls the already open group to its easing rows")
-    }
 
-    func testShowKeyframeEasingSkipsKeysWithoutAnEditor() {
-        let zIndex = TimelineKeyframeRef(clipId: "V", parameterId: "layout.zIndex", frame: 0)
-        let rotation = TimelineKeyframeRef(clipId: "V", parameterId: TimelineEditor.rotationId, frame: 10)
-        XCTAssertTrue(inspector.showKeyframeEasing(clipId: "V", refs: [zIndex, rotation]))
-        XCTAssertEqual(inspector.openGroupId, "layout")
-    }
+
 }

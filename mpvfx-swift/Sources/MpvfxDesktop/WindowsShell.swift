@@ -204,6 +204,11 @@ final class WindowsShell: EditorSaveChannel, @unchecked Sendable {
         host.onDrawError = { [weak self] error in self?.drawFailed(error) }
         self.host = host
         session.redraw = { [weak host] in host?.invalidate() }
+        session.documentStateChanged = { [weak self, weak session] in
+            guard let session, let window = self?.hwnd else { return }
+            _ = withWide(session.markedWindowTitle) { SetWindowTextW(window, $0) }
+        }
+        session.documentStateChanged()
         // Appearance: System follows the Windows app theme (AppsUseLightTheme); WM_SETTINGCHANGE "ImmersiveColorSet"
         // reports a switch, and the window frame follows the editor's mode.
         session.installAppearance(userData: paths.userData, systemPrefersDark: { mpvfx_system_prefers_dark() != 0 }) { mode in

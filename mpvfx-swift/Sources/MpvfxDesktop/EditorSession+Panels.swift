@@ -50,7 +50,7 @@ final class SessionPanels {
     private(set) var presetPreviews: PresetPreviewRenderer?
     /// Effects catalog and look tile demos on the built-in sample picture.
     private(set) var effectPreviews: EffectPreviewRenderer?
-    private var presetPreviewTime = 0.0
+    private(set) var presetPreviewTime = 0.0
     private var panelsAnimating = false
 
     init(session: EditorSession, layout: PanelLayoutState, userData: String) {
@@ -194,7 +194,7 @@ final class SessionPanels {
             guard let assetId = existing ?? editor.addAsset(kind: kind, name: entry.name, source: path, durationFrames: frames,
                                                             naturalSize: natural) else { return }
             let t = time ?? self.session.playback.currentTime
-            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: trackId) else {
+            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: self.insertTrack(trackId, time, assetId, t)) else {
                 if existing == nil { editor.undo() }
                 return
             }
@@ -229,6 +229,13 @@ final class SessionPanels {
                 else { post { self?.session.onError("Could not add media", "\(error)") } }
             }
         }
+    }
+
+    /// Where `addToTimeline` puts its clip: the track asked for; for an add at the playhead (no `time`) the targeted
+    /// track when it is free there (the accent V / A tag); else nil, the first free lane.
+    func insertTrack(_ trackId: String?, _ time: Double?, _ assetId: String, _ t: Double) -> String? {
+        if let trackId { return trackId }
+        return time == nil ? session.timeline.targetedInsertTrack(assetId: assetId, at: t) : nil
     }
 
     /// AssetContextMenu rename: the file is renamed in place (same folder) and the document's assets follow it.
@@ -330,8 +337,7 @@ final class SessionPanels {
         switch cmd {
         case .createLibrary: command = ["type": .string("create")]
         case .openLibrary: command = ["type": .string("open")]
-        case .createEvent(let l, let name): command = ["type": .string("event"), "libraryId": .string(l), "name": .string(name)]
-        case .createProject(let l, let e, let name): command = ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
+        case .createEvent, .createProject, .renameEvent, .renameProject: command = Self.namedItemCommand(cmd)
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
             if left.library.currentProjectId != nil, let id = projectId,
@@ -427,6 +433,8 @@ final class SessionPanels {
         inspector.onCopyGrade = { [weak self] in self?.session.timeline.copyGradeSelection() ?? false }
         inspector.onPasteGrade = { [weak self] in self?.session.timeline.pasteGradeSelection() ?? false }
         inspector.onOpenGroupChanged = { [weak self] _ in self?.redraw() }
+        right.easing.editor = session.editor
+        right.easing.onEdited = inspector.onEdited   // the same save, duration and stage refresh as an inspector edit
         inspector.onAudition = { [weak self] request in self?.session.audition(request) }
         right.onAnimate = { [weak self] in self?.animatePanels() }
         rendersPanel.onChange = { [weak self] in self?.redraw() }
@@ -434,6 +442,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         wirePresetPreviews(inspector)
+        wireCrop(inspector)
         wireEffectPreviews(inspector)
         wireRenders()
     }
@@ -453,7 +462,7 @@ final class SessionPanels {
         _ = schedule(1.0 / 60, step)
     }
 
-    /// Grade preset tiles and scopes: the selected clip's frame graded with each preset, or its own grade (PresetPreviewRenderer). While playing
+    /// Grade preset tiles: the selected clip's frame graded with each preset (PresetPreviewRenderer). While playing
     /// the tiles keep the frame they showed when playback started, so playback does not re-grade 18 thumbnails a frame.
     private func wirePresetPreviews(_ inspector: InspectorPanel) {
         let renderer = PresetPreviewRenderer(compositor: session.compositor)
@@ -473,15 +482,8 @@ final class SessionPanels {
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
-        inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
-            guard let self, let inspector else { return .unavailable }
-            let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
-            switch renderer.gradedFrame(clipId: clipId, time: t, pixelWidth: w, pixelHeight: h) {
-            case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
-            case .unavailable: return .unavailable
-            }
-        }
+        wireStageFrame(inspector, renderer)
+        wireScopes(inspector, clip: renderer)
     }
 
     /// Effects catalog tiles: the selected clip's frame with its grade plus each effect or look (the preset tiles'
@@ -553,6 +555,10 @@ final class SessionPanels {
         let keys = session.timeline.view.selectedKeyframes
         if inspector.selectedKeyframes != keys { inspector.selectedKeyframes = keys }
         inspector.time = session.playback.currentTime
+        let easing = right.easing   // the Keyframe Easing panel follows the same clip, keys and playhead
+        if easing.clipId != sel.first { easing.clipId = sel.first }
+        if easing.selectedKeyframes != keys { easing.selectedKeyframes = keys }
+        easing.time = session.playback.currentTime
         right.canvasSize = CanvasSize(session.editor.document.canvas.width, session.editor.document.canvas.height)
         rendersPanel.canvasSize = right.canvasSize
     }
@@ -589,7 +595,8 @@ final class RightPanelInput: CanvasInput {
     func secondaryClick(x: Double, y: Double) {}
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false) }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {
-        if panel.scroll(.init(x, last.y), dy: dy, precise: precise) { panels.redraw() }
+        // ctrl: the host's zoom modifier (as the timeline reads it) zooms the Easing tab's graph.
+        if panel.scroll(.init(x, last.y), dy: dy, precise: precise, zoom: ctrl) { panels.redraw() }
     }
     func keyDown(_ k: EditorKey) -> Bool {
         // Typing into a field stays in the panel; everything else falls through to the timeline/playback shortcuts.

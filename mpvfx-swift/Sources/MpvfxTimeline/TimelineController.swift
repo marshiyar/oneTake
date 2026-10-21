@@ -117,7 +117,7 @@ public final class TimelineController {
             let before = all[..<first].filter { t in visible.contains { $0.id == t.id } }.count
             return (g.id, before)
         }
-        view.tracks = visible
+        view.tracks = visible; view.allTracks = all
         // useAutoExpandKeyframedClips: expand a clip when it first gains property lanes.
         let laned = Set(all.flatMap(\.clips).filter { !$0.lanes.isEmpty }.map(\.id))
         view.expandedClips.formUnion(laned.subtracting(clipsWithLanes))
@@ -301,7 +301,7 @@ public final class TimelineController {
         if keyframeGesture != nil { keyframePointerMove(x: x); return }
         guard let g = gesture else {
             if tool == .select, keyframeHover(x: x, y: y) { return }
-            let hit = hitTest(x: x, y: y)
+            let hit = hitTest(x: x, y: y); updateHeaderHover(hit, x: x, y: y)
             var hovered: String?; var cur = Cursor.normal
             if case let .clip(id, _, edge) = hit { hovered = id; cur = edge != nil ? .resize : .pointer }
             if hovered != view.hoveredClip || cur != cursor { view.hoveredClip = hovered; cursor = cur; needsDisplay?() }
@@ -406,15 +406,14 @@ public final class TimelineController {
     // MARK: Keyboard (timeline-owned edit shortcuts; playback keys fall through to PlaybackState)
 
     @discardableResult public func keyDown(_ k: EditorKey) -> Bool {
+        if case .function(9) = k.code { return easyEaseSelectedKeyframes(k) }
         if k.command, case .char(let ch) = k.code {
             switch Character(ch.lowercased()) {
             case "z":
                 view.selectedKeyframes = []   // keyframeHistoryState: undo/redo clear the key selection
                 return k.shift ? (editor?.redo() ?? false) : (editor?.undo() ?? false)
             case "y" where !k.meta: return editor?.redo() ?? false
-            case "=", "+": zoom(in: true); return true
-            case "-": zoom(in: false); return true
-            case "0": zoomToFit(); return true
+            case "=", "+", "-", "0": return zoomKey(Character(ch.lowercased()))
             case "a" where !k.shift && !k.alt: return selectAll()
             case "d" where !k.shift && !k.alt: return duplicateSelection()
             case "c" where k.alt: return copyGradeSelection()
@@ -422,6 +421,7 @@ public final class TimelineController {
             case "c": return copySelection()
             case "x": guard copySelection() else { return false }; return deleteSelection()
             case "v": return pasteClipboard()
+            case "k" where !k.alt: return keySelectedProperties(animatedOnly: k.shift)
             default: return false
             }
         }
