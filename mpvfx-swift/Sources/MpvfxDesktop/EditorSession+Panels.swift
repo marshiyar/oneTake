@@ -481,10 +481,9 @@ final class SessionPanels {
         demos.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
         effectPreviews = demos
         inspector.effectPreview = { [weak self, weak inspector] req in
-            if let self, let inspector, let clipId = req.clipId, let frames = self.presetPreviews {
+            if let self, let inspector, let frames = self.presetPreviews {
                 let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
-                switch frames.effectPreview(clipId: clipId, slot: req.key, grade: req.grade, time: t,
-                                            pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight) {
+                switch frames.effectPreview(req, time: t) {
                 case .ready(let img): return .ready(img)
                 case .rendering: return .rendering
                 case .unavailable: break   // no picture on the clip: the sample picture below

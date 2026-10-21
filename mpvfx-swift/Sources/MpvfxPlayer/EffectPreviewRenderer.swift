@@ -63,15 +63,15 @@ public final class EffectPreviewRenderer: @unchecked Sendable {
         let queued = !pending.insert(key).inserted
         lock.unlock()
         if !queued {
-            let grade = req.grade, dir = projectDir(), renderer = colorRenderer
-            queue.async { [weak self] in self?.finish(key, Self.render(grade: grade, width: w, height: h, projectDir: dir, renderer: renderer)) }
+            let dir = projectDir(), renderer = colorRenderer
+            queue.async { [weak self] in self?.finish(key, Self.render(req, projectDir: dir, renderer: renderer)) }
         }
         return .rendering
     }
 
-    /// The sample picture at `width` x `height` graded with `grade` (a disabled or neutral grade leaves it as drawn).
-    public static func render(grade: NativeJSONObject, width: Int, height: Int, projectDir: String?,
-                              renderer: ColorRenderer) -> Result<CanvasImage, PreviewFailure> {
+    /// The sample picture at the request's size graded with its grade (a disabled or neutral grade leaves it as drawn).
+    public static func render(_ req: EffectPreviewRequest, projectDir: String?, renderer: ColorRenderer) -> Result<CanvasImage, PreviewFailure> {
+        let width = req.pixelWidth, height = req.pixelHeight, grade = req.grade
         let sample = EffectSampleImage.make(width: width, height: height)
         guard sample.width == width, sample.height == height else { return .failure(.invalidSize(width: width, height: height)) }
         guard let g = ColorGradeRenderer.forClip(ColorGradeParams(json: grade), clipId: "", projectDir: projectDir) else { return .success(sample) }

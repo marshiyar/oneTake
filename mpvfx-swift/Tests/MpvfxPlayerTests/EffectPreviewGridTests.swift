@@ -62,11 +62,39 @@ final class EffectPreviewGridTests: XCTestCase {
         return (max(0, sq / max(1, n) - mean * mean)).squareRoot()
     }
 
-    func assertPictures(_ r: RightPanel, _ t: CairoImageTarget, id: String, count: Int, _ what: String) throws {
-        for i in 0..<count {
-            let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom(id, i) }, "\(what) tile \(i)")
-            XCTAssertGreaterThan(lumaSpread(t, tile), 25, "\(what) tile \(i) does not show the sample picture")
+    /// The tiles `id` 0..<count that show no picture (missing tiles included), as "<what> tile <i>".
+    func tilesWithoutPicture(_ r: RightPanel, _ t: CairoImageTarget, id: String, count: Int, _ what: String) -> [String] {
+        (0..<count).filter { i in
+            guard let tile = r.inspector.hits.rect(where: { $0 == .custom(id, i) }) else { return true }
+            return lumaSpread(t, tile) <= 25
+        }.map { "\(what) tile \($0)" }
+    }
+
+    /// Catalog tiles of every family that show no picture in `mode`, after the renders settle.
+    func catalogTilesWithoutPicture(_ mode: ThemeMode) throws -> [String] {
+        Theme.setMode(mode); defer { Theme.setMode(.dark) }
+        let renderer = EffectPreviewRenderer(budgetBytes: 32 << 20)
+        var missing: [String] = []
+        for fam in EffectSpecs.families {
+            let r = try fixture(open: "effects", renderer: renderer)
+            r.inspector.effectsUI = EffectsUIState(clipId: "clip:a", catalogOpen: true, catalogFamily: fam.label)
+            let t = drawSettled(r, renderer, h: 1400)
+            write(t, "effects-catalog-\(fam.label.lowercased().filter(\.isLetter))-\(mode)")
+            let count = fam.presets.compactMap(ColorGrading.preset).count + fam.effects.count
+            missing += tilesWithoutPicture(r, t, id: "fx:tiles", count: count, "\(mode) \(fam.label)")
         }
+        return missing
+    }
+
+    /// Grade preset tiles that show no picture in `mode` when the clip has none (the host answers `.unavailable`).
+    func gradeTilesWithoutPicture(_ mode: ThemeMode) throws -> [String] {
+        Theme.setMode(mode); defer { Theme.setMode(.dark) }
+        let renderer = EffectPreviewRenderer(budgetBytes: 32 << 20)
+        let r = try fixture(open: "grade", renderer: renderer)
+        r.inspector.presetPreview = { _ in .unavailable }
+        let t = drawSettled(r, renderer, h: 1400)
+        write(t, "grade-presets-sample-\(mode)")
+        return tilesWithoutPicture(r, t, id: "grade:presets", count: ColorGrading.gradePresets.count, "\(mode) grade")
     }
 
     func write(_ t: CairoImageTarget, _ name: String) {
@@ -75,19 +103,12 @@ final class EffectPreviewGridTests: XCTestCase {
         XCTAssertEqual(t.writePNG("\(dir)/\(name)-2x.png"), 0)
     }
 
-    func testEffectCatalogTilesShowTheGradedSample() throws {
-        for mode in [ThemeMode.dark, .light] {
-            Theme.setMode(mode); defer { Theme.setMode(.dark) }
-            let renderer = EffectPreviewRenderer(budgetBytes: 32 << 20)
-            for fam in EffectSpecs.families {
-                let r = try fixture(open: "effects", renderer: renderer)
-                r.inspector.effectsUI = EffectsUIState(clipId: "clip:a", catalogOpen: true, catalogFamily: fam.label)
-                let t = drawSettled(r, renderer, h: 1400)
-                write(t, "effects-catalog-\(fam.label.lowercased().filter(\.isLetter))-\(mode)")
-                let count = fam.presets.compactMap(ColorGrading.preset).count + fam.effects.count
-                try assertPictures(r, t, id: "fx:tiles", count: count, "\(mode) \(fam.label)")
-            }
-        }
+    func testEffectCatalogTilesShowTheGradedSampleInDark() throws {
+        XCTAssertEqual(try catalogTilesWithoutPicture(.dark), [])
+    }
+
+    func testEffectCatalogTilesShowTheGradedSampleInLight() throws {
+        XCTAssertEqual(try catalogTilesWithoutPicture(.light), [])
     }
 
     /// The measure tells a placeholder from a picture: without a renderer the tiles show "No preview" and their spread
@@ -100,17 +121,13 @@ final class EffectPreviewGridTests: XCTestCase {
         XCTAssertLessThan(lumaSpread(t, tile), 16, "measured 12.2 for the placeholder; every picture tile measures over 25")
     }
 
-    /// The demo clip has no picture, so the preset tiles fall back to the sample picture with each look.
-    func testGradePresetTilesShowTheSampleWhenTheClipHasNoPicture() throws {
-        for mode in [ThemeMode.dark, .light] {
-            Theme.setMode(mode); defer { Theme.setMode(.dark) }
-            let renderer = EffectPreviewRenderer(budgetBytes: 32 << 20)
-            let r = try fixture(open: "grade", renderer: renderer)
-            r.inspector.presetPreview = { _ in .unavailable }
-            let t = drawSettled(r, renderer, h: 1400)
-            write(t, "grade-presets-sample-\(mode)")
-            try assertPictures(r, t, id: "grade:presets", count: ColorGrading.gradePresets.count, "\(mode) grade")
-        }
+    /// The clip has no picture, so the preset tiles fall back to the sample picture with each look.
+    func testGradePresetTilesShowTheSampleWithoutAClipPictureInDark() throws {
+        XCTAssertEqual(try gradeTilesWithoutPicture(.dark), [])
+    }
+
+    func testGradePresetTilesShowTheSampleWithoutAClipPictureInLight() throws {
+        XCTAssertEqual(try gradeTilesWithoutPicture(.light), [])
     }
 }
 #endif

@@ -67,7 +67,9 @@ final class EffectPreviewSmokeTests: XCTestCase {
             throw SmokeError(description: "no snapshot in \(mode):\n" + ((try? String(contentsOf: log, encoding: .utf8)) ?? ""))
         }
         keep(data, "effects-grid-\(mode).png")
-        return try ImageCodec.decode(data)
+        let shot = try ImageCodec.decode(data)
+        XCTAssertEqual([shot.width, shot.height], [1440, 900], "the window snapshot is the 1440×900 display")
+        return shot
     }
 
     func keep(_ data: Data, _ name: String) {
@@ -88,14 +90,15 @@ final class EffectPreviewSmokeTests: XCTestCase {
         return n
     }
 
-    func testEffectsGridShowsTheGradedSampleInDarkAndLight() throws {
-        for mode in ["dark", "light"] {
-            let shot = try snapshot(mode)
-            XCTAssertEqual([shot.width, shot.height], [1440, 900])
-            // Measured at 1440×900 on Linux/Xvfb: 2692 (dark) and 2601 (light) with the three Essentials tiles drawn;
-            // the panel outside the tile frames holds 91 and 0 (the clip icon), which is all the blank tiles showed.
-            XCTAssertGreaterThan(saturatedPixels(shot), 1000, "\(mode): the effect tiles show no picture")
-        }
+    // Measured at 1440×900 on Linux/Xvfb: 2692 (dark) and 2601 (light) saturated pixels with the three Essentials
+    // tiles drawn; the panel outside the tile frames holds 91 and 0 (the clip icon), which is all the blank tiles showed.
+
+    func testEffectsGridShowsTheGradedSampleInDark() throws {
+        XCTAssertGreaterThan(saturatedPixels(try snapshot("dark")), 1000, "dark: the effect tiles show no picture")
+    }
+
+    func testEffectsGridShowsTheGradedSampleInLight() throws {
+        XCTAssertGreaterThan(saturatedPixels(try snapshot("light")), 1000, "light: the effect tiles show no picture")
     }
 }
 #endif

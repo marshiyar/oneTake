@@ -25,7 +25,8 @@ extension PresetPreviewRendererTests {
     /// Asks until the tile settles, waiting on the decode and render queues (not on time).
     func effectTile(_ r: PresetPreviewRenderer, _ demo: InspectorPanel.TileDemo, w: Int = 120, h: Int = 68) throws -> CanvasImage {
         for _ in 0..<20 {
-            if case .ready(let img) = r.effectPreview(clipId: "clip:a", slot: demo.key, grade: demo.grade, time: 0, pixelWidth: w, pixelHeight: h) {
+            let req = EffectPreviewRequest(key: demo.key, grade: demo.grade, clipId: "clip:a", pixelWidth: w, pixelHeight: h)
+            if case .ready(let img) = r.effectPreview(req, time: 0) {
                 return img
             }
             r.wait()
@@ -68,17 +69,24 @@ extension PresetPreviewRendererTests {
         let r = PresetPreviewRenderer(compositor: compositor, budgetBytes: tileBytes * 4 + 100)
         let specs = Array(EffectSpecs.all.prefix(18))
         XCTAssertEqual(specs.count, 18, "the catalog has at least 18 effects")
-        for spec in specs { _ = try effectTile(r, InspectorPanel.effectDemo(spec, clipId: "clip:a")) }
+        let tiles = try specs.map { try effectTile(r, InspectorPanel.effectDemo($0, clipId: "clip:a")) }
+        XCTAssertEqual(tiles.count, 18)
         XCTAssertLessThanOrEqual(r.bytes, r.budgetBytes)
         XCTAssertLessThanOrEqual(r.count, 4)
     }
 
-    /// A clip that is not in the composition has no picture: `.unavailable`, so the host shows the sample picture.
-    func testEffectTileWithoutAClipIsUnavailable() throws {
+    /// Whether the blur tile for `clip` answers `.unavailable` (no picture: the host shows the sample picture).
+    func blurTileIsUnavailable(_ clip: String?) throws -> Bool {
         let r = PresetPreviewRenderer(compositor: compositor)
         let demo = InspectorPanel.effectDemo(try XCTUnwrap(EffectSpecs.spec("blur")))
-        guard case .unavailable = r.effectPreview(clipId: "clip:missing", slot: demo.key, grade: demo.grade, time: 0, pixelWidth: 120, pixelHeight: 68) else {
-            return XCTFail("a missing clip has no picture")
-        }
+        let req = EffectPreviewRequest(key: demo.key, grade: demo.grade, clipId: clip, pixelWidth: 120, pixelHeight: 68)
+        guard case .unavailable = r.effectPreview(req, time: 0) else { return false }
+        return true
+    }
+
+    /// A clip that is not in the composition, or a request naming no clip, has no picture.
+    func testEffectTileWithoutAClipIsUnavailable() throws {
+        XCTAssertTrue(try blurTileIsUnavailable("clip:missing"), "a missing clip")
+        XCTAssertTrue(try blurTileIsUnavailable(nil), "a request naming no clip")
     }
 }

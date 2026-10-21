@@ -50,34 +50,51 @@ final class EffectTileFrameTests: XCTestCase {
         return t
     }
 
-    func assertTilesDrawSomething(_ r: RightPanel, id: String, count: Int, h: Double, _ what: String) throws {
-        let t = Self.draw(r, h: h)
-        for i in 0..<count {
-            let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom(id, i) }, "\(what) tile \(i) drawn")
-            XCTAssertGreaterThan(Self.inkPixels(t, Self.frame(of: tile), scale: 2), 40, "\(what) tile \(i): the 16:9 frame is blank")
-        }
+    /// The tiles `id` 0..<count of `r` whose frame is blank (missing tiles count as blank), as "<what> tile <i>".
+    func blankTiles(_ r: RightPanel, id: String, count: Int, _ what: String) -> [String] {
+        let t = Self.draw(r, h: 1400)
+        return (0..<count).filter { i in
+            guard let tile = r.inspector.hits.rect(where: { $0 == .custom(id, i) }) else { return true }
+            return Self.inkPixels(t, Self.frame(of: tile), scale: 2) <= 40
+        }.map { "\(what) tile \($0)" }
     }
 
-    /// Every Effects catalog family, dark and light: no tile's frame is the flat scrim.
-    func testEffectCatalogTileFramesAreNeverBlank() throws {
-        for mode in [ThemeMode.dark, .light] {
-            Theme.setMode(mode); defer { Theme.setMode(.dark) }
-            for fam in EffectSpecs.families {
-                let r = try PanelSnapshotTests.rightFixture(open: "effects", h: 1400)
-                r.inspector.effectsUI = EffectsUIState(clipId: "clip:a", catalogOpen: true, catalogFamily: fam.label)
-                let count = fam.presets.compactMap(ColorGrading.preset).count + fam.effects.count
-                try assertTilesDrawSomething(r, id: "fx:tiles", count: count, h: 1400, "\(mode) \(fam.label)")
-            }
+    /// Blank tiles of every Effects catalog family in `mode`.
+    func blankCatalogTiles(_ mode: ThemeMode) throws -> [String] {
+        Theme.setMode(mode); defer { Theme.setMode(.dark) }
+        var blank: [String] = []
+        for fam in EffectSpecs.families {
+            let r = try PanelSnapshotTests.rightFixture(open: "effects", h: 1400)
+            r.inspector.effectsUI = EffectsUIState(clipId: "clip:a", catalogOpen: true, catalogFamily: fam.label)
+            let count = fam.presets.compactMap(ColorGrading.preset).count + fam.effects.count
+            blank += blankTiles(r, id: "fx:tiles", count: count, "\(mode) \(fam.label)")
         }
+        return blank
     }
 
-    /// The Grade preset grid with a clip that has no picture to grade (no host frames): no tile is blank.
-    func testGradePresetTileFramesAreNeverBlankWithoutAClipPicture() throws {
-        for mode in [ThemeMode.dark, .light] {
-            Theme.setMode(mode); defer { Theme.setMode(.dark) }
-            let r = try PanelSnapshotTests.rightFixture(open: "grade", h: 1400)
-            try assertTilesDrawSomething(r, id: "grade:presets", count: ColorGrading.gradePresets.count, h: 1400, "\(mode) grade")
-        }
+    /// Blank Grade preset tiles in `mode`, for a clip with no picture to grade (no host frames).
+    func blankGradeTiles(_ mode: ThemeMode) throws -> [String] {
+        Theme.setMode(mode); defer { Theme.setMode(.dark) }
+        let r = try PanelSnapshotTests.rightFixture(open: "grade", h: 1400)
+        return blankTiles(r, id: "grade:presets", count: ColorGrading.gradePresets.count, "\(mode) grade")
+    }
+
+    /// Every Effects catalog family: no tile's frame is the flat scrim.
+    func testEffectCatalogTileFramesAreNeverBlankInDark() throws {
+        XCTAssertEqual(try blankCatalogTiles(.dark), [])
+    }
+
+    func testEffectCatalogTileFramesAreNeverBlankInLight() throws {
+        XCTAssertEqual(try blankCatalogTiles(.light), [])
+    }
+
+    /// The Grade preset grid with a clip that has no picture: no tile is blank.
+    func testGradePresetTileFramesAreNeverBlankInDark() throws {
+        XCTAssertEqual(try blankGradeTiles(.dark), [])
+    }
+
+    func testGradePresetTileFramesAreNeverBlankInLight() throws {
+        XCTAssertEqual(try blankGradeTiles(.light), [])
     }
 }
 #endif

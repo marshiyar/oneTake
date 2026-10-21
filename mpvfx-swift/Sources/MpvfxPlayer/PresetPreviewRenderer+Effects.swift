@@ -14,17 +14,18 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxColor
+import MpvfxPanels
 import MpvfxShared
 
 /// Effects catalog tiles on the clip: the selected clip's frame (the same source lookup, queue, cache and budget as the
 /// Grade preset tiles) graded with a tile's grade JSON, which is the clip's own grade plus the effect or look.
 extension PresetPreviewRenderer {
-    /// `clipId`'s frame at `time` graded with `grade`, at most `pixelWidth` x `pixelHeight`. `slot` names the tile
-    /// ("fx:blur"): a newer request for it drops an older one still queued. `.unavailable` when the clip has no
-    /// picture (the host then shows the sample picture). Call on the UI thread.
-    public func effectPreview(clipId: String, slot: String, grade: NativeJSONObject, time: Double,
-                              pixelWidth: Int, pixelHeight: Int) -> State {
-        guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
+    /// The frame of `req.clipId` at `time` graded with `req.grade`, at most the request's size. `req.key` names the
+    /// tile ("fx:blur"): a newer request for it drops an older one still queued. `.unavailable` when the request
+    /// names no clip or the clip has no picture (the host then shows the sample picture). Call on the UI thread.
+    public func effectPreview(_ req: EffectPreviewRequest, time: Double) -> State {
+        let slot = req.key, grade = req.grade, pixelWidth = req.pixelWidth, pixelHeight = req.pixelHeight
+        guard pixelWidth > 1, pixelHeight > 1, let clipId = req.clipId, let comp = compositor.composition,
               let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
         let c = entry.clip
         let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps

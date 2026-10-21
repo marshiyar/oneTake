@@ -37,10 +37,13 @@ final class EffectGridWidthTests: XCTestCase {
         return next.y - last.maxY
     }
 
-    func testTheGridHeightFollowsThePanelWidth() throws {
-        let standard = try gapBelowTheGrid(width: 409)
-        for w in [PanelFit.minRight, (1440 * PanelFit.maxRatio).rounded(.down)] {
-            XCTAssertEqual(try gapBelowTheGrid(width: w), standard, accuracy: 0.5, "at \(w) pt the grid leaves a gap or overlaps the next row")
-        }
+    func testTheGridEndsWhereTheNextRowStartsAtTheMinimumWidth() throws {
+        XCTAssertEqual(try gapBelowTheGrid(width: PanelFit.minRight), try gapBelowTheGrid(width: 409), accuracy: 0.5,
+                       "at the 280 pt minimum the grid leaves a gap below it")
+    }
+
+    func testTheGridEndsWhereTheNextRowStartsAtTheMaximumWidth() throws {
+        XCTAssertEqual(try gapBelowTheGrid(width: (1440 * PanelFit.maxRatio).rounded(.down)), try gapBelowTheGrid(width: 409), accuracy: 0.5,
+                       "at the widest panel the grid overlaps the next row")
     }
 }
