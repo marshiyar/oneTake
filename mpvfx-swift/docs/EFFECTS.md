@@ -1,6 +1,6 @@
 # Color grading and stylize effects: the clip effect JSON
 
-How a clip stores its color grade and its stylize effects in `project.json` (grading contract v2, grading
+How a clip stores its color grade and its stylize effects in `project.json` (grading contract v3, grading
 engine 0.8.20) and how the app reads, edits and renders it. One schema serves preview and export: `Sources/MpvfxColor` (`ColorGradeParams`, `GradeShader`,
 `ColorGradeRenderer`, `CubeLUT`) is the grading shader on the CPU, the player grades each decoded frame
 with it (3fe63d2) and export grades each graded clip with the same pass before compositing (5dbd897). The
@@ -31,8 +31,8 @@ The grade is one entry of the clip's `effects` array (`NativeClipEffect`):
 
 ## The grade object
 
-Top-level keys (`COLOR_GRADING_TOP_LEVEL_KEYS`): `enabled, preset, intensity, adjust, wheels, curves, hueCurves,
-secondaries, details, effects, palette, lut, colorSpace`. Every key is optional. Reading normalizes the object the
+Top-level keys: `enabled, version, preset, intensity, adjust, wheels, curves, hueCurves,
+secondaries, details, effects, palette, lut, colorSpace`. A grade authored outside the app should write `"version": 3`. Every key is optional. Reading normalizes the object the
 way `normalizeHfColorGrading` does (`ColorGradeParams.init(json:)`): missing values come from the named preset,
 or from the contract defaults when there is no preset; every number is clamped to its limit; a non-finite number
 reads as 0; malformed curves fall back to identity.
@@ -40,6 +40,7 @@ reads as 0; malformed curves fall back to identity.
 | Key | Type | Meaning, limits, default |
 | --- | --- | --- |
 | `enabled` | bool | `false` turns the grade off. Default on. |
+| `version` | number | Grading contract the grade was written under. `3` (written by the inspector for every new grade): Warmth and Tint scale the R, G and B channels, normalized so a grey keeps its luma, and black stays black. Absent or anything below 3: contract 2, where Warmth and Tint add a fixed offset to every pixel (how grades saved before 2026-10-21 render). Editing a grade keeps its version; resetting the whole grade starts a contract 3 grade. The secondary correction's Warmth and Tint follow the same rule. |
 | `preset` | string or null | Preset id (table below). Its values fill every key the object leaves out. |
 | `intensity` | number 0…1 | Mix of the primary grade (adjust, wheels, curves, secondaries, LUT) over the source. Default 1, or the preset's. Vignette, grain and stylize effects are not scaled by it. |
 | `adjust` | object | Primary correction. `exposure` −2…2 (stops); `contrast, highlights, shadows, whites, blacks, temperature, tint, vibrance, saturation` −1…1. Default 0. UI labels: Exposure, Contrast, Highlights, Shadows, White Point, Black Point, Warmth, Tint, Vibrance, Saturation. |
