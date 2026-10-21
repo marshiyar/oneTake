@@ -1,0 +1,82 @@
+name: Bug report
+description: Something in MpVFX does not work as it should.
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Issues on this repository are public, so please leave out anything
+        personal: your name, file paths that show your user name, the content of your footage, and any password, token
+        or key. A security problem goes to private reporting instead (see the Security link when you open an issue).
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, one step per line, starting from opening the app.
+      placeholder: |
+        1. Open a new project
+        2. Import a 1080p MP4 clip and drop it on the timeline
+        3. Press Export
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: The exact error message, if one was shown. Screenshots help.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: Operating system version
+      placeholder: "macOS 26.1, Windows 11 24H2, Ubuntu 24.04"
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: MpVFX version
+      description: The release you downloaded (v0.1.0, or a nightly-<commit> pre-release), or the installer's file name.
+      placeholder: "nightly-abc1234, or MpVFX-0.1.0-macos-arm64.dmg"
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Project and media details
+      description: |
+        What kind of project and files were involved: resolution, frame rate, container and codec (for example
+        "1080p30 H.264 in MP4 with AAC sound"), clip count and length. Please do not attach personal footage or
+        paths that show your user name. A small file that reproduces the bug and that you are free to share helps most.
+      placeholder: "9:16 project, 3 clips, 1080p30 H.264/AAC MP4, about 40 s in total"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: Anything the app printed when it went wrong. Check it for personal paths before you post it.
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before you submit
+      options:
+        - label: This report contains no personal data, passwords, tokens or keys.
+          required: true
