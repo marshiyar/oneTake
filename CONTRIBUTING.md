@@ -13,6 +13,8 @@ Thanks for helping. A few rules keep the history readable and the project releas
 5. Keep a pull request to one change. Say what changed and why in the description, in plain words a user of the
    app would understand where possible.
 
+Every check, what its failure means, how to fix or re-run it, and the rules for adding one: [.github/CHECKS.md](.github/CHECKS.md).
+
 ## Landing pull requests
 
 CI is slow, so pull requests can land in batches instead of one at a time:
