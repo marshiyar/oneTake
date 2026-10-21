@@ -34,7 +34,7 @@ public let shortcutSections: [ShortcutSection] = {
                       ("⌘G", "Group elements"), ("⌘⇧G", "Ungroup"), ("Del", "Delete selected element (no keyframe selected)")]),
         s("Gesture recording modifiers", [("Drag", "Record x / y position"), ("Scroll", "Record z depth"), ("⇧ Drag", "Record rotationX / rotationY"),
                                           ("⌥ Drag", "Record rotation"), ("⌘ Drag↕", "Record opacity"), ("⌘ Scroll", "Record scale")]),
-        s("Canvas", [("Drag", "Move element / add keyframe"), ("⌥ Drag", "Move entire animation path"), ("⇧ Drag", "Uniform resize")]),
+        s("Canvas", [("\\", "Toggle before / after compare"), ("Drag", "Move element / add keyframe"), ("⌥ Drag", "Move entire animation path"), ("⇧ Drag", "Uniform resize")]),
         s("Crop", [("Drag edge", "Crop a side"), ("Drag center", "Reposition the crop")]),
         s("Panels", [("⌘1", "Compositions tab"), ("⌘2", "Assets tab")]),
         s("Work area", [("I", "Set in-point"), ("⇧I", "Clear in-point"), ("O", "Set out-point"), ("⇧O", "Clear out-point"),

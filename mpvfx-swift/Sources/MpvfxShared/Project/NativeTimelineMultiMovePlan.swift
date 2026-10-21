@@ -26,7 +26,7 @@ public struct NativeTimelineMultiMovePlannedMove: Equatable {
     public var address: NativeProjectClipAddress; public var sourceFile: String?; public var binding: NativeClipDomBinding?
     public var startFrame: Double; public var compatibilityStartSeconds: Double; public var destination: NativeTimelineLaneDestination
 }
-public enum NativeTimelineMultiMovePlanFailureCode: String {
+public enum NativeTimelineMultiMovePlanFailureCode: String, Sendable {
     case emptyChangeSet = "empty-change-set", invalidStart = "invalid-start", missingSelectionId = "missing-selection-id"
     case clipNotFound = "clip-not-found", ambiguousClip = "ambiguous-clip", duplicateClip = "duplicate-clip", unboundClip = "unbound-clip"
     case bindingSourceMismatch = "binding-source-mismatch", unmappedLane = "unmapped-lane", incompatibleLane = "incompatible-lane"

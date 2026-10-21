@@ -52,3 +52,9 @@ repos:
         language: python
         pass_filenames: false
         always_run: true
+      - id: crash-constructs
+        name: no new force unwrap, try!, as!, fatalError or precondition under mpvfx-swift/Sources
+        entry: python3 -I -B .github/ci/crash_constructs.py
+        language: python
+        pass_filenames: false
+        files: ^(mpvfx-swift/Sources/.*\.swift|\.github/ci/crash(_|-)constructs.*)$
