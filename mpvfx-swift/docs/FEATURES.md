@@ -119,7 +119,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | missing (panels; the renderer already reads every setting and the palette) | n/a |
 | Clip effects other than the grade (listed with enable toggle and remove) | partial: listed and toggleable; not rendered, and export refuses them | close |
 | Audio FX: presets by family, EQ (Tone) bands, signal chain with bypass / remove / clear | done (edits `audioFxChain`, undoable; playback and export hear it) | close |
-| Audio FX: add menu with descriptions, per-node parameter editing, move up/down | missing (panels; coordinate with swift-audiofx-hang on these rows) | n/a |
+| Audio FX: live slider and graph-handle drags, module header drag reorder, Alt+Up/Down | done on clip and bus racks; intermediate updates at most every 30 ms, one undo per completed gesture; Escape cancels | close |
 | Audio FX: voiceover carve, leveller ("even out its loud and quiet parts"), audition, preset run amount | missing UI (panels); DSP exists in `MpvfxAudioGraph` | n/a |
 | Audio group bus rack (opened from the timeline group header FX / name buttons) | done (de10f47): the inspector shows the bus's FX chain and Group volume; a popover form is not drawn (panels-visual) | close |
 | Audio group volume | done | exact |
