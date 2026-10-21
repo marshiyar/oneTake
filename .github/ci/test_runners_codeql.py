@@ -74,12 +74,12 @@ class Handoff(unittest.TestCase):
     def test_the_local_swift_job_is_skipped_when_the_analysis_was_sent(self):
         swift = self.jobs["swift"]
         self.assertEqual(swift["needs"], "swift-runners")
-        self.assertEqual(swift["if"], "${{ !cancelled() && needs.swift-runners.outputs.sent != 'true' }}")
+        self.assertEqual(swift["if"], "${{ !cancelled() && vars.CODEQL_PAUSED == 'false' && needs.swift-runners.outputs.sent != 'true' }}")
         self.assertEqual(swift["runs-on"], "macos-26")
 
     def test_python_and_actions_stay_local_on_every_event(self):
         job = self.jobs["scripts-and-workflows"]
-        self.assertNotIn("if", job)
+        self.assertEqual(job["if"], "vars.CODEQL_PAUSED == 'false'")
         self.assertEqual(job["strategy"]["matrix"]["language"], ["python", "actions"])
 
 

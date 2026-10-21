@@ -21,6 +21,9 @@ public struct PointerModifiers: OptionSet, Equatable, Sendable {
     public static let ctrl = PointerModifiers(rawValue: 8)
     /// Command on macOS or Ctrl elsewhere (`metaKey || ctrlKey`, as the original reads it).
     public var command: Bool { contains(.meta) || contains(.ctrl) }
+    /// The wheel zooms instead of scrolling: ⌘ or Ctrl, or Option / Alt (the editor convention for zooming a
+    /// timeline about the pointer). Hosts pass it as the scroll's zoom flag.
+    public var zoomsWheel: Bool { command || contains(.alt) }
 }
 
 /// Pointer buttons in DOM numbering (MouseEvent.button), which every host maps its own numbering onto.
@@ -35,4 +38,20 @@ public enum PointerButton {
     public static func fromGdk(_ n: UInt32) -> Int {
         switch n { case 1: primary; case 2: middle; case 3: secondary; case 8: back; case 9: forward; default: Int(n) }
     }
+}
+
+/// A native accessibility control represented by a custom-drawn canvas widget.
+public struct CanvasAccessibilityControl {
+    public var label: String
+    public var value: Bool
+    public var frame: CanvasRect
+    public var press: () -> Void
+    public init(label: String, value: Bool, frame: CanvasRect, press: @escaping () -> Void) {
+        self.label = label; self.value = value; self.frame = frame; self.press = press
+    }
+}
+
+/// Canvas inputs that publish native controls to their desktop host.
+public protocol CanvasAccessibilityProvider: AnyObject {
+    var accessibilityControls: [CanvasAccessibilityControl] { get }
 }

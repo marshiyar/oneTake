@@ -21,6 +21,8 @@ public struct NativeMediaNaturalSize: Equatable, Hashable, Sendable {
     public var width: Double, height: Double
     public init(width: Double, height: Double) { self.width = width; self.height = height }
     public var isValid: Bool { width.isFinite && height.isFinite && width > 0 && height > 0 }
+    /// Width over height, nil for a size that is not valid.
+    public var aspect: Double? { isValid ? width / height : nil }
 
     /// Display size from probed stream facts: `width × sar` by `height`, swapped for a ±90° rotation.
     public static func display(width: Double, height: Double, sampleAspect: Double? = nil, rotation: Double = 0) -> NativeMediaNaturalSize? {
@@ -96,12 +98,23 @@ public func nativeClipNaturalLayout(_ clip: NativeProjectClip, natural: NativeMe
     return fitTimelineAssetGeometry(natural, compWidth: canvasWidth, compHeight: canvasHeight)
 }
 
+/// The default box a clip shows given its fit: nativeClipNaturalLayout for Fit (and an absent fit), nil for Fill
+/// and Stretch. A Fill or Stretch clip with no geometry of its own fills the whole canvas, because the natural
+/// default box already has the picture's aspect and would leave nothing to fill or stretch (a 16:9 clip in a 9:16
+/// project would stay letterboxed).
+public func nativeClipFitLayout(_ clip: NativeProjectClip, natural: NativeMediaNaturalSize?,
+                                canvasWidth: Double, canvasHeight: Double) -> NativeClipLayoutBox? {
+    guard clip.fit?.fillsTheBox != true else { return nil }
+    return nativeClipNaturalLayout(clip, natural: natural, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+}
+
 /// The clip with its natural default layout written out as static layout.left/top/width/height (unchanged when
-/// the clip carries its own geometry or the natural size is unknown). Renderers read this, so preview, stage
-/// and export see one box.
+/// the clip carries its own geometry, fills its box (nativeClipFitLayout) or the natural size is unknown).
+/// Renderers read this, so preview, stage and export see one box.
 public func nativeClipWithNaturalLayout(_ clip: NativeProjectClip, natural: NativeMediaNaturalSize?,
                                         canvasWidth: Double, canvasHeight: Double) -> NativeProjectClip {
-    guard let box = nativeClipNaturalLayout(clip, natural: natural, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else { return clip }
+    let fitted = nativeClipFitLayout(clip, natural: natural, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+    guard let box = fitted else { return clip }
     var c = clip
     var sp = c.staticParameters ?? [:]
     sp["layout.left"] = .number(box.left); sp["layout.top"] = .number(box.top)
@@ -126,14 +139,40 @@ public func nativeDocumentWithNaturalLayouts(_ document: NativeProjectDocument,
     return d
 }
 
-/// The rect a media picture of `image` aspect occupies in `box`: contain-fit (object-fit: contain), except that
-/// a box already within rounding of the picture's aspect (≤ 1 px of letterbox on a side) is filled, so the picture's
-/// edges are the box edges. The fit rounds the box to whole pixels; this keeps that sub-pixel rounding from
-/// showing up as a hairline gap between the media and its selection box.
-public func nativeMediaRect(imageWidth: Double, imageHeight: Double, box: NativeClipLayoutBox) -> NativeClipLayoutBox {
-    guard imageWidth > 0, imageHeight > 0, box.width > 0, box.height > 0 else { return box }
-    let s = Swift.min(box.width / imageWidth, box.height / imageHeight)
+/// How a media clip's picture fills its box (`clip.fit`): Fit contains it (letterbox bars where the aspects
+/// differ), Fill covers the box keeping the aspect (the overflow is cropped to the box), Stretch maps the picture
+/// onto the box exactly. Stored as its raw value; an absent key is Fit.
+public enum NativeMediaFit: String, Codable, CaseIterable, Sendable {
+    case fit, fill, stretch
+
+    /// Fill and Stretch reach every edge of the box; Fit may leave bars.
+    public var fillsTheBox: Bool { self != .fit }
+
+    /// The uniform picture scale for the box-over-picture ratios `sx`, `sy` (Stretch scales each axis on its own).
+    func uniformScale(_ sx: Double, _ sy: Double) -> Double { self == .fill ? Swift.max(sx, sy) : Swift.min(sx, sy) }
+}
+
+/// Validation of `clip.fit` (NativeProjectDocumentValidation): absent, or one of the NativeMediaFit raw values.
+func validateNativeMediaFit(_ fit: NativeJSONValue?, _ path: String,
+                            _ issues: inout [NativeProjectDocumentValidationIssue]) {
+    guard let fit else { return }
+    if fit.stringValue.flatMap(NativeMediaFit.init(rawValue:)) == nil {
+        pushIssue(&issues, .invalidClip, path, "Fit must be fit, fill or stretch")
+    }
+}
+
+/// The rect a media picture of `image` aspect occupies in `box` for the clip's `fit` (nil: Fit).
+///
+/// Fit is contain (object-fit: contain), Fill is cover (object-fit: cover; the rect overflows the box and the
+/// painter clips it), Stretch is the box. Fit and Fill snap to the box when the picture is within rounding of its
+/// aspect (at most 1 px of letterbox or overflow on a side), so the picture's edges are the box edges. The fit
+/// rounds the box to whole pixels; this keeps that sub-pixel rounding from showing up as a hairline gap between the
+/// media and its selection box.
+public func nativeMediaRect(imageWidth: Double, imageHeight: Double, box: NativeClipLayoutBox,
+                            fit: NativeMediaFit? = nil) -> NativeClipLayoutBox {
+    guard imageWidth > 0, imageHeight > 0, box.width > 0, box.height > 0, fit != .stretch else { return box }
+    let s = (fit ?? .fit).uniformScale(box.width / imageWidth, box.height / imageHeight)
     let w = imageWidth * s, h = imageHeight * s
-    if box.width - w <= 2 && box.height - h <= 2 { return box }
+    if abs(box.width - w) <= 2 && abs(box.height - h) <= 2 { return box }
     return NativeClipLayoutBox(left: box.left + (box.width - w) / 2, top: box.top + (box.height - h) / 2, width: w, height: h)
 }

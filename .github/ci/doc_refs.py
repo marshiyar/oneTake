@@ -183,6 +183,13 @@ def known_numbers(repo):
     return {int(x) for x in out.stdout.split()}
 
 
+def exists(repo, number):
+    """Whether #number is an issue or pull request of the repository, asked directly."""
+    out = subprocess.run(["gh", "api", f"repos/{repo}/issues/{number}", "--jq", ".number"],
+                         capture_output=True, text=True, check=False)
+    return out.returncode == 0 and out.stdout.strip() == str(number)
+
+
 def parse_args():
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("files", nargs="*", help="Markdown files relative to the repository root (default: every tracked *.md)")
@@ -210,6 +217,9 @@ def check_issues(args, issues, findings):
     own = [(n, where) for repo, n, where in issues if repo is None or repo.lower() == args.repo.lower()]
     if own and not args.offline:
         known = known_numbers(args.repo)
+        # The paginated listing can come back short (pages shift while issues are being opened), so a number it lacks
+        # is looked up on its own before it is called broken.
+        known |= {n for n in {n for n, _ in own if n not in known} if exists(args.repo, n)}
         findings += [f"{where}: #{n} is not an issue or pull request of {args.repo}" for n, where in own if n not in known]
     return own
 
