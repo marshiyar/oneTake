@@ -121,7 +121,7 @@ class Finding:
 
 class _Map(dict):
     line = 0
-    ends = {}   # {key: (key line, value end line (0-based), value end column)}; never mutated, replaced per mapping
+    ends = None   # {key: (key line, value end line (0-based), value end column)}, set per mapping by _mapping
 
 
 class _Loader(yaml.SafeLoader):
@@ -172,7 +172,7 @@ def uses_sites(jobs):
 
 def uses_at(mapping, lines):
     """(line of the `uses:` key, the trailing comment after its value) from the source text."""
-    line, end_line, end_col = mapping.ends.get("uses", (mapping.line, mapping.line - 1, 0))
+    line, end_line, end_col = (mapping.ends or {}).get("uses", (mapping.line, mapping.line - 1, 0))
     rest = lines[end_line][end_col:] if 0 <= end_line < len(lines) else ""
     m = COMMENT.search(rest)
     return line, (m.group(1) if m else "")
@@ -484,8 +484,8 @@ def run(root, allow_path, base_allow_path=None):
 def report(count, findings, problems):
     new = [f for f in findings if f.allowed is None]
     lines = ["## workflow-lint", "",
-             f"{count} workflows, {len(findings)} findings: {len(new)} new, {len(findings) - len(new)} allowed by "
-             "`.github/ci/workflow-lint-allow.toml`. Rules: `.github/CHECKS.md`.", ""]
+             (f"{count} workflows, {len(findings)} findings: {len(new)} new, {len(findings) - len(new)} allowed by "
+              "`.github/ci/workflow-lint-allow.toml`. Rules: `.github/CHECKS.md`."), ""]
     if problems:
         lines += ["**Allow list:**", ""] + [f"- {p}" for p in problems] + [""]
     if findings:
