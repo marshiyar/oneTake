@@ -179,6 +179,20 @@ final class TimelineKeyAllTests: XCTestCase {
         XCTAssertTrue(try keyedIds(e, "clip:a", frame: 60).isEmpty)
     }
 
+    /// Issue #179: ⌘K also keys the grade values the clip's grade sets away from neutral (not all forty grade values).
+    func testCmdKKeysTheGradeValuesTheClipSets() throws {
+        let json = TimelineEditor.demoJSON.replacingOccurrences(
+            of: #""id":"clip:a","assetId":"asset:a","startFrame":0,"durationFrames":180,"sourceInFrame":0,"muted":false,"effects":[]"#,
+            with: #""id":"clip:a","assetId":"asset:a","startFrame":0,"durationFrames":180,"sourceInFrame":0,"muted":false,"effects":[{"id":"g","effectId":"color-grading","enabled":true,"parameters":{"intensity":1,"adjust":{"exposure":0.4,"contrast":0},"wheels":{"shadows":{"hue":210,"amount":0.3,"level":0}}}}]"#)
+        let e = try TimelineEditor(json: json, engine: KeyframeRuntime())
+        let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
+        c.view.selection = ["clip:a"]; c.playback.seek(2); c.syncFromPlayback()
+        XCTAssertTrue(c.keyDown(Self.cmdK))
+        let grade = try keyedIds(e, "clip:a", frame: 60).filter { $0.hasPrefix("grade.") }
+        XCTAssertEqual(grade, ["grade.adjust.exposure", "grade.wheels.shadows.hue", "grade.wheels.shadows.amount"])
+        XCTAssertEqual(try keys(e, "clip:a", "grade.adjust.exposure").map(\.value), [.number(0.4)])
+    }
+
     // MARK: Review findings (PR #218)
 
     func testCmdKKeysTheOpacityParameterThatAlreadyAnimates() throws {

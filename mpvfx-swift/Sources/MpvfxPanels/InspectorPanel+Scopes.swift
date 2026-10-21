@@ -30,13 +30,23 @@ extension InspectorPanel {
         static let zoom = 14, gainDown = 15, gainUp = 16
     }
 
+    static let scopeSourcePart = 17
+    static let scopeTabsHeight = scopeChips + scopeOptions
+
+    func scopeState(_ clipId: String) -> PresetPreviewState {
+        switch scopeSource {
+        case .clip: return scopeFrame?(clipId, Self.scopeFrameSide, Self.scopeFrameSide) ?? .unavailable
+        case .program: return programScopeFrame?(Self.scopeFrameSide, Self.scopeFrameSide) ?? .unavailable
+        }
+    }
+
     func scopesRow(_ clipId: String) -> InspectorCustomRow {
         let open = grade.scopesOpen, width = bodyContentWidth
         let tilesH = ScopeLayout.height(grade.scopes.kinds, width: width)
         let height = open ? Self.scopeHead + Self.scopeChips + Self.scopeOptions + 6 + tilesH + 7 : 35
         return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, _ in
             guard let self else { return }
-            let state: PresetPreviewState? = open ? (self.scopeFrame?(clipId, Self.scopeFrameSide, Self.scopeFrameSide) ?? .unavailable) : nil
+            let state: PresetPreviewState? = open ? self.scopeState(clipId) : nil
             let top = r.y + Self.scopeHead + Self.scopeChips + Self.scopeOptions + 6
             let tiles = ScopeLayout.tiles(self.grade.scopes.kinds, x: r.x, y: top, width: r.width)
             var result: (result: ScopeResult?, current: Bool) = (nil, false)
@@ -86,6 +96,9 @@ extension InspectorPanel {
         switch part {
         case ScopePart.toggle: grade.scopesOpen.toggle(); scopeWorker.reset()
         case ScopePart.refresh: scopeWorker.reset()
+        case Self.scopeSourcePart, Self.scopeSourcePart + 1:
+            scopeSource = ColorScopes.Source.allCases[part - Self.scopeSourcePart]
+            scopeWorker.reset()
         default: Self.applyScopeOption(part, to: &grade.scopes)
         }
     }
@@ -118,6 +131,7 @@ extension InspectorPanel {
         PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4),
                                                  color: hovered == .custom("grade:scopes", ScopePart.refresh) ? PanelTheme.text1 : PanelTheme.text4)
         addHit(rb, .custom("grade:scopes", ScopePart.refresh))
+        drawScopeSourceSwitch(c, maxX: toggle.maxX - sw - 8, midY: head.midY, self)
     }
 
     /// One chip per scope, accent-underlined when shown.
