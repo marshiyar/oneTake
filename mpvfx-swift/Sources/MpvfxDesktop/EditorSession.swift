@@ -62,6 +62,8 @@ final class EditorSession {
     private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
+    /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
+    var clipInfoFeed: ClipInfoFeed?
     var desktopPreferences: DesktopPreferences?
     /// System / Light / Dark setting (EditorSession+Appearance); set by the shell via installAppearance.
     var appearance: AppearanceSettings?
