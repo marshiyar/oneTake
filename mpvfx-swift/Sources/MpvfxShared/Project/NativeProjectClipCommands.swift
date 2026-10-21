@@ -170,13 +170,19 @@ private func applyTrimIn(_ d: NativeProjectDocument, _ a: NativeProjectClipAddre
     do {
         // Overflow mapping: a 64-bit overflow is a NativeSourceTimeRangeError and lands in this catch like the other
         // range errors; both become an invalid-trim rejection.
-        position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-            playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeAssetConsumesSourceFrames($0) } == true ? 0 : delta)
+        if let ramp = clip.speedRamp, ramp.isSupported, delta > 0, kind.map({ nativeAssetConsumesSourceFrames($0) }) == true {
+            position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
+                                                 playbackRate: rationalFromNumber(ramp.sourcePosition(atClipFrame: delta) / delta), timelineFrames: delta)
+        } else {
+            position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
+                playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeAssetConsumesSourceFrames($0) } == true ? 0 : delta)
+        }
     } catch { return reject(d, .invalidTrim, errorMessage(error) ?? "Invalid source boundary") }
     let tracks = try rebasedTracks(clip, delta, clip.durationFrames, engine) { $0.id }
     var next = clip
     next.startFrame = startFrame; setSource(&next, position)
     next.durationFrames = clip.durationFrames - delta
+    next.speedRamp = clip.speedRamp?.sliced(from: delta, until: clip.durationFrames)
     next.clampFades(movedEdge: .start)
     next.parameterTracks = tracks
     next.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: tracks, fromFrame: delta, untilFrameExclusive: clip.durationFrames)
@@ -206,6 +212,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     let tracks = shrinking ? try rebasedTracks(clip, 0, nextDuration, engine) { $0.id } : clip.parameterTracks
     var next = clip
     next.durationFrames = nextDuration
+    if shrinking { next.speedRamp = clip.speedRamp?.sliced(from: 0, until: nextDuration) }
     next.clampFades(movedEdge: .end)
     next.parameterTracks = tracks
     next.cropPivotSegments = shrinking ? rebaseNativeCropPivotSegments(clip, rebasedTracks: tracks, fromFrame: 0, untilFrameExclusive: nextDuration)
@@ -226,8 +233,13 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     do {
         let asset = d.assets.first { $0.id == clip.assetId }!
         // Overflow mapping: as in trim-in, a 64-bit overflow is rejected like the other range errors (invalid-split).
-        position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-            playbackRate: clip.playbackRate, timelineFrames: nativeAssetConsumesSourceFrames(asset.kind) ? local : 0)
+        if let ramp = clip.speedRamp, ramp.isSupported, nativeAssetConsumesSourceFrames(asset.kind) {
+            position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
+                                                 playbackRate: rationalFromNumber(ramp.sourcePosition(atClipFrame: local) / local), timelineFrames: local)
+        } else {
+            position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
+                playbackRate: clip.playbackRate, timelineFrames: nativeAssetConsumesSourceFrames(asset.kind) ? local : 0)
+        }
     } catch { return reject(d, .invalidSplit, errorMessage(error) ?? "Invalid source boundary") }
     if clip.binding != nil && rightBinding == nil {
         return reject(d, .missingSplitBinding, "Splitting a bound clip requires an explicit unique binding for the right clip")
@@ -240,11 +252,13 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     let rightTracks = try rebasedTracks(clip, local, clip.durationFrames, engine) { nativeSplitTrackId($0.id, rightId, $0.parameterId) }
     var left = clip
     left.durationFrames = local; left.parameterTracks = leftTracks
+    left.speedRamp = clip.speedRamp?.sliced(from: 0, until: local)
     // The cut is a new edge on both parts: the left keeps the fade-in, the right the fade-out.
     left.fadeOutFrames = nil; left.clampFades(movedEdge: .end)
     left.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: leftTracks, fromFrame: 0, untilFrameExclusive: local)
     var right = clip
     right.id = rightId; right.startFrame = splitFrame; right.durationFrames = clip.durationFrames - local
+    right.speedRamp = clip.speedRamp?.sliced(from: local, until: clip.durationFrames)
     setSource(&right, position)
     right.fadeInFrames = nil; right.clampFades(movedEdge: .start)
     if let rightBinding { right.binding = rightBinding }

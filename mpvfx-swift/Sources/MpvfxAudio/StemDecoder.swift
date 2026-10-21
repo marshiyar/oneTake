@@ -36,6 +36,9 @@ public enum StemDecoder {
         let probe = try MediaProbe.probe(path: key.path)
         guard let audio = probe.audio else { return [[], []] }
         guard audio.decodable else { throw StemDecodeError(audio.reason ?? "This file's audio cannot be decoded.") }
+        if let ramp = key.speedRamp, ramp.isSupported {
+            return try decodeRamp(key, ramp: ramp, sampleRate: sampleRate)
+        }
         let sped = abs(key.rate - 1) > 1e-9
         let reader: AudioSampleReader
         if sped && !key.preservesPitch {
@@ -55,6 +58,46 @@ public enum StemDecoder {
             chunk.withUnsafeBufferPointer { p in
                 for i in 0..<(p.count / 2) { left.append(p[2 * i]); right.append(p[2 * i + 1]) }
             }
+        }
+        return [left, right]
+    }
+
+    private static func decodeRamp(_ key: DocumentAudioGraph.StemKey, ramp: NativeSpeedRamp, sampleRate: Int) throws -> [[Float]] {
+        let outputCount = max(0, Int((key.duration * Double(sampleRate)).rounded(.up)))
+        let reader = try AudioSampleReader(path: key.path, sampleRate: sampleRate, channels: 2)
+        try reader.seek(to: max(0, key.sourceIn))
+        if key.preservesPitch {
+            var left = [Float](), right = [Float]()
+            left.reserveCapacity(outputCount); right.reserveCapacity(outputCount)
+            while left.count < outputCount {
+                let frame = Double(left.count) / Double(sampleRate) * key.timelineFPS
+                try reader.setTempo(ramp.speed(atClipFrame: frame))
+                let chunk = try reader.read(frames: min(1_024, outputCount - left.count))
+                if chunk.isEmpty { break }
+                for i in 0..<(chunk.count / 2) { left.append(chunk[2 * i]); right.append(chunk[2 * i + 1]) }
+            }
+            return [left, right]
+        }
+
+        // Pitch-following playback is direct source sampling through the same time map used by video export.
+        let sourceSeconds = ramp.sourcePosition(atClipFrame: key.duration * key.timelineFPS) / key.timelineFPS
+        let sourceCount = max(2, Int((sourceSeconds * Double(sampleRate)).rounded(.up)) + 2)
+        var interleaved = [Float]()
+        while interleaved.count / 2 < sourceCount {
+            let chunk = try reader.read(frames: min(chunkFrames, sourceCount - interleaved.count / 2))
+            if chunk.isEmpty { break }
+            interleaved += chunk
+        }
+        guard interleaved.count >= 4 else { return [[], []] }
+        var left = [Float](), right = [Float]()
+        left.reserveCapacity(outputCount); right.reserveCapacity(outputCount)
+        for output in 0..<outputCount {
+            let clipFrame = Double(output) / Double(sampleRate) * key.timelineFPS
+            let sourceSample = ramp.sourcePosition(atClipFrame: clipFrame) / key.timelineFPS * Double(sampleRate)
+            let i = min(max(0, Int(sourceSample.rounded(.down))), interleaved.count / 2 - 2)
+            let fraction = Float(sourceSample - Double(i))
+            left.append(interleaved[2 * i] + (interleaved[2 * (i + 1)] - interleaved[2 * i]) * fraction)
+            right.append(interleaved[2 * i + 1] + (interleaved[2 * (i + 1) + 1] - interleaved[2 * i + 1]) * fraction)
         }
         return [left, right]
     }

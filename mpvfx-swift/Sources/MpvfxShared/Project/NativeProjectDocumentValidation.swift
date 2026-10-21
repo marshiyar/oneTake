@@ -192,6 +192,8 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["muted"] != nil && clip["muted"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).muted", "Muted must be a boolean")
             }
+            validateSpeedRamp(clip["speedRamp"], duration: clip["durationFrames"]?.numberValue,
+                              path: "\(clipPath).speedRamp", issues: &issues)
             if let rawSegments = clip["cropPivotSegments"] {
                 if let segments = rawSegments.arrayValue {
                     var pairs = Set<[String]>()
@@ -245,8 +247,14 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                 let f = fraction.map { NativePlaybackRate(numerator: $0["numerator"]!.numberValue!, denominator: $0["denominator"]!.numberValue!) }
                 let exceeds: Bool
                 do {
-                    exceeds = try sourceRangeExceedsAsset(clip["sourceInFrame"]!.numberValue!, clip["durationFrames"]!.numberValue!,
-                                                          playbackRate, asset["durationFrames"]!.numberValue!, f)
+                    if let rawRamp = clip["speedRamp"],
+                       let ramp = try? rawRamp.decode(NativeSpeedRamp.self), ramp.isSupported {
+                        let start = clip["sourceInFrame"]!.numberValue! + (f.map { $0.numerator / $0.denominator } ?? 0)
+                        exceeds = start + ramp.sourcePosition(atClipFrame: clip["durationFrames"]!.numberValue!) > asset["durationFrames"]!.numberValue!
+                    } else {
+                        exceeds = try sourceRangeExceedsAsset(clip["sourceInFrame"]!.numberValue!, clip["durationFrames"]!.numberValue!,
+                                                              playbackRate, asset["durationFrames"]!.numberValue!, f)
+                    }
                 } catch {
                     // Overflow mapping: the exact answer needs more than 64 bits. The only way Int64 overflows with safe-integer
                     // inputs is an extreme rate/fraction denominator product; we report the clip as out of bounds, the
@@ -277,4 +285,40 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         }
     }
     return issues
+}
+
+private func validateSpeedRamp(_ raw: NativeJSONValue?, duration: Double?, path: String, issues: inout Issues) {
+    guard let raw else { return }
+    guard raw.isRecord, let version = raw["v"]?.numberValue, jsIsInteger(version),
+          let kind = raw["kind"]?.stringValue else {
+        pushIssue(&issues, .invalidSpeedRamp, path, "Speed ramp must be a versioned object with v and kind")
+        return
+    }
+    // Forward-compatible objects are retained but intentionally not interpreted.
+    guard version == Double(NativeSpeedRamp.version), kind == NativeSpeedRamp.supportedKind else { return }
+    guard let points = raw["points"]?.arrayValue else {
+        pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp points must be an array")
+        return
+    }
+    if points.isEmpty { pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp needs at least one point") }
+    if points.count > 64 { pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp supports at most 64 points") }
+    var previous = -Double.infinity
+    for (index, point) in points.enumerated() {
+        let p = "\(path).points[\(index)]"
+        guard point.isRecord else { pushIssue(&issues, .invalidSpeedRamp, p, "Speed ramp point must be an object"); continue }
+        if let t = point["t"]?.numberValue, t.isFinite {
+            if t < 0 || (duration.map { t > $0 } ?? false) {
+                pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp point time must be within the clip")
+            }
+            if t <= previous { pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp points must be strictly sorted by t") }
+            previous = t
+        } else { pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp point time must be finite") }
+        if !(point["speed"]?.numberValue.map { $0.isFinite && $0 >= 0.1 && $0 <= 10 } ?? false) {
+            pushIssue(&issues, .invalidSpeedRamp, "\(p).speed", "Speed must be finite and between 0.1 and 10")
+        }
+        if let ease = point["ease"] {
+            do { _ = try ease.decode(NativeInterpolation.self) }
+            catch { pushIssue(&issues, .invalidSpeedRamp, "\(p).ease", "Speed ramp ease must be hold, linear, or cubic-bezier") }
+        }
+    }
 }

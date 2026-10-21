@@ -162,6 +162,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var startFrame: Double; public var durationFrames: Double; public var sourceInFrame: Double
     public var sourceInFraction: NativePlaybackRate?
     public var playbackRate: NativePlaybackRate?
+    /// Optional non-linear clip time map. Absent retains the legacy constant `playbackRate` path.
+    public var speedRamp: NativeSpeedRamp? = nil
     /// False plays a sped-up or slowed clip's sound at a pitch that follows the speed; absent or true keeps the pitch.
     public var preservesPitch: Bool? = nil
     /// Required on the document; optional only on input (NativeProjectDocumentInput).
@@ -272,9 +274,13 @@ public extension NativeProjectDocument {
         sequence.tracks.reduce(0) { n, track in n + track.clips.filter(isUndrawnElementClip).count }
     }
 
+    var unsupportedSpeedRampCount: Int {
+        sequence.tracks.reduce(0) { count, track in count + track.clips.filter { $0.speedRamp?.isSupported == false }.count }
+    }
+
     /// The one notice shown when the document holds layers the renderer skips; nil when it has none.
     var undrawnElementLayersNotice: String? {
-        let n = undrawnElementLayerCount
+        let n = undrawnElementLayerCount + unsupportedSpeedRampCount
         guard n > 0 else { return nil }
         return n == 1
             ? "1 layer from an earlier version of the editor is kept in the project but not drawn in preview or export."
@@ -290,6 +296,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip"
+    case invalidSpeedRamp = "invalid-speed-ramp"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {
