@@ -311,45 +311,12 @@ final class TargetSizeTests: XCTestCase {
             for width in [409.0, 364, PanelFit.minRight] {
                 for group in ["grade", "effects"] {
                     let right = try Self.design(open: group), panel = right.inspector
-                    var grade = ColorGrading()
-                    grade.secondaries = [.init()]
-                    grade.adjust["exposure"] = 0.4
-                    grade.details["vignette"] = 0.5
-                    grade.curves["master"] = [[0, 0], [0.5, 0.7], [1, 1]]
-                    grade.effects["blur"] = 0.45
-                    XCTAssertTrue(try XCTUnwrap(panel.editor).setColorGrading(clipId: "clip:a", grade))
-                    panel.grade.scopesOpen = true
-                    panel.grade.selectedPoint = 1
-                    panel.grade.finishSettings = "vignette"
-                    panel.effectsUI.clipId = "clip:a"
-                    panel.effectsUI.selectedKey = "blur"
-                    panel.effectsUI.catalogOpen = true
+                    try configureGradeAndEffects(panel)
                     let canvas = PanelMeasureCanvas(), size = CanvasSize(width, 4000)
                     right.draw(canvas, size: size)
-                    #if os(macOS)
-                    if width == 409, let directory = ProcessInfo.processInfo.environment["MPVFX_SNAPSHOT_DIR"] {
-                        panel.hovered = group == "grade" ? .custom("sec:head", 0) : .custom("fx:head", 1)
-                        let bitmap = try XCTUnwrap(CoreGraphicsCanvas.offscreen(width: 409, height: group == "grade" ? 4000 : 600))
-                        right.draw(bitmap, size: size)
-                        let image = try XCTUnwrap(bitmap.ctx.makeImage())
-                        let url = URL(fileURLWithPath: directory).appendingPathComponent("issue185-\(group)-\(mode.rawValue).png")
-                        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
-                        CGImageDestinationAddImage(destination, image, nil)
-                        XCTAssertTrue(CGImageDestinationFinalize(destination))
-                    }
-                    #endif
+                    try captureGradeAndEffects(right, group: group, width: width, mode: mode, size: size)
                     right.draw(canvas, size: size)
-                    let targets = panel.hits.regions.filter { region in
-                        switch region.action {
-                        case .reset, .groupReset: return true
-                        case .keyframe(let key): return key.hasSuffix(InspectorPanel.gearSuffix)
-                        case .custom(let id, let part):
-                            return ["sec:head", "fx:head", "fx:tabs", "grade:curvetabs", "grade:curvefoot"].contains(id)
-                                || (id == "grade:scopes" && part != InspectorPanel.ScopePart.toggle)
-                                || (["grade:balance", "grade:wheels"].contains(id) && part >= 20)
-                        default: return false
-                        }
-                    }
+                    let targets = panel.hits.regions.filter { isGradeOrEffectsTarget($0.action) }
                     let expected: [InspectorPanel.Hit] = group == "grade"
                         ? [.groupReset("grade"), .reset("grade:adj:exposure"), .keyframe("grade:det:vignette#gear"),
                            .custom("sec:head", 0), .custom("sec:head", 1), .custom("grade:scopes", InspectorPanel.ScopePart.refresh),
@@ -360,20 +327,9 @@ final class TargetSizeTests: XCTestCase {
                         let context = "\(group) \(width) \(target.action)"
                         XCTAssertGreaterThanOrEqual(target.rect.width, 24, context)
                         XCTAssertGreaterThanOrEqual(target.rect.height, 24, context)
-                        for other in panel.hits.regions where other.action != target.action {
-                            switch other.action {
-                            case .body, .group, .custom("grade:scopes", InspectorPanel.ScopePart.toggle): continue
-                            default: break
-                            }
-                            let a = target.rect, b = other.rect
-                            XCTAssertFalse(min(a.maxX, b.maxX) > max(a.x, b.x) + 1e-9
-                                && min(a.maxY, b.maxY) > max(a.y, b.y) + 1e-9, context + " overlaps \(other.action)")
-                        }
-                        switch target.action {
-                        case .custom("fx:tabs", _), .custom("grade:curvetabs", _), .custom("grade:curvefoot", _): break // visible text names these
-                        case .custom("sec:head", let part) where part >= 10: break
-                        case .custom("grade:scopes", let part) where part != InspectorPanel.ScopePart.refresh: break
-                        default: XCTAssertFalse(target.accessibilityLabel?.isEmpty ?? true, context)
+                        assertNoTargetOverlap(target.rect, action: target.action, panel: panel, context: context)
+                        if needsTargetLabel(target.action) {
+                            XCTAssertFalse(target.accessibilityLabel?.isEmpty ?? true, context)
                         }
                         panel.hovered = target.action
                         canvas.reset(); right.draw(canvas, size: size)
@@ -383,6 +339,74 @@ final class TargetSizeTests: XCTestCase {
                     }
                 }
             }
+        }
+    }
+
+    private func configureGradeAndEffects(_ panel: InspectorPanel) throws {
+    var grade = ColorGrading()
+    grade.secondaries = [.init()]
+    grade.adjust["exposure"] = 0.4
+    grade.details["vignette"] = 0.5
+    grade.curves["master"] = [[0, 0], [0.5, 0.7], [1, 1]]
+    grade.effects["blur"] = 0.45
+    XCTAssertTrue(try XCTUnwrap(panel.editor).setColorGrading(clipId: "clip:a", grade))
+    panel.grade.scopesOpen = true
+    panel.grade.selectedPoint = 1
+    panel.grade.finishSettings = "vignette"
+    panel.effectsUI.clipId = "clip:a"
+    panel.effectsUI.selectedKey = "blur"
+    panel.effectsUI.catalogOpen = true
+    }
+
+    private func captureGradeAndEffects(_ right: RightPanel, group: String, width: Double,
+                                       mode: ThemeMode, size: CanvasSize) throws {
+        #if os(macOS)
+        let panel = right.inspector
+        if width == 409, let directory = ProcessInfo.processInfo.environment["MPVFX_SNAPSHOT_DIR"] {
+            panel.hovered = group == "grade" ? .custom("sec:head", 0) : .custom("fx:head", 1)
+            let bitmap = try XCTUnwrap(CoreGraphicsCanvas.offscreen(width: 409, height: group == "grade" ? 4000 : 600))
+            right.draw(bitmap, size: size)
+            let image = try XCTUnwrap(bitmap.ctx.makeImage())
+            let url = URL(fileURLWithPath: directory).appendingPathComponent("issue185-\(group)-\(mode.rawValue).png")
+            let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+            CGImageDestinationAddImage(destination, image, nil)
+            XCTAssertTrue(CGImageDestinationFinalize(destination))
+        }
+        #endif
+    }
+
+    private func isGradeOrEffectsTarget(_ action: InspectorPanel.Hit) -> Bool {
+        switch action {
+        case .reset, .groupReset: return true
+        case .keyframe(let key): return key.hasSuffix(InspectorPanel.gearSuffix)
+        case .custom(let id, let part):
+            return ["sec:head", "fx:head", "fx:tabs", "grade:curvetabs", "grade:curvefoot"].contains(id)
+                || (id == "grade:scopes" && part != InspectorPanel.ScopePart.toggle)
+                || (["grade:balance", "grade:wheels"].contains(id) && part >= 20)
+        default: return false
+        }
+    }
+
+    private func assertNoTargetOverlap(_ rect: CanvasRect, action: InspectorPanel.Hit,
+                                       panel: InspectorPanel, context: String) {
+        for other in panel.hits.regions where other.action != action {
+            switch other.action {
+            case .body, .group, .custom("grade:scopes", InspectorPanel.ScopePart.toggle): continue
+            default: break
+            }
+            let otherRect = other.rect
+            XCTAssertFalse(min(rect.maxX, otherRect.maxX) > max(rect.x, otherRect.x) + 1e-9
+                && min(rect.maxY, otherRect.maxY) > max(rect.y, otherRect.y) + 1e-9,
+                context + " overlaps \(other.action)")
+        }
+    }
+
+    private func needsTargetLabel(_ action: InspectorPanel.Hit) -> Bool {
+        switch action {
+        case .custom("fx:tabs", _), .custom("grade:curvetabs", _), .custom("grade:curvefoot", _): return false
+        case .custom("sec:head", let part) where part >= 10: return false
+        case .custom("grade:scopes", let part) where part != InspectorPanel.ScopePart.refresh: return false
+        default: return true
         }
     }
 

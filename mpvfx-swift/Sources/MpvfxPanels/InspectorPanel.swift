@@ -198,17 +198,19 @@ public final class InspectorPanel {
 
     func addHit(_ r: CanvasRect, _ h: Hit, label: String? = nil) { hits.add(r, h, label: label ?? targetLabel(h)) }
 
+    private static let targetActionLabels: [String: [Int: String]] = [
+        "sec:head": [0: "Add secondary color", 1: "Remove secondary color"],
+        "grade:scopes": [ScopePart.refresh: "Refresh scopes", ScopePart.gainDown: "Decrease scope gain",
+                         ScopePart.gainUp: "Increase scope gain"]
+    ]
+
     /// Names travel with the exact pointer rectangle for the screen-reader tree.
     func targetLabel(_ hit: Hit) -> String? {
         switch hit {
         case .reset(let key): return "Reset " + (slider(key)?.label ?? number(key)?.label ?? key)
         case .keyframe(let key) where key.hasSuffix(Self.gearSuffix):
             return (slider(String(key.dropLast(Self.gearSuffix.count)))?.label ?? key) + " settings"
-        case .custom("sec:head", 0): return "Add secondary color"
-        case .custom("sec:head", 1): return "Remove secondary color"
-        case .custom("grade:scopes", ScopePart.refresh): return "Refresh scopes"
-        case .custom("grade:scopes", ScopePart.gainDown): return "Decrease scope gain"
-        case .custom("grade:scopes", ScopePart.gainUp): return "Increase scope gain"
+        case .custom(let section, let part): return Self.targetActionLabels[section]?[part]
         default: return nil
         }
     }
