@@ -586,6 +586,9 @@ def cmd_build(args, env):
         result = build_batch(git, Gate(os.getcwd()), items, plan["base"])
     if result["included"]:
         git.bundle(plan["base"], args.bundle)
+    else:
+        # Nothing to bundle; an empty placeholder keeps the artifact's layout (result.json at its root) the same.
+        open(args.bundle, "wb").close()
     write_json(args.out, result)
     append_env_file("GITHUB_STEP_SUMMARY", summary(result))
     print(summary(result))
