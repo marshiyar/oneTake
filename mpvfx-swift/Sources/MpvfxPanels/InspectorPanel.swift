@@ -31,6 +31,8 @@ public final class InspectorPanel {
     public var editor: TimelineEditor?
     /// Selected clip ids (the timeline/stage selection).
     public var selection: [String] = []
+    /// Presentation choice; the resulting positions are ordinary saved document parameters.
+    public var alignmentReference = TimelineAlignmentReference.frame
     /// Playhead (composition seconds).
     public var time = 0.0
     /// The open accordion group ("" when all are closed). Every change, from a header click or a host reveal, is saved
@@ -289,11 +291,11 @@ public final class InspectorPanel {
     /// Five grid steps: closed headers stack on the grid below the 48 pt clip header.
     static let groupHeaderHeight = 40.0
 
-    /// The header for what is selected; returns its height, or nil when the panel shows no groups (several clips,
-    /// the composition, or a selection the document no longer has).
+    /// The header for what is selected; returns its height, or nil for the composition or a selection the
+    /// document no longer has. Multi-selection keeps the alignment controls.
     func drawSelectionHeader(_ c: CanvasContext, _ r: CanvasRect, _ editor: TimelineEditor) -> Double? {
         if !selection.isEmpty { audioGroupId = nil }
-        if selection.count > 1 { drawMultiSelect(c, r); return hasUserLookSelection ? 64 : nil }
+        if selection.count > 1 { drawMultiSelect(c, r); return 72 }
         if let s = selected() {
             retireStaleEditors(editor, s)
             return drawHeader(c, r, s)
@@ -430,14 +432,14 @@ public final class InspectorPanel {
         return h + 1
     }
 
-    /// FlatMultiSelectState: count and clear (grouping visuals has no native equivalent yet).
+    /// Multi-selection retains count/clear above its shared alignment controls.
     func drawMultiSelect(_ c: CanvasContext, _ r: CanvasRect) {
         let row = CanvasRect(x: r.x + 16, y: r.y + 12, width: r.width - 32, height: 28)
         PanelDraw.text(c, "\(selection.count) clips selected", in: row, font: PanelTheme.font(11, .semibold), color: PanelTheme.text1)
         let clear = CanvasRect(x: row.maxX - 28, y: row.y, width: 28, height: 28)
         PanelDraw.text(c, "×", in: clear, font: PanelTheme.font(14), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3, align: .center)
         hits.add(clear, .headerClear)
-        PanelDraw.text(c, "Select a single clip to edit its properties.", in: CanvasRect(x: row.x, y: row.maxY + 4, width: row.width, height: 16),
+        PanelDraw.text(c, "Align visual clips below, or select one to edit properties.", in: CanvasRect(x: row.x, y: row.maxY + 4, width: row.width, height: 16),
                        font: PanelTheme.font(10), color: PanelTheme.text4)
     }
 
