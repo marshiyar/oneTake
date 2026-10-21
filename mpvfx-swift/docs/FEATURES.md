@@ -85,6 +85,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Accordion: one open group, others as summary rows | done | exact |
 | Value tiers (default / explicit default / custom + reset ↺) | done | exact |
 | Transform: X, Y, W, H, rotation, scale | done (undoable, keyframes at the playhead when animated; audit tests 0996b1e) | exact |
+| Transform: lock size / scale ratio | implemented (#450): shared per-clip lock beside Size and Scale X/Y; coupled edits preserve the current ratio, key at the playhead and undo together; stored as optional `scaleRatioLocked`. Swift tests added; not run in the contribution environment (toolchain unavailable) | close |
 | Transform: layer order | done: the Layer order field writes the clip's `layout.zIndex`, the stacking key preview and export share (the stage menu's z-order writes the same key); empty / reset returns to track order; test | close |
 | Transform: flex align/justify/direction/gap | dropped: flex layout of web containers has no native counterpart | n/a |
 | Keyframe diamond and prev/next per property | done: with the stopwatch (start / stop animating, keeping the playhead's value) on the same row | close |
