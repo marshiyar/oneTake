@@ -99,7 +99,7 @@ extension InspectorPanel {
             rows.append(.init(.slider(.init(key: "grade:adj:\(a.key)", label: a.label, position: v, min: a.min, max: a.max, display: fmt(v), format: fmt,
                                             tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
                                             commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
-                                            reset: { var n = g; n.adjust[a.key] = nil; commit(n) }))))
+                                            reset: { var n = g; n.adjust[a.key] = 0; commit(n) }))))   // 0, not nil: a missing key reads the preset's value
         }
         gap(6)
         rows.append(.init(.section("Color wheels")))
@@ -179,7 +179,7 @@ extension InspectorPanel {
                                       display: "\(Int(v.rounded()))%", format: { "\(Int($0.rounded()))%" },
                                       tier: abs(v - def) > 1e-6 ? .explicitCustom : .default,
                                       commit: { x in var n = g; n.details[key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
-                                      reset: { var n = g; n.details[key] = nil; commit(n) })
+                                      reset: { var n = g; n.details[key] = ColorGrading.defaultDetail(key); commit(n) })   // explicit, as above
         if gear {   // Vignette settings / Grain settings
             row.settings = (grade.finishSettings == key, { [weak self] in
                 guard let self else { return }
