@@ -112,7 +112,7 @@ protocol CrossPaneDrag: AnyObject {
 /// `previewTopBar` and `timelineToolbar` are filled by the side-panel / toolbar ports. A region without a pane
 /// is drawn as its empty panel so the proportions are right before its content lands. The router draws the
 /// status line itself.
-final class EditorShellRouter: CanvasInput {
+final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
     enum Region: Hashable, CaseIterable { case left, previewTopBar, player, right, timeline }
     weak var crossPaneDrag: CrossPaneDrag?
     /// The Settings card: while open it is drawn above every pane and takes presses, moves, the wheel and keys
@@ -157,6 +157,20 @@ final class EditorShellRouter: CanvasInput {
         case .player: return f.player
         case .right: return f.right
         case .timeline: return f.timeline
+        }
+    }
+
+    /// Controls from each pane translated from pane-local into window coordinates for the native host.
+    var accessibilityControls: [CanvasAccessibilityControl] {
+        let f = frames ?? relayout()
+        return Region.allCases.flatMap { region -> [CanvasAccessibilityControl] in
+            guard let provider = panes[region]?.input as? CanvasAccessibilityProvider else { return [] }
+            let origin = rect(region, f)
+            return provider.accessibilityControls.map { control in
+                CanvasAccessibilityControl(label: control.label, value: control.value,
+                    frame: CanvasRect(x: control.frame.x + origin.x, y: control.frame.y + origin.y,
+                                      width: control.frame.width, height: control.frame.height), press: control.press)
+            }
         }
     }
 

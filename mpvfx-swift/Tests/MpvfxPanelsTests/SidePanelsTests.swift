@@ -137,6 +137,16 @@ final class InspectorPanelTests: XCTestCase {
         XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled ?? true, before)
     }
 
+    func testGradeAndEffectsBypassesPublishAccessibleSwitches() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        p.openGroupId = "grade"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let controls = p.accessibilityControls
+        XCTAssertEqual(Set(controls.map(\.label)), ["Grade enabled", "Effects enabled"])
+        XCTAssertTrue(controls.allSatisfy { $0.frame.width >= 24 && $0.frame.height >= 24 })
+        try XCTUnwrap(controls.first { $0.label == "Grade enabled" }).press()
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled, false)
+    }
+
     func testEffectsHeaderBypassPreservesAmounts() throws {
         let (p, editor, c) = try makeInspector(select: "clip:a")
         var grade = editor.colorGrading(clipId: "clip:a") ?? ColorGrading(); grade.effects["blur"] = 0.45
@@ -149,6 +159,18 @@ final class InspectorPanelTests: XCTestCase {
         c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
         XCTAssertTrue(p.pointerDown(center(try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") }))))
         XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+    }
+
+    func testEffectsHeaderBypassPersistsOnANeutralGrade() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        XCTAssertNil(editor.colorGrading(clipId: "clip:a"))
+        p.openGroupId = "effects"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effectsEnabled, false)
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        XCTAssertNotNil(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(c.drawnStrings.contains("off"))
     }
 
     /// The accordion entrance (hf-flat-group-enter, 120 ms ease-out): the toggled group and the one it closed

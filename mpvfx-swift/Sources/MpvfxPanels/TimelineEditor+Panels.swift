@@ -216,12 +216,12 @@ public extension TimelineEditor {
         return g
     }
 
-    /// Writes the grade (nil or neutral removes it). One undo step.
+    /// Writes the grade (nil or fully enabled neutral removes it). One undo step.
     @discardableResult
     func setColorGrading(clipId: String, _ grading: ColorGrading?) -> Bool {
         editClip(clipId) { c in
             let i = c.effects.firstIndex { $0.effectId == ColorGrading.effectId }
-            guard let g = grading, g.isAuthored || !g.enabled else {
+            guard let g = grading, g.isAuthored || !g.enabled || !g.effectsEnabled else {
                 guard let i else { return false }
                 c.effects.remove(at: i); return true
             }

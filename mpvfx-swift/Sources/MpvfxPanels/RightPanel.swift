@@ -130,6 +130,12 @@ public final class RightPanel {
         }
     }
 
+    /// Native controls currently visible in the custom-drawn Design panel.
+    public var accessibilityControls: [CanvasAccessibilityControl] {
+        guard !layout.effectiveRightCollapsed, layout.rightPanelTab == .design else { return [] }
+        return inspector.accessibilityControls
+    }
+
     /// The dropdown key of the panel menu.
     static let menuKey = "panel-menu"
 

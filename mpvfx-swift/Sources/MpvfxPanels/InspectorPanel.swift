@@ -49,6 +49,15 @@ public final class InspectorPanel {
 
     // Interaction state
     public private(set) var hits = HitMap<Hit>()
+
+    /// Header bypasses exposed to the native canvas host after layout has populated `hits`.
+    public var accessibilityControls: [CanvasAccessibilityControl] {
+        buildGroups().compactMap { group in
+            guard let label = group.accessibilityLabel, let value = group.enabled,
+                  let frame = hits.rect(where: { $0 == .groupEnabled(group.id) }) else { return nil }
+            return CanvasAccessibilityControl(label: label, value: value, frame: frame) { group.setEnabled?(!value) }
+        }
+    }
     public var hovered: Hit?
     public private(set) var field: PanelTextField?
     /// The body's scroll (wheel glides, trackpad 1:1, clamped) and its scrollbar fade.

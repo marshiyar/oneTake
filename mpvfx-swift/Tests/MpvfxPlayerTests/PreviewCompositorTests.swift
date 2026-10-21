@@ -193,6 +193,17 @@ final class PreviewCompositorTests: XCTestCase {
         XCTAssertTrue(c.ops.contains(.clip(.rect(CanvasRect(x: 25, y: 0, width: 75, height: 100)))))
         XCTAssertTrue(cx.lanes.isEmpty, "compare reuses pictures and never starts a decoder")
     }
+
+    func testCompareDoesNotPairCurrentRawWithAStaleGradedFrame() {
+        let cx = PreviewCompositor(decodesMedia: false)
+        let layer = PreviewLayer(clipId: "selected", source: "/x", kind: .video, start: 0, end: 1, sourceIn: 0,
+                                 box: CanvasRect(x: 0, y: 0, width: 100, height: 100))
+        let c = PreviewRecordingCanvas()
+        cx.draw(layer, raw: Self.solid(7, 0, 0), shown: Self.solid(6, 0, 0), shownIsCurrent: false, on: c,
+                frame: CanvasRect(x: 0, y: 0, width: 100, height: 100), scale: 1,
+                context: FrameDrawContext(compareClipId: "selected"))
+        XCTAssertEqual(c.images.map(\.tag), [7, 7], "both sides use the same source frame while its grade is pending")
+    }
     func testLiveStageEditOverridesBoxRotationAndCrop() throws {
         let comp = Self.composition(try Self.document())
         let frame = CanvasRect(x: 10, y: 10, width: 100, height: 50)   // scale 0.5
