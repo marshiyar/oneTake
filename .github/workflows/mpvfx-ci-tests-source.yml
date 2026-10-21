@@ -79,9 +79,9 @@ jobs:
           xvfb xauth dbus-x11 python3 file libvulkan-dev mesa-vulkan-drivers
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        persist-credentials: false
         repository: ${{ inputs.source_repository }}
         ref: ${{ inputs.source_ref }}
-        persist-credentials: false
     - name: Engine libraries (binaries.lock)
       run: python3 -I -B scripts/fetch-binaries.py
     - name: Build
