@@ -121,7 +121,7 @@ class Workflow(unittest.TestCase):
             self.jobs = yaml.safe_load(f)["jobs"]
 
     def test_changes_publishes_macos_code(self):
-        self.assertEqual(self.jobs["changes"]["outputs"]["macos_code"], "${{ steps.mac.outputs.macos_code }}")
+        self.assertEqual(self.jobs["changes"]["outputs"]["macos_code"], "${{ vars.LINUX_ONLY != 'true' && steps.mac.outputs.macos_code || 'false' }}")
         mac = next(s for s in self.jobs["changes"]["steps"] if s.get("id") == "mac")
         self.assertIn("macos_gate.py classify", mac["run"])
 
