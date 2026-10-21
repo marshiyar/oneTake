@@ -63,6 +63,10 @@ public enum SaveFrame {
             height: plan.height,
             quality: jpegQuality
         )
+        try publish(data, outputPath: outputPath, durableWrite: durableWrite)
+    }
+
+    private static func publish(_ data: Data, outputPath: String, durableWrite: DurableWrite) throws {
         let directory: String = PosixPath.dirname(outputPath)
         let staging: String = try makeTemporaryDirectory(PosixPath.join(directory, ".mpvfx-frame-"))
         defer { try? FileManager.default.removeItem(atPath: staging) }
