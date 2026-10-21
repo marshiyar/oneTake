@@ -287,3 +287,12 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+### Design wording (#186)
+
+**done — panels / panels-visual.** Design controls and section headings use sentence case. Align, case, style and
+crop reset use vector icons with word tooltips and native accessible names. Summaries use the 11 px label font
+and human names; Primary and secondary correction say Temperature. Rotation appears once in Transform; the
+3D transform disclosure retains tilt, depth and perspective. Document keys and editing commands are unchanged.
+Evidence: `DesignWordingTests`, the Design wording scanner and its three regressions. Native offscreen panel
+captures cover dark/light at 1440×900 and 1280×800; full application screenshot verification remains manual.

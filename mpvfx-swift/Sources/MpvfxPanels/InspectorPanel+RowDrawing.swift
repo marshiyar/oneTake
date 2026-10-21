@@ -106,10 +106,10 @@ extension InspectorPanel {
         switch kind {
         case .section(let t):
             c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-            PanelDraw.tracked(c, t.uppercased(), in: CanvasRect(x: r.x, y: r.y + 1, width: r.width, height: r.height - 1),
-                              font: PanelTheme.font(9, .semibold), tracking: 1.08, color: PanelTheme.text5)
+            PanelDraw.tracked(c, t, in: CanvasRect(x: r.x, y: r.y + 1, width: r.width, height: r.height - 1),
+                              font: PanelTheme.font(11, .semibold), tracking: 0, color: PanelTheme.text3)
         case .heading(let t, let trailing):
-            PanelDraw.text(c, t.uppercased(), in: r, font: PanelTheme.font(10, .medium), color: PanelTheme.text2)
+            PanelDraw.text(c, t, in: r, font: PanelTheme.font(10, .medium), color: PanelTheme.text2)
             if let trailing { PanelDraw.text(c, trailing, in: r, font: PanelTheme.font(9), color: PanelTheme.text3, align: .right) }
         case .subheader(let t, let buttons): drawSubheader(c, r, t, buttons)
         case .note(let s):
@@ -128,7 +128,7 @@ extension InspectorPanel {
     func drawSubheader(_ c: CanvasContext, _ r: CanvasRect, _ t: String, _ buttons: [InspectorRow.Button]) {
         var x = r.maxX
         for b in buttons.reversed() {
-            let w = max(PanelGrid.minTarget, c.measureText(b.label, font: PanelTheme.font(10, .medium)).width + 8)
+            let w = max(PanelGrid.minTarget, b.icon == nil ? c.measureText(b.label, font: PanelTheme.font(10, .medium)).width + 8 : PanelGrid.minTarget)
             let br = CanvasRect(x: x - w, y: r.y, width: w, height: r.height)
             drawButton(c, br, b, plain: true)
             x = br.x - PanelGrid.itemGap
@@ -404,7 +404,7 @@ extension InspectorPanel {
 
     /// Each option's natural width: its label plus padding, never under a target.
     static func segmentWidths(_ c: CanvasContext, _ s: InspectorRow.Segmented) -> [Double] {
-        s.options.map { max(PanelGrid.minTarget, c.measureText($0.label, font: rowFont).width + segmentPad) }
+        s.options.map { max(PanelGrid.minTarget, s.icons[$0.key] == nil ? c.measureText($0.label, font: rowFont).width + segmentPad : PanelGrid.minTarget) }
     }
 
     /// The options' natural width side by side.
@@ -441,8 +441,13 @@ extension InspectorPanel {
         let area = stacked ? lines.1 : CanvasRect(x: cols.control.x, y: r.y, width: max(0, Self.valueEdge(r) - cols.control.x), height: r.height)
         for (o, or) in zip(s.options, Self.segmentRects(Self.segmentWidths(c, s), in: area)) {
             let hov = hovered == .segment(s.key, o.key)
-            PanelDraw.text(c, o.label, in: CanvasRect(x: or.x + 2, y: or.midY - 8.25, width: max(0, or.width - 4), height: 16.5), font: Self.rowFont,
-                           color: o.active ? PanelTheme.text0 : (hov ? PanelTheme.text2 : PanelTheme.text4), align: .center)
+            let color = o.active ? PanelTheme.text0 : (hov ? PanelTheme.text2 : PanelTheme.text4)
+            if let icon = s.icons[o.key] {
+                icon.draw(c, in: CanvasRect(x: or.midX - 8, y: or.midY - 8, width: 16, height: 16), color: color)
+            } else {
+                PanelDraw.text(c, o.label, in: CanvasRect(x: or.x + 2, y: or.midY - 8.25, width: max(0, or.width - 4), height: 16.5),
+                               font: Self.rowFont, color: color, align: .center)
+            }
             if o.active { c.fillRect(CanvasRect(x: or.x, y: or.maxY - 2, width: or.width, height: 2), PanelTheme.accent) }
             addHit(or, .segment(s.key, o.key))
         }
@@ -453,6 +458,11 @@ extension InspectorPanel {
     func drawButton(_ c: CanvasContext, _ r: CanvasRect, _ b: InspectorRow.Button, plain: Bool) {
         let hov = hovered == .button(b.key)
         let font = PanelTheme.font(plain ? 10 : 11, .medium)
+        if let icon = b.icon {
+            icon.draw(c, in: CanvasRect(x: r.midX - 7, y: r.midY - 7, width: 14, height: 14), color: hov ? PanelTheme.text1 : PanelTheme.text3)
+            if !b.disabled { addHit(r, .button(b.key)) }
+            return
+        }
         switch b.style {
         case .accent: PanelDraw.text(c, b.label, in: r, font: font, color: PanelTheme.accent.withAlpha(hov ? 1 : 0.9), align: .center)
         case .muted: PanelDraw.text(c, b.label, in: r, font: font, color: hov ? PanelTheme.text1 : PanelTheme.text3, align: .center)

@@ -18,8 +18,8 @@ import MpvfxTimeline
 import MpvfxTheme
 
 /// The Transform group's collapsible 3D transform (compact, as the flat panel shows it):
-/// the orientation cube (Transform3DCube: drag to tilt, reset to flat), then Depth, Tilt X, Tilt Y, Roll and
-/// Perspective, each keyframeable with its own reset. Roll is `transform.rotation` (rotation about Z is the same value).
+/// the orientation cube (Transform3DCube: drag to tilt, reset to flat), then Depth, Tilt X, Tilt Y and
+/// Perspective, each keyframeable with its own reset. Rotation about Z lives in the Transform row only.
 /// Every row draws through NativeTransform3D, the projection preview and export share.
 extension InspectorPanel {
     /// The cube's drag sensitivity: degrees per pixel.
@@ -45,7 +45,7 @@ extension InspectorPanel {
         var rows: [InspectorRow] = [.init(.spacer(PanelGrid.unit)), .init(.custom(transform3DHeader()))]
         guard transform3DOpen else { return rows }
         rows.append(.init(.custom(cubeRow(editor, s, pose: (rx, ry, roll), z: z, lens: lens))))
-        rows.append(.init(.note("Drag to tilt · the ↺ under the cube resets to flat")))
+        rows.append(.init(.note("Drag to tilt · use Reset 3D transform to return to flat")))
         // Comp-derived lens (naturalDepthPerspective): the composition height, one comp-height back.
         let naturalLens = editor.document.canvas.height.rounded()
         func row(_ key: String, _ label: String, _ pid: String, _ v: Double, suffix: String, step: Double,
@@ -71,21 +71,18 @@ extension InspectorPanel {
         rows.append(row("tiltY", "Tilt Y", NativeTransform3D.rotationYId, ry, suffix: "°", step: 0.5) {
             editor.setParameter(clipId: s.id, NativeTransform3D.rotationYId, .number($0), time: t)
         })
-        rows.append(row("roll", "Roll", TimelineEditor.rotationId, roll, suffix: "°", step: 0.5) {
-            editor.applyTransform(clipId: s.id, time: t, ClipTransform(rotation: $0))
-        })
         rows.append(row("perspective", "Perspective", NativeTransform3D.perspectiveId, lens, suffix: "px", step: 1) {
             editor.setParameter(clipId: s.id, NativeTransform3D.perspectiveId, .number(max(0, $0)), time: t)   // parsePxNonNeg
         })
         return rows
     }
 
-    /// `text-[10px] font-medium uppercase tracking-wider` toggle with its caret (collapsed by default).
+    /// Sentence-case disclosure with its caret (collapsed by default).
     func transform3DHeader() -> InspectorCustomRow {
         InspectorCustomRow(id: "3d:toggle", height: 24, draw: { [weak self] c, r, panel in
             guard let self else { return }
             let hot = panel.hovered == .custom("3d:toggle", 0)
-            PanelDraw.text(c, "3D TRANSFORM", in: CanvasRect(x: r.x, y: r.y, width: r.width - 16, height: r.height),
+            PanelDraw.text(c, "3D transform", in: CanvasRect(x: r.x, y: r.y, width: r.width - 16, height: r.height),
                            font: PanelTheme.font(10, .medium), color: hot ? PanelTheme.text2 : PanelTheme.text4)
             let caret = CanvasRect(x: r.maxX - 9, y: r.y + (r.height - 9) / 2, width: 9, height: 9)
             (self.transform3DOpen ? PanelIcon.groupCaretDown : PanelIcon.groupCaretRight).draw(c, in: caret, color: hot ? PanelTheme.text2 : PanelTheme.text4)

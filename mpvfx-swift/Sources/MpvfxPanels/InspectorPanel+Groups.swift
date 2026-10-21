@@ -218,7 +218,7 @@ extension InspectorPanel {
         if !channels.isEmpty { rows += easingRows(editor, s, channels: channels) }
         rows += arcMotionRows(editor, s)
         return InspectorGroup(id: "layout", title: "Transform",
-                              summary: "\(PanelFormat.number(x, decimals: 0))px,\(PanelFormat.number(y, decimals: 0))px · \(Int(w.rounded()))×\(Int(h.rounded()))",
+                              summary: "X \(PanelFormat.number(x, decimals: 0)) · Y \(PanelFormat.number(y, decimals: 0)) · \(Int(w.rounded())) × \(Int(h.rounded()))",
                               rows: rows)
     }
 

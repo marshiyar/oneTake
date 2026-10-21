@@ -293,24 +293,24 @@ public struct ColorGrading: Equatable, Sendable {
                                           "bloom", "monoScreen", "scanlines", "chromaticAberration", "crtCurvature", "digitalGlitch", "engraving", "crosshatch", "kuwahara"]
     public static let effectFamilies: [(id: String, label: String, effects: [(key: String, label: String)])] = [
         ("essentials", "Essentials", [("blur", "Blur"), ("pixelate", "Pixelate"), ("bloom", "Bloom")]),
-        ("retro-glitch", "Retro & Glitch", [("chromaBleed", "Chroma Softening"), ("tapeDamage", "Tape Damage"), ("filmArtifacts", "Film Artifacts"),
-                                            ("scanlines", "Scanlines"), ("crtCurvature", "CRT Curvature"), ("chromaticAberration", "Channel Separation"),
-                                            ("digitalGlitch", "Digital Glitch")]),
-        ("print", "Print", [("halftone", "Halftone"), ("twoInkPrint", "Two-Ink Print"), ("dither", "Ordered Dither"), ("monoScreen", "Mono Screen")]),
-        ("art", "Art", [("ascii", "ASCII"), ("engraving", "Engraving"), ("crosshatch", "Crosshatch"), ("kuwahara", "Kuwahara Paint")]),
+        ("retro-glitch", "Retro & glitch", [("chromaBleed", "Chroma softening"), ("tapeDamage", "Tape damage"), ("filmArtifacts", "Film artifacts"),
+                                            ("scanlines", "Scanlines"), ("crtCurvature", "CRT curvature"), ("chromaticAberration", "Channel separation"),
+                                            ("digitalGlitch", "Digital glitch")]),
+        ("print", "Print", [("halftone", "Halftone"), ("twoInkPrint", "Two-ink print"), ("dither", "Ordered dither"), ("monoScreen", "Mono screen")]),
+        ("art", "Art", [("ascii", "ASCII"), ("engraving", "Engraving"), ("crosshatch", "Crosshatch"), ("kuwahara", "Kuwahara paint")]),
     ]
 
     /// Primary adjust sliders (COLOR_GRADING_ADJUST_SLIDERS): key, label, min, max, scale, suffix.
     public static let adjustSliders: [(key: String, label: String, min: Double, max: Double, scale: Double, suffix: String)] = [
         ("exposure", "Exposure", -200, 200, 100, ""), ("contrast", "Contrast", -100, 100, 100, "%"),
         ("highlights", "Highlights", -100, 100, 100, "%"), ("shadows", "Shadows", -100, 100, 100, "%"),
-        ("whites", "White Point", -100, 100, 100, "%"), ("blacks", "Black Point", -100, 100, 100, "%"),
-        ("temperature", "Warmth", -100, 100, 100, "%"), ("tint", "Tint", -100, 100, 100, "%"),
+        ("whites", "White point", -100, 100, 100, "%"), ("blacks", "Black point", -100, 100, 100, "%"),
+        ("temperature", "Temperature", -100, 100, 100, "%"), ("tint", "Tint", -100, 100, 100, "%"),
         ("vibrance", "Vibrance", -100, 100, 100, "%"), ("saturation", "Saturation", -100, 100, 100, "%"),
     ]
     public static let detailSliders: [(key: String, label: String, min: Double, max: Double)] = [
         ("vignette", "Vignette", 0, 100), ("vignetteMidpoint", "Midpoint", 0, 100), ("vignetteRoundness", "Roundness", -100, 100),
-        ("vignetteFeather", "Feather", 0, 100), ("grain", "Grain", 0, 100), ("grainSize", "Grain Size", 0, 100), ("grainRoughness", "Roughness", 0, 100),
+        ("vignetteFeather", "Feather", 0, 100), ("grain", "Grain", 0, 100), ("grainSize", "Grain size", 0, 100), ("grainRoughness", "Roughness", 0, 100),
     ]
 }
 

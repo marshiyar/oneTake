@@ -76,13 +76,49 @@ public final class InspectorPanel {
     // Interaction state
     public private(set) var hits = HitMap<Hit>()
 
-    /// Header bypasses exposed to the native canvas host after layout has populated `hits`.
+    /// Header bypasses and named icon choices exposed after layout has populated `hits`.
     public var accessibilityControls: [CanvasAccessibilityControl] {
-        buildGroups().compactMap { group in
+        let headers: [CanvasAccessibilityControl] = buildGroups().compactMap { group in
             guard let label = group.accessibilityLabel, let value = group.enabled,
                   let frame = hits.rect(where: { $0 == .groupEnabled(group.id) }) else { return nil }
             return CanvasAccessibilityControl(label: label, value: value, frame: frame) { group.setEnabled?(!value) }
         }
+        return headers + namedIconControls.map { item in
+            CanvasAccessibilityControl(label: item.label, value: item.active, frame: item.frame, press: item.press)
+        }
+    }
+
+    /// Names are shared by assistive technology and the hover tooltip.
+    var namedIconControls: [(hit: Hit, label: String, active: Bool, frame: CanvasRect, press: () -> Void)] {
+        var controls: [(Hit, String, Bool, CanvasRect, () -> Void)] = []
+        for row in allRows() {
+            switch row.kind {
+            case .segmented(let segment):
+                for option in segment.options where segment.icons[option.key] != nil {
+                    let hit = Hit.segment(segment.key, option.key)
+                    guard let frame = hits.rect(where: { $0 == hit }) else { continue }
+                    controls.append((hit, option.label, option.active, frame, { segment.select(option.key) }))
+                }
+            case .subheader(_, let buttons), .buttons(let buttons):
+                for button in buttons where button.icon != nil && !button.disabled {
+                    let hit = Hit.button(button.key)
+                    guard let frame = hits.rect(where: { $0 == hit }) else { continue }
+                    controls.append((hit, button.label, false, frame, button.action))
+                }
+            default: break
+            }
+        }
+        return controls
+    }
+
+    func drawIconTooltip(_ c: CanvasContext) {
+        guard let item = namedIconControls.first(where: { $0.hit == hovered }) else { return }
+        let width = min(lastRect.width - 16, c.measureText(item.label, font: Self.rowFont).width + 16)
+        let box = CanvasRect(x: max(lastRect.x + 8, min(lastRect.maxX - width - 8, item.frame.midX - width / 2)),
+                             y: min(lastRect.maxY - 28, item.frame.maxY + 4), width: width, height: 24)
+        c.fillRoundedRect(box, radius: PanelTheme.radius, PanelTheme.panelInput)
+        c.strokeRoundedRect(box.insetBy(0.5), radius: PanelTheme.radius, PanelTheme.panelBorderInput, width: 1)
+        PanelDraw.text(c, item.label, in: box.insetBy(4), font: Self.rowFont, color: PanelTheme.text1, align: .center)
     }
     public var hovered: Hit?
     public private(set) var field: PanelTextField?
@@ -277,6 +313,7 @@ public final class InspectorPanel {
             drawGroups(c, groups, in: body)
         }
         drawFocusAndScrollbar(c, body: body, content: total)
+        drawIconTooltip(c)
     }
 
     /// Five grid steps: closed headers stack on the grid below the 48 pt clip header.
@@ -454,7 +491,7 @@ public final class InspectorPanel {
             if g.enabled == false {   // a bypassed group says so beside its title, not only by the switch position
                 let x = inner.x + t.width + 8
                 PanelDraw.text(c, g.summary, in: CanvasRect(x: x, y: inner.y + 1, width: max(0, inner.maxX - 90 - x), height: inner.height),
-                               font: PanelTheme.mono(9), color: PanelTheme.text4)
+                               font: Self.rowFont, color: PanelTheme.text3)
             }
             PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text3)
             if g.reset != nil {
@@ -468,7 +505,7 @@ public final class InspectorPanel {
             let t = PanelDraw.text(c, g.title, in: CanvasRect(x: inner.x, y: inner.y, width: inner.width - 20, height: inner.height),
                                    font: PanelTheme.font(12, .medium), color: hovered == .group(g.id) ? PanelTheme.text1 : PanelTheme.text2)
             PanelDraw.text(c, g.summary, in: CanvasRect(x: inner.x + t.width + 8, y: inner.y + 1, width: max(0, inner.width - t.width - 28 - (detachable ? 22 : 0)), height: inner.height),
-                           font: PanelTheme.mono(9), color: PanelTheme.text4)
+                           font: Self.rowFont, color: PanelTheme.text3)
             if detachable { drawGroupMenuButton(c, r, g.id, rightEdge: accessoryX) }
             PanelIcon.groupCaretRight.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text5)
             c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
