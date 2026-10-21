@@ -458,9 +458,12 @@ final class SessionPanels {
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { renderer.reset() }
-        inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
-            guard let self, let inspector else { return .unavailable }
-            let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
+        // The scopes follow the playhead while playing too: the renderer drops a frame request a newer one replaced,
+        // and the scope worker keeps only the newest frame, so they update as fast as frames are graded.
+        inspector.scopeWorker.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
+        inspector.scopeFrame = { [weak inspector] clipId, w, h in
+            guard let inspector else { return .unavailable }
+            let t = inspector.time
             switch renderer.gradedFrame(clipId: clipId, time: t, pixelWidth: w, pixelHeight: h) {
             case .ready(let img): return .ready(img)
             case .rendering: return .rendering

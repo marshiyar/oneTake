@@ -235,6 +235,12 @@ public enum ThemeTokens {
     public static let nativeRangeTrack = ThemeColor(0xEFEFEF), nativeRangeEdge = ThemeColor(0xB2B2B2)
     /// Smart guides and spacing marks (magenta, both modes).
     public static let guide = ThemeColor(0xFF44CC)
+    /// Video scopes draw on black in both modes: the luma trace, the R/G/B traces, the vectorscope trace, the
+    /// graticule ink, the skin-tone line and the clipping marks.
+    public static let scopeLuma = ThemeColor(0xE2E8F0), scopeRed = ThemeColor(0xF87171)
+    public static let scopeGreen = ThemeColor(0x4ADE80), scopeBlue = ThemeColor(0x60A5FA)
+    public static let scopeVector = ThemeColor(0x6EE7B7), scopeInk = ThemeColor(0xFFFFFF)
+    public static let scopeSkin = ThemeColor(0xFBBF24), scopeClip = ThemeColor(0xFF3B30)
     /// Timeline band edge colours (identity, both modes).
     public static let bandEdges: [ThemeColor] = [0x3CE6AC, 0x5BA6FF, 0xBE77FF, 0xFFB04D, 0xFF6799].map { ThemeColor($0) }
     /// Timeline pre-roll stripe (preRollBackground).

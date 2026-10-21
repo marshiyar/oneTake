@@ -8,7 +8,7 @@ The engine is `Sources/MpvfxScopes` (Foundation only, no UI); the tests are `Tes
 Every number below comes from these documents (each fetched 2026-10-21) or is derived from them by the formula given.
 
 | Document | Link | Used for |
-|---|---|---|
+| --- | --- | --- |
 | Rec. ITU-R BT.709-6 (06/2015) | <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.709-6-201506-I!!PDF-E.pdf> | item 1.2 transfer function; item 3.2 luma `0.2126 R' + 0.7152 G' + 0.0722 B'`; item 3.3 `CB = (B' - Y') / 1.8556`, `CR = (R' - Y') / 1.5748`; item 3.4 quantisation `D = INT[(219 E + 16) 2^(n-8)]`; item 4.6 10-bit black 64, nominal peak 940 |
 | Rec. ITU-R BT.601-7 (03/2011) | <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.601-7-201103-I!!PDF-E.pdf> | § 2.5.1 luma `0.299 R' + 0.587 G' + 0.114 B'`; § 2.5.2 divisors 1.772 and 1.402 |
 | Rec. ITU-R BT.2020-2 (10/2015) | <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.2020-2-201510-I!!PDF-E.pdf> | Table 4 luma `0.2627 R' + 0.6780 G' + 0.0593 B'`, divisors 1.8814 and 1.4746 |
@@ -45,7 +45,7 @@ Derived from the matrix, never typed in (`ScopeTargets`):
 No standard defines false-colour bands. MpvfxScopes uses these, on Y' (`FalseColor.bands`):
 
 | Band | Y' range | Colour |
-|---|---|---|
+| --- | --- | --- |
 | Crushed | 0 to 2 % | purple |
 | Near black | 2 to 10 % | blue |
 | Middle grey | 35.9 to 46.5 %: the BT.709 transfer function of 18 % reflectance, plus or minus 1/3 stop | green |
@@ -55,6 +55,16 @@ No standard defines false-colour bands. MpvfxScopes uses these, on Y' (`FalseCol
 
 Levels between bands show the pixel's own luma as grey, so the picture stays readable.
 
+## In the editor
+
+The Grade group's Scopes row (`Sources/MpvfxPanels/InspectorPanel+Scopes.swift`, `Sources/MpvfxPanels/Scopes/`):
+
+- A chip per scope: Waveform (luma), RGB (overlay), Parade, Vector, Histogram (luma line over R, G, B areas), False color. Up to four show at once; a fifth replaces the oldest, the last one cannot be turned off. One scope fills the width; more go two to a row, and a lone last tile spans the row. The default is the waveform beside the vectorscope.
+- Controls: `%` or `10-bit` scale, `75%` or `100%` targets, zoom (1x, 2x, 4x, cycles), trace gain (0.25x to 4x).
+- Every tile is black in both appearances. Traces are bitmaps at the analysis resolution; the graticule (level lines and labels, the vectorscope's cross, 0.5 ring, targets and skin line) is drawn as vectors over them. Red marks above and below a waveform column show samples at level 255 and level 0; the histogram writes the crushed and clipped luma shares; the vectorscope writes the share of samples off a zoomed scale.
+- Trace brightness: a bin with `count` samples is drawn at `1 - exp(-gain x count / ref)`, where `ref` is a column's samples spread over 100 levels (the frame's samples over 2000 bins for the vectorscope). Brightness does not depend on the frame's own peak, so it does not flicker from frame to frame (a product convention).
+- The frame: the host's graded frame of the selected clip at the playhead, at most 960 px on its long side (the old scopes used 320 px, too coarse for single-pixel highlights). It follows the playhead while playing. `ScopeWorker` analyses it on a background queue, keeps only the newest request, and shows the last result until the next is ready.
+
 ## Speed
 
 `MpvfxScopes` is compiled with `-O` in debug builds too (`Package.swift`): its per-pixel loop is about 9 times slower unoptimised. Rows are split across up to 8 threads (one per 131 072 samples), each with its own counters, merged at the end; the result does not depend on the thread count (`ScopeEngineAccuracyTests.testTheNumberOfWorkersDoesNotChangeTheResult`).
@@ -62,3 +72,5 @@ Levels between bands show the pixel's own luma as grey, so the picture stays rea
 Budget: a full-density 1080p frame in at most 25 ms (`ScopeEngineBudgetTests`). Measured 2026-10-21 on a shared 4-vCPU Intel Xeon @ 2.10 GHz Linux machine with other builds running (load average 3.2): 12.7 ms median at 1080p, 13.8 ms at 2160p (sampled to 1080p).
 
 The GPU renderers (`ColorRendering`: Metal, Vulkan, Direct3D 11) run grade jobs; a scope needs counting with atomics and a job type of its own on each host, so the scopes run on the CPU.
+
+<!-- markdownlint-disable-file MD043 -- the required-headings rule has no heading list configured, so any heading fails it -->

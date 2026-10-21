@@ -263,50 +263,85 @@ final class PanelSnapshotTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) }).y, 76.5 + 123 - 24, accuracy: 0.5)
     }
 
-    /// Opening Scopes shows the status, the mode tabs and the scope of the host's graded frame; tabs switch mode.
+    /// Opening Scopes asks the host for a frame at the analysis size and shows the status, a chip per scope, the
+    /// scale / target / zoom / gain controls and the shown scopes (waveform beside the vectorscope); chips add scopes.
     func testGradeScopesOpen() throws {
         let r = try Self.rightFixture(open: "grade", h: 1900)
-        var px = [UInt8](repeating: 255, count: 64 * 36 * 4)
-        for i in 0..<(64 * 36) { let v = UInt8((i % 64) * 4); px[i * 4] = v; px[i * 4 + 1] = v; px[i * 4 + 2] = v }
-        let frame = CanvasImage(width: 64, height: 36, rgba: px)
+        let frame = ScopesPanelTests.ramp()
         var asked = 0
-        r.inspector.scopeFrame = { id, w, _ in asked += 1; XCTAssertEqual(id, "clip:a"); XCTAssertEqual(w, 320); return .ready(frame) }
+        r.inspector.scopeFrame = { id, w, h in
+            asked += 1; XCTAssertEqual(id, "clip:a")
+            XCTAssertEqual(w, InspectorPanel.scopeFrameSide); XCTAssertEqual(h, InspectorPanel.scopeFrameSide)
+            return .ready(frame)
+        }
         let c = PanelMeasureCanvas()
         r.draw(c, size: CanvasSize(409, 1900))
         XCTAssertEqual(asked, 0, "closed scopes capture nothing")
-        let toggle = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
-        XCTAssertTrue(r.inspector.pointerDown(CanvasPoint(toggle.midX, toggle.midY))); r.inspector.pointerUp(CanvasPoint(toggle.midX, toggle.midY))
+        try click(r, part: 0)
         XCTAssertTrue(r.inspector.grade.scopesOpen)
         c.reset(); r.draw(c, size: CanvasSize(409, 1900))
         XCTAssertGreaterThan(asked, 0)
-        for s in ["ready", "Histogram", "Waveform", "RGB Parade", "Vectorscope"] { XCTAssertTrue(c.drawnStrings.contains(s), s) }
+        r.inspector.scopeWorker.wait()
+        c.reset(); r.draw(c, size: CanvasSize(409, 1900))
+        let labels = ["ready", "Waveform", "RGB", "Parade", "Vector", "Histogram", "False color", "%", "10-bit", "75%", "100%",
+                      "Zoom 1x", "Gain 1x", "Luma waveform", "Vectorscope · 75%"]
+        for s in labels { XCTAssertTrue(c.drawnStrings.contains(s), s) }
+        let open = 28 + 22 + 22 + 6 + ScopeLayout.height([.waveform, .vectorscope], width: 377) + 7
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
-        XCTAssertEqual(tile.y, 76.5 + 123 + 234.35 - 35, accuracy: 1, "the open scopes push the grid down")
-        let parade = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 4) })
-        XCTAssertTrue(r.inspector.pointerDown(CanvasPoint(parade.midX, parade.midY))); r.inspector.pointerUp(CanvasPoint(parade.midX, parade.midY))
-        XCTAssertEqual(r.inspector.grade.scopeMode, .parade)
-        for scale in [1.0, 2.0] {
-            let t = snapshot("inspector-grade-scopes", w: 409, h: 700, scale: scale) { r.draw($0, size: CanvasSize(409, 700)) }
-            _ = t
+        XCTAssertEqual(tile.y, 76.5 + 123 + open - 35, accuracy: 1, "the open scopes push the grid down")
+        let parade = try XCTUnwrap(ScopeKind.allCases.firstIndex(of: .parade))
+        try click(r, part: 2 + parade)
+        XCTAssertEqual(r.inspector.grade.scopes.kinds, [.waveform, .vectorscope, .parade])
+        let checks: [(Int, () -> Bool)] = [(11, { r.inspector.grade.scopes.scale == .code10 }),
+                                           (13, { r.inspector.grade.scopes.targetAmplitude == 1 }),
+                                           (14, { r.inspector.grade.scopes.zoom == 2 }), (16, { r.inspector.grade.scopes.gain == 2 })]
+        for (part, check) in checks {
+            try click(r, part: part)
+            XCTAssertTrue(check(), "part \(part)")
         }
     }
 
-    /// Scope analysis and drawing: a horizontal grey ramp fills the waveform diagonally, the histogram evenly, and
-    /// sits on the vectorscope's centre.
-    func testColorScopesAnalysis() {
-        var px = [UInt8](repeating: 255, count: 256 * 4 * 4)
-        for y in 0..<4 { for x in 0..<256 { let i = (y * 256 + x) * 4; px[i] = UInt8(x); px[i + 1] = UInt8(x); px[i + 2] = UInt8(x) } }
-        let a = ColorScopes.analyze(CanvasImage(width: 256, height: 4, rgba: px))
-        XCTAssertEqual(a.histogram.reduce(0, +), 256 * 4 * 255)
-        XCTAssertEqual(a.waveform[10 * 256 + 245], 4 * 255, "column 10 is luma 10, drawn 10 up from the bottom")
-        XCTAssertEqual(a.vectorscope[127 * 256 + 128] + a.vectorscope[128 * 256 + 128] + a.vectorscope[127 * 256 + 127] + a.vectorscope[128 * 256 + 127], 256 * 4 * 255, "greys have no chroma")
-        let empty = ColorScopes.render(.waveform, nil)
-        XCTAssertEqual(empty.width, 320); XCTAssertEqual(empty.height, 144)
-        XCTAssertEqual(Array(empty.rgba[0..<3]), [9, 11, 14], "the #090b0e grid")
-        for m in ColorScopes.Mode.allCases {
-            let img = ColorScopes.render(m, a)
-            XCTAssertNotEqual(img.rgba, empty.rgba, "\(m) draws the frame")
+    /// Clicks the Scopes row's `part` (after a draw has recorded the hit regions).
+    func click(_ r: RightPanel, part: Int) throws {
+        r.draw(PanelMeasureCanvas(), size: CanvasSize(409, 1900))
+        let rect = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", part) }, "part \(part)")
+        XCTAssertTrue(r.inspector.pointerDown(CanvasPoint(rect.midX, rect.midY))); r.inspector.pointerUp(CanvasPoint(rect.midX, rect.midY))
+    }
+
+    /// The scopes in the right column of a 1440 x 900 window (409 wide), in dark and in light: black scope tiles in
+    /// both, the ramp's waveform lit from black (bottom left) to white (top right), the vectorscope's centre lit.
+    func testGradeScopesSnapshotInDarkAndLight() throws {
+        defer { Theme.setMode(.dark) }
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            let r = try Self.rightFixture(open: "grade", h: 900)
+            r.inspector.grade.scopesOpen = true
+            r.inspector.scopeFrame = { _, _, _ in .ready(ScopesPanelTests.ramp()) }
+            r.draw(PanelMeasureCanvas(), size: CanvasSize(409, 900))
+            r.inspector.scopeWorker.wait()
+            for scale in [1.0, 2.0] {
+                let t = snapshot("inspector-grade-scopes-\(mode.rawValue)", w: 409, h: 900, scale: scale) { r.draw($0, size: CanvasSize(409, 900)) }
+                let row = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
+                let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + 28 + 22 + 22 + 6, width: 377)
+                try assertScopeTiles(t, tiles, scale: scale)
+            }
         }
+    }
+
+    func assertScopeTiles(_ t: CairoImageTarget, _ tiles: [(kind: ScopeKind, rect: CanvasRect)], scale: Double) throws {
+        let wave = try XCTUnwrap(tiles.first { $0.kind == .waveform }).rect
+        let vector = try XCTUnwrap(tiles.first { $0.kind == .vectorscope }).rect
+        let plot = ScopeTile.plotRect(wave), vp = ScopeTile.vectorPlot(vector)
+        XCTAssertLessThan(luma(t, wave.x + 4, wave.maxY - 3, scale), 30, "the scope ground is black in both modes")
+        XCTAssertGreaterThan(luma(t, plot.x + 1.5, plot.maxY - 1.5, scale), 120, "black is drawn (bottom left)")
+        XCTAssertGreaterThan(luma(t, plot.maxX - 1.5, plot.y + 1.5, scale), 120, "white is drawn (top right)")
+        XCTAssertLessThan(luma(t, plot.x + 4, plot.y + plot.height * 0.3, scale), 60, "nothing above the diagonal at the left")
+        XCTAssertGreaterThan(luma(t, vp.midX, vp.midY, scale), 120, "greys sit on the centre")
+    }
+
+    func luma(_ t: CairoImageTarget, _ x: Double, _ y: Double, _ scale: Double) -> Double {
+        let p = t.pixel(Int(x * scale), Int(y * scale))
+        return 0.2126 * Double(p.r) + 0.7152 * Double(p.g) + 0.0722 * Double(p.b)
     }
 
     /// Effects with nothing active: "Add effect", the family tabs (Essentials

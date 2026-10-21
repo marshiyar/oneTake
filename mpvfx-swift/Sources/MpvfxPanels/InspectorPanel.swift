@@ -120,6 +120,8 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// Analyses scope frames off the draw thread; the host sets its `onReady` to redraw.
+    public let scopeWorker = ScopeWorker()
     public var lutAssets: () -> [String] = { [] }
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,

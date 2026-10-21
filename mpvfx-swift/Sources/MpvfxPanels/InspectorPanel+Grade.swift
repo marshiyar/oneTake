@@ -31,11 +31,9 @@ public struct GradeUIState: Equatable {
     /// Geometry from the last draw (rows are rebuilt per event, so it lives here).
     var wheelRects: [CanvasRect] = []
     var curveBox = CanvasRect(x: 0, y: 0, width: 1, height: 1)
-    /// Scopes disclosure (closed by default) and its mode (waveform first).
+    /// Scopes disclosure (closed by default) and which scopes it shows, how (InspectorPanel+Scopes.swift).
     public var scopesOpen = false
-    public var scopeMode = ColorScopes.Mode.waveform
-    /// The last scope bitmap and what it was drawn from (mode + frame fingerprint).
-    var scopeMemo: (key: String, image: CanvasImage)?
+    public var scopes = ScopeSettings()
     /// The secondary eyedropper: the captured frame, whether a capture is still
     /// rendering or failed, Source / Selection matte view, and where the frame was drawn last.
     public internal(set) var sampleFrame: CanvasImage?
@@ -47,7 +45,7 @@ public struct GradeUIState: Equatable {
     public static func == (a: GradeUIState, b: GradeUIState) -> Bool {
         a.curveTab == b.curveTab && a.selectedPoint == b.selectedPoint && a.selectedSecondary == b.selectedSecondary && a.lutOpen == b.lutOpen
             && a.finishSettings == b.finishSettings && a.copyToProject == b.copyToProject
-            && a.scopesOpen == b.scopesOpen && a.scopeMode == b.scopeMode
+            && a.scopesOpen == b.scopesOpen && a.scopes == b.scopes
     }
 }
 
@@ -187,88 +185,6 @@ extension InspectorPanel {
             })
         }
         return .init(.slider(row))
-    }
-
-    // MARK: Scopes
-
-    /// Closed: `min-h-7` "Scopes" (11px text-2) / "Off" (9px text-5) over `pb-1.5` and a hairline (35pt). Open: the
-    /// status instead of Off with a RotateCw 10 refresh (`p-1`, text-4) `gap-2` right of it, the mode tabs (9px,
-    /// `py-1`, `border-b-2`, accent + text-1 when on, text-4 otherwise, `gap-2`), and the 320x144 scope bitmap at the
-    /// body width (`h-auto`, hairline border, black) `space-y-1.5` below.
-    func scopesRow(_ clipId: String) -> InspectorCustomRow {
-        let open = grade.scopesOpen
-        let canvasH = (bodyContentWidth - 2) * Double(ColorScopes.bitmapHeight) / Double(ColorScopes.bitmapWidth) + 2
-        let height = open ? 28 + 23.5 + 6 + canvasH + 7 : 35
-        return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, panel in
-            guard let self else { return }
-            let state: PresetPreviewState? = open ? (self.scopeFrame?(clipId, ColorScopes.bitmapWidth, ColorScopes.bitmapWidth) ?? .unavailable) : nil
-            let status: String
-            switch state {
-            case nil: status = "Off"
-            case .ready?: status = "ready"
-            case .rendering?: status = "loading"
-            case .unavailable?: status = "unavailable"
-            }
-            let head = CanvasRect(x: r.x, y: r.y, width: r.width, height: 28)
-            let refreshW = open ? 18.0 + 8 : 0
-            let toggle = CanvasRect(x: head.x, y: head.y, width: head.width - refreshW, height: 28)
-            PanelDraw.text(c, "Scopes", in: CanvasRect(x: toggle.x, y: toggle.midY - 8.25, width: 80, height: 16.5),
-                           font: PanelTheme.font(11), color: PanelTheme.text2)
-            let sw = c.measureText(status, font: PanelTheme.font(9)).width
-            PanelDraw.text(c, status, in: CanvasRect(x: toggle.maxX - sw - 0.5, y: toggle.midY - 6.75, width: sw + 1, height: 13.5),
-                           font: PanelTheme.font(9), color: PanelTheme.text5)
-            panel.addHit(toggle, .custom("grade:scopes", 0))
-            if open {
-                let rb = CanvasRect(x: head.maxX - 18, y: head.midY - 9, width: 18, height: 18)
-                PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4), color: panel.hovered == .custom("grade:scopes", 1) ? PanelTheme.text1 : PanelTheme.text4)
-                panel.addHit(rb, .custom("grade:scopes", 1))
-                var x = r.x
-                for (i, m) in ColorScopes.Mode.allCases.enumerated() {
-                    let on = self.grade.scopeMode == m
-                    let tw = c.measureText(m.label, font: PanelTheme.font(9)).width
-                    let tab = CanvasRect(x: x, y: head.maxY, width: tw, height: 23.5)
-                    let hov = panel.hovered == .custom("grade:scopes", 2 + i)
-                    PanelDraw.text(c, m.label, in: CanvasRect(x: tab.x, y: tab.y + 4, width: tw + 1, height: 13.5), font: PanelTheme.font(9),
-                                   color: on ? PanelTheme.text1 : (hov ? PanelTheme.text2 : PanelTheme.text4))
-                    if on { c.fillRect(CanvasRect(x: tab.x, y: tab.maxY - 2, width: tw, height: 2), PanelTheme.accent) }
-                    panel.addHit(tab, .custom("grade:scopes", 2 + i))
-                    x += tw + 8
-                }
-                let box = CanvasRect(x: r.x, y: head.maxY + 23.5 + 6, width: r.width, height: canvasH)
-                c.fillRect(box, PanelTheme.stageScrim)   // scopes draw on black in both modes
-                var frame: CanvasImage?
-                if case .ready(let img)? = state { frame = img }
-                c.drawImage(self.scopeBitmap(frame), in: box.insetBy(1))
-                c.strokeRect(box.insetBy(0.5), PanelTheme.panelHairline, width: 1)
-            }
-            c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-        }, pointer: { [weak self] part, _, phase in
-            guard let self, phase == 0 else { return }
-            switch part {
-            case 0: self.grade.scopesOpen.toggle(); self.grade.scopeMemo = nil
-            case 1: self.grade.scopeMemo = nil
-            default:
-                let modes = ColorScopes.Mode.allCases
-                if modes.indices.contains(part - 2) { self.grade.scopeMode = modes[part - 2] }
-            }
-            self.onEdited?()
-        })
-    }
-
-    /// The scope bitmap for the current mode, redrawn only when the frame or the mode changed.
-    func scopeBitmap(_ frame: CanvasImage?) -> CanvasImage {
-        var fp = "none"
-        if let f = frame {
-            var h: UInt64 = 1469598103934665603
-            let step = max(1, f.rgba.count / 4096)
-            for i in stride(from: 0, to: f.rgba.count, by: step) { h = (h ^ UInt64(f.rgba[i])) &* 1099511628211 }
-            fp = "\(f.width)x\(f.height):\(h)"
-        }
-        let key = "\(grade.scopeMode.rawValue)|\(fp)"
-        if let m = grade.scopeMemo, m.key == key { return m.image }
-        let img = ColorScopes.render(grade.scopeMode, frame.map(ColorScopes.analyze))
-        grade.scopeMemo = (key, img)
-        return img
     }
 
     /// "Retry look previews": 10px medium accent on the block's 18px line.
