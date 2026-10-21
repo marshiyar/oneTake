@@ -52,6 +52,8 @@ public enum DocumentAudioGraph {
         for c in clips {
             guard let a = assets[c.assetId], a.kind == .audio || a.kind == .video, let src = a.source else { continue }
             if a.kind == .video && detached.contains(c.id) { continue }
+            // A held frame is silent (and a hold from a newer version is not played either).
+            if c.holdSourceFrame != nil { continue }
             let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
             guard fileExists(path) else { continue }
             let start = c.startFrame / fps, end = (c.startFrame + c.durationFrames) / fps
