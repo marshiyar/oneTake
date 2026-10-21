@@ -58,7 +58,7 @@ final class PreviewRecordingTests: XCTestCase {
         r.tick(time: 0.4)
         XCTAssertEqual(r.live["z"], 4, "the wheel alone pushes depth")
         XCTAssertEqual(r.samples.map(\.time), [0.1, 0.2, 0.3, 0.4])
-        XCTAssertEqual(r.trail.count, 5)
+        XCTAssertEqual(r.trail.count, 4, "one trail point per output frame, like the samples")
     }
 
     func testKeyframesSimplifySmoothAndStartAtZero() throws {
@@ -94,7 +94,7 @@ final class PreviewRecordingTests: XCTestCase {
 
     // MARK: Controller flow
 
-    func testRecordingPlaysSamplesPreviewsAndCommitsThenSeeksBack() throws {
+    func testATakePlaysSamplesPreviewsAndCommitsThenSeeksBack() throws {
         let clock = Clock()
         let pb = PlaybackState(duration: 4, fps: 10)
         pb.seek(0.5)
@@ -105,25 +105,23 @@ final class PreviewRecordingTests: XCTestCase {
         XCTAssertNotNil(c.view.toolbar.onToggleRecording, "Record shows in the tools bar")
 
         c.toggleRecording()
-        XCTAssertNil(c.recorder); XCTAssertEqual(c.view.toast?.message, "Select an element first")
-
-        c.view.selectedIds = ["A"]
-        c.pointerMove(x: 60, y: 80)
-        c.toggleRecording()
+        XCTAssertTrue(c.isRecordArmed); XCTAssertNil(c.recorder, "arming starts no take")
+        c.pointerDown(x: 20, y: 60)
+        XCTAssertNil(c.recorder); XCTAssertEqual(c.view.selectedIds, ["A"], "with nothing selected a press only selects")
+        c.pointerUp(x: 20, y: 60)
+        c.pointerDown(x: 20, y: 60)   // on the selected A (clear of B)
         XCTAssertTrue(c.isRecording); XCTAssertTrue(pb.isPlaying); XCTAssertEqual(c.view.toolbar.recording, .recording)
         XCTAssertTrue(c.editingIds.contains("A"), "the stage keeps the live element while recording")
         let s = c.view.scale(in: c.size)
         for i in 1...12 {
             c.modifiers = []
-            c.pointerMove(x: 60 + Double(i) * 4 * s, y: 80)
+            c.pointerMove(x: 20 + Double(i) * 4 * s, y: 60)
             pb.tick(0.1)
             c.frameTick()
-            if i == 6 { XCTAssertEqual(c.view.elements.first { $0.id == "A" }!.rect.x, Double(i - 1) * 4, accuracy: 1, "live preview follows the pointer from the first move") }
+            if i == 6 { XCTAssertEqual(c.view.elements.first { $0.id == "A" }!.rect.x, Double(i) * 4, accuracy: 1, "live preview keeps the grab offset") }
         }
         XCTAssertGreaterThan(c.view.recordingTrail.count, 2)
-        c.pointerDown(x: 60, y: 80)   // stage clicks are ignored while recording
-        XCTAssertTrue(c.isRecording)
-        c.toggleRecording()
+        c.pointerUp(x: 20 + 48 * s, y: 60)
         XCTAssertFalse(c.isRecording); XCTAssertFalse(pb.isPlaying)
         XCTAssertEqual(pb.currentTime, 0.5, accuracy: 1e-9, "seeks back to where recording started")
         let (edited, before) = try XCTUnwrap(committed)
@@ -132,7 +130,7 @@ final class PreviewRecordingTests: XCTestCase {
         XCTAssertEqual(c.view.elements.first { $0.id == "A" }!.rect.x, 0, "the live preview is dropped; the document drives the stage again")
     }
 
-    func testRecordingStopsAtTheClipEndAndWhenPaused() throws {
+    func testATakeStopsAtTheClipEndAndWhenPaused() throws {
         let clock = Clock()
         let pb = PlaybackState(duration: 4, fps: 10)
         pb.seek(1.0)
@@ -142,15 +140,18 @@ final class PreviewRecordingTests: XCTestCase {
         c.enableGestureRecording(engine: try KeyframeRuntime(), document: { doc }) { _, _ in commits += 1; return true }
         c.view.selectedIds = ["B"]
         c.toggleRecording()
-        for i in 1...15 { c.pointerMove(x: 60 + Double(i) * 3, y: 80); pb.tick(0.1); c.frameTick() }
+        c.pointerDown(x: 70, y: 75)
+        for i in 1...15 { c.pointerMove(x: 70 + Double(i) * 3, y: 75); pb.tick(0.1); c.frameTick() }
         XCTAssertFalse(c.isRecording, "auto-stops at the clip's end")
         XCTAssertEqual(commits, 1)
-        // Pausing (Space) also ends the recording.
-        c.toggleRecording()
-        c.pointerMove(x: 10, y: 80); pb.tick(0.1); c.frameTick()
+        c.pointerUp(x: 115, y: 75)
+        XCTAssertEqual(commits, 1, "the release after an auto-stop writes nothing more")
+        // Pausing (Space) also ends the take; a take that never passed the drag threshold writes nothing.
+        c.pointerDown(x: 70, y: 75)
+        c.pointerMove(x: 71, y: 75); pb.tick(0.1); c.frameTick()
         pb.pause(); c.frameTick()
         XCTAssertFalse(c.isRecording)
-        XCTAssertEqual(c.view.toast?.isError, true, "one sample is no gesture")
+        XCTAssertEqual(commits, 1)
     }
 
     // MARK: Drop, nudge, cancel, flash, preferences

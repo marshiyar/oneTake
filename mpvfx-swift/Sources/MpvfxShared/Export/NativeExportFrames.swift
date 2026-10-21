@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import Synchronization
 
 /// What export asks for when it starts drawing frames: the document exactly as it renders (hidden tracks removed,
 /// muted groups dropped, untouched clips at their natural box), the folder its media paths are relative to, and the
@@ -36,10 +37,15 @@ public protocol NativeExportFrameRenderer: AnyObject {
     func frame(at time: Double) throws -> [UInt8]
 }
 
-public typealias NativeExportFrameRendererFactory = (NativeExportFrameRequest) throws -> NativeExportFrameRenderer
+/// Sendable: installed once by the app and called on the export thread.
+public typealias NativeExportFrameRendererFactory = @Sendable (NativeExportFrameRequest) throws -> NativeExportFrameRenderer
 
 /// The process-wide frame renderer export uses when the render input names none. The app installs the preview's
 /// painter (MpvfxPlayer `PreviewExportFrames`) at startup, so an exported frame is the preview's frame.
 public enum NativeExportFrames {
-    nonisolated(unsafe) public static var defaultRenderer: NativeExportFrameRendererFactory?
+    public static var defaultRenderer: NativeExportFrameRendererFactory? {
+        get { installed.withLock { $0 } }
+        set { installed.withLock { $0 = newValue } }
+    }
+    private static let installed = Mutex<NativeExportFrameRendererFactory?>(nil)
 }

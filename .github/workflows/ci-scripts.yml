@@ -1,0 +1,63 @@
+name: ci-scripts
+
+# The tests of the scripts in .github/ci/: every .github/ci/test_*.py, found by glob, so a new script's tests run here
+# without an edit to this file. Several of those scripts (agentbot, codex-apply, merge-train) run with write tokens; a
+# change to one cannot land with its own tests broken. Each test file runs on its own with `python3 -I -B` (isolated
+# mode: no user site-packages, no PYTHON* variables, no bytecode written); the job fails when any of them fails or when
+# none is found. PyYAML comes from the distribution (python3-yaml) and only when a script imports it and the image
+# lacks it. Runs on pull requests and pushes to main that touch .github/**, and by hand. Never a required check.
+
+on:
+  pull_request:
+    paths: ['.github/**']
+  push:
+    branches: [main]
+    paths: ['.github/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-scripts-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: PyYAML (the distribution's python3-yaml, when a script needs it and the image lacks it)
+        run: |
+          if grep -lqE '^[[:space:]]*(import|from)[[:space:]]+yaml' .github/ci/*.py; then
+            python3 -I -B -c 'import yaml' 2>/dev/null || {
+              sudo apt-get update -q
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends python3-yaml
+            }
+            python3 -I -B -c 'import sys, yaml; print("python", sys.version.split()[0], "PyYAML", yaml.__version__)'
+          else
+            echo "no script in .github/ci imports yaml"
+          fi
+      - name: Every .github/ci/test_*.py
+        run: |
+          shopt -s nullglob
+          tests=(.github/ci/test_*.py)
+          if [ ${#tests[@]} -eq 0 ]; then echo "::error::no .github/ci/test_*.py found"; exit 1; fi
+          failed=()
+          { echo "### .github/ci tests"; echo; echo "| test | result |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          for t in "${tests[@]}"; do
+            echo "::group::$t"
+            if python3 -I -B "$t"; then
+              echo "| \`$t\` | pass |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              failed+=("$t")
+              echo "| \`$t\` | **FAIL** |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            echo "::endgroup::"
+          done
+          for t in "${failed[@]}"; do echo "::error file=$t::$t failed"; done
+          echo "${#tests[@]} test files, ${#failed[@]} failed"
+          [ ${#failed[@]} -eq 0 ]
