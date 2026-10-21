@@ -61,6 +61,9 @@ def _codeql_swift(job_name, steps):
 # jobs patch(jobs) -> jobs])
 SPECS = {
     "codeql-swift-source.yml": ("codeql.yml", "codeql-swift-source", ["swift"], {}, _codeql_swift),
+    # The Linux build variants: their guard and other cheap checks stay in the source workflows.
+    "linux-no-vulkan-source.yml": ("linux-no-vulkan.yml", "linux-no-vulkan-source", ["build"], {}, None),
+    "linux-optional-headers-source.yml": ("linux-optional-headers.yml", "linux-optional-headers-source", ["build"], {}, None),
 }
 
 
