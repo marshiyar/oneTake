@@ -39,6 +39,9 @@ public enum PanelTheme {
     /// `studio-accent` / `panel-accent` (#2D7FFF). The inline-style mint (`P.accent`, `--hf-accent`) is `mint`.
     public static var accent: CanvasColor { c(T.studioAccentPair) }
     public static var mint: CanvasColor { c(T.mintPair) }
+    /// A primary button (fill, hover fill) under `onAccent` text.
+    public static var primaryFill: CanvasColor { c(T.primaryFillPair) }
+    public static var primaryFillHover: CanvasColor { c(T.primaryFillHoverPair) }
     /// Property row labels in the inspector (number, slider, toggle and segmented rows, pair headings): text-2, the
     /// grey that still reaches 4.5:1 on the inspector's inset and on the compact fields' panel grey in both modes.
     public static var rowLabel: CanvasColor { text2 }

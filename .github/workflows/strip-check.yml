@@ -31,8 +31,31 @@ env:
   RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
 
 jobs:
-  linux:
+  installers:
+    # Which installers the mpvfx-ci run built. A pull request builds only those of the platforms it can affect (none
+    # for documentation only), so the platform jobs below are skipped instead of failing on an artifact that does not
+    # exist.
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      names: ${{ steps.list.outputs.names }}
+    steps:
+      - name: Installer artifacts of the run
+        id: list
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          names=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")')
+          echo "names= $names " >> "$GITHUB_OUTPUT"
+          for os in linux windows macos; do
+            case " $names " in *" $os "*) echo "$os: installers built" ;; *) echo "$os: no installers in run $RUN_ID, its check is skipped" ;; esac
+          done | tee -a "$GITHUB_STEP_SUMMARY"
+
+  linux:
+    needs: installers
+    if: contains(needs.installers.outputs.names, ' linux ')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -57,7 +80,8 @@ jobs:
           python3 -I -B .github/ci/strip-check.py unpacked | tee -a "$GITHUB_STEP_SUMMARY"
 
   windows:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: installers
+    if: contains(needs.installers.outputs.names, ' windows ')
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:
@@ -92,7 +116,8 @@ jobs:
             unpacked dist/MpVFX-*-setup.exe | tee -a "$GITHUB_STEP_SUMMARY"
 
   macos:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: installers
+    if: contains(needs.installers.outputs.names, ' macos ')
     runs-on: xcode-27
     timeout-minutes: 10
     steps:
