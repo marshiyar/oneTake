@@ -16,8 +16,9 @@
 // the frames as 48 kHz stereo interleaved Float32 for MediaWriter (stems decoded by DocumentAudioGraph.decodeStem).
 // Covers audio groups (volume, mute, FX chain, automation), clip FX chains and automation, static clip volume,
 // keyframed clip volume (`audio.volume` tracks, applied by DocumentAudioGraph as a per-sample gain on the clip's stem
-// before its FX chain, the same function live playback builds with),
-// mute, playback rate (pitch-preserving tempo, or resampled when the clip's preservesPitch is false) and source trims.
+// before its FX chain, the same function live playback builds with), clip fades (a linear ramp on the stem before its
+// FX chain, carried by DocumentAudioGraph), mute, playback rate (pitch-preserving tempo, or resampled when the clip's
+// preservesPitch is false) and source trims.
 import Foundation
 import MpvfxShared
 import MpvfxAudio

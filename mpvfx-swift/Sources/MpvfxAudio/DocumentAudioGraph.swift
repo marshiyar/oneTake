@@ -18,8 +18,8 @@ import MpvfxAudioGraph
 /// Builds the bus/FX graph project from an open document, mirroring what export feeds the mixer:
 /// audio/video clips with a resolvable file (detached-from video clips excluded), clip `audio.volume` (static, or
 /// keyframed: the keyframes replace the static volume as a per-sample gain on the stem, before the FX chain), clip
-/// mute, `audioGroupId`, clip FX chain + automation, and the sequence's audio groups (volume, mute, FX chain,
-/// automation). Export builds its mix with the same functions, so preview and export hear the same volume. Stems
+/// fades, clip mute, `audioGroupId`, clip FX chain + automation, and the sequence's audio groups (volume, mute, FX
+/// chain, automation). Export builds its mix with the same functions, so preview and export hear the same volume. Stems
 /// are decoded by `loadStem` (the media engine in the app, `decodeStem`; synthetic in tests).
 public enum DocumentAudioGraph {
     /// What a stem decode depends on; also the cache key, so an edit only re-decodes the clips it changed.
@@ -43,6 +43,8 @@ public enum DocumentAudioGraph {
             public var fxChain: String?, automation: String?, groupId: String?
             /// Keyframed `audio.volume` (the clip's first track for it with keyframes; clip-local frames).
             public var volumeKeyframes: VolumeKeyframes? = nil
+            /// The clip's `fadeInFrames` / `fadeOutFrames` in seconds (0: none).
+            public var fadeIn: Double = 0, fadeOut: Double = 0
         }
     }
 
@@ -74,7 +76,9 @@ public enum DocumentAudioGraph {
             tracks.append(.init(id: c.id, stem: stem,
                                 start: start, end: end, volume: volume, muted: c.muted,
                                 fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty,
-                                volumeKeyframes: keyed.map { VolumeKeyframes(track: $0, durationFrames: c.durationFrames, fps: fps) }))
+                                volumeKeyframes: keyed.map { VolumeKeyframes(track: $0, durationFrames: c.durationFrames, fps: fps) },
+
+                                fadeIn: (c.fadeInFrames ?? 0) / fps, fadeOut: (c.fadeOutFrames ?? 0) / fps))
         }
         return Inputs(duration: duration, tracks: tracks, groups: doc.sequence.audioGroups ?? [])
     }
@@ -104,8 +108,10 @@ public enum DocumentAudioGraph {
             if let k = t.volumeKeyframes {
                 do { try keyframes.apply(k, to: &stem); volume = 1 } catch { issues.append("clip \(t.id): volume keyframes ignored (\(error))") }
             }
-            return AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: volume, muted: t.muted,
-                                   fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
+            var track = AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: volume, muted: t.muted,
+                                        fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
+            track.fadeIn = t.fadeIn; track.fadeOut = t.fadeOut
+            return track
         }
         let groups = inputs.groups.map { g in
             AudioGraphGroup(id: g.id, volume: g.volume ?? 1, muted: g.muted ?? false,

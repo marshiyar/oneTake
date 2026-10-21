@@ -33,6 +33,8 @@ public enum PanelIcon: Equatable, Sendable {
     case chevronLeft, chevronRight, check, keyframeNav
     /// Three dots in a row: a panel's menu button (the end of its tab strip).
     case panelMenu
+    /// A funnel: the Media panel's filter button.
+    case filter
     /// Any Phosphor glyph by name.
     case phosphor(PhosphorIcon)
 }
@@ -78,6 +80,7 @@ public extension PanelIcon {
         case .diamond: stroke(["M12 4 20 12 12 20 4 12Z"])
         case .diamondFilled, .keyframeNav: fill(["M12 4 20 12 12 20 4 12Z"])
         case .panelMenu: fill(["M4 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z", "M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z", "M16 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z"])
+        case .filter: stroke(["M4 5h16l-6 7v6l-4 2v-8Z"])
         case .phosphor(let p): p.draw(c, in: box, color: color)
         }
     }

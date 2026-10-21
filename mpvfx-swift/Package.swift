@@ -168,6 +168,10 @@ let package = Package(
         .target(name: "MpvfxAudio", dependencies: audioTargetDependencies),
         // Pure-Swift audio bus/FX graph (Float32, deterministic) shared by playback and export.
         .target(name: "MpvfxAudioGraph", swiftSettings: swift6),
+        // Video scopes on RGBA8 frames (waveform, parade, vectorscope, histogram, false colour); Foundation only.
+        // Optimised in debug builds too: its per-pixel loop is 9x slower at -Onone (118 ms vs 13 ms for a 1080p
+        // frame, measured 2026-10-21), too slow for live scopes in a debug app and for its frame-budget test.
+        .target(name: "MpvfxScopes", swiftSettings: swift6 + [.unsafeFlags(["-O"], .when(configuration: .debug))]),
         // Player popovers (speed, shortcuts, volume) + crop persistence, drawn on MpvfxCanvas.
         .target(name: "MpvfxPanels", dependencies: ["MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", "MpvfxTheme"]),
         // Release-build render-speed benchmark for the bus/FX graph (`swift run -c release MpvfxAudioBench`).
@@ -201,7 +205,7 @@ let package = Package(
                                                              "MpvfxBackend", "MpvfxTimeline", "MpvfxPlayer", "MpvfxRuntime", "MpvfxShared", mediaEngine]),
         // MpvfxPlayer + OneTakeMedia: the end-to-end export installs the app's frame renderer and decodes what it wrote.
         .testTarget(name: "MpvfxBackendTests", dependencies: ["MpvfxBackend", "MpvfxDesktopCore", "MpvfxRuntime", "MpvfxShared", "MpvfxPlayer", mediaEngine]),
-        .testTarget(name: "CSQLiteTests", dependencies: ["CSQLite", "MpvfxRuntime"]),
+        .testTarget(name: "CSQLiteTests", dependencies: ["CSQLite", "MpvfxRuntime"], swiftSettings: swift6),
         // MpvfxPlayer + OneTakeMedia: export tests paint with the app's frame renderer, build inputs and decode outputs
         // with the media engine (no FFmpeg).
         .testTarget(name: "MpvfxRuntimeTests", dependencies: ["MpvfxRuntime", "MpvfxShared", keyframeEngine, "MpvfxColor", "MpvfxPlayer", mediaEngine, "MpvfxCanvas"],
@@ -211,6 +215,7 @@ let package = Package(
         .testTarget(name: "MpvfxStartupTests", dependencies: [keyframeEngine, "MpvfxShared", "MpvfxRuntime"]),
         .testTarget(name: "MpvfxAudioTests", dependencies: ["MpvfxAudio", "MpvfxAudioGraph", "MpvfxShared"]),
         .testTarget(name: "MpvfxAudioGraphTests", dependencies: ["MpvfxAudioGraph"], exclude: ["Fixtures"], swiftSettings: swift6),
+        .testTarget(name: "MpvfxScopesTests", dependencies: ["MpvfxScopes"], swiftSettings: swift6),
         .testTarget(name: "MpvfxPanelsTests", dependencies: ["MpvfxPanels", "MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", keyframeEngine, "MpvfxTheme"]),
         // Inspector controls end to end: row edit -> preview composite / live audio graph inputs / export frame and mix.
         .testTarget(name: "MpvfxInspectorAuditTests", dependencies: ["MpvfxPanels", "MpvfxPlayer", "MpvfxTimeline", "MpvfxCanvas", "MpvfxShared",
