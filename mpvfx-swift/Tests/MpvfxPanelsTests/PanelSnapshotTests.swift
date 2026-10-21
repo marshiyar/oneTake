@@ -302,7 +302,7 @@ final class PanelSnapshotTests: XCTestCase {
         let labels = ["ready", "Waveform", "RGB", "Parade", "Vector", "Histogram", "False color", "%", "10-bit", "75%", "100%",
                       "Zoom 1x", "Gain 1x", "Luma waveform", "Vectorscope · 75%"]
         for s in labels { XCTAssertTrue(c.drawnStrings.contains(s), s) }
-        let open = 28 + 22 + 22 + 6 + ScopeLayout.height([.waveform, .vectorscope], width: 377) + 7
+        let open = InspectorPanel.scopeHead + InspectorPanel.scopeChips + InspectorPanel.scopeOptions + 6 + ScopeLayout.height([.waveform, .vectorscope], width: 377) + 7
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
         XCTAssertEqual(tile.y, 80 + 40 + 8 + PanelGrid.snapUp(open) + 12 + 24 + 6, accuracy: 1, "the open scopes push the grid down")
         let parade = try XCTUnwrap(ScopeKind.allCases.firstIndex(of: .parade))
@@ -342,7 +342,7 @@ final class PanelSnapshotTests: XCTestCase {
                 first.canvas.scale(scale, scale); r.draw(first.canvas, size: CanvasSize(409, 900)); r.inspector.scopeWorker.wait()
                 let t = snapshot("inspector-grade-scopes-\(mode.rawValue)", w: 409, h: 900, scale: scale) { r.draw($0, size: CanvasSize(409, 900)) }
                 let row = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
-                let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + 28 + 22 + 22 + 6, width: 377)
+                let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + InspectorPanel.scopeHead + InspectorPanel.scopeChips + InspectorPanel.scopeOptions + 6, width: 377)
                 try assertScopeTiles(t, tiles, scale: scale)
             }
         }
@@ -364,7 +364,7 @@ final class PanelSnapshotTests: XCTestCase {
             first.canvas.scale(2, 2); r.draw(first.canvas, size: CanvasSize(409, 900)); r.inspector.scopeWorker.wait()
             let t = snapshot("inspector-grade-scopes-others-\(mode.rawValue)", w: 409, h: 900, scale: 2) { r.draw($0, size: CanvasSize(409, 900)) }
             let row = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
-            let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + 28 + 22 + 22 + 6, width: 377)
+            let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + InspectorPanel.scopeHead + InspectorPanel.scopeChips + InspectorPanel.scopeOptions + 6, width: 377)
             let fc = try XCTUnwrap(tiles.first { $0.kind == .falseColor }).rect
             let area = InspectorPanel.containRect(160, 90, in: CanvasRect(x: fc.x + 6, y: fc.y + 18, width: fc.width - 22, height: fc.height - 24))
             let clipped = t.pixel(Int((area.x + area.width / 16) * 2), Int((area.y + 4) * 2))

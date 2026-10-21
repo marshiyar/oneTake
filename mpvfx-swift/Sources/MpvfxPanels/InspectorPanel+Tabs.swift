@@ -33,6 +33,11 @@ extension InspectorPanel {
         c.fillRect(CanvasRect(x: area.x, y: area.maxY - 1, width: area.width, height: 1).snapped, PanelTheme.panelHairline)
         let l = bar.layout(c, in: area)
         let ids = bar.tabs.map(\.id), base = id.base
+        for (rect, part) in PanelTabBar.hitRects(l) {
+            if case .tab(let tab) = part, let index = ids.firstIndex(of: tab) {
+                targetHover(c, rect, .custom(id.0, base + index))
+            }
+        }
         bar.draw(c, l, hovered: inlineHover(id.0, base: base, ids: ids))
         for (rect, part) in PanelTabBar.hitRects(l) {
             switch part {

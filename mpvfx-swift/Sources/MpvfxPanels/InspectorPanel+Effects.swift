@@ -132,16 +132,18 @@ extension InspectorPanel {
         })
     }
 
-    /// The editor's head: `min-h-[26px]` 11px medium text-1 name, then reset ↺ and remove × at 11px (text-4, gap-2).
+    /// The editor's head: 11px glyphs in separate 24pt reset and remove cells, 4pt apart.
     func effectEditorHeader(_ e: EffectSpecs.Spec, reapply: @escaping () -> Void, remove: @escaping () -> Void) -> InspectorCustomRow {
         InspectorCustomRow(id: "fx:head", height: 26, draw: { c, r, panel in
-            PanelDraw.text(c, e.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width - 40, height: 16.5), font: PanelTheme.font(11, .medium), color: PanelTheme.text1)
-            let x = CanvasRect(x: r.maxX - 11, y: r.midY - 5.5, width: 11, height: 11)
-            let reset = CanvasRect(x: x.x - 8 - 11, y: x.y, width: 11, height: 11)
-            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("fx:head", 0) ? PanelTheme.text1 : PanelTheme.text4)
-            PanelIcon.close.draw(c, in: x, color: panel.hovered == .custom("fx:head", 1) ? CanvasColor(ThemeTokens.red300) : PanelTheme.text4)
-            panel.addHit(reset.insetBy(-3), .custom("fx:head", 0))
-            panel.addHit(x.insetBy(-3), .custom("fx:head", 1))
+            PanelDraw.text(c, e.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width - 56, height: 16.5), font: PanelTheme.font(11, .medium), color: PanelTheme.text1)
+            let x = CanvasRect(x: r.maxX - 24, y: r.midY - 12, width: 24, height: 24)
+            let reset = CanvasRect(x: x.x - 4 - 24, y: x.y, width: 24, height: 24)
+            panel.targetHover(c, reset, .custom("fx:head", 0))
+            panel.targetHover(c, x, .custom("fx:head", 1))
+            PanelIcon.reset.draw(c, in: reset.insetBy(6.5), color: panel.hovered == .custom("fx:head", 0) ? PanelTheme.text1 : PanelTheme.text4)
+            PanelIcon.close.draw(c, in: x.insetBy(6.5), color: panel.hovered == .custom("fx:head", 1) ? CanvasColor(ThemeTokens.red300) : PanelTheme.text4)
+            panel.addHit(reset, .custom("fx:head", 0), label: "Reset " + e.label)
+            panel.addHit(x, .custom("fx:head", 1), label: "Remove " + e.label)
         }, pointer: { part, _, phase in
             guard phase == 0 else { return }
             if part == 0 { reapply() } else { remove() }

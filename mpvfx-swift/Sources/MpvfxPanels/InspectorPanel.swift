@@ -196,7 +196,27 @@ public final class InspectorPanel {
 
     public init() {}
 
-    func addHit(_ r: CanvasRect, _ h: Hit) { hits.add(r, h) }
+    func addHit(_ r: CanvasRect, _ h: Hit, label: String? = nil) { hits.add(r, h, label: label ?? targetLabel(h)) }
+
+    /// Names travel with the exact pointer rectangle for the screen-reader tree.
+    func targetLabel(_ hit: Hit) -> String? {
+        switch hit {
+        case .reset(let key): return "Reset " + (slider(key)?.label ?? number(key)?.label ?? key)
+        case .keyframe(let key) where key.hasSuffix(Self.gearSuffix):
+            return (slider(String(key.dropLast(Self.gearSuffix.count)))?.label ?? key) + " settings"
+        case .custom("sec:head", 0): return "Add secondary color"
+        case .custom("sec:head", 1): return "Remove secondary color"
+        case .custom("grade:scopes", ScopePart.refresh): return "Refresh scopes"
+        case .custom("grade:scopes", ScopePart.gainDown): return "Decrease scope gain"
+        case .custom("grade:scopes", ScopePart.gainUp): return "Increase scope gain"
+        default: return nil
+        }
+    }
+
+    /// Fill the entire target so hovering previews the clickable area.
+    func targetHover(_ c: CanvasContext, _ rect: CanvasRect, _ hit: Hit) {
+        if hovered == hit { c.fillRoundedRect(rect, radius: PanelTheme.radius, PanelTheme.panelHover) }
+    }
 
     /// Width of an open group's rows (`px-4` inside the panel), from the last layout; 375 before the first draw.
     var bodyContentWidth: Double { lastRect.width > 32 ? lastRect.width - 32 : 375 }
@@ -459,8 +479,9 @@ public final class InspectorPanel {
             PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text3)
             if g.reset != nil {
                 let rr = CanvasRect(x: accessoryX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
+                targetHover(c, Self.target(rr), .groupReset(g.id))
                 PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.text3)
-                hits.add(Self.target(rr), .groupReset(g.id))
+                hits.add(Self.target(rr), .groupReset(g.id), label: "Reset " + g.title)
                 accessoryX = rr.x - 10
             }
             if detachable { drawGroupMenuButton(c, r, g.id, rightEdge: accessoryX) }

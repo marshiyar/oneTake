@@ -25,8 +25,10 @@ extension InspectorPanel {
                        font: PanelTheme.font(10, .medium), color: PanelTheme.text2)
         // The reset glyph (10 px) at the cell's top right, inside a 24 pt target that stays out of the wheel.
         let reset = CanvasRect(x: cell.maxX - 10, y: cell.y + 2.5, width: 10, height: 10)
+        let target = CanvasRect(x: cell.maxX - 24, y: cell.y - 4.5, width: 24, height: 24)
+        panel.targetHover(c, target, .custom(id, 20 + i))
         PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom(id, 20 + i) ? PanelTheme.text1 : (w.isNeutral ? PanelTheme.text5 : PanelTheme.text4))
-        panel.addHit(CanvasRect(x: cell.maxX - 24, y: cell.y - 4.5, width: 24, height: 24), .custom(id, 20 + i))
+        panel.addHit(target, .custom(id, 20 + i), label: "Reset " + set.labels[i] + " wheel")
         let wr = l.wheelRect(cell)
         drawWheel(c, wr, w)
         panel.addHit(wr, .custom(id, i))

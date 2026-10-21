@@ -262,13 +262,14 @@ extension InspectorPanel {
     func drawScopeSourceSwitch(_ c: CanvasContext, maxX: Double, midY: Double, _ panel: InspectorPanel) {
         let font = PanelTheme.font(9), sources = ColorScopes.Source.allCases
         let widths = sources.map { c.measureText($0.label, font: font).width + 12 }
-        let pill = CanvasRect(x: maxX - widths.reduce(0, +) - 2, y: midY - 9, width: widths.reduce(0, +) + 2, height: 18)
+        let pill = CanvasRect(x: maxX - widths.reduce(0, +) - 2, y: midY - 13, width: widths.reduce(0, +) + 2, height: 26)
         c.fillRoundedRect(pill, radius: PanelTheme.radiusMd, PanelTheme.panelInput)
         c.strokeRoundedRect(pill.insetBy(0.5), radius: PanelTheme.radiusMd - 0.5, PanelTheme.panelBorderInput, width: 1)
         var x = pill.x + 1
         for (i, source) in sources.enumerated() {
-            let seg = CanvasRect(x: x, y: pill.y + 1, width: widths[i], height: 16)
+            let seg = CanvasRect(x: x, y: pill.y + 1, width: widths[i], height: 24)
             let hit = InspectorPanel.Hit.custom("grade:scopes", Self.scopeSourcePart + i)
+            panel.targetHover(c, seg, hit)
             let on = scopeSource == source
             if on { c.fillRoundedRect(seg, radius: PanelTheme.radiusMd - 1, PanelTheme.accent.withAlpha(0.18)) }
             PanelDraw.text(c, source.label, in: CanvasRect(x: seg.x, y: seg.midY - 6.75, width: seg.width, height: 13.5), font: font,
@@ -356,15 +357,16 @@ extension InspectorPanel {
         }
         rows.append(.init(.section("Secondary color")))
         rows.append(.init(.spacer(6)))
-        // Selection chips (`h-6 min-w-6 border-b-2 px-1 font-mono text-[10px]`) left, 12px + and trash right (`gap-2`).
+        // Selection chips left; 12px add and trash glyphs in separate 24pt cells at the right.
         let selIndex = min(grade.selectedSecondary, max(0, g.secondaries.count - 1))
-        rows.append(.init(.custom(InspectorCustomRow(id: "sec:head", height: g.secondaries.isEmpty ? 12 : 24, draw: { c, r, panel in
+        rows.append(.init(.custom(InspectorCustomRow(id: "sec:head", height: 24, draw: { c, r, panel in
             var x = r.x
             for i in g.secondaries.indices {
                 let label = "\(i + 1)"
                 let w = max(24, c.measureText(label, font: PanelTheme.mono(10)).width + 8)
                 let cr = CanvasRect(x: x, y: r.y, width: w, height: 24)
                 let on = i == selIndex
+                panel.targetHover(c, cr, .custom("sec:head", 10 + i))
                 PanelDraw.text(c, label, in: CanvasRect(x: cr.x, y: cr.y + 4.5, width: w, height: 15), font: PanelTheme.mono(10),
                                color: on ? PanelTheme.text0 : PanelTheme.text4, align: .center)
                 if on { c.fillRect(CanvasRect(x: cr.x, y: cr.maxY - 2, width: w, height: 2), PanelTheme.accent) }
@@ -372,13 +374,15 @@ extension InspectorPanel {
                 x = cr.maxX + 4
             }
             let canRemove = !g.secondaries.isEmpty
-            let trash = CanvasRect(x: r.maxX - 12, y: r.midY - 6, width: 12, height: 12)
-            let plus = CanvasRect(x: trash.x - 8 - 12, y: trash.y, width: 12, height: 12)
+            let trash = CanvasRect(x: r.maxX - 24, y: r.midY - 12, width: 24, height: 24)
+            let plus = CanvasRect(x: trash.x - 4 - 24, y: trash.y, width: 24, height: 24)
             let off = PanelTheme.text3.over(PanelTheme.panelBgInset, opacity: 0.35)
-            PanelIcon.phosphor(.plus).draw(c, in: plus, color: !canAdd ? off : (panel.hovered == .custom("sec:head", 0) ? PanelTheme.text1 : PanelTheme.text3))
-            PanelIcon.trash.draw(c, in: trash, color: !canRemove ? off : (panel.hovered == .custom("sec:head", 1) ? PanelTheme.text1 : PanelTheme.text3))
-            if canAdd { panel.addHit(plus.insetBy(-3), .custom("sec:head", 0)) }
-            if canRemove { panel.addHit(trash.insetBy(-3), .custom("sec:head", 1)) }
+            if canAdd { panel.targetHover(c, plus, .custom("sec:head", 0)) }
+            if canRemove { panel.targetHover(c, trash, .custom("sec:head", 1)) }
+            PanelIcon.phosphor(.plus).draw(c, in: plus.insetBy(6), color: !canAdd ? off : (panel.hovered == .custom("sec:head", 0) ? PanelTheme.text1 : PanelTheme.text3))
+            PanelIcon.trash.draw(c, in: trash.insetBy(6), color: !canRemove ? off : (panel.hovered == .custom("sec:head", 1) ? PanelTheme.text1 : PanelTheme.text3))
+            if canAdd { panel.addHit(plus, .custom("sec:head", 0)) }
+            if canRemove { panel.addHit(trash, .custom("sec:head", 1)) }
         }, pointer: { [weak self] part, _, phase in
             guard phase == 0 else { return }
             if part == 0 { add() } else if part == 1 { remove() } else { self?.grade.selectedSecondary = part - 10; self?.onEdited?() }

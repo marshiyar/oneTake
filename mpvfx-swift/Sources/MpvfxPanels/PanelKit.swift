@@ -18,10 +18,10 @@ import MpvfxTimeline
 /// Immediate-mode hit map: a view records each interactive rect while it draws, and pointer events resolve
 /// against the regions of the last draw (topmost = last recorded wins).
 public struct HitMap<Action> {
-    public private(set) var regions: [(rect: CanvasRect, action: Action)] = []
+    public private(set) var regions: [(rect: CanvasRect, action: Action, accessibilityLabel: String?)] = []
     public init() {}
     public mutating func reset() { regions.removeAll(keepingCapacity: true) }
-    public mutating func add(_ rect: CanvasRect, _ action: Action) { regions.append((rect, action)) }
+    public mutating func add(_ rect: CanvasRect, _ action: Action, label: String? = nil) { regions.append((rect, action, label)) }
     public func hit(_ p: CanvasPoint) -> Action? { regions.last(where: { $0.rect.contains(p) })?.action }
     public func rect(where match: (Action) -> Bool) -> CanvasRect? { regions.last(where: { match($0.action) })?.rect }
 }

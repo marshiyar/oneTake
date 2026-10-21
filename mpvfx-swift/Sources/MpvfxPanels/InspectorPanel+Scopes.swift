@@ -22,7 +22,7 @@ extension InspectorPanel {
     /// Longest side of the frame the host is asked for: dense enough that clipping and fine detail survive
     /// (`docs/SCOPES.md`), small enough that grading it for every playback frame stays cheap.
     public static let scopeFrameSide = 960
-    static let scopeHead = 28.0, scopeChips = 22.0, scopeOptions = 22.0
+    static let scopeHead = 28.0, scopeChips = 24.0, scopeOptions = 24.0
 
     /// Pointer parts of `.custom("grade:scopes", part)`.
     enum ScopePart {
@@ -42,12 +42,14 @@ extension InspectorPanel {
 
     func scopesRow(_ clipId: String) -> InspectorCustomRow {
         let open = grade.scopesOpen, width = bodyContentWidth
+        let chipsH = width < 330 ? 48.0 : Self.scopeChips
+        let optionsH = width < 330 ? 48.0 : Self.scopeOptions
         let tilesH = ScopeLayout.height(grade.scopes.kinds, width: width)
-        let height = open ? Self.scopeHead + Self.scopeChips + Self.scopeOptions + 6 + tilesH + 7 : 35
+        let height = open ? Self.scopeHead + chipsH + optionsH + 6 + tilesH + 7 : 35
         return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, _ in
             guard let self else { return }
             let state: PresetPreviewState? = open ? self.scopeState(clipId) : nil
-            let top = r.y + Self.scopeHead + Self.scopeChips + Self.scopeOptions + 6
+            let top = r.y + Self.scopeHead + chipsH + optionsH + 6
             let tiles = ScopeLayout.tiles(self.grade.scopes.kinds, x: r.x, y: top, width: r.width)
             var result: (result: ScopeResult?, current: Bool) = (nil, false)
             if case .ready(let frame)? = state {
@@ -55,8 +57,8 @@ extension InspectorPanel {
             }
             self.drawScopesHead(c, r, status: self.scopeStatus(state, current: result.current))
             if open {
-                self.drawScopeChips(c, CanvasRect(x: r.x, y: r.y + Self.scopeHead, width: r.width, height: Self.scopeChips))
-                self.drawScopeOptions(c, CanvasRect(x: r.x, y: r.y + Self.scopeHead + Self.scopeChips, width: r.width, height: Self.scopeOptions))
+                self.drawScopeChips(c, CanvasRect(x: r.x, y: r.y + Self.scopeHead, width: r.width, height: chipsH))
+                self.drawScopeOptions(c, CanvasRect(x: r.x, y: r.y + Self.scopeHead + chipsH, width: r.width, height: optionsH))
                 for tile in tiles {
                     ScopeTile(kind: tile.kind, rect: tile.rect, result: result.result, settings: self.grade.scopes).draw(c)
                 }
@@ -127,8 +129,9 @@ extension InspectorPanel {
                        font: PanelTheme.font(9), color: PanelTheme.text5)
         addHit(toggle, .custom("grade:scopes", ScopePart.toggle))
         guard open else { return }
-        let rb = CanvasRect(x: head.maxX - 18, y: head.midY - 9, width: 18, height: 18)
-        PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4),
+        let rb = CanvasRect(x: head.maxX - 24, y: head.midY - 12, width: 24, height: 24)
+        targetHover(c, rb, .custom("grade:scopes", ScopePart.refresh))
+        PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(7),
                                                  color: hovered == .custom("grade:scopes", ScopePart.refresh) ? PanelTheme.text1 : PanelTheme.text4)
         addHit(rb, .custom("grade:scopes", ScopePart.refresh))
         drawScopeSourceSwitch(c, maxX: toggle.maxX - sw - 8, midY: head.midY, self)
@@ -139,30 +142,36 @@ extension InspectorPanel {
         var x = r.x
         for (i, kind) in ScopeKind.allCases.enumerated() {
             let chip = ScopeChip(text: kind.label, on: grade.scopes.kinds.contains(kind), part: ScopePart.kind + i)
-            x = scopeLabel(c, chip, at: x, in: r) + 8
+            let line = CanvasRect(x: r.x, y: r.y + (r.width < 330 && i >= 3 ? 24 : 0), width: r.width, height: 24)
+            if r.width < 330 && i == 3 { x = r.x }
+            x = scopeLabel(c, chip, at: x, in: line) + 8
         }
     }
 
     /// `% | 10-bit`, `75% | 100%`, the zoom (cycles) and `Gain - 1x +`.
     func drawScopeOptions(_ c: CanvasContext, _ r: CanvasRect) {
         let s = grade.scopes
-        var x = scopeLabel(c, ScopeChip(text: "%", on: s.scale == .percent, part: ScopePart.percent), at: r.x, in: r) + 6
-        x = scopeLabel(c, ScopeChip(text: "10-bit", on: s.scale == .code10, part: ScopePart.code10), at: x, in: r) + 14
-        x = scopeLabel(c, ScopeChip(text: "75%", on: s.targetAmplitude == 0.75, part: ScopePart.target75), at: x, in: r) + 6
-        x = scopeLabel(c, ScopeChip(text: "100%", on: s.targetAmplitude == 1, part: ScopePart.target100), at: x, in: r) + 14
-        x = scopeLabel(c, ScopeChip(text: "Zoom \(Int(s.zoom))x", on: false, part: ScopePart.zoom), at: x, in: r) + 14
-        x = scopeLabel(c, ScopeChip(text: "−", on: false, part: ScopePart.gainDown), at: x, in: r) + 4
+        let top = CanvasRect(x: r.x, y: r.y, width: r.width, height: 24)
+        let bottom = CanvasRect(x: r.x, y: r.y + (r.width < 330 ? 24 : 0), width: r.width, height: 24)
+        var x = scopeLabel(c, ScopeChip(text: "%", on: s.scale == .percent, part: ScopePart.percent), at: r.x, in: top) + 6
+        x = scopeLabel(c, ScopeChip(text: "10-bit", on: s.scale == .code10, part: ScopePart.code10), at: x, in: top) + 14
+        x = scopeLabel(c, ScopeChip(text: "75%", on: s.targetAmplitude == 0.75, part: ScopePart.target75), at: x, in: top) + 6
+        x = scopeLabel(c, ScopeChip(text: "100%", on: s.targetAmplitude == 1, part: ScopePart.target100), at: x, in: top) + 14
+        if r.width < 330 { x = r.x }
+        x = scopeLabel(c, ScopeChip(text: "Zoom \(Int(s.zoom))x", on: false, part: ScopePart.zoom), at: x, in: bottom) + 14
+        x = scopeLabel(c, ScopeChip(text: "−", on: false, part: ScopePart.gainDown), at: x, in: bottom) + 4
         let gain = s.gain < 1 ? String(format: "%.2gx", s.gain) : "\(Int(s.gain))x"
         let gw = c.measureText("Gain " + gain, font: PanelTheme.font(9)).width
-        PanelDraw.text(c, "Gain " + gain, in: CanvasRect(x: x, y: r.y + 4, width: gw + 1, height: 13.5), font: PanelTheme.font(9), color: PanelTheme.text3)
-        _ = scopeLabel(c, ScopeChip(text: "+", on: false, part: ScopePart.gainUp), at: x + gw + 4, in: r)
+        PanelDraw.text(c, "Gain " + gain, in: CanvasRect(x: x, y: bottom.y + 4, width: gw + 1, height: 13.5), font: PanelTheme.font(9), color: PanelTheme.text3)
+        _ = scopeLabel(c, ScopeChip(text: "+", on: false, part: ScopePart.gainUp), at: x + gw + 4, in: bottom)
     }
 
     /// A 9px clickable label (text1 + accent underline when on, text2 on hover, text4 otherwise); returns its maxX.
     func scopeLabel(_ c: CanvasContext, _ chip: ScopeChip, at x: Double, in r: CanvasRect) -> Double {
-        let font = PanelTheme.font(9), w = c.measureText(chip.text, font: font).width
+        let font = PanelTheme.font(9), w = max(20, c.measureText(chip.text, font: font).width)
         let hit = CanvasRect(x: x - 2, y: r.y, width: w + 4, height: r.height)
         let hov = hovered == .custom("grade:scopes", chip.part)
+        targetHover(c, hit, .custom("grade:scopes", chip.part))
         PanelDraw.text(c, chip.text, in: CanvasRect(x: x, y: r.y + 4, width: w + 1, height: 13.5), font: font,
                        color: chip.on ? PanelTheme.text1 : (hov ? PanelTheme.text2 : PanelTheme.text4))
         if chip.on { c.fillRect(CanvasRect(x: x, y: r.maxY - 3, width: w, height: 2), PanelTheme.accent) }
