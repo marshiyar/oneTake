@@ -16,10 +16,11 @@
 
 An open issue labelled `in-progress` is stale when no open pull request links it and none of its labels changed for
 `--hours` (48 by default). A pull request links it when its title or body names it (`#n`, `owner/repo#n` or the
-issue's URL, closing keyword or not) or its head branch names it (`<n>-...` or `.../<n>-...`).
+issue's URL, closing keyword or not; owner and repository in any case) or its head branch names it (`<n>`,
+`<n>-...`, `.../<n>` or `.../<n>-...`).
 
-For each stale issue: `in-progress` is removed, `buildable` is added unless `blocked` is set, and one comment says
-why. Issues labelled `launch-blocker` or `needs-owner` are never touched. With --dry-run (or DRY_RUN=true) it prints
+For each stale issue: `buildable` is added unless `blocked` is set (a `blocked` issue loses `buildable` instead), one
+comment says why, and `in-progress` is removed last, so a failed call leaves the issue in progress to retry. Issues labelled `launch-blocker` or `needs-owner` are never touched. With --dry-run (or DRY_RUN=true) it prints
 what it would change and writes nothing.
 
 Standard library only; GitHub is reached through the `gh` CLI via `Runner`, which tests replace.
@@ -62,8 +63,8 @@ class Pull:
 @dataclasses.dataclass
 class Action:
     issue: int
-    remove: str
-    add: str      # "" when nothing is added
+    remove: tuple    # labels removed, in-progress last
+    add: str         # "" when nothing is added
     comment: str
 
 
@@ -80,12 +81,15 @@ def links(pull, number, repo):
     ref = rf"(?:(?<![\w/#])|(?<={own}))#{number}(?!\d)"
     url = rf"github\.com/{own}/issues/{number}(?!\d)"
     branch = rf"(?:^|/){number}(?:-|$)"
-    return bool(re.search(ref, text) or re.search(url, text, re.I) or re.search(branch, pull.head_ref))
+    found = re.search(ref, text, re.IGNORECASE) or re.search(url, text, re.IGNORECASE)
+    return bool(found or re.search(branch, pull.head_ref))
 
 
 def comment_text(hours, labels):
-    if BLOCKED in labels:
-        then = f" and left `{BUILDABLE}` off because it is `{BLOCKED}`"
+    if BLOCKED in labels and BUILDABLE in labels:
+        then = f" and `{BUILDABLE}`, because it is `{BLOCKED}`"
+    elif BLOCKED in labels:
+        then = f" and did not add `{BUILDABLE}`, because it is `{BLOCKED}`"
     elif BUILDABLE in labels:
         then = f"; it keeps `{BUILDABLE}`"
     else:
@@ -104,8 +108,15 @@ def plan_one(issue, pulls, last_change, now, hours, repo):
     since = last_change or issue.created_at
     if since and now - parse_time(since) < datetime.timedelta(hours=hours):
         return None
-    add = "" if issue.labels & {BLOCKED, BUILDABLE} else BUILDABLE
-    return Action(issue.number, IN_PROGRESS, add, comment_text(hours, issue.labels))
+    return reset(issue, hours)
+
+
+def reset(issue, hours):
+    """The label changes for a stale issue: back to buildable, or out of the ready queue when it is blocked."""
+    blocked = BLOCKED in issue.labels
+    add = "" if blocked or BUILDABLE in issue.labels else BUILDABLE
+    remove = (BUILDABLE, IN_PROGRESS) if blocked and BUILDABLE in issue.labels else (IN_PROGRESS,)
+    return Action(issue.number, remove, add, comment_text(hours, issue.labels))
 
 
 def plan(issues, pulls, last_change, now, hours=HOURS, repo=""):
@@ -124,7 +135,7 @@ class Runner:
     """Runs a command; returns (returncode, stdout, stderr). Tests pass their own callable instead."""
 
     def __call__(self, args):
-        p = subprocess.run(args, capture_output=True, text=True)
+        p = subprocess.run(args, capture_output=True, text=True, check=False)
         return p.returncode, p.stdout, p.stderr
 
 
@@ -166,18 +177,18 @@ class GitHub:
         return max(times, key=parse_time) if times else ""
 
     def apply(self, action):
-        label = urllib.parse.quote(action.remove, safe="")
-        self._api(f"repos/{self.repo}/issues/{action.issue}/labels/{label}", method="DELETE")
+        """Add first, then comment, then remove (in-progress last): a failure part way leaves it in progress."""
+        base = f"repos/{self.repo}/issues/{action.issue}"
         if action.add:
-            self._api(f"repos/{self.repo}/issues/{action.issue}/labels", method="POST",
-                      fields=[("labels[]", action.add)])
-        self._api(f"repos/{self.repo}/issues/{action.issue}/comments", method="POST",
-                  fields=[("body", action.comment)])
+            self._api(f"{base}/labels", method="POST", fields=[("labels[]", action.add)])
+        self._api(f"{base}/comments", method="POST", fields=[("body", action.comment)])
+        for label in action.remove:
+            self._api(f"{base}/labels/{urllib.parse.quote(label, safe='')}", method="DELETE")
 
 
 def describe(action):
-    added = f", add {action.add}" if action.add else ""
-    return f"#{action.issue}: remove {action.remove}{added}, comment"
+    added = f"add {action.add}, " if action.add else ""
+    return f"#{action.issue}: {added}comment, remove {', '.join(action.remove)}"
 
 
 def run(gh, now, hours=HOURS, dry_run=True):
@@ -188,8 +199,8 @@ def run(gh, now, hours=HOURS, dry_run=True):
     pulls = gh.open_pulls()
     last = {i.number: gh.last_label_change(i.number) for i in issues}
     actions = plan(issues, pulls, last, now, hours, gh.repo)
-    lines = [f"{len(issues)} in-progress issue(s) checked, {len(pulls)} open pull request(s), "
-             f"{len(actions)} stale"]
+    summary = f"{len(issues)} in-progress issue(s) checked, {len(pulls)} open pull request(s), {len(actions)} stale"
+    lines = [summary]
     for a in actions:
         if not dry_run:
             gh.apply(a)

@@ -61,7 +61,7 @@ class Planning(unittest.TestCase):
 
     def test_unlinked_stale_issue_goes_back_to_buildable(self):
         [a] = self.one(issue(7))
-        self.assertEqual((a.issue, a.remove, a.add), (7, sip.IN_PROGRESS, sip.BUILDABLE))
+        self.assertEqual((a.issue, a.remove, a.add), (7, (sip.IN_PROGRESS,), sip.BUILDABLE))
         self.assertIn("48 hours", a.comment)
         self.assertIn("added `buildable`", a.comment)
 
@@ -72,6 +72,10 @@ class Planning(unittest.TestCase):
         for pull in (sip.Pull(1, body="see #7."), sip.Pull(1, title="Fix the thing (#7)"),
                      sip.Pull(1, body=f"https://github.com/{REPO}/issues/7"), sip.Pull(1, body=f"{REPO}#7"),
                      sip.Pull(1, head_ref="ci/7-stale"), sip.Pull(1, head_ref="7-fix")):
+            self.assertEqual(self.one(issue(7), [pull]), [], pull)
+
+    def test_repository_names_match_in_any_case(self):
+        for pull in (sip.Pull(1, body="OWNER/App#7"), sip.Pull(1, body="https://GitHub.com/Owner/APP/issues/7")):
             self.assertEqual(self.one(issue(7), [pull]), [], pull)
 
     def test_other_numbers_and_other_repositories_do_not_link(self):
@@ -93,8 +97,13 @@ class Planning(unittest.TestCase):
 
     def test_blocked_issue_loses_in_progress_but_does_not_gain_buildable(self):
         [a] = self.one(issue(7, sip.BLOCKED))
-        self.assertEqual((a.remove, a.add), (sip.IN_PROGRESS, ""))
-        self.assertIn("because it is `blocked`", a.comment)
+        self.assertEqual((a.remove, a.add), ((sip.IN_PROGRESS,), ""))
+        self.assertIn("did not add `buildable`, because it is `blocked`", a.comment)
+
+    def test_blocked_issue_that_was_buildable_leaves_the_ready_queue(self):
+        [a] = self.one(issue(7, sip.BLOCKED, sip.BUILDABLE))
+        self.assertEqual((a.remove, a.add), ((sip.BUILDABLE, sip.IN_PROGRESS), ""))
+        self.assertIn("and `buildable`, because it is `blocked`", a.comment)
 
     def test_already_buildable_issue_only_loses_in_progress(self):
         [a] = self.one(issue(7, sip.BUILDABLE))
@@ -125,8 +134,8 @@ class Running(unittest.TestCase):
     def test_dry_run_writes_nothing_and_lists_the_changes(self):
         lines = sip.run(self.gh, NOW, dry_run=True)
         self.assertEqual(self.gh.applied, [])
-        self.assertEqual(lines[1:], ["would #1: remove in-progress, add buildable, comment",
-                                     "would #3: remove in-progress, comment"])
+        self.assertEqual(lines[1:], ["would #1: add buildable, comment, remove in-progress",
+                                     "would #3: comment, remove in-progress"])
         self.assertTrue(lines[0].startswith("3 in-progress issue(s) checked"))
 
     def test_live_run_applies_each_change_once(self):
@@ -163,19 +172,30 @@ class GitHubCalls(unittest.TestCase):
         self.assertEqual(gh.open_pulls(), [sip.Pull(1, "t", "", "ci/7-x")])
         self.assertTrue(all(c[:4] == ["gh", "api", "-X", "GET"] for c in calls))
 
-    def test_apply_removes_adds_and_comments(self):
+    def test_apply_adds_comments_then_removes_in_progress_last(self):
         gh, calls = self.make({})
-        gh.apply(sip.Action(7, sip.IN_PROGRESS, sip.BUILDABLE, "why"))
-        self.assertEqual([c[3:5] for c in calls], [["DELETE", f"repos/{REPO}/issues/7/labels/in-progress"],
-                                                   ["POST", f"repos/{REPO}/issues/7/labels"],
-                                                   ["POST", f"repos/{REPO}/issues/7/comments"]])
-        self.assertIn("labels[]=buildable", calls[1])
-        self.assertIn("body=why", calls[2])
+        gh.apply(sip.Action(7, (sip.IN_PROGRESS,), sip.BUILDABLE, "why"))
+        self.assertEqual([c[3:5] for c in calls], [["POST", f"repos/{REPO}/issues/7/labels"],
+                                                   ["POST", f"repos/{REPO}/issues/7/comments"],
+                                                   ["DELETE", f"repos/{REPO}/issues/7/labels/in-progress"]])
+        self.assertIn("labels[]=buildable", calls[0])
+        self.assertIn("body=why", calls[1])
 
     def test_apply_without_add_skips_the_label_post(self):
         gh, calls = self.make({})
-        gh.apply(sip.Action(7, sip.IN_PROGRESS, "", "why"))
-        self.assertEqual(len(calls), 2)
+        gh.apply(sip.Action(7, (sip.BUILDABLE, sip.IN_PROGRESS), "", "why"))
+        self.assertEqual([c[3] for c in calls], ["POST", "DELETE", "DELETE"])
+        self.assertTrue(calls[-1][4].endswith("/labels/in-progress"))
+
+    def test_failed_write_leaves_in_progress_in_place(self):
+        calls = []
+
+        def run(args):
+            calls.append(args)
+            return (1, "", "HTTP 502") if args[-1].startswith("body=") else (0, "", "")
+        with self.assertRaises(sip.Error):
+            sip.GitHub(REPO, run).apply(sip.Action(7, (sip.IN_PROGRESS,), sip.BUILDABLE, "why"))
+        self.assertNotIn("DELETE", [c[3] for c in calls])
 
     def test_failed_call_raises(self):
         gh = sip.GitHub(REPO, lambda args: (1, "", "HTTP 403"))

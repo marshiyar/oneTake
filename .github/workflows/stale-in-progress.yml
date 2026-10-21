@@ -1,7 +1,7 @@
 # Stale in-progress issues return to the ready queue (.github/ci/stale_in_progress.py): once a day, an open issue
 # labelled `in-progress` that no open pull request links (title, body or head branch names it) and whose labels have
-# not changed for 48 hours loses `in-progress`, gains `buildable` unless it is `blocked`, and gets one comment saying
-# why. Issues labelled `launch-blocker` or `needs-owner` are never touched.
+# not changed for 48 hours gains `buildable` (a `blocked` one loses it instead), gets one comment saying why, and
+# loses `in-progress` last. Issues labelled `launch-blocker` or `needs-owner` are never touched.
 #
 # Run by hand (workflow_dispatch) it is a dry run unless dry_run is turned off: it lists what it would change and
 # writes nothing. Nothing from a pull request runs here: main is checked out, without credentials, and pull requests
@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
+      contents: read         # actions/checkout of main (the script); nothing is pushed
       issues: write          # remove in-progress, add buildable, comment
       pull-requests: read    # list open pull requests to find the ones that link an issue
     steps:
