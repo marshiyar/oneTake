@@ -88,6 +88,30 @@ Each step is its own pull request, small enough to review on screenshots.
 6. **Timeline extras** — coloured markers on the ruler, timecode on the playhead, audio meters docked beside the
    timeline.
 
+## Layout grid
+
+Every side panel lays out on one metric set, `PanelGrid` (`Sources/MpvfxPanels/PanelGrid.swift`). Use its values;
+a new layout number is a new `PanelGrid` member, never a literal at the use site.
+
+- **8 pt vertical grid.** Rows are whole steps tall: a control row (number field, slider, toggle, segmented control,
+  buttons) is 32, a heading, section title or hint line 24, a wrapped note line 16. Gaps between rows are 0 or whole
+  steps; an open group's body has 8 above and below its rows. A bespoke row (wheels, graphs, tiles) gets a slot
+  rounded up to the grid. The clip header is 48 (with its hairline) and group headers 40, so every row starts on the
+  grid counted from the panel's top.
+- **Two columns.** Content sits 16 in from each panel edge. A row is a label column (a third of the content width
+  on the grid, 72 to 96) and a control column 8 after it: every field, slider track and segmented control starts at
+  the control column; the keyframe gutter (four 24 pt cells: stopwatch, previous, diamond, next) and the reset cell
+  sit at the right end. Labels truncate at their column with an ellipsis.
+- **Stack, never overlap.** When a row's controls do not fit in the control column at the panel's width (the six
+  easing options at 280, a keyframed slider), the row stacks: the label line (with its reset and keyframe controls)
+  on top, the control across the full width below it. When even that is too narrow, segmented options share the width
+  and their labels truncate.
+- **24 pt targets.** Every pointer target is at least 24 × 24 pt and no two overlap (a 12 px glyph sits centred in its
+  24 pt cell).
+
+`PanelLayoutAuditTests` checks all four rules at 280 pt, 364 pt (the 1280 × 800 default) and 409 pt (1440 × 900), in
+dark and light.
+
 ## Checking a change
 
 - Unit tests: `VisualSpecTests` (this table, single accent, contrast) and `ThemeTokensTests` (light mode, no raw
