@@ -12,11 +12,13 @@ name: mpvfx-macos
 #
 # Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
 # are optional and reach only runs of main and of tags, never a pull-request branch however its run was started: set,
-# the disk image is signed with a Developer ID and notarized; unset, it is ad-hoc signed. Notarization never fails a
-# run, on any ref (owner, 2026-10-21): a submission that fails (for example an expired app-specific password) or a
-# verdict other than Accepted is a warning, the image ships signed but not notarized, and the Gatekeeper assessment is
-# skipped. A failed signature or a damaged image still fails. dist/macos-notarization.txt (in the macos artifact,
-# never a release asset) says notarized or not-notarized, so the release notes can tell users how to open the app.
+# the disk image is signed with a Developer ID; unset, it is ad-hoc signed. Notarization is for the public launch only
+# (owner, 2026-10-21): a stable tag v<X.Y.Z> (no hyphen) is notarized and must be, so a stable release ships notarized
+# or the job fails (missing secrets included). On every other ref (main, nightly, alpha, beta, rc) notarytool is never
+# called and the APPLE_* secrets are not passed: the image is marked not notarized, which is neither a warning nor a
+# failure, and the Gatekeeper assessment is skipped. A failed signature or a damaged image always fails.
+# dist/macos-notarization.txt (in the macos artifact, never a release asset) says notarized or not-notarized, so the
+# release notes can tell users how to open the app.
 
 on:
   workflow_call:
@@ -230,18 +232,24 @@ jobs:
       - name: Package (disk image with the engine libraries in Contents/Frameworks)
         id: package
         env:
-          # Notarization never blocks a build, on any ref (owner, 2026-10-21): a submission that fails or a verdict
-          # other than Accepted is a warning, and dist/.not-notarized marks the image. Signing still fails hard.
-          NOTARIZE_REQUIRED: '0'
+          # Notarization happens only at the public launch (owner, 2026-10-21): a stable tag v<X.Y.Z> (no hyphen) is
+          # notarized and must be, or the job fails. Every other ref (main, nightly, alpha, beta, rc) never calls
+          # notarytool or logs in to Apple: the image is signed (or ad-hoc signed) and marked not notarized.
+          NOTARIZE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && '1' || '0' }}
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
-          APPLE_ID: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
-          APPLE_APP_PASSWORD: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_TEAM_ID || '' }}
+          # The Apple credentials reach only a stable tag's run.
+          APPLE_ID: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
+          APPLE_APP_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_TEAM_ID || '' }}
           MPVFX_BUILD: ${{ github.sha }}
           MPVFX_SYMBOLS_DIR: ${{ github.workspace }}/symbols
         run: |
           export MPVFX_BUILD=${MPVFX_BUILD::7}
           if [ -n "$MACOS_SIGN_IDENTITY" ]; then mode=developer-id; else mode=adhoc; fi
+          if [ "$NOTARIZE" = 1 ] && [ "$mode" = adhoc ]; then
+            echo "::error::a stable release must be Developer ID signed and notarized: set the MACOS_CERT_* and APPLE_* secrets (docs/PACKAGING.md)"
+            exit 1
+          fi
           sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" "$mode" | tee "$RUNNER_TEMP/package.log"
           if [ "$mode" = developer-id ] && [ ! -e "$GITHUB_WORKSPACE/dist/.not-notarized" ]; then notarized=true; else notarized=false; fi
           echo "notarized=$notarized" >> "$GITHUB_OUTPUT"
@@ -262,7 +270,7 @@ jobs:
           ls -l "$apps/MpVFX.app/Contents/Frameworks"
           otool -L "$apps/MpVFX.app/Contents/MacOS/MpVFX" | grep -E 'mpvfx_media|cvkf'
           if [ "$SIGNED" = true ] && [ "$NOTARIZED" != true ]; then
-            echo "::warning::the disk image is Developer ID signed but not notarized: Gatekeeper assessment skipped"
+            echo "the disk image is Developer ID signed, not notarized (notarization is for stable tags only): Gatekeeper assessment skipped"
           fi
           if [ "$SIGNED" = true ] && [ "$NOTARIZED" = true ]; then
             spctl --assess --type execute --verbose=4 "$apps/MpVFX.app"

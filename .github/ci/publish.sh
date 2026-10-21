@@ -162,6 +162,22 @@ notarized() {
     [ "$(tr -d '[:space:]' < "$notarization_file" 2>/dev/null || true)" = notarized ]
 }
 
+# stable_gate: a stable release (the public launch) ships its macOS disk image notarized or not at all: fail when
+# the assets hold a .dmg that is not notarized. Every other channel passes (notarization is not attempted there).
+stable_gate() {
+  local a
+  [ "$channel" = stable ] || return 0
+  for a in "${assets[@]}"; do
+    case "$a" in
+      *.dmg) notarized || {
+        echo "::error::stable release $tag: the macOS disk image $a is not notarized; a stable release ships notarized" \
+          "or not at all. Fix the APPLE_* secrets and rerun the tag's run"
+        return 1
+      } ;;
+    esac
+  done
+}
+
 # banner: the first lines of the notes, one distinct sentence per channel (a GitHub alert for nightly, alpha, beta, rc).
 banner() {
   case "$channel" in
@@ -235,6 +251,7 @@ main() {
   assets=()
   for f in "$@"; do [ -f "$f" ] && files+=("$f") && assets+=("$(basename "$f")"); done
   [ ${#files[@]} -gt 0 ] || { echo "::error::nothing to publish"; return 1; }
+  stable_gate || return 1
   echo "publishing $mode ($channel) release $tag: $title"
   changes_md=$(changes)
   notes_file=$(mktemp)

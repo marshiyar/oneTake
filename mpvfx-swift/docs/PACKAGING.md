@@ -1,11 +1,11 @@
 # Installers
 
-MpVFX ships an installer for each desktop OS. The macOS one is signed with a Developer ID and notarized when the
-signing secrets are set; Windows and Linux installers are unsigned (no certificate yet).
+MpVFX ships an installer for each desktop OS. The macOS one is signed with a Developer ID when the signing secrets
+are set, and notarized on stable releases only (see "macOS notarization" below); Windows and Linux installers are unsigned (no certificate yet).
 
 | OS | File | What it does | Built by |
 |---|---|---|---|
-| macOS 15+ (Apple silicon) | `MpVFX-<version>-macos-arm64.dmg` | Disk image with `MpVFX.app` and an Applications link: drag to install. The engine libraries are in `MpVFX.app/Contents/Frameworks`. Developer ID signed, hardened runtime, notarized and stapled when the signing secrets are set | `packaging/macos/package.sh` |
+| macOS 15+ (Apple silicon) | `MpVFX-<version>-macos-arm64.dmg` | Disk image with `MpVFX.app` and an Applications link: drag to install. The engine libraries are in `MpVFX.app/Contents/Frameworks`. Developer ID signed, hardened runtime, notarized and stapled on a stable tag when the signing secrets are set | `packaging/macos/package.sh` |
 | Windows 10/11 x64 | `MpVFX-<version>-windows-x64-setup.exe` | Per-user install to `%LOCALAPPDATA%\Programs\MpVFX` (the engine DLLs next to `MpVFX.exe`), Start menu shortcut, entry in Settings > Apps with an uninstaller. No administrator rights. Unsigned: SmartScreen asks "More info > Run anyway" | `packaging/windows/build-setup.ps1` (IExpress, part of Windows) |
 | Ubuntu/Debian x64 | `mpvfx_<version>+git<time>.<sha>_amd64.deb` | App in `/opt/mpvfx`, the engine libraries in `/usr/lib/mpvfx`, `mpvfx` on PATH, menu entry and icons. Depends are the packages of the system libraries the app and engines link | `packaging/linux/build-deb.sh` |
 
@@ -83,14 +83,30 @@ release. Which release, and what it promises, follows from the ref the run is fo
 - Alpha, beta and rc releases are never marked latest, so `releases/latest` stays on the newest stable release, and
   they are never pruned (only `nightly-*` releases are). A rerun of the same commit or tag uploads into the same
   release.
-- Notarization never blocks a release, on any channel (owner, 2026-10-21; CI sets `NOTARIZE_REQUIRED=0` on every
-  ref). Missing `APPLE_*` secrets (with the certificate set), a submission that fails (for example rejected Apple
-  credentials) and a verdict other than Accepted are all warnings: `package.sh` writes `dist/.not-notarized`, the disk image ships Developer ID signed but not notarized,
-  the Gatekeeper assessment in the smoke step is skipped, and the release notes say "not notarized: right-click →
-  Open the first time". A failed signature or a damaged image still fails the macOS job, so nothing is published.
+
+**macOS notarization: only at the public launch** (owner, 2026-10-21). Notarization is for the stable release users
+install, so they get a clean first launch; test builds skip it entirely.
+
+| Channel | Notarization attempted | Required | Apple secrets passed | A build that is not notarized |
+| --- | --- | --- | --- | --- |
+| main / nightly | no | no | no | normal: no warning, no failure |
+| alpha | no | no | no | normal: no warning, no failure |
+| beta | no | no | no | normal: no warning, no failure |
+| rc | no | no | no | normal: no warning, no failure |
+| stable `v<X.Y.Z>` | yes | yes | yes | not possible: the macOS job fails, and `publish.sh` refuses an unnotarized `.dmg` |
+
+- `mpvfx-macos.yml` sets `NOTARIZE=1` and passes `APPLE_ID`, `APPLE_APP_PASSWORD` and `APPLE_TEAM_ID` only for a
+  stable tag (`refs/tags/v*` with no hyphen). Elsewhere `NOTARIZE=0`: `package.sh` never calls `notarytool` or logs
+  in to Apple, signs the image with the Developer ID when the certificate secrets are set (ad-hoc otherwise) and
+  writes `dist/.not-notarized`; the smoke step skips the Gatekeeper assessment.
+- On a stable tag, missing certificate or `APPLE_*` secrets, a submission that fails or a verdict other than Accepted
+  fails the macOS job, so the stable release ships notarized or not at all. A failed signature or a damaged image
+  fails on every channel.
+- The release notes of every build that is not notarized say "not notarized: right-click → Open the first time".
   The macos job turns the marker into `dist/macos-notarization.txt` (in the `macos` artifact, never a release asset;
   the dotfile itself is not uploaded), which `publish.sh` reads; a missing marker, or a `dist/.not-notarized` beside
-  it, counts as not notarized. Run by hand, `package.sh` keeps failing on notarization unless `NOTARIZE_REQUIRED=0`.
+  it, counts as not notarized.
+- Run by hand, `package.sh <dist> developer-id` notarizes by default (`NOTARIZE=1`); `NOTARIZE=0` skips it.
 
 **Release notes.** Testers download from the Releases page, so every release describes itself. `publish.sh` creates
 the release, uploads the files, then writes the notes with `gh release edit --notes-file` (a rerun rewrites them).
@@ -141,7 +157,7 @@ merge train's comments and labels and turns on auto-merge (`.github/workflows/me
 ## macOS signing: one-time setup (owner)
 
 The workflow reads five repository secrets (Settings > Secrets and variables > Actions > New repository secret).
-Without them the image is still built, ad-hoc signed and not notarized.
+Without them the image is still built, ad-hoc signed and not notarized, except on a stable tag, whose run fails.
 
 1. **Certificate.** On your Mac: Xcode > Settings > Accounts > your team > Manage Certificates > `+` >
    **Developer ID Application** (or developer.apple.com > Certificates > `+` > Developer ID Application).
@@ -158,8 +174,10 @@ Without them the image is still built, ad-hoc signed and not notarized.
    | `APPLE_APP_PASSWORD` | an app-specific password: account.apple.com > Sign-In and Security > App-Specific Passwords |
    | `APPLE_TEAM_ID` | the 10-character Team ID (developer.apple.com > Account > Membership details) |
 
-4. Run `mpvfx-macos`. The log shows `notarytool ... "status": "Accepted"` and `The staple and validate action
-   worked!`, and the smoke step's `spctl --assess` prints `source=Notarized Developer ID`.
+4. Notarization runs only on a stable tag (see "macOS notarization" above), so the first check is the stable tag's
+   run: its log shows `notarytool ... "status": "Accepted"` and `The staple and validate action worked!`, and the
+   smoke step's `spctl --assess` prints `source=Notarized Developer ID`. To try the credentials earlier, run
+   `package.sh` by hand on a Mac (below), which notarizes by default.
 
 ## Building an installer by hand
 

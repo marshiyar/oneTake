@@ -220,38 +220,85 @@ class Notes(Base):
         self.assertIn("Run: https://github.com/o/r/actions/runs/42", text)
 
 
+STABLE_EXPR = "startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')"
+
+
+def is_stable_ref(ref):
+    """What STABLE_EXPR means, as a model the per-channel table below is checked against."""
+    return ref.startswith("refs/tags/v") and "-" not in ref
+
+
 class Notarization(unittest.TestCase):
-    """Notarization never blocks a build on any ref (owner, 2026-10-21); the marker reaches the publish job."""
+    """Notarization only at the public launch (owner, 2026-10-21): attempted and required on a stable tag, never
+    attempted (no notarytool, no Apple login) on main, nightly, alpha, beta or rc."""
 
-    def test_workflow_never_requires_notarization(self):
-        with open(os.path.join(HERE, "..", "workflows", "mpvfx-macos.yml"), encoding="utf-8") as f:
-            text = f.read()
-        values = [line.split(":", 1)[1].strip() for line in text.splitlines()
-                  if line.strip().startswith("NOTARIZE_REQUIRED:")]
-        self.assertEqual(values, ["'0'"])
+    def read(self, *parts):
+        with open(os.path.join(HERE, *parts), encoding="utf-8") as f:
+            return f.read()
+
+    def env_value(self, text, name):
+        values = [line.split(":", 1)[1].strip() for line in text.splitlines() if line.strip().startswith(name + ":")]
+        self.assertEqual(len(values), 1, f"{name}: {values}")
+        return values[0]
+
+    def test_workflow_notarizes_stable_tags_only(self):
+        text = self.read("..", "workflows", "mpvfx-macos.yml")
+        self.assertEqual(self.env_value(text, "NOTARIZE"), "${{ " + STABLE_EXPR + " && '1' || '0' }}")
+        for secret in ("APPLE_ID", "APPLE_APP_PASSWORD", "APPLE_TEAM_ID"):
+            with self.subTest(secret=secret):
+                value = self.env_value(text, secret)
+                self.assertTrue(value.startswith("${{ " + STABLE_EXPR + " && "), value)
+                self.assertIn(f"secrets.{secret} || ''", value)
+        self.assertNotIn("NOTARIZE_REQUIRED", text)
+        self.assertIn('if [ "$NOTARIZE" = 1 ] && [ "$mode" = adhoc ]', text)
         self.assertIn("dist/macos-notarization.txt", text)
+        self.assertNotIn("::warning::the disk image is Developer ID signed but not notarized", text)
 
-    def test_package_script_marks_a_rejected_verdict(self):
-        path = os.path.join(HERE, "..", "..", "mpvfx-swift", "packaging", "macos", "package.sh")
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        verdict = text[text.index('grep -q \'"status" *: *"Accepted"\''):text.index("xcrun stapler staple")]
-        self.assertIn('NOTARIZE_REQUIRED:-1}" = 1', verdict)
-        self.assertIn(': > "$dist/.not-notarized"', verdict)
-        self.assertIn("exit 0", verdict)
+    def test_per_channel_table(self):
+        table = {"refs/heads/main": False, "refs/tags/v0.1.0-alpha.1": False, "refs/tags/v0.1.0-beta.2": False,
+                 "refs/tags/v0.1.0-rc.1": False, "refs/tags/v0.1.0": True, "refs/tags/v1.2.3": True,
+                 "refs/pull/7/merge": False, "refs/tags/media-v1.0.0": False}
+        for ref, attempted in table.items():
+            with self.subTest(ref=ref):
+                self.assertEqual(is_stable_ref(ref), attempted)
 
-    def test_package_script_signs_without_credentials(self):
-        path = os.path.join(HERE, "..", "..", "mpvfx-swift", "packaging", "macos", "package.sh")
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        creds = text[text.index('if [ -z "${APPLE_ID:-}" ]'):text.index("  adhoc) ;;")]
-        self.assertIn('NOTARIZE_REQUIRED:-1}" = 1', creds)
-        self.assertIn("skip_notarize=1", creds)
-        skip = text[text.index('if [ "${skip_notarize:-0}" = 1 ]'):text.index("xcrun notarytool submit")]
+    def test_package_script(self):
+        text = self.read("..", "..", "mpvfx-swift", "packaging", "macos", "package.sh")
+        self.assertIn("notarize=${NOTARIZE:-1}", text)
+        skip = text[text.index('if [ "$notarize" = 0 ]; then'):text.index("xcrun notarytool submit")]
         self.assertIn(': > "$dist/.not-notarized"', skip)
-        # The image is signed before the skip, so a missing credential never ships it unsigned.
+        self.assertIn("exit 0", skip)
+        self.assertNotIn("::warning::", text)
+        # Signed before the skip: a build that is not notarized is still Developer ID signed.
         self.assertLess(text.index('codesign --force --sign "$MACOS_SIGN_IDENTITY" --timestamp "$dmg"'),
-                        text.index('if [ "${skip_notarize:-0}" = 1 ]'))
+                        text.index('if [ "$notarize" = 0 ]; then'))
+        # With NOTARIZE=1 every notarization problem fails the build.
+        submit = text[text.index("xcrun notarytool submit"):text.index("xcrun stapler staple")]
+        self.assertEqual(submit.count("exit 1"), 2)
+        self.assertNotIn("exit 0", submit)
+
+
+class StableGate(Base):
+    def gate(self, ref, marker, assets=ASSETS):
+        os.makedirs(os.path.join(self.dir, "dist"), exist_ok=True)
+        with open(os.path.join(self.dir, "dist", "macos-notarization.txt"), "w", encoding="utf-8") as f:
+            f.write(marker + "\n")
+        return self.bash('decide >/dev/null; mapfile -t assets < <(printf "%s" "$ASSETS"); stable_gate', "tag", ref,
+                         {"ASSETS": "\n".join(assets)})
+
+    def test_stable_needs_a_notarized_dmg(self):
+        r = self.gate("v0.1.0", "not-notarized")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("::error::stable release v0.1.0: the macOS disk image", r.stdout)
+        self.assertEqual(self.gate("v0.1.0", "notarized").returncode, 0)
+
+    def test_stable_without_a_dmg_passes(self):
+        self.assertEqual(self.gate("v0.1.0", "not-notarized", ("mpvfx_0.1.0_amd64.deb",)).returncode, 0)
+
+    def test_prereleases_never_need_notarization(self):
+        for ref in ("v0.1.0-alpha.1", "v0.1.0-beta.1", "v0.1.0-rc.1"):
+            with self.subTest(ref=ref):
+                self.assertEqual(self.gate(ref, "not-notarized").returncode, 0)
 
 
 class Changes(Base):

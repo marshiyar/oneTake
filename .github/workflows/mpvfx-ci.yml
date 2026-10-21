@@ -3,9 +3,8 @@ name: mpvfx-ci
 # The app on Linux and Windows (a build, package and install + launch job per OS beside its test shards) and on macOS
 # through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main, every night and every
 # push of a v* tag; when every platform is green, one publish job releases all installers together
-# (.github/ci/publish.sh): a run of main as the prerelease nightly-<commit>, a v<X.Y.Z>-alpha.<N>, -beta.<N> or -rc.<N>
-# tag as a prerelease of that tag (never latest), a v<X.Y.Z> tag as the stable release, marked latest. Pull requests and
-# other branches never publish.
+# (.github/ci/publish.sh): a run of main as the prerelease nightly-<commit>, a v* tag as the official release of that
+# tag, marked latest. Pull requests and other branches never publish.
 #
 # The media and keyframe engines are not built here: every job downloads the prebuilt libraries pinned in
 # mpvfx-swift/binaries.lock (scripts/fetch-binaries.py checks each SHA-256) from public releases. No repository secret
@@ -564,8 +563,7 @@ jobs:
 
   publish:
     needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
-    # Only main (nightly prerelease) and v* tags (alpha, beta, rc prereleases, stable release) publish; publish.sh
-    # decides which, and refuses any other v* tag.
+    # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
     if: >-
       always() && github.event_name != 'pull_request'
       && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
