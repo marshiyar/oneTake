@@ -424,6 +424,8 @@ final class SessionPanels {
             guard let self else { return }
             self.session.timeline.view.selection = []; self.session.syncStage(); self.redraw()
         }
+        inspector.onCopyGrade = { [weak self] in self?.session.timeline.copyGradeSelection() ?? false }
+        inspector.onPasteGrade = { [weak self] in self?.session.timeline.pasteGradeSelection() ?? false }
         inspector.onOpenGroupChanged = { [weak self] _ in self?.redraw() }
         inspector.onAudition = { [weak self] request in self?.session.audition(request) }
         right.onAnimate = { [weak self] in self?.animatePanels() }
@@ -547,6 +549,7 @@ final class SessionPanels {
         let inspector = right.inspector
         let sel = session.timeline.view.selection.sorted()
         if inspector.selection != sel { inspector.selection = sel }
+        inspector.gradeClipboardAvailable = session.timeline.gradeClipboard != nil
         let keys = session.timeline.view.selectedKeyframes
         if inspector.selectedKeyframes != keys { inspector.selectedKeyframes = keys }
         inspector.time = session.playback.currentTime

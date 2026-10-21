@@ -389,6 +389,29 @@ final class ColorGradingTests: XCTestCase {
             XCTAssertGreaterThan(amount.y, last.maxY, "Amount starts after the grid at \(panelW)")
         }
     }
+    func testPasteGradeRequiresClipboardAndVisualSelection() throws {
+        func pasteHit(_ p: InspectorPanel) -> CanvasRect? {
+            let canvas = PanelMeasureCanvas()
+            p.gradeClipboardRow().draw(canvas, CanvasRect(x: 0, y: 0, width: 360, height: 28), p)
+            return p.hits.rect { $0 == .custom("grade:clipboard", 1) }
+        }
+
+        let editor = try demoEditor()
+        let emptyClipboard = InspectorPanel()
+        emptyClipboard.editor = editor; emptyClipboard.selection = ["clip:a"]
+        emptyClipboard.onPasteGrade = { true }
+        XCTAssertNil(pasteHit(emptyClipboard), "a wired callback does not imply that a grade is available")
+
+        let audioOnly = InspectorPanel()
+        audioOnly.editor = editor; audioOnly.selection = ["clip:music"]
+        audioOnly.gradeClipboardAvailable = true; audioOnly.onPasteGrade = { true }
+        XCTAssertNil(pasteHit(audioOnly), "an audio-only selection is not a grade target")
+
+        let visual = InspectorPanel()
+        visual.editor = editor; visual.selection = ["clip:music", "clip:a"]
+        visual.gradeClipboardAvailable = true; visual.onPasteGrade = { true }
+        XCTAssertNotNil(pasteHit(visual), "any visual clip in a mixed selection enables grade paste")
+    }
     func testGradeUiWheelDragAndCurvePoint() throws {
         let editor = try demoEditor()
         let p = InspectorPanel(); p.editor = editor; p.selection = ["clip:a"]; p.openGroupId = "grade"

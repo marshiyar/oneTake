@@ -183,7 +183,7 @@ final class TimelineClipboardTests: XCTestCase {
     func testClipMenuClipboardEntries() throws {
         let (c, e) = try make()
         c.openClipMenu("clip:a", x: 10, y: 10)
-        XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Duplicate", "—", "Show thumbnails", "—",
+        XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Copy grade", "Paste grade", "Duplicate", "—", "Show thumbnails", "—",
                                                  "Mute", "Keep audio pitch", "—", "Detach audio", "—", "Delete"])
         func item(_ a: TimelineClipMenu.Action) -> TimelineClipMenu.Item? {
             c.view.clipMenu?.itemRects().map(\.0).first { $0.action == a }
@@ -283,6 +283,59 @@ final class TimelineClipboardTests: XCTestCase {
         XCTAssertEqual(two.filesToImport(board), ["/projects/one/media/a.mp4", "/projects/one/luts/warm.cube"])
         let other = try XCTUnwrap(two.paste(board, at: 0).first)
         XCTAssertEqual(lut(clip(two, other)), "/projects/one/luts/warm.cube", "never resolved against the other project")
+    }
+
+    func testGradePasteOntoThreeClipsIsOneUndoStepAndReplacesOnlyTheGrade() throws {
+        let (_, e) = try make(Self.graded)
+        let source = try XCTUnwrap(e.copyGrade("clip:a"))
+        var d = e.document
+        let original = try XCTUnwrap(d.sequence.tracks[1].clips.first)
+        for n in 1...3 {
+            var target = original
+            target.id = "clip:target-\(n)"; target.startFrame = Double(n * 200)
+            target.effects = [NativeClipEffect(id: "keep:\(n)", effectId: "blur", enabled: true, parameters: nil),
+                              NativeClipEffect(id: "old:\(n)", effectId: "color-grading", enabled: true, parameters: [:])]
+            d.sequence.tracks[0].clips.append(target)
+        }
+        e.loadDocument(try parseNativeProjectDocument(d, engine: Self.engine))
+        let before = e.document
+        let result = try XCTUnwrap(e.pasteGrade(source, onto: ["clip:target-1", "clip:target-2", "clip:target-3"]))
+        XCTAssertEqual(result, TimelineGradePasteResult(pasted: 3, skippedAudio: 0))
+        for n in 1...3 {
+            let target = try XCTUnwrap(clip(e, "clip:target-\(n)"))
+            XCTAssertEqual(target.effects.map(\.effectId), ["blur", "color-grading"])
+            XCTAssertEqual(lut(target), "/projects/one/luts/warm.cube")
+        }
+        XCTAssertEqual(e.undoLabel, "Paste grade")
+        XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before, "all three replacements undo together")
+    }
+
+    func testGradePasteSkipsAudioReportsCountAndRejectsLockedTrack() throws {
+        let (c, e) = try make(Self.graded)
+        c.view.selection = ["clip:a"]; XCTAssertTrue(c.copyGradeSelection())
+        c.view.selection = ["clip:a", "clip:m"]
+        XCTAssertTrue(c.pasteGradeSelection())
+        XCTAssertEqual(c.gradePasteStatus, "Grade pasted on 1 clip, 1 audio clip skipped")
+        c.view.selection = ["clip:m"]
+        XCTAssertFalse(c.pasteGradeSelection())
+        XCTAssertEqual(c.gradePasteStatus, "Select at least one video or image clip to paste a grade")
+        XCTAssertTrue(e.setTrackLocked("track:v1", true))
+        c.view.selection = ["clip:a"]
+        XCTAssertFalse(c.pasteGradeSelection())
+        XCTAssertEqual(c.gradePasteStatus, "Track is locked")
+    }
+
+    func testGradeShortcutsAndMenuAvailabilityDoNotConflictWithClipClipboard() throws {
+        let (c, _) = try make(Self.graded)
+        c.view.selection = ["clip:a"]
+        XCTAssertTrue(c.keyDown(EditorKey(.char("c"), alt: true, meta: true)))
+        XCTAssertNotNil(c.gradeClipboard); XCTAssertNil(c.clipboard)
+        XCTAssertTrue(c.keyDown(EditorKey(.char("v"), alt: true, meta: true)))
+        c.gradeClipboard = nil
+        c.openClipMenu("clip:a", x: 0, y: 0)
+        let paste = c.view.clipMenu?.itemRects().map(\.0).first { $0.action == .pasteGrade }
+        XCTAssertEqual(paste?.enabled, false)
+        XCTAssertEqual(paste?.hint, "Copy a grade before pasting")
     }
 
     func testCrossProjectPasteImportsItsFilesFirst() throws {
