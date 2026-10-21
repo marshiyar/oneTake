@@ -12,21 +12,21 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
-import XCTest
 import MpvfxCanvas
-import MpvfxTheme
+@testable import MpvfxPanels
 import MpvfxShared
+import MpvfxTheme
 import MpvfxTimeline
 import OneTakeKeyframes
-@testable import MpvfxPanels
+import XCTest
 #if canImport(CoreGraphics)
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 #endif
 
-final class DesignWordingTests: XCTestCase {
-    func inspector(text: Bool = false) throws -> (InspectorPanel, TimelineEditor) {
+internal final class DesignWordingTests: XCTestCase {
+    private func inspector(text: Bool = false) throws -> (InspectorPanel, TimelineEditor) {
         let editor = try TimelineEditor(json: TimelineEditor.demoJSON, engine: try? KeyframeRuntime())
         let panel = InspectorPanel()
         panel.editor = editor
@@ -35,7 +35,7 @@ final class DesignWordingTests: XCTestCase {
         return (panel, editor)
     }
 
-    func testHumanSummariesAndTemperatureKeepDocumentKeys() {
+    internal func testHumanSummariesAndTemperatureKeepDocumentKeys() {
         XCTAssertEqual(InspectorPanel.styleSummary(nil, opacityPercent: 100), "Fill none · 100%")
         var grade = ColorGrading()
         grade.preset = "warm-daylight"
@@ -47,24 +47,26 @@ final class DesignWordingTests: XCTestCase {
         XCTAssertEqual(ColorGrading.adjustSliders.first { $0.key == "temperature" }?.label, "Temperature")
     }
 
-    func testRotationIsShownOnlyOnceAndSummariesAreNamed() throws {
+    internal func testRotationIsShownOnlyOnceAndSummariesAreNamed() throws {
         let (panel, _) = try inspector()
         panel.transform3DOpen = true
         let canvas = PanelMeasureCanvas()
-        panel.draw(canvas, in: CanvasRect(x: 0, y: 0, width: 409, height: 1800))
+        panel.draw(canvas, in: CanvasRect(x: 0, y: 0, width: 409, height: 1_800))
         XCTAssertEqual(canvas.drawnStrings.filter { $0 == "Rotation" }.count, 1)
         XCTAssertFalse(canvas.drawnStrings.contains("Roll"))
         XCTAssertTrue(canvas.drawnStrings.contains("3D transform"))
-        XCTAssertTrue(panel.groups.first { $0.id == "layout" }?.summary.hasPrefix("X ") == true)
+        XCTAssertEqual(panel.groups.first { $0.id == "layout" }?.summary.hasPrefix("X "), true)
     }
 
-    func testTextIconsExposeNamesTooltipsAndExistingCommands() throws {
+    internal func testTextIconsExposeNamesTooltipsAndExistingCommands() throws {
         let (panel, editor) = try inspector(text: true)
         panel.openGroupId = "text"
         let canvas = PanelMeasureCanvas()
-        let rect = CanvasRect(x: 0, y: 0, width: 409, height: 1600)
+        let rect = CanvasRect(x: 0, y: 0, width: 409, height: 1_600)
         panel.draw(canvas, in: rect)
-        for name in ["Align left", "Align center", "Align right", "Justify", "Original case", "Uppercase", "Lowercase", "Capitalize", "Regular", "Italic"] {
+        let names = ["Align left", "Align center", "Align right", "Justify", "Original case",
+                     "Uppercase", "Lowercase", "Capitalize", "Regular", "Italic"]
+        for name in names {
             let control = try XCTUnwrap(panel.accessibilityControls.first { $0.label == name }, name)
             XCTAssertGreaterThan(control.frame.width, 0)
         }
@@ -76,19 +78,19 @@ final class DesignWordingTests: XCTestCase {
         XCTAssertEqual(editor.clip(try XCTUnwrap(panel.selection.first))?.clip.text?.resolvedTransform, "uppercase")
     }
 
-    func testCropResetHasNamedIconAndRestoresCrop() throws {
+    internal func testCropResetHasNamedIconAndRestoresCrop() throws {
         let (panel, editor) = try inspector()
         panel.openGroupId = "media"
         panel.cropActive = "clip:a"
         _ = editor.setCrop(clipId: "clip:a", NativeClipCrop(top: 12))
-        panel.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 409, height: 1800))
+        panel.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 409, height: 1_800))
         let reset = try XCTUnwrap(panel.accessibilityControls.first { $0.label == "Reset crop" })
         reset.press()
         XCTAssertTrue(editor.crop(clipId: "clip:a")?.isZero ?? true)
     }
 
     /// Offscreen native panel captures, at the panel widths used by both requested window sizes.
-    func testCaptureDesignWording() throws {
+    internal func testCaptureDesignWording() throws {
         #if canImport(CoreGraphics)
         guard let directory = ProcessInfo.processInfo.environment["MPVFX_WORDING_CAPTURES"] else { return }
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)

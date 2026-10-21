@@ -14,9 +14,9 @@
 #===----------------------------------------------------------------------===#
 """Regression tests for the Design display-label scanner."""
 import importlib.util
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("wording", Path(__file__).with_name("check-design-wording.py"))
 wording = importlib.util.module_from_spec(spec)
