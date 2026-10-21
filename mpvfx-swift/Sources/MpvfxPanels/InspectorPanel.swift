@@ -48,6 +48,13 @@ public final class InspectorPanel {
     public var onClearSelection: (() -> Void)?
     /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
     public var onCopyGrade: (() -> Bool)?
+    /// Durable user-data look catalogue, supplied by the host; ordinary effects remain in the project.
+    public var userLookStore: UserLookStore?
+    public var resolveUserLookLut: (String) -> String = { $0 }
+    public var userLookLutExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    var selectedUserLook: String?
+    var userLookNameDraft: String?
+    var userLookError: UserLookError?
     public var onPasteGrade: (() -> Bool)?
     /// Whether the timeline currently holds a copied grade. Selection compatibility is checked by the panel.
     public var gradeClipboardAvailable = false
@@ -290,7 +297,7 @@ public final class InspectorPanel {
     /// the composition, or a selection the document no longer has).
     func drawSelectionHeader(_ c: CanvasContext, _ r: CanvasRect, _ editor: TimelineEditor) -> Double? {
         if !selection.isEmpty { audioGroupId = nil }
-        if selection.count > 1 { drawMultiSelect(c, r); return nil }
+        if selection.count > 1 { drawMultiSelect(c, r); return hasUserLookSelection ? 64 : nil }
         if let s = selected() {
             retireStaleEditors(editor, s)
             return drawHeader(c, r, s)

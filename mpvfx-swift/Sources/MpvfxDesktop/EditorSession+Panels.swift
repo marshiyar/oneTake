@@ -68,6 +68,13 @@ final class SessionPanels {
         let filterStore = MediaFilterStore(url: URL(fileURLWithPath: userData).appendingPathComponent("media-bin.json"))
         left.filter = filterStore.load()
         left.onFilterChange = { filterStore.save($0) }
+        do {
+            right.inspector.userLookStore = try UserLookStore(path: URL(fileURLWithPath: userData).appendingPathComponent("looks.json").path) { data, path in
+                try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+                try NativeDurableWrite().write(data, to: path)
+            }
+        } catch { session.onError("Saved looks unavailable", error.localizedDescription) }
+        right.inspector.resolveUserLookLut = { [weak session] source in session?.absoluteMediaPath(source) ?? source }
         wireLeft()
         wireRight()
     }
@@ -104,6 +111,7 @@ final class SessionPanels {
         left.bars = { [weak self] id in self?.bars(id) }
         left.onImport = { [weak self] in self?.session.onImportRequested?() }
         left.onAddAtPlayhead = { [weak self] id in self?.addToTimeline(path: id, at: nil) }
+        left.onAddTextLook = { [weak self] look in self?.session.addTextLook(look) }
         left.onRenameAsset = { [weak self] id, name in self?.renameAsset(path: id, newName: name) }
         left.onDeleteAsset = { [weak self] id, removeUsages in self?.deleteAsset(path: id, removeUsages: removeUsages) }
         left.onCopyPath = { [weak self] path in self?.copyToClipboard?(path) }
