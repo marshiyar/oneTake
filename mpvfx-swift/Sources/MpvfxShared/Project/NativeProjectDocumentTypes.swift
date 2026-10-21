@@ -19,13 +19,13 @@ import Foundation
 public let NATIVE_PROJECT_DOCUMENT_SCHEMA_VERSION = 1
 public let NATIVE_PROJECT_DOCUMENT_PATH = ".studio/project.json"
 
-public enum NativeProjectAssetKind: String, Codable { case video, audio, image, element }
+public enum NativeProjectAssetKind: String, Codable, Sendable { case video, audio, image, element }
 
 public func nativeAssetConsumesSourceFrames(_ kind: NativeProjectAssetKind) -> Bool { kind == .video || kind == .audio }
 
-public enum NativeProjectTrackKind: String, Codable { case video, audio, mixed }
+public enum NativeProjectTrackKind: String, Codable, Sendable { case video, audio, mixed }
 
-public struct NativeCanvas: Codable, Equatable {
+public struct NativeCanvas: Codable, Equatable, Sendable {
     public var width: Double; public var height: Double; public var background: String
     /// Input key order and unknown keys (`{ ...document.canvas }`).
     public var spread = NativeSpreadKeys()
@@ -46,7 +46,7 @@ public struct NativeCanvas: Codable, Equatable {
 }
 
 /// Records copied whole (`...asset`, `...effect`, `...segment.reference`) keep unknown keys; these helpers do that.
-public struct NativeProjectAsset: Codable, Equatable {
+public struct NativeProjectAsset: Codable, Equatable, Sendable {
     public var id: String; public var kind: NativeProjectAssetKind; public var name: String
     public var source: String?; public var durationFrames: Double
     /// Input key order and unknown keys (`{ ...asset }`).
@@ -69,7 +69,7 @@ public struct NativeProjectAsset: Codable, Equatable {
     }
 }
 
-public struct NativeClipEffect: Codable, Equatable {
+public struct NativeClipEffect: Codable, Equatable, Sendable {
     public var id: String; public var effectId: String; public var enabled: Bool
     public var parameters: NativeJSONObject?
     /// Input key order and unknown keys (`{ ...effect }`).
@@ -94,7 +94,7 @@ public struct NativeClipEffect: Codable, Equatable {
 
 /// Also used for sourceInFraction, which is copied whole (`{ ...clip.sourceInFraction }`); playbackRate is rebuilt,
 /// so parse strips its unknown keys before decoding.
-public struct NativePlaybackRate: Codable, Equatable, Hashable {
+public struct NativePlaybackRate: Codable, Equatable, Hashable, Sendable {
     public var numerator: Double; public var denominator: Double
     public var spread = NativeSpreadKeys()
     static let known = ["numerator", "denominator"]
@@ -112,13 +112,13 @@ public struct NativePlaybackRate: Codable, Equatable, Hashable {
 }
 public let DEFAULT_NATIVE_PLAYBACK_RATE = NativePlaybackRate(numerator: 1, denominator: 1)
 
-public struct NativeClipDomBinding: Codable, Equatable {
+public struct NativeClipDomBinding: Codable, Equatable, Sendable {
     public var sourceFile: String; public var domId: String?; public var hfId: String?
     public var selector: String?; public var selectorIndex: Double?
 }
 
-public struct NativeCropPivotSegment: Codable, Equatable {
-    public struct Reference: Codable, Equatable {
+public struct NativeCropPivotSegment: Codable, Equatable, Sendable {
+    public struct Reference: Codable, Equatable, Sendable {
         public var frameOffset: Double; public var durationFrames: Double
         public var startRotationKeyId: String; public var endRotationKeyId: String
         public var parameterTracks: [NativeParameterTrack]
@@ -154,7 +154,7 @@ public struct NativeCropPivotSegment: Codable, Equatable {
     public var reference: Reference?
 }
 
-public struct NativeProjectClip: Codable, Equatable {
+public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var id: String; public var assetId: String
     public var audioGroupId: String?; public var audioFxChain: String?; public var audioAutomation: String?
     public var audioDetachedFrom: String?
@@ -162,6 +162,8 @@ public struct NativeProjectClip: Codable, Equatable {
     public var startFrame: Double; public var durationFrames: Double; public var sourceInFrame: Double
     public var sourceInFraction: NativePlaybackRate?
     public var playbackRate: NativePlaybackRate?
+    /// Optional non-linear clip time map. Absent retains the legacy constant `playbackRate` path.
+    public var speedRamp: NativeSpeedRamp? = nil
     /// False plays a sped-up or slowed clip's sound at a pitch that follows the speed; absent or true keeps the pitch.
     public var preservesPitch: Bool? = nil
     /// Required on the document; optional only on input (NativeProjectDocumentInput).
@@ -178,10 +180,19 @@ public struct NativeProjectClip: Codable, Equatable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// How a media clip's picture fills its box (the inspector's Fit row); absent means Fit, the contain fit every
+    /// clip had before the option existed. Text clips ignore it.
+    public var fit: NativeMediaFit? = nil
+    /// Fade-in length in project frames from the clip start (`NativeClipFade`); absent means none.
+    public var fadeInFrames: Double? = nil
+    /// Fade-out length in project frames up to the clip end; absent means none.
+    public var fadeOutFrames: Double? = nil
+    /// Parametric layer masks; absent means unmasked.
+    public var masks: [NativeClipMask]? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
-public struct NativeClipCrop: Codable, Equatable, Hashable {
+public struct NativeClipCrop: Codable, Equatable, Hashable, Sendable {
     public var top: Double; public var right: Double; public var bottom: Double; public var left: Double
     public init(top: Double = 0, right: Double = 0, bottom: Double = 0, left: Double = 0) {
         self.top = top; self.right = right; self.bottom = bottom; self.left = left
@@ -189,7 +200,7 @@ public struct NativeClipCrop: Codable, Equatable, Hashable {
     public var isZero: Bool { top <= 0 && right <= 0 && bottom <= 0 && left <= 0 }
 }
 
-public struct NativeProjectTrackLane: Codable, Equatable {
+public struct NativeProjectTrackLane: Codable, Equatable, Sendable {
     public var authoredTrack: Double; public var displayTrack: Double
     /// Input key order and unknown keys (`{ ...(track.lane ?? defaultTrackLane(i)) }`).
     public var spread = NativeSpreadKeys()
@@ -207,7 +218,7 @@ public struct NativeProjectTrackLane: Codable, Equatable {
     }
 }
 
-public struct NativeProjectTrack: Codable, Equatable {
+public struct NativeProjectTrack: Codable, Equatable, Sendable {
     public var id: String; public var kind: NativeProjectTrackKind
     public var lane: NativeProjectTrackLane?; public var clips: [NativeProjectClip]
     /// Track visibility: a hidden track is meant to be left out of preview and export. Absent means shown.
@@ -224,7 +235,7 @@ public struct NativeProjectTrack: Codable, Equatable {
     }
 }
 
-public struct NativeAudioGroup: Codable, Equatable {
+public struct NativeAudioGroup: Codable, Equatable, Sendable {
     public var id: String; public var label: String?; public var volume: Double?; public var muted: Bool?
     public var fxChain: String?; public var automation: String?
 }
@@ -236,27 +247,32 @@ public extension NativeAudioGroup {
     }
 }
 
-public struct NativeProjectSequence: Codable, Equatable {
+public struct NativeProjectSequence: Codable, Equatable, Sendable {
     public var id: String; public var name: String; public var durationFrames: Double?
     public var audioGroups: [NativeAudioGroup]?; public var tracks: [NativeProjectTrack]
+    /// The caption track (`NativeCaptionTrack.swift`); absent in a project without captions and in every project
+    /// written before captions existed, which open unchanged.
+    public var captions: NativeCaptionTrack? = nil
 }
 
 /// The timeline kind a document stores in `mediaEngine`. Every document is a native timeline drawn by the Swift
 /// renderer: parsing accepts `"native"`, `"ffmpeg"` (a legacy value written by older versions) and a missing
 /// field, and writes `"native"` back, so the first save after opening an older project migrates it (nothing else
 /// in the document changes).
-public enum NativeMediaEngine: String, Codable {
+public enum NativeMediaEngine: String, Codable, Sendable {
     case native
     /// Every stored spelling of the native timeline; parseNativeProjectDocument rewrites them to `native`.
     public static let acceptedStoredValues: Set<String> = ["native", "ffmpeg"]
 }
 
-public struct NativeProjectDocument: Codable, Equatable {
+public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var schemaVersion: Int
     public var mediaEngine: NativeMediaEngine?
     public var id: String; public var revision: Double
     public var frameRate: RationalFrameRate; public var canvas: NativeCanvas
     public var assets: [NativeProjectAsset]; public var sequence: NativeProjectSequence
+    /// The Easing panel's custom presets for this project (NativeEasingPreset.swift); nil writes no key.
+    public var easingPresets: [NativeEasingPreset]? = nil
 }
 
 public extension NativeProjectDocument {
@@ -272,26 +288,63 @@ public extension NativeProjectDocument {
         sequence.tracks.reduce(0) { n, track in n + track.clips.filter(isUndrawnElementClip).count }
     }
 
+    var unsupportedSpeedRampCount: Int {
+        sequence.tracks.reduce(0) { count, track in count + track.clips.filter { $0.speedRamp?.isSupported == false }.count }
+    }
+
     /// The one notice shown when the document holds layers the renderer skips; nil when it has none.
+    /// Newer mask records remain serialized but are not rendered by this version.
+    public var unsupportedMaskCount: Int {
+        sequence.tracks.reduce(0) { total, track in
+            total + track.clips.reduce(0) { $0 + ($1.masks ?? []).filter { !$0.isSupported }.count }
+        }
+    }
+
+    public var unsupportedMasksNotice: String? {
+        let n = unsupportedMaskCount
+        guard n > 0 else { return nil }
+        return "\(n) mask\(n == 1 ? "" : "s") from a newer version of the editor \(n == 1 ? "is" : "are") kept in the project but not drawn in preview or export."
+    }
+
     var undrawnElementLayersNotice: String? {
-        let n = undrawnElementLayerCount
+        let n = undrawnElementLayerCount + unsupportedSpeedRampCount
         guard n > 0 else { return nil }
         return n == 1
             ? "1 layer from an earlier version of the editor is kept in the project but not drawn in preview or export."
             : "\(n) layers from an earlier version of the editor are kept in the project but not drawn in preview or export."
     }
+
+    /// One notice for future colour-key contracts retained in the document but deliberately not rendered.
+    var unsupportedColorKeysNotice: String? {
+        let count = sequence.tracks.flatMap(\.clips).flatMap(\.effects).filter { effect in
+            guard effect.enabled, effect.effectId == "color-key", let parameters = effect.parameters else { return false }
+            return parameters["v"]?.numberValue != 1 || parameters["kind"]?.stringValue != "chroma"
+        }.count
+        guard count > 0 else { return nil }
+        return count == 1
+            ? "1 colour-key effect from a newer version of the editor is kept in the project but not drawn in preview or export."
+            : "\(count) colour-key effects from a newer version of the editor are kept in the project but not drawn in preview or export."
+    }
+
+    /// Notices presented once when opening or exporting content deliberately retained but not drawn.
+    var undrawnContentNotices: [String] {
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice].compactMap { $0 }
+    }
 }
 
-public enum NativeProjectDocumentValidationCode: String, Codable {
+public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidRoot = "invalid-root", unsupportedSchemaVersion = "unsupported-schema-version", invalidId = "invalid-id"
     case duplicateId = "duplicate-id", invalidRevision = "invalid-revision", invalidFrameRate = "invalid-frame-rate"
     case invalidCanvas = "invalid-canvas", invalidAsset = "invalid-asset", invalidTrack = "invalid-track", invalidClip = "invalid-clip"
     case invalidPlaybackRate = "invalid-playback-rate", invalidBinding = "invalid-binding", duplicateBinding = "duplicate-binding"
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
+    case invalidCaption = "invalid-caption"
+    case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
+    case invalidSpeedRamp = "invalid-speed-ramp"
 }
 
-public struct NativeProjectDocumentValidationIssue: Codable, Equatable {
+public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {
     public var code: NativeProjectDocumentValidationCode; public var path: String; public var message: String
 }
 

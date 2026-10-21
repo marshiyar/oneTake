@@ -6,37 +6,47 @@ name: agentbot
 #   flakes   an mpvfx-ci run that passed on a re-run: what failed before goes into the issue "Flaky tests"
 #   shots    an mpvfx-ci run on a pull request that touches UI code: launch-smoke snapshots against main, per OS
 #   bench    a bench run on a pull request: p50 and p95 per metric against main's latest bench run
+#   bench-runners  the same for a pull request benchmarked on OneTake-app/OneTake-actionRunners-1: its onetake-bench
+#            run sends repository_dispatch `runners-bench` here when it is done (run id, pull request, head commit)
 
 on:
   workflow_run:
     workflows: [mpvfx-ci, bench]
     types: [completed]
+  repository_dispatch:
+    types: [runners-bench]
 
-permissions:
-  contents: read
-  actions: read
-  pull-requests: write
-  issues: write
+# Nothing at the top level: each job names what agentbot.py's endpoints need ("Permissions required for GitHub Apps",
+# https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps, read 2026-10-21). Every job
+# checks out .github (contents: read) and reads runs, logs and artifacts (actions: read); creating or editing a pull
+# request comment and listing a commit's pull requests take pull-requests, the "Flaky tests" issue takes issues.
+# The token is handed only to the step that runs the bot.
+permissions: {}
 
 concurrency:
-  group: agentbot-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  group: agentbot-${{ github.event.workflow_run.id || github.event.client_payload.run }}-${{ github.event.workflow_run.run_attempt }}
   cancel-in-progress: false
 
 env:
   RUN_ID: ${{ github.event.workflow_run.id }}
-  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   digest:
     if: github.event.workflow_run.name == 'mpvfx-ci' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write   # one comment on the run's pull request, edited in place
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
       - run: python3 -I -B .github/ci/agentbot.py digest "$RUN_ID"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   flakes:
     if: github.event.workflow_run.name == 'mpvfx-ci' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.run_attempt > 1
@@ -46,23 +56,35 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write          # find, create or edit the "Flaky tests" issue
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
       - run: python3 -I -B .github/ci/agentbot.py flakes "$RUN_ID"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   shots:
     if: github.event.workflow_run.name == 'mpvfx-ci' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write   # one comment on the run's pull request, edited in place
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
       - run: python3 -I -B .github/ci/agentbot.py shots "$RUN_ID" "$RUNNER_TEMP/snapshots"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: snapshots
@@ -74,9 +96,60 @@ jobs:
     if: github.event.workflow_run.name == 'bench' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write   # one comment on the run's pull request, edited in place
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
       - run: python3 -I -B .github/ci/agentbot.py bench "$RUN_ID"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  bench-runners:
+    # Every value comes from a repository_dispatch (only the oneTake-Runners1 App and collaborators can send one):
+    # checked here and again by agentbot.py, and passed through env only. Nothing from the pull request is checked out.
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'runners-bench'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write   # one comment on the pull request, edited in place
+    steps:
+      - name: Check the payload
+        env:
+          RUNNERS_RUN: ${{ github.event.client_payload.run }}
+          PR: ${{ github.event.client_payload.pr }}
+          SHA: ${{ github.event.client_payload.sha }}
+        run: |
+          [[ "$RUNNERS_RUN" =~ ^[0-9]{1,20}$ ]] || { echo "::error::payload run is not a run id"; exit 1; }
+          [[ "$PR" =~ ^[0-9]{1,7}$ ]] || { echo "::error::payload pr is not a pull request number"; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::payload sha is not a full commit sha"; exit 1; }
+      - name: Runners repository token (actions read)
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RUNNERS_APP_ID }}
+          private-key: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+          owner: OneTake-app
+          repositories: OneTake-actionRunners-1
+          permission-actions: read   # its runs and their bench-<os> artifacts
+      - name: Which permission is missing
+        if: failure() && steps.token.outcome == 'failure'
+        run: |
+          echo "::error::no oneTake-Runners1 App token for OneTake-app/OneTake-actionRunners-1 with actions: read. Give the App the repository permission 'Actions: Read-only' and accept it on that installation."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github
+          persist-credentials: false
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUNNERS_TOKEN: ${{ steps.token.outputs.token }}
+          RUNNERS_RUN: ${{ github.event.client_payload.run }}
+          PR: ${{ github.event.client_payload.pr }}
+          SHA: ${{ github.event.client_payload.sha }}
+        run: python3 -I -B .github/ci/agentbot.py bench-runners "$RUNNERS_RUN" "$PR" "$SHA"

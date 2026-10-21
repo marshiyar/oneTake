@@ -73,6 +73,16 @@ final class TimelineEditorAbilitiesTests: XCTestCase {
         XCTAssertEqual(e.document, before)
     }
 
+    func testLoudnessMatchAppliesEveryGainInOneUndoStep() throws {
+        let e = try editor(); let before = e.document
+        XCTAssertTrue(e.applyLoudnessMatch(["clip:a": 0.5, "clip:b": 1.25, "clip:music": 4.5]))
+        XCTAssertEqual(e.clipVolume(clipId: "clip:a"), 0.5)
+        XCTAssertEqual(e.clipVolume(clipId: "clip:b"), 1.25)
+        XCTAssertEqual(e.clipVolume(clipId: "clip:music"), 4.5, "matching is not limited by the interactive +12 dB fader")
+        XCTAssertEqual(e.undoStack.count, 1); XCTAssertEqual(e.undoLabel, "Match loudness")
+        XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
+    }
+
     func testAudioGroupLifecycle() throws {
         let e = try editor(); let before = e.document
         XCTAssertNil(e.createAudioGroup(clipIds: ["clip:music"]), "needs two clips")
@@ -198,7 +208,7 @@ final class TimelineClipContentVisualTests: XCTestCase {
     func render(_ setup: (TimelineController) -> Void) throws -> CairoImageTarget {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         setup(c)
         let t = CairoImageTarget(width: 1264, height: 300)
         c.view.draw(t.canvas, size: CanvasSize(1264, 300))

@@ -31,13 +31,37 @@ env:
   RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
 
 jobs:
-  linux:
+  installers:
+    # Which installers the mpvfx-ci run built. A pull request builds only those of the platforms it can affect (none
+    # for documentation only), so the platform jobs below are skipped instead of failing on an artifact that does not
+    # exist.
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      names: ${{ steps.list.outputs.names }}
+    steps:
+      - name: Installer artifacts of the run
+        id: list
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          names=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")')
+          echo "names= $names " >> "$GITHUB_OUTPUT"
+          for os in linux windows macos; do
+            case " $names " in *" $os "*) echo "$os: installers built" ;; *) echo "$os: no installers in run $RUN_ID, its check is skipped" ;; esac
+          done | tee -a "$GITHUB_STEP_SUMMARY"
+
+  linux:
+    needs: installers
+    if: contains(needs.installers.outputs.names, ' linux ')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           sparse-checkout: .github
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -57,7 +81,8 @@ jobs:
           python3 -I -B .github/ci/strip-check.py unpacked | tee -a "$GITHUB_STEP_SUMMARY"
 
   windows:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: installers
+    if: vars.LINUX_ONLY == 'false' && contains(needs.installers.outputs.names, ' windows ')   # paused unless LINUX_ONLY is false (mpvfx-ci.yml)
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:
@@ -66,6 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           sparse-checkout: .github
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -92,12 +118,14 @@ jobs:
             unpacked dist/MpVFX-*-setup.exe | tee -a "$GITHUB_STEP_SUMMARY"
 
   macos:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: installers
+    if: vars.LINUX_ONLY == 'false' && contains(needs.installers.outputs.names, ' macos ')   # paused unless LINUX_ONLY is false (mpvfx-ci.yml)
     runs-on: xcode-27
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           sparse-checkout: .github
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
