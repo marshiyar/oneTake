@@ -387,8 +387,9 @@ public final class TimelineController {
         }
     }
 
-    /// Wheel: Ctrl/⌘ = pinch zoom at the pointer, Shift = horizontal scroll, else vertical scroll
-    /// (horizontal deltas from touchpads scroll horizontally).
+    /// Wheel: `ctrl` (the host's zoom modifier: ⌘, Ctrl or Option / Alt held, or a pinch; `PointerModifiers.zoomsWheel`)
+    /// zooms at the pointer, Shift = horizontal scroll, else vertical scroll (horizontal deltas from touchpads scroll
+    /// horizontally).
     public func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) {
         if ctrl {
             setZoom(percent: TimelineZoom.pinch(deltaY: dy, mode: zoomMode, manual: manualZoomPercent, fit: fitPixelsPerSecond), anchorX: max(x, TimelineLayout.contentOrigin))
