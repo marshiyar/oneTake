@@ -20,7 +20,7 @@ import MpvfxTimeline
 /// and segmented control from the control column's left edge to one shared value edge, then the reset cell and the
 /// keyframe gutter, reserved on every property row whether or not it has them, so values end on one x (issue #187).
 /// A row whose controls do not fit beside its label at this width is stacked: the label line on top (with the row's
-/// reset and keyframe controls at its right end), the control across the full width below.
+/// reset and keyframe controls at its right end), the control below, ending at the same reserved value edge.
 extension InspectorPanel {
     /// Space between two segmented options, and each option's padding around its label.
     static let segmentGap = 2.0, segmentPad = 12.0
@@ -144,16 +144,20 @@ extension InspectorPanel {
         let head = CanvasRect(x: r.x, y: r.y, width: r.width, height: PanelGrid.compactRowHeight)
         PanelDraw.text(c, label, in: CanvasRect(x: head.x, y: head.midY - 8.25, width: head.width, height: 16.5), font: Self.rowFont, color: PanelTheme.rowLabel)
         let line = CanvasRect(x: r.x, y: head.maxY, width: r.width, height: PanelGrid.rowHeight)
-        _ = drawAccessories(c, line: line, Accessories(key: a.key, keyframe: a.keyframe, resetGlyph: false, resetHit: false))
+        let reset = (a.tier == .explicitCustom || b.tier == .explicitCustom) && a.reset != nil
+        _ = drawAccessories(c, line: line, Accessories(key: a.key, keyframe: a.keyframe, resetGlyph: reset, resetHit: reset))
+        // A pair shares one reset in the reserved cell; its value edge never moves when customized.
+        var first = a, second = b
+        first.reset = nil; second.reset = nil
         let edge = Self.valueEdge(line), fh = PanelGrid.rowHeight - 4
         if stacked {
-            drawNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: edge - r.x, height: fh), a, compact: true)
-            drawNumber(c, CanvasRect(x: r.x, y: line.maxY + 2, width: edge - r.x, height: fh), b, compact: true)
+            drawCompactNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: edge - r.x, height: fh), first, rightInset: 0)
+            drawCompactNumber(c, CanvasRect(x: r.x, y: line.maxY + 2, width: edge - r.x, height: fh), second, rightInset: 0)
             return
         }
         let colW = (edge - r.x - PanelGrid.columnGap) / 2
-        drawNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: colW, height: fh), a, compact: true)
-        drawNumber(c, CanvasRect(x: r.x + colW + PanelGrid.columnGap, y: line.y + 2, width: colW, height: fh), b, compact: true)
+        drawCompactNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: colW, height: fh), first)
+        drawCompactNumber(c, CanvasRect(x: r.x + colW + PanelGrid.columnGap, y: line.y + 2, width: colW, height: fh), second, rightInset: 0)
     }
 
     func drawQuad(_ c: CanvasContext, _ r: CanvasRect, _ ns: [InspectorRow.Number]) {
@@ -196,14 +200,14 @@ extension InspectorPanel {
         let labelW = stacked ? max(0, accLeft - lines.0.x - PanelGrid.columnGap) : cols.label.width
         drawNumberLabel(c, n, line: lines.0, width: labelW)
         let fieldX = stacked ? lines.1.x : cols.control.x
-        let fieldRight = stacked ? lines.1.maxX : accLeft
+        let fieldRight = accLeft
         drawNumberField(c, CanvasRect(x: fieldX, y: lines.1.y, width: max(0, fieldRight - fieldX), height: lines.1.height), n)
     }
 
-    func drawCompactNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number) {
+    func drawCompactNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, rightInset: Double = InspectorPanel.compactPad) {
         c.fillRoundedRect(r.snapped, radius: PanelTheme.radius, PanelTheme.panelBg)
         let pad = Self.compactPad
-        var right = r.maxX - pad
+        var right = r.maxX - rightInset
         if n.tier == .explicitCustom, n.reset != nil {
             let cell = CanvasRect(x: right - 11, y: r.y, width: 11, height: r.height)
             drawResetGlyph(c, cell, key: n.key, visible: isHovering(n.key))
@@ -358,7 +362,7 @@ extension InspectorPanel {
         let cols = PanelGrid.columns(lines.0)
         let labelW = stacked ? max(0, edge - lines.0.x - PanelGrid.columnGap) : cols.label.width
         PanelDraw.text(c, s.label, in: CanvasRect(x: lines.0.x, y: lines.0.midY - 8.25, width: labelW, height: 16.5), font: Self.rowFont, color: s.tier.labelColor)
-        drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: stacked ? lines.1.maxX : edge)
+        drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: edge)
     }
 
     /// The settings gear in the gutter's last cell.
@@ -438,7 +442,8 @@ extension InspectorPanel {
         let cols = PanelGrid.columns(lines.0)
         PanelDraw.text(c, s.label, in: CanvasRect(x: r.x, y: lines.0.midY - 8.25, width: stacked ? r.width : cols.label.width, height: 16.5),
                        font: Self.rowFont, color: PanelTheme.rowLabel)
-        let area = stacked ? lines.1 : CanvasRect(x: cols.control.x, y: r.y, width: max(0, Self.valueEdge(r) - cols.control.x), height: r.height)
+        let controlX = stacked ? lines.1.x : cols.control.x
+        let area = CanvasRect(x: controlX, y: lines.1.y, width: max(0, Self.valueEdge(r) - controlX), height: lines.1.height)
         for (o, or) in zip(s.options, Self.segmentRects(Self.segmentWidths(c, s), in: area)) {
             let hov = hovered == .segment(s.key, o.key)
             PanelDraw.text(c, o.label, in: CanvasRect(x: or.x + 2, y: or.midY - 8.25, width: max(0, or.width - 4), height: 16.5), font: Self.rowFont,

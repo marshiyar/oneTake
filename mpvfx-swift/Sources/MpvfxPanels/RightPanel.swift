@@ -154,6 +154,8 @@ public final class RightPanel {
     public func showKeyframeEasing(clipId: String, refs: Set<TimelineKeyframeRef>) -> Bool {
         let keys = refs.filter { $0.clipId == clipId && KeyframeEasingTarget.easedParameterIds.contains($0.parameterId) }
         guard let first = keys.sorted(by: KeyframeEasingTarget.inTimeOrder).first else { return false }
+        inspector.selection = [clipId]
+        if let group = TimelineEditor.keyframeEasingGroup(first.parameterId) { inspector.openGroupId = group }
         easing.clipId = clipId
         easing.selectedKeyframes = keys
         easing.state.chosenProperty = first.parameterId

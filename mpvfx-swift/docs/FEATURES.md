@@ -287,3 +287,7 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+### Design compositing and value alignment (#187)
+
+Style starts with a Compositing block: Opacity, Blend and the opacity easing shortcut, followed by appearance. Edit Easing remembers Style as the opacity property's home while opening the existing Easing tab. Stacked number fields, slider values, segmented rows and Blend reserve the same trailing accessory gutter as ordinary rows; the existing 24 pt keyframe targets remain. Record motion uses the toolbar's existing resting/hover fill and the shared text line layout. Blend persistence and preview/export rendering reuse the existing implementation.

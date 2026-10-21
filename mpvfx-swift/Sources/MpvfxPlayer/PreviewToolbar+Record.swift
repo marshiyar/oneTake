@@ -52,7 +52,16 @@ extension PreviewToolbar {
         case .armed: ink = PanelTheme.red400
         case .recording: ink = onRed
         }
-        c.drawText(recordLabel, at: .init(dot.maxX + 6, r.y + (r.height - 11) / 2), font: Self.label, color: ink)
+        // PanelDraw already fits Chromium's Linux baseline. Core Text needs a one-point optical
+        // adjustment to align this label's lowercase x-height with the dot (verified at 1x and 2x).
+        #if os(Linux)
+        let opticalOffset = 0.0
+        #else
+        let opticalOffset = 1.0
+        #endif
+        PanelDraw.text(c, recordLabel, in: CanvasRect(x: dot.maxX + 6, y: r.y - opticalOffset,
+                                                   width: r.maxX - dot.maxX - 16, height: r.height),
+                       font: Self.label, color: ink)
     }
 
     /// The hover tip under the control: what a click does and its key.

@@ -27,7 +27,7 @@ public struct KeyframeEasingTarget: Equatable {
     public var focused: TimelineKeyframeRef? { refs.first }
 
     /// Properties the panel eases: the Transform group's and keyed volume (TimelineEditor.keyframeEasingGroup).
-    public static let easedParameterIds = TimelineEditor.transformEasedParameterIds + [TimelineEditor.volumeId]
+    public static let easedParameterIds = TimelineEditor.transformEasedParameterIds + [TimelineEditor.opacityId, TimelineEditor.volumeId]
 
     /// Property: `chosen` when selected keys include it, else the earliest selected key's on this clip, else
     /// `chosen` when it is animated, else the first animated one. Nil without a clip or an animated easable property.

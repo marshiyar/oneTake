@@ -211,7 +211,7 @@ final class PanelLayoutAuditTests: XCTestCase {
         func hit(_ h: InspectorPanel.Hit) -> CanvasRect? { p.hits.rect { $0 == h } }
         switch row.kind {
         case .number(let n): return hit(.field(n.key)).map { [(n.key, $0.maxX)] } ?? []
-        case .pair(_, _, let b): return hit(.field(b.key)).map { [(b.key, $0.maxX + InspectorPanel.compactPad)] } ?? []
+        case .pair(_, _, let b): return hit(.field(b.key)).map { [(b.key, $0.maxX)] } ?? []
         case .slider(let s): return hit(.slider(s.key)).map { [(s.key, $0.maxX + 8 + InspectorPanel.sliderValueWidth)] } ?? []
         case .segmented(let s): return s.options.last.flatMap { o in hit(.segment(s.key, o.key)).map { [(s.key, $0.maxX)] } } ?? []
         case .toggle(let t): return hit(.toggle(t.key)).map { [(t.key, $0.maxX)] } ?? []

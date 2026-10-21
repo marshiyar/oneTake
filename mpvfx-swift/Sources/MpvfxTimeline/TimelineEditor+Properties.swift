@@ -29,13 +29,14 @@ public extension TimelineEditor {
     static let scaleId = "transform.scale", opacityId = "visual.opacity", volumeId = "audio.volume"
 
     /// The parameters whose keys the inspector's Transform easing rows edit (scalar position tracks included);
-    /// keyed volume is eased in the Media group.
+    /// opacity is eased in Style’s Compositing block and keyed volume in Media.
     static let transformEasedParameterIds = [positionId, POSITION_X_PARAMETER_ID, POSITION_Y_PARAMETER_ID, widthId, heightId,
-                                             rotationId, scaleId, opacityId] + NativeTransform3D.parameterIds
+                                             rotationId, scaleId] + NativeTransform3D.parameterIds
 
-    /// The inspector group whose easing rows edit keys of `parameterId` ("layout" or "media"), nil when none does.
+    /// The inspector group whose easing rows edit keys of `parameterId` ("layout", "style" or "media"), nil when none does.
     static func keyframeEasingGroup(_ parameterId: String) -> String? {
         if transformEasedParameterIds.contains(parameterId) { return "layout" }
+        if parameterId == opacityId { return "style" }
         if parameterId == volumeId { return "media" }
         return nil
     }
