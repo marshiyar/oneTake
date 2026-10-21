@@ -27,7 +27,7 @@ import MpvfxColor
 /// `crop` insets the untransformed box (canvas px) and travels with the box's scale and rotation.
 public struct PreviewLayer: Equatable, Sendable {
     /// `offline`: a video or image clip whose media file is missing, drawn as a slate naming the file, never decoded.
-    public enum Kind: Sendable, Equatable { case video, image, text, offline }
+    public enum Kind: Sendable, Equatable { case video, image, text, shape, offline }
     public var clipId: String
     /// Absolute media path.
     public var source: String
@@ -56,6 +56,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var grade: ColorGradeRenderer?
     /// Fill, stroke and shadows (the inspector's Style section), drawn with the box (nil: none).
     public var style: NativeClipStyle?
+    /// Vector geometry (kind .shape), painted directly in the layer box.
+    public var shape: NativeClipShape?
     /// A text layer's words and typography (kind .text): laid out in the box instead of a decoded picture.
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
@@ -188,8 +190,11 @@ public struct PreviewComposition {
             for clip in track.clips {
                 n += 1
                 guard !Self.isLeftOut(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
+                guard clip.shape?.isSupported != false else { continue }
                 let layer = Self.stackingLayer(clip, track: trackLayers[index])
-                if asset.kind == .element, clip.text != nil {
+                if asset.kind == .element, clip.shape?.isSupported == true {
+                    ordered.append((Entry(clip: clip, kind: .shape, path: "shape:\(clip.id)", layer: layer), n))
+                } else if asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
                     ordered.append((Entry(clip: clip, kind: .text, path: "text:\(clip.id)", layer: layer), n))
                 } else if var entry = media.entry(clip, asset: asset, layer: layer) {
@@ -412,6 +417,7 @@ public struct PreviewComposition {
         out.grade = e.gradeAnimation.map { $0.renderer(e.clip, values: values) } ?? e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.blend = c.style?.blendMode ?? .normal
+        out.shape = e.kind == .shape ? c.shape : nil
         out.text = e.kind == .text ? c.text : nil
         out.offlineFileName = e.offlineFileName
         out.fit = c.fit
@@ -509,9 +515,9 @@ public enum PreviewPainter {
         draw(layer, image: Optional(image), on: c, frame: frame, scale: s)
     }
 
-    /// Draws a text layer (kind .text): its words laid out in the box with the layer's transform, crop and style.
+    /// Draws generated text or vector content with the layer's transform, crop and style.
     public static func drawText(_ layer: PreviewLayer, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
-        guard layer.text != nil else { return }
+        guard layer.text != nil || layer.shape != nil else { return }
         draw(layer, image: nil, on: c, frame: frame, scale: s)
     }
 
@@ -598,6 +604,8 @@ public enum PreviewPainter {
                     c.drawImage(visibleImage, in: picture, opacity: layer.opacity)
                 }
                 covered = picture
+            } else if let shape = layer.shape {
+                NativeShapeRendering.draw(shape, box: box, scale: s, opacity: layer.opacity, on: c)
             } else if let text = layer.text {
                 if layer.masks.isEmpty {
                     if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale) {

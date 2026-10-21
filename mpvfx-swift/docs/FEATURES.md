@@ -287,3 +287,14 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+### Vector shape layers
+
+Element clips can store an optional `shape` record (`v: 1`) for rectangles with corner radius,
+ellipses, triangles, diamonds, regular polygons, stars, lines and arrows. Fill and stroke use CSS hex;
+stroke widths, radii, arrow head lengths and dash lengths use canvas pixels. Line endpoints use
+normalized box coordinates. Preview and export use the same vector path painter, including scaled
+dashes and arrow heads aligned to the line's end tangent. `TimelineEditor.setClipShape` validates the
+whole edit, records one undo step, and persists it through the normal project save path. Unknown
+shape versions and kinds are kept unchanged, skipped in preview/export, and included in the existing
+single unsupported-element notice. Schema version stays 1; projects without shapes gain no field.

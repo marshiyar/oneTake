@@ -63,3 +63,9 @@ through the real runtime. Only publishing is refused on purpose ("Publishing is 
 | Linux | works: GTK 3 shell, Cairo canvas, PulseAudio output | `Sources/MpvfxDesktop/LinuxShell.swift`, `Sources/MpvfxCanvas/CairoCanvas.swift` |
 | macOS | partial: the AppKit shell runs the same editor as Linux (Core Graphics canvas, Core Audio output); built and tested in CI, little hands-on use yet | `Sources/MpvfxDesktop/MacShell.swift`, `MacCanvasHost.swift`, `Sources/MpvfxCanvas/CoreGraphicsCanvas.swift`, `Sources/MpvfxAudio/CoreAudioOutput.swift` |
 | Windows | partial: builds and passes its tests on Windows in CI; the green `windows` job builds both packages and installs, launches and uninstalls setup.exe. What is written: Win32 shell with a full-window Direct2D canvas (`WindowsCanvasHost`: DPI, mouse, wheel, keys, cursors, dropped files), item dialogs, clipboard, Explorer, system light/dark; Direct2D/DirectWrite canvas, WASAPI output; the project, library, import and durable-write filesystem layer on Win32 (`NativeFileWin32.swift`, drive-letter and UNC roots in `PosixPath`). On Linux the shared code builds and its tests pass, including the Windows path arithmetic (`WindowsPathTests`) | `Sources/MpvfxDesktop/WindowsShell.swift`, `WindowsCanvasHost.swift`, `Sources/MpvfxCanvas/Direct2DCanvas.swift`, `Sources/CMpvfxWin32`, `Sources/MpvfxRuntime/Projects/NativeFileWin32.swift`, `docs/PACKAGING.md` |
+
+- #323 Shapes 1: optional versioned shape records, typed shape validation, a pure edit plan and
+  single-step undo/save support; shared preview/export vector painting for rectangle, ellipse,
+  triangle, diamond, polygon, star, line and arrow. Focused tests cover legacy save stability,
+  opaque future contracts, invalid values, analytic rounded corners, diagonal arrow tangents,
+  and preview/export pixels with dashes at 1× and 2× output scale.
