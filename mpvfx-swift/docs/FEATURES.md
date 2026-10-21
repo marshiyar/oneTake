@@ -222,7 +222,7 @@ The timeline lane's 314d72a added its own filmstrip cache; 71fdbd6 moved strips 
 
 | Ability | Swift status |
 | --- | --- |
-| Record motion (Record arms; a press on the selected layer records; trail, auto-stop, one undo step) | done (preview) |
+| Record motion (Record control with armed and recording states, stage outline and banner, trail, auto-stop, one undo step) | done (preview) |
 | Captions: overlay, caption timeline, caption editing, caption property panel, Edit captions entry in the preview | missing (unowned) |
 | Telemetry, crash prompt, feedback card | not part of the product |
 | Packaging and installers | partial: macOS disk image, Windows per-user setup.exe and Linux .deb; CI has built, installed and launched all three, and their smoke checks passed (see `STATUS.md`) |
