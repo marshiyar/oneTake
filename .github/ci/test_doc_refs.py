@@ -13,7 +13,11 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests of doc_refs.py: each kind of broken reference is found, and what is not a reference is left alone."""
-import importlib.util, os, sys, tempfile, unittest
+import importlib.util
+import os
+import sys
+import tempfile
+import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("doc_refs", os.path.join(HERE, "doc_refs.py"))
@@ -84,4 +88,4 @@ class DocRefsTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2) if "-v" in sys.argv else unittest.main()
+    unittest.main(verbosity=2 if "-v" in sys.argv else 1)

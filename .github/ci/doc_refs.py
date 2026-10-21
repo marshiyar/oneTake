@@ -27,7 +27,12 @@ Reads each Markdown file (default: every tracked *.md outside the test fixtures)
 Fenced code blocks are skipped: they hold commands and output, not references.
 Prints one line per finding; exits 1 when a path, link or issue reference is broken, 0 otherwise, 2 on bad input.
 """
-import argparse, glob, os, re, subprocess, sys
+import argparse
+import glob
+import os
+import re
+import subprocess
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 APP = "mpvfx-swift"
