@@ -1146,8 +1146,13 @@ float4 shade(float2 frag, P_ALL) {
         float2 keyChroma = V2((key.z - keyY) / 1.8556f, (key.x - keyY) / 1.5748f);
         float distance = SQRT(POW(chroma.x - keyChroma.x, 2.0f) + POW(chroma.y - keyChroma.y, 2.0f));
         alpha *= smoothstepf(U(keySimilarity), U(keySimilarity) + FMAX(U(keySmoothness), 0.000001f), distance);
-        float excessGreen = FMAX(0.0f, graded.y - FMAX(graded.x, graded.z));
-        graded.y -= excessGreen * U(keySpill);
+        if (key.y >= key.x && key.y >= key.z) {
+            graded.y -= FMAX(0.0f, graded.y - FMAX(graded.x, graded.z)) * U(keySpill);
+        } else if (key.z >= key.x) {
+            graded.z -= FMAX(0.0f, graded.z - FMAX(graded.x, graded.y)) * U(keySpill);
+        } else {
+            graded.x -= FMAX(0.0f, graded.x - FMAX(graded.y, graded.z)) * U(keySpill);
+        }
     }
     return V43(graded, alpha);
 }
