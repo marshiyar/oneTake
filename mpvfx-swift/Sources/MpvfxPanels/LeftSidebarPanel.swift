@@ -137,7 +137,12 @@ public final class LeftSidebarPanel {
     public var hovered: Hit?
     public internal(set) var search: PanelTextField?
     public var searchQuery = ""
-    public var filter = MediaFilter()
+    public var filter = MediaFilter() {
+        didSet {
+            guard filter != oldValue else { return }
+            layout.update { $0.mediaFilter = filter.isDefault ? nil : filter }
+        }
+    }
     /// The tile the arrows move and Enter acts on (a click selects; Escape clears).
     public internal(set) var selected: MediaTileRef?
     /// Tab order over the header controls and the grid (the selected tile, or the first one).
@@ -175,6 +180,7 @@ public final class LeftSidebarPanel {
 
     public init(layout: PanelLayoutState) {
         self.layout = layout
+        filter = layout.prefs.mediaFilter ?? MediaFilter()
         tab = layout.prefs.sidebarTab ?? .assets
         if tab != .assets { tab = .assets }   // getPersistedTab: only "assets" and "blocks" persist; Scenes/Elements need content
     }

@@ -80,6 +80,8 @@ public struct PanelPreferences: Codable, Equatable, Sendable {
     public var rightCollapsed: Bool?
     public var rightPanelTab: RightPanelTab?
     public var sidebarTab: LeftSidebarTab?
+    /// Media bin view choices; defaults are omitted. These do not edit the project or its undo history.
+    public var mediaFilter: MediaFilter?
     public var openInspectorGroup: String?
     /// The Design tab's order of its detachable groups (`DesignGroups` panel ids).
     public var designGroupOrder: [String]?

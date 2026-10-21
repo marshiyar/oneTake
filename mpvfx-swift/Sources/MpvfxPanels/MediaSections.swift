@@ -23,14 +23,22 @@ public enum MediaTileRef: Hashable {
 }
 
 /// What the search row's filter menu narrows the grid to: one kind (or all), timeline use, and the order.
-public struct MediaFilter: Equatable {
-    public enum Kind: String, CaseIterable { case all, video, images, audio, fonts, library, exports }
-    public enum Usage: String, CaseIterable { case all, inTimeline, notInTimeline }
-    public enum Sort: String, CaseIterable { case timelineFirst, name, duration }
+public struct MediaFilter: Equatable, Codable, Sendable {
+    public enum Kind: String, CaseIterable, Codable, Sendable { case all, video, images, audio, fonts, library, exports }
+    public enum Usage: String, CaseIterable, Codable, Sendable { case all, inTimeline, notInTimeline }
+    public enum Sort: String, CaseIterable, Codable, Sendable { case timelineFirst, name, duration }
     public var kind = Kind.all
     public var usage = Usage.all
     public var sort = Sort.timelineFirst
     public init(kind: Kind = .all, usage: Usage = .all, sort: Sort = .timelineFirst) { self.kind = kind; self.usage = usage; self.sort = sort }
+    private enum CodingKeys: String, CodingKey { case kind, usage, sort }
+    /// Unknown choices from a newer app fall back independently, keeping the other panel preferences usable.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = (try c.decodeIfPresent(String.self, forKey: .kind)).flatMap(Kind.init(rawValue:)) ?? .all
+        usage = (try c.decodeIfPresent(String.self, forKey: .usage)).flatMap(Usage.init(rawValue:)) ?? .all
+        sort = (try c.decodeIfPresent(String.self, forKey: .sort)).flatMap(Sort.init(rawValue:)) ?? .timelineFirst
+    }
     public var isDefault: Bool { self == MediaFilter() }
 
     public static let kindLabels: [Kind: String] = [.all: "All media", .video: "Video", .images: "Images", .audio: "Audio", .fonts: "Fonts",
