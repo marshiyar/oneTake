@@ -195,6 +195,9 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var fadeOutFrames: Double? = nil
     /// Parametric layer masks; absent means unmasked.
     public var masks: [NativeClipMask]? = nil
+    /// The text, voice, rate and pitch an audio clip made from text was spoken with (`NativeClipNarration`); absent
+    /// on every other clip.
+    public var narration: NativeClipNarrationRecord? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -348,6 +351,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidCaption = "invalid-caption"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
     case invalidSpeedRamp = "invalid-speed-ramp"
+    case invalidNarration = "invalid-narration"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {
