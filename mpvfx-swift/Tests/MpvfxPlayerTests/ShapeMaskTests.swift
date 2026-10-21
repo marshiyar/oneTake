@@ -15,6 +15,7 @@ import XCTest
 import MpvfxCanvas
 import MpvfxPlayer
 import MpvfxShared
+import OneTakeKeyframes
 
 final class ShapeMaskTests: XCTestCase {
     private func pixel(_ image: CanvasImage, _ x: Int, _ y: Int) -> [UInt8] {
@@ -74,11 +75,12 @@ final class ShapeMaskTests: XCTestCase {
         let fields = [("x", 0.1), ("y", 0.2), ("width", 0.3), ("height", 0.4), ("angle", 45),
                       ("feather", 6), ("expansion", 7), ("opacity", 0.8), ("invert", 1), ("mode", 2)]
         let tracks = fields.enumerated().map { index, field in
-            "{\"id\":\"k\(index)\",\"parameterId\":\"mask.m.\(field.0)\",\"keyframes\":[{\"id\":\"v\(index)\",\"frame\":0,\"value\":\(field.1),\"outgoing\":{\"kind\":\"hold\"}}]}"
+            "{\"schemaVersion\":1,\"id\":\"k\(index)\",\"parameterId\":\"mask.m.\(field.0)\",\"valueType\":\"number\",\"frameRate\":{\"numerator\":10,\"denominator\":1},\"keyframes\":[{\"id\":\"v\(index)\",\"frame\":0,\"value\":\(field.1),\"outgoing\":{\"type\":\"hold\"}}]}"
         }.joined(separator: ",")
+        let engine = try KeyframeRuntime()
         let document = try PreviewCompositorTests.document(
-            clipB: ",\"masks\":[{\"v\":1,\"id\":\"m\",\"kind\":\"rectangle\"}]", bTracks: tracks)
-        let mask = try XCTUnwrap(PreviewCompositorTests.composition(document).layers(at: 0).last?.masks.first)
+            clipB: ",\"masks\":[{\"v\":1,\"id\":\"m\",\"kind\":\"rectangle\"}]", bTracks: tracks, engine: engine)
+        let mask = try XCTUnwrap(PreviewCompositorTests.composition(document, engine: engine).layers(at: 0).last?.masks.first)
         XCTAssertEqual(mask.x, 0.1); XCTAssertEqual(mask.y, 0.2)
         XCTAssertEqual(mask.width, 0.3); XCTAssertEqual(mask.height, 0.4); XCTAssertEqual(mask.angle, 45)
         XCTAssertEqual(mask.feather, 6); XCTAssertEqual(mask.expansion, 7); XCTAssertEqual(mask.opacity, 0.8)
