@@ -40,8 +40,20 @@ public final class PanelDropdown {
     }
     public func close() { key = nil; onPick = nil }
     /// Highlights the selected option, as a native list opened from the keyboard does: the arrows move from it and
-    /// Enter keeps it.
-    public func highlightSelected() { hovered = options.firstIndex { $0.value == selected } }
+    /// Enter keeps it. The list scrolls so the highlighted row shows.
+    public func highlightSelected() {
+        hovered = options.firstIndex { $0.value == selected }
+        revealHovered()
+    }
+
+    /// Scrolls the least that puts the highlighted row inside the list (rows sit 4 pt inside its top and bottom).
+    func revealHovered() {
+        guard let hovered, let row = rows().first(where: { $0.index == hovered }) else { return }
+        let visible = rect.height - 8
+        if row.y < scroll { scroll = row.y }
+        if row.y + row.h > scroll + visible { scroll = row.y + row.h - visible }
+        scroll = max(0, min(max(0, contentHeight - rect.height), scroll))
+    }
     /// Picks `value` as a click on its item would: closes, then reports it.
     public func pick(_ value: String) {
         guard isOpen, options.contains(where: { $0.value == value }) else { return }
@@ -119,8 +131,8 @@ public final class PanelDropdown {
         guard isOpen else { return false }
         switch k.code {
         case .escape: close(); return true
-        case .down: hovered = min(options.count - 1, (hovered ?? -1) + 1); return true
-        case .up: hovered = max(0, (hovered ?? options.count) - 1); return true
+        case .down: hovered = min(options.count - 1, (hovered ?? -1) + 1); revealHovered(); return true
+        case .up: hovered = max(0, (hovered ?? options.count) - 1); revealHovered(); return true
         case .enter: if let h = hovered { let v = options[h].value; let pick = onPick; close(); pick?(v) }; return true
         default: return true
         }

@@ -282,6 +282,59 @@ final class SettingsPanelKeyboardTests: XCTestCase {
         XCTAssertNotNil(s.focus.ringRect(s.hits))
     }
 
+    /// A held Enter or Space presses once (auto-repeat is ignored); held arrows keep moving.
+    func testHeldActivationKeysPressOnce() {
+        let (s, c) = openCard()
+        var chooses = 0
+        s.onChooseExportFolder = { chooses += 1 }
+        s.exportFolderChosen("/media/exports")
+        s.draw(c, size: size)
+        for _ in 0..<4 { press(s, c, EditorKey(.tab)) }   // Audio output, Preview cache, Choose…, Reset
+        XCTAssertEqual(s.focus.current, .resetFolder)
+        XCTAssertTrue(press(s, c, EditorKey(.space)))
+        XCTAssertNil(s.values.exportFolder)
+        XCTAssertEqual(s.focus.current, .chooseFolder)
+        XCTAssertTrue(press(s, c, EditorKey(.space, isRepeat: true)), "a repeat is still taken by the modal card")
+        XCTAssertTrue(press(s, c, EditorKey(.enter, isRepeat: true)))
+        XCTAssertEqual(chooses, 0, "holding Space on Reset does not go on to open the chooser")
+
+        // A held Enter that opened a list does not commit it at once.
+        press(s, c, EditorKey(.tab, shift: true))
+        press(s, c, EditorKey(.tab, shift: true))
+        XCTAssertEqual(s.focus.current, .audio)
+        XCTAssertTrue(press(s, c, EditorKey(.enter)))
+        XCTAssertTrue(press(s, c, EditorKey(.enter, isRepeat: true)))
+        XCTAssertTrue(s.dropdown.isOpen)
+        XCTAssertTrue(press(s, c, EditorKey(.escape)))
+
+        // Arrows repeat.
+        press(s, c, EditorKey(.tab, shift: true))
+        XCTAssertEqual(s.focus.current, .appearance(.system))
+        XCTAssertTrue(press(s, c, EditorKey(.right, isRepeat: true)))
+        XCTAssertEqual(s.values.appearance, .light)
+    }
+
+    /// Tab and ⇧Tab in an open list close it without choosing and move the card's focus.
+    func testTabLeavesAnOpenList() {
+        let (s, c) = openCard()
+        var changes = 0
+        s.onChange = { _ in changes += 1 }
+        press(s, c, EditorKey(.tab))
+        XCTAssertTrue(press(s, c, EditorKey(.enter)))
+        XCTAssertTrue(s.dropdown.isOpen)
+        press(s, c, EditorKey(.down))
+        XCTAssertTrue(press(s, c, EditorKey(.tab)))
+        XCTAssertFalse(s.dropdown.isOpen)
+        XCTAssertEqual(s.focus.current, .cache)
+        XCTAssertTrue(s.focus.visible)
+        XCTAssertTrue(press(s, c, EditorKey(.space)))
+        XCTAssertEqual(s.dropdown.key, "cache")
+        XCTAssertTrue(press(s, c, EditorKey(.tab, shift: true)))
+        XCTAssertFalse(s.dropdown.isOpen)
+        XCTAssertEqual(s.focus.current, .audio)
+        XCTAssertEqual(changes, 0, "leaving a list chooses nothing")
+    }
+
     /// Acceptance 4 (the card's part; the shell's is in `SettingsWindowTests`): Escape, or Enter on Close, closes it.
     func testEscapeOrEnterOnCloseClosesTheCard() {
         let (s, c) = openCard()
@@ -297,6 +350,35 @@ final class SettingsPanelKeyboardTests: XCTestCase {
         XCTAssertTrue(press(s, c, EditorKey(.enter)))
         XCTAssertFalse(s.isOpen)
         XCTAssertNil(s.focus.current)
+    }
+}
+
+/// A list longer than its 280 pt cap keeps the keyboard highlight in view, on open and on every arrow.
+final class PanelDropdownKeyboardTests: XCTestCase {
+    func assertHighlightShows(_ d: PanelDropdown, file: StaticString = #filePath, line: UInt = #line) throws {
+        let hovered = try XCTUnwrap(d.hovered, file: file, line: line)
+        let row = try XCTUnwrap(d.rows().first { $0.index == hovered }, file: file, line: line)
+        let top = d.rect.y + 4 + row.y - d.scroll
+        XCTAssertGreaterThanOrEqual(top, d.rect.y + 4 - 1e-9, "row \(hovered) above the list", file: file, line: line)
+        XCTAssertLessThanOrEqual(top + row.h, d.rect.maxY - 4 + 1e-9, "row \(hovered) below the list", file: file, line: line)
+    }
+
+    func testTheHighlightedRowIsScrolledIntoView() throws {
+        let d = PanelDropdown()
+        let options = (0..<30).map { PanelDropdown.Option(value: "sink.\($0)", label: "Output \($0)") }
+        d.open(key: "audio", options: options, selected: "sink.25",
+               anchor: CanvasRect(x: 100, y: 100, width: 300, height: 28),
+               bounds: CanvasRect(x: 0, y: 0, width: 1440, height: 900)) { _ in }
+        XCTAssertEqual(d.rect.height, PanelDropdown.maxH, "capped: the list scrolls")
+        d.highlightSelected()
+        XCTAssertEqual(d.hovered, 25)
+        XCTAssertGreaterThan(d.scroll, 0)
+        try assertHighlightShows(d)
+        for _ in 0..<4 { XCTAssertTrue(d.key(EditorKey(.down))); try assertHighlightShows(d) }
+        XCTAssertEqual(d.hovered, 29)
+        for _ in 0..<29 { XCTAssertTrue(d.key(EditorKey(.up))); try assertHighlightShows(d) }
+        XCTAssertEqual(d.hovered, 0)
+        XCTAssertEqual(d.scroll, 0)
     }
 }
 

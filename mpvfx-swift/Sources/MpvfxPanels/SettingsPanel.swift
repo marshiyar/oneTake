@@ -322,8 +322,11 @@ public final class SettingsPanel {
 
     /// An open list takes the arrows, Enter (commit) and Escape (close the list) through `PanelDropdown.key`. A
     /// command shortcut closes it and goes on to the editor and menus (Cmd/Ctrl+, closes the card).
+    /// Tab / ⇧Tab close the list without choosing and move the card's focus on, as from a native list.
     private func listKey(_ key: EditorKey) -> Bool {
         if key.command { dropdown.close(); return false }
+        if key.code == .tab { dropdown.close(); moveFocus(forward: !key.shift); return true }
+        if key.isRepeat, key.code == .enter { return true }   // the Enter that opened the list, still held
         _ = dropdown.key(key)
         return true
     }
@@ -333,7 +336,7 @@ public final class SettingsPanel {
         case .tab: moveFocus(forward: !key.shift)
         case .left: stepAppearance(by: -1)
         case .right: stepAppearance(by: 1)
-        case .enter, .space: pressFocused()
+        case .enter, .space: if !key.isRepeat { pressFocused() }   // a held key presses once; arrows repeat
         default: break
         }
     }
