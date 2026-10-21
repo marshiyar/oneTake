@@ -231,7 +231,7 @@ extension InspectorPanel {
                 display: String(format: "%+.1f dB", band.gain), format: { String(format: "%+.1f dB", $0) },
                 tier: band.gain == 0 ? .default : .explicitCustom, centerTick: true,
                 commit: { v in set((v * 2).rounded() / 2) },   // the fader's 0.5 dB step
-                reset: { set(0) }, vertical: true))))
+                reset: { set(0) }, vertical: true, step: 0.5))))
         }
         let tint = Self.afxTint(FxNode(type: "eq", fromEq: eqId))
         let h = 2 + Self.eqHeadH + (open ? Self.afxGraphBlockH + Self.eqOpenBodyH : Self.eqSummaryH)

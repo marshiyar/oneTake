@@ -357,7 +357,8 @@ extension InspectorPanel {
         let edge = drawAccessories(c, line: lines.0, Self.sliderAccessories(s)) - gearSpace
         let cols = PanelGrid.columns(lines.0)
         let labelW = stacked ? max(0, edge - lines.0.x - PanelGrid.columnGap) : cols.label.width
-        PanelDraw.text(c, s.label, in: CanvasRect(x: lines.0.x, y: lines.0.midY - 8.25, width: labelW, height: 16.5), font: Self.rowFont, color: s.tier.labelColor)
+        let label = sliderInputError == s.key ? "Enter \(s.format(s.min))…\(s.format(s.max))" : s.label
+        PanelDraw.text(c, label, in: CanvasRect(x: lines.0.x, y: lines.0.midY - 8.25, width: labelW, height: 16.5), font: Self.rowFont, color: s.tier.labelColor)
         drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: stacked ? lines.1.maxX : edge)
     }
 
@@ -376,7 +377,10 @@ extension InspectorPanel {
         let drag = sliderDrag?.key == s.key ? sliderDrag : nil
         let pos = drag?.current ?? s.position
         let custom = s.tier == .explicitCustom || drag != nil
-        PanelDraw.text(c, drag != nil ? s.format(pos) : s.display, in: valueRect, font: PanelTheme.mono(10),
+        let editing = field?.key == s.key
+        let text = editing ? (field?.draft ?? s.display) : (drag != nil ? s.format(pos) : s.display)
+        if editing { drawFieldEditing(c, valueRect, text: text, font: PanelTheme.mono(10), readOnly: false) }
+        PanelDraw.text(c, text, in: valueRect, font: PanelTheme.mono(10),
                        color: s.tier.valueInk(disabled: s.disabled, adjusting: drag != nil), align: .right)
         let track = CanvasRect(x: trackX, y: line.midY - PanelGrid.minTarget / 2, width: max(10, valueRect.x - 8 - trackX), height: PanelGrid.minTarget)
         let pct = max(0, min(1, (pos - s.min) / max(1e-9, s.max - s.min)))
@@ -387,7 +391,10 @@ extension InspectorPanel {
         let k = custom ? 8.0 : 7.0
         c.fill(.roundedRect(CanvasRect(x: track.x + track.width * pct - k / 2, y: track.midY - k / 2, width: k, height: k), radius: k / 2),
                custom ? PanelTheme.white : PanelTheme.text4)
-        if !s.disabled { addHit(track, .slider(s.key)) }
+        if !s.disabled {
+            addHit(track, .slider(s.key))
+            addHit(Self.target(valueRect), .field(s.key))
+        }
     }
 
     /// FlatToggle: grey label (rowLabel, truncated before the switch), 24×14 pill ending at the value edge, knob 10px
