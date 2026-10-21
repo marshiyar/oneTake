@@ -14,7 +14,7 @@
 // Untyped JSON values (`unknown` / string-keyed record payloads) as the document validators read them.
 import Foundation
 
-public indirect enum NativeJSONValue: Codable, Equatable {
+public indirect enum NativeJSONValue: Codable, Equatable, Sendable {
     case null, bool(Bool), number(Double), string(String), array([NativeJSONValue]), object(NativeJSONObject)
 
     public init(from decoder: Decoder) throws {

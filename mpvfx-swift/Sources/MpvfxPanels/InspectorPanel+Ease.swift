@@ -78,7 +78,7 @@ extension InspectorPanel {
         let (refs, selected) = easeTargets(editor, s, channels: channels)
         guard let first = refs.first, let cur = editor.outgoing(first) else { return [] }
         let trailing = selected ? "\(refs.count) selected" : (refs.count > 1 ? "\(refs.count) channels" : nil)
-        var rows: [InspectorRow] = [.init(.spacer(6)), .init(.heading("Keyframe easing", trailing: trailing))]
+        var rows: [InspectorRow] = [.init(.spacer(PanelGrid.unit)), .init(.heading("Keyframe easing", trailing: trailing))]
         let active = Self.easePresetKey(cur)
         var points = Self.defaultCubic
         if case .cubicBezier(let p) = cur { points = p }

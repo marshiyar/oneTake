@@ -73,6 +73,16 @@ final class TimelineEditorAbilitiesTests: XCTestCase {
         XCTAssertEqual(e.document, before)
     }
 
+    func testLoudnessMatchAppliesEveryGainInOneUndoStep() throws {
+        let e = try editor(); let before = e.document
+        XCTAssertTrue(e.applyLoudnessMatch(["clip:a": 0.5, "clip:b": 1.25, "clip:music": 4.5]))
+        XCTAssertEqual(e.clipVolume(clipId: "clip:a"), 0.5)
+        XCTAssertEqual(e.clipVolume(clipId: "clip:b"), 1.25)
+        XCTAssertEqual(e.clipVolume(clipId: "clip:music"), 4.5, "matching is not limited by the interactive +12 dB fader")
+        XCTAssertEqual(e.undoStack.count, 1); XCTAssertEqual(e.undoLabel, "Match loudness")
+        XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
+    }
+
     func testAudioGroupLifecycle() throws {
         let e = try editor(); let before = e.document
         XCTAssertNil(e.createAudioGroup(clipIds: ["clip:music"]), "needs two clips")
@@ -198,7 +208,7 @@ final class TimelineClipContentVisualTests: XCTestCase {
     func render(_ setup: (TimelineController) -> Void) throws -> CairoImageTarget {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         setup(c)
         let t = CairoImageTarget(width: 1264, height: 300)
         c.view.draw(t.canvas, size: CanvasSize(1264, 300))
@@ -223,6 +233,27 @@ final class TimelineClipContentVisualTests: XCTestCase {
         XCTAssertGreaterThan(rgb(on, 264 + 300, y)[0], 200, "frame drawn")
         let off = try render { $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)]; $0.view.thumbnailsEnabled = false }
         XCTAssertLessThan(rgb(off, 264 + 300, y)[0], 100, "thumbnail mode hidden: plain bar")
+    }
+
+    func testClipHeaderStripIsKindColouredOverContent() throws {
+        // docs/DESIGN.md Principle 3: the name sits on an 18 px strip of the kind colour; the content fills the body below.
+        let red = CanvasImage(width: 16, height: 9, rgba: Array([UInt8]([255, 0, 0, 255]).repeated(16 * 9)))
+        let video = Int(TimelineLayout.rowTop(1) + TimelineLayout.clipY), audio = Int(TimelineLayout.rowTop(2) + TimelineLayout.clipY)
+        let header = 18, x = 264 + 300   // ThemeTokens.clipHeaderHeight
+        let t = try render {
+            $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)]
+            $0.view.waveforms = ["asset:music": Array(repeating: 1, count: 900)]
+        }
+        XCTAssertEqual(rgb(t, x, video + header / 2), [29, 74, 100], "video header = clipVideo #1D4A64")
+        XCTAssertEqual(rgb(t, x, video + header - 1), [29, 74, 100], "header is 18 px tall")
+        XCTAssertGreaterThan(rgb(t, x, video + header + 1)[0], 200, "frame drawn right below the header")
+        XCTAssertEqual(rgb(t, x, audio + header / 2), [47, 74, 23], "audio header = clipAudio #2F4A17, full-height peaks stop below it")
+        let bar = rgb(t, x, audio + header + 1)
+        XCTAssertGreaterThan(bar[2], bar[0] + 40, "full-height waveform bar reaches the header: \(bar)")
+        let plain = try render { _ in }
+        XCTAssertEqual(rgb(plain, x, video + header / 2), [29, 74, 100], "the strip is there on a plain clip too")
+        let hovered = try render { $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)]; $0.view.hoveredClip = "clip:a" }
+        XCTAssertEqual(rgb(hovered, x, video + header / 2), [36, 90, 121], "the header carries the hover state (clipVideoHover #245A79)")
     }
 
     func testHiddenTrackFadesClips() throws {
