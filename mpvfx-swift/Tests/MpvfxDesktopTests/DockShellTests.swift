@@ -110,7 +110,7 @@ final class DockShellTests: XCTestCase {
         click(router, CanvasPoint(DockTabBar.menuRect(strip).cx, DockTabBar.menuRect(strip).cy))
         XCTAssertTrue(router.dockMenu.isOpen)
         let values = router.dockMenu.options.map(\.value)
-        XCTAssertEqual(values, ["toggle:media", "toggle:preview", "toggle:inspector", "toggle:renders", "toggle:timeline", "toggle:history", "toggle:info",
+        XCTAssertEqual(values, ["toggle:media", "toggle:preview", "toggle:inspector", "toggle:renders", "toggle:timeline", "toggle:history", "toggle:info", "toggle:scopes",
                                  "toggle:design.transform", "toggle:design.style", "toggle:design.grade", "toggle:design.effects",
                                  "toggle:design.audio-fx", "toggle:design.media"],
                        "the Preview cannot be closed, so its menu starts with the panel list")
@@ -238,13 +238,13 @@ final class DockShellTests: XCTestCase {
         draw(router)
         XCTAssertGreaterThan(painted, 0)
         XCTAssertEqual(router.windowMenuPanels.map(\.title), ["Media", "Preview", "Design", "Renders", "Timeline", "History", "Info",
-                        "Transform", "Style", "Grade", "Effects", "Audio FX", "Media", "Easing"])
+                        "Scopes", "Transform", "Style", "Grade", "Effects", "Audio FX", "Media", "Easing"])
     }
 
     func testTheWindowMenuListsEveryPanelWithACheckmarkAndTogglesIt() throws {
         let (_, router) = try session(try userData())
         // The Design groups start in the Design tab, so their panels are listed unchecked.
-        XCTAssertTrue(router.windowMenuPanels.filter { !DesignGroups.isDesignPanel($0.id) }.allSatisfy(\.checked))
+        XCTAssertTrue(router.windowMenuPanels.filter { !DesignGroups.isDesignPanel($0.id) && $0.id != DockPanels.scopes }.allSatisfy(\.checked))
         router.togglePanelFromMenu("media")
         XCTAssertEqual(router.windowMenuPanels.first { $0.id == "media" }?.checked, false)
         router.togglePanelFromMenu("media")

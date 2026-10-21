@@ -64,4 +64,21 @@ final class NativeClipStyleTests: XCTestCase {
         rejects(##"{"shadows":[{"x":1}]}"##, "A shadow needs a color")
         rejects(##"{"shadows":[{"color":"#000","blur":-2}]}"##, "non-negative")
     }
+
+    // Blend modes (`clip.style.blend`): saved, validated, absent by default.
+    func testBlendRoundTripsAndAnAbsentBlendStaysAbsent() throws {
+        for mode in NativeBlendMode.allCases where mode != .normal {
+            let style = try roundTrip(withStyle(#"{"blend":"\#(mode.rawValue)"}"#)).sequence.tracks[0].clips[0].style
+            XCTAssertEqual(style, NativeClipStyle(blend: mode.rawValue)); XCTAssertEqual(style?.blendMode, mode)
+        }
+        XCTAssertEqual(NativeClipStyle().blendMode, .normal)
+        XCTAssertTrue(NativeClipStyle().isEmpty); XCTAssertFalse(NativeClipStyle(blend: "screen").isEmpty)
+        XCTAssertEqual(NativeBlendMode.allCases.map(\.rawValue),
+                       ["normal", "multiply", "screen", "overlay", "add", "soft-light", "darken", "lighten"])
+    }
+
+    func testRejectsAnUnknownBlend() {
+        rejects(##"{"blend":"dissolve"}"##, "Blend must be one of")
+        rejects(##"{"blend":3}"##, "Blend must be one of")
+    }
 }

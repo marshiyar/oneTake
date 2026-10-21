@@ -150,10 +150,16 @@ final class ExportColorGradeTests: XCTestCase {
         let exported = try Exported(path: output).rgba(0.5).rgba
         let preview = try previewExportFrame(input, at: 0.5)
         XCTAssertLessThanOrEqual(maxAbsDiff(exported, preview), 1)
-        let greenAlpha: [UInt8] = (0..<32).flatMap { (y: Int) -> [UInt8] in
+        // The green bar darkens toward the top (a ramp of 0.4...1 of full green), and darker greens sit further from the
+        // key in chroma, so only the lower rows (at least 0.9 of full green, distance 0.07 < similarity) are fully keyed.
+        let greenAlpha: [UInt8] = (28..<32).flatMap { (y: Int) -> [UInt8] in
             (24..<32).map { (x: Int) -> UInt8 in exported[(y * 64 + x) * 4 + 3] }
         }
         XCTAssertLessThanOrEqual(greenAlpha.max() ?? 255, 1, "the computed matte is written to MOV alpha")
+        let whiteAlpha = (0..<8).map { exported[(16 * 64 + $0) * 4 + 3] }
+        XCTAssertEqual(whiteAlpha.min(), 255, "a colour far from the key stays opaque")
+        let topGreen = (24..<32).map { Int(exported[(2 * 64 + $0) * 4 + 3]) }
+        XCTAssertGreaterThan(topGreen.min() ?? 0, 1, "the matte follows the chroma distance: the darker top of the bar keys less")
 
         let unsupported = NativeClipEffect(id: "future", effectId: "color-key", enabled: true,
                                            parameters: try XCTUnwrap(try NativeJSONValue.parse(#"{"v":2,"kind":"future"}"#).objectValue))

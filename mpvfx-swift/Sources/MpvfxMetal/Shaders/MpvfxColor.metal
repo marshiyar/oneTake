@@ -283,6 +283,33 @@ inline float2 applyCrtWarp(float2 uv, constant float* u) {
     return centered * 0.5f + 0.5f;
 }
 
+// MARK: Blend modes (separable, straight alpha; the CPU reference is BlendShader.swift)
+
+inline float softLightBackdrop(float x) { return x <= 0.25f ? ((16.0f * x - 12.0f) * x + 4.0f) * x : SQRT(x); }
+
+// One channel of the blend function B(cb, cs); `mode` is the BLEND_* index.
+inline float blendChannel(int mode, float cb, float cs) {
+    if (mode == BLEND_multiply) { return cb * cs; }
+    if (mode == BLEND_screen) { return cb + cs - cb * cs; }
+    if (mode == BLEND_overlay) { return cb <= 0.5f ? cs * (2.0f * cb) : cs + (2.0f * cb - 1.0f) - cs * (2.0f * cb - 1.0f); }
+    if (mode == BLEND_add) { return FMIN(1.0f, cb + cs); }
+    if (mode == BLEND_softLight) {
+        return cs <= 0.5f ? cb - (1.0f - 2.0f * cs) * cb * (1.0f - cb) : cb + (2.0f * cs - 1.0f) * (softLightBackdrop(cb) - cb);
+    }
+    if (mode == BLEND_darken) { return FMIN(cb, cs); }
+    if (mode == BLEND_lighten) { return FMAX(cb, cs); }
+    return cs;
+}
+
+// `s` over backdrop `b` (both straight alpha) with blend mode `mode`: the W3C compositing equation.
+inline float4 blendComposite(int mode, float4 b, float4 s) {
+    float ar = s.w + b.w * (1.0f - s.w);
+    if (ar <= 0.0f) { return V4(0.0f, 0.0f, 0.0f, 0.0f); }
+    float3 mixed = V3(blendChannel(mode, b.x, s.x), blendChannel(mode, b.y, s.y), blendChannel(mode, b.z, s.z));
+    float3 c = ((1.0f - s.w) * b.w) * b.xyz + ((1.0f - b.w) * s.w) * s.xyz + (s.w * b.w) * mixed;
+    return V43(clamp3(c / ar, 0.0f, 1.0f), ar);
+}
+
 // MARK: Grade
 
 inline float3 paletteColor(float index, constant float* u) {
@@ -905,8 +932,14 @@ float4 shade(float2 frag, P_ALL) {
         float2 keyChroma = V2((key.z - keyY) / 1.8556f, (key.x - keyY) / 1.5748f);
         float distance = SQRT(POW(chroma.x - keyChroma.x, 2.0f) + POW(chroma.y - keyChroma.y, 2.0f));
         alpha *= smoothstepf(U(keySimilarity), U(keySimilarity) + FMAX(U(keySmoothness), 0.000001f), distance);
-        float excessGreen = FMAX(0.0f, graded.y - FMAX(graded.x, graded.z));
-        graded.y -= excessGreen * U(keySpill);
+        // Spill is the key hue's excess over the other two channels (green, else blue, else red), pulled out of the graded colour.
+        if (key.y >= key.x && key.y >= key.z) {
+            graded.y -= FMAX(0.0f, graded.y - FMAX(graded.x, graded.z)) * U(keySpill);
+        } else if (key.z >= key.x) {
+            graded.z -= FMAX(0.0f, graded.z - FMAX(graded.x, graded.y)) * U(keySpill);
+        } else {
+            graded.x -= FMAX(0.0f, graded.x - FMAX(graded.y, graded.z)) * U(keySpill);
+        }
     }
     return V43(graded, alpha);
 }
