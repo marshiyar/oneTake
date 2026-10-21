@@ -29,6 +29,9 @@ public struct GradeUIState: Equatable {
     /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
+    var qualifierDraft: ColorGrading.Secondary?
+    var qualifierTracks: [String: CanvasRect] = [:]
+    var qualifierGrab: (secondary: ColorGrading.Secondary, x: Double, value: Double)?
     /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
     /// past the drag threshold (a click that only selects a point never moves it).
     var curveGrab: (dx: Double, dy: Double, start: CanvasPoint, moved: Bool)?
@@ -415,9 +418,16 @@ extension InspectorPanel {
         }
         let deg: (Double) -> String = { "\(Int($0.rounded()))°" }, pct: (Double) -> String = { "\(Int($0.rounded()))%" }
         rows.append(.init(.heading("Qualifier", trailing: nil)))
-        rows.append(slider("sec:hue", "Hue", s.hueCenter, 0, 359, deg, def: 0, center: false) { $0.hueCenter = $1 })
-        rows.append(slider("sec:range", "Hue range", s.hueRange, 0, 180, deg, def: 30, center: false) { $0.hueRange = min($1, 180 - $0.hueSoftness) })
-        rows.append(slider("sec:soft", "Hue softness", s.hueSoftness, 0, 180, deg, def: 20, center: false) { $0.hueSoftness = min($1, 180 - $0.hueRange) })
+        for channel in SecondaryQualifier.allCases {
+            rows.append(qualifierRow(channel, secondary: s) { next in
+                var n = g; n.secondaries[sel] = next; commit(n)
+            })
+            let softness = channel.softness(s)
+            rows.append(slider("sec:\(channel.rawValue):soft", "Softness", softness, 0, channel == .hue ? 180 : 1,
+                               channel == .hue ? deg : { pct($0 * 100) }, def: channel == .hue ? 20 : 0.1, center: false) {
+                channel.setSoftness(&$0, $1)
+            })
+        }
         rows.append(.init(.heading("Correction", trailing: nil)))
         rows.append(slider("sec:shift", "Hue shift", s.hueShift, -180, 180, deg, def: 0, center: true) { $0.hueShift = $1.rounded() })
         rows.append(slider("sec:sat", "Saturation", s.saturation * 100, -100, 100, pct, def: 0, center: true) { $0.saturation = ($1 / 100 * 100).rounded() / 100 })
