@@ -123,15 +123,22 @@ extension InspectorPanel {
         return group
     }
 
+    private static func activeEffectColors(selected: Bool, hovered: Bool) -> (border: CanvasColor, label: CanvasColor) {
+        if selected { return (PanelTheme.accent, PanelTheme.text0) }
+        if hovered { return (PanelTheme.panelBorderInput, PanelTheme.text1) }
+        return (PanelTheme.panelHairline, PanelTheme.text3)
+    }
+
     /// An active effect: `min-h-[30px] border px-2 text-[10px]`, accent/10 on the accent border while it is the one
     /// being edited ("Editing"), else bg-panel-bg-soft on the hairline ("Active", 9px text-5).
     func activeEffectRow(_ e: EffectSpecs.Spec, selected: Bool, enabled: Bool, toggle: @escaping () -> Void) -> InspectorCustomRow {
         InspectorCustomRow(id: "fx:active:\(e.key)", height: 30, draw: { c, r, panel in
             let hot = panel.hovered == .custom("fx:active:\(e.key)", 0)
+            let colors = Self.activeEffectColors(selected: selected, hovered: hot)
             if selected { c.fillRect(r.snapped, PanelTheme.accent.withAlpha(0.1)) }   // bg-panel-bg-soft is not a theme colour: transparent
-            c.strokeRect(r.snapped.insetBy(0.5), selected ? PanelTheme.accent : (hot ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)
+            c.strokeRect(r.snapped.insetBy(0.5), colors.border, width: 1)
             PanelDraw.text(c, e.label, in: CanvasRect(x: r.x + 9, y: r.midY - 7.5, width: r.width - 100, height: 15), font: PanelTheme.font(10),
-                           color: selected ? PanelTheme.text0 : (hot ? PanelTheme.text1 : PanelTheme.text3))
+                           color: colors.label)
             PanelDraw.text(c, selected ? "Editing" : "Active", in: CanvasRect(x: r.x + 9, y: r.midY - 6.75, width: r.width - 54, height: 13.5),
                            font: PanelTheme.font(9), color: PanelTheme.text5, align: .right)
             let switchTarget = CanvasRect(x: r.maxX - 30, y: r.midY - 12, width: 24, height: 24)
