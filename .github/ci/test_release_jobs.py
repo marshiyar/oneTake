@@ -68,16 +68,38 @@ class ReleaseJobs(unittest.TestCase):
         self.assertIs(checkout["with"]["persist-credentials"], False)
 
 
-class MacosSecrets(unittest.TestCase):
-    def test_signing_and_apple_secrets_reach_only_a_stable_tag(self):
-        seen = 0
-        for job in workflow("mpvfx-macos.yml")["jobs"].values():
-            for step in job.get("steps", []):
-                for key, value in (step.get("env") or {}).items():
-                    if isinstance(value, str) and "secrets." in value:
-                        seen += 1
-                        self.assertTrue(value.startswith("${{ " + STABLE + " && secrets."), f"{key}: {value}")
-        self.assertEqual(seen, 5)   # the certificate and its password, APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID
+class MacosVerification(unittest.TestCase):
+    """Owner ruling 2026-10-21: developer verification is tried wherever the secrets are and never fails the build;
+    the disk image is named and released as Developer Verified or Developer Stamp Unverified."""
+
+    def setUp(self):
+        self.steps = [s for j in workflow("mpvfx-macos.yml")["jobs"].values() for s in j.get("steps", [])]
+
+    def test_signing_and_apple_secrets_never_reach_a_pull_request(self):
+        values = [v for s in self.steps for v in (s.get("env") or {}).values() if isinstance(v, str)]
+        secret = [v for v in values if "secrets." in v]
+        self.assertEqual(len(secret), 5)   # the certificate, its password, APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID
+        for value in secret:
+            self.assertTrue(value.startswith(
+                "${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets."), value)
+
+    def test_verification_never_fails_the_build(self):
+        package = next(s for s in self.steps if s.get("name", "").startswith("Package"))
+        self.assertEqual(package["env"]["NOTARIZE_REQUIRED"], "0")
+        self.assertIn("developer-verified", package["run"])
+        self.assertIn("developer-stamp-unverified", package["run"])
+        with open(os.path.join(ROOT, "mpvfx-swift", "packaging", "macos", "package.sh"), encoding="utf-8") as f:
+            script = f.read()
+        self.assertNotIn("notarization was not accepted\" >&2; exit 1", script)
+        self.assertIn(': > "$dist/.not-notarized"', script)
+
+    def test_the_release_labels_each_kind(self):
+        with open(os.path.join(ROOT, ".github", "ci", "publish.sh"), encoding="utf-8") as f:
+            script = f.read()
+        self.assertIn('*-developer-verified.dmg) echo "#oneTake for macOS (Developer Verified)"', script)
+        unverified = '*-developer-stamp-unverified.dmg) echo "#oneTake for macOS (Developer Stamp Unverified)"'
+        self.assertIn(unverified, script)
+        self.assertIn('files+=("$f$(asset_label "$f")")', script)
 
 
 if __name__ == "__main__":
