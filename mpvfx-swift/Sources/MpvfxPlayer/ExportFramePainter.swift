@@ -90,7 +90,7 @@ public final class ExportFramePainter {
         }
         let frameIndex = composition.frameIndex(at: time)
         for (layer, w, h) in layers {
-            if layer.kind == .text {
+            if layer.isProcedural {
                 PreviewPainter.drawText(layer, on: canvas, frame: rect, scale: s)
                 continue
             }
