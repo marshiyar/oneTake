@@ -17,7 +17,7 @@ import MpvfxAudioGraph
 
 /// Builds the bus/FX graph project from an open document, mirroring what export feeds the mixer:
 /// audio/video clips with a resolvable file (detached-from video clips excluded), clip `audio.volume`,
-/// clip mute, `audioGroupId`, clip FX chain + automation, and the sequence's audio groups (volume, mute,
+/// clip fades, clip mute, `audioGroupId`, clip FX chain + automation, and the sequence's audio groups (volume, mute,
 /// FX chain, automation). Stems are decoded by `loadStem` (the media engine in the app, `decodeStem`; synthetic in tests).
 public enum DocumentAudioGraph {
     /// What a stem decode depends on; also the cache key, so an edit only re-decodes the clips it changed.
@@ -42,6 +42,8 @@ public enum DocumentAudioGraph {
             /// The clip's cut transition fades (nil: none); `start`/`end` and the stem already include the handle
             /// media a dissolve plays past the clip's own edges.
             public var transitionGain: AudioTransitionGain? = nil
+            /// The clip's `fadeInFrames` / `fadeOutFrames` in seconds (0: none).
+            public var fadeIn: Double = 0, fadeOut: Double = 0
         }
     }
 
@@ -66,7 +68,8 @@ public enum DocumentAudioGraph {
                                preservesPitch: c.preservesPitch ?? true)
             var track = Inputs.Track(id: c.id, stem: stem,
                                      start: start, end: end, volume: volume, muted: c.muted,
-                                     fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty)
+                                     fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty,
+                                     fadeIn: (c.fadeInFrames ?? 0) / fps, fadeOut: (c.fadeOutFrames ?? 0) / fps)
             if let t = transitions[c.id] { applyTransitions(t, to: &track, fps: fps) }
             tracks.append(track)
         }
@@ -115,6 +118,7 @@ public enum DocumentAudioGraph {
             var track = AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: t.volume, muted: t.muted,
                                         fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
             track.transitionGain = t.transitionGain
+            track.fadeIn = t.fadeIn; track.fadeOut = t.fadeOut
             return track
         }
         let groups = inputs.groups.map { g in

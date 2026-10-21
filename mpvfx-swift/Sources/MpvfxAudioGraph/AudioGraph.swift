@@ -46,6 +46,10 @@ public struct AudioGraphTrack: Sendable {
     public var groupId: String?
     /// Cut transition fades on the clip's sound (nil: none), applied to the stem before its effects.
     public var transitionGain: AudioTransitionGain? = nil
+    /// Fade-in and fade-out lengths in seconds (0: none): a linear gain ramp on the stem before the FX chain,
+    /// multiplied with the volume and its automation (`ClipFadeRamp`). Set after `init`.
+    public var fadeIn: Double = 0
+    public var fadeOut: Double = 0
     public init(id: String, stem: [[Float]], start: Double, end: Double, volume: Double = 1, pan: Double = 0, muted: Bool = false,
                 fxChain: FxChain? = nil, automation: Automation? = nil, groupId: String? = nil) {
         self.id = id; self.stem = stem; self.start = start; self.end = end; self.volume = volume; self.pan = pan; self.muted = muted
@@ -165,9 +169,9 @@ final class TrackStage: FrameSource {
             let g = fades.samples(count: n, start: t.start, sampleRate: sr)
             for i in 0..<n { stemL[i] *= g[i]; stemR[i] *= g[i] }
         }
-        let prepared: (Int) -> (Float, Float) = quantize
+        let prepared = ClipFadeRamp(t, sampleRate: sr).applied(to: quantize
             ? { i in i < n ? (s16ToF32(f32ToS16(stemL[i])), s16ToF32(f32ToS16(stemR[i]))) : (0, 0) }
-            : { i in i < n ? (stemL[i], stemR[i]) : (0, 0) }
+            : { i in i < n ? (stemL[i], stemR[i]) : (0, 0) })
         let chain = t.fxChain.flatMap { $0.enabledNodes.isEmpty ? nil : $0 }
         let tail = t.fxChain.map { FxTail.chainSeconds($0, t.automation) } ?? 0
         let laneKf = t.automation.flatMap { VolumeEnvelope.laneKeyframes($0, trackStart: t.start, duration: dur) }
@@ -225,6 +229,33 @@ final class TrackStage: FrameSource {
             l[offset + k] = a; r[offset + k] = b
         }
         produced += count
+    }
+}
+
+/// A clip's fades as a gain per stem frame: linear from 0 at the clip start to 1 after `fadeIn` seconds, and from 1
+/// to 0 at the clip end over `fadeOut`, multiplied and clamped (the same ramp as `NativeClipFade.gain`).
+struct ClipFadeRamp {
+    let inFrames: Double, outFrames: Double, endFrame: Double
+    init(_ track: AudioGraphTrack, sampleRate sr: Double) {
+        inFrames = track.fadeIn.isFinite ? max(0, track.fadeIn) * sr : 0
+        outFrames = track.fadeOut.isFinite ? max(0, track.fadeOut) * sr : 0
+        endFrame = (track.end - track.start) * sr
+    }
+    var isUnity: Bool { inFrames <= 0 && outFrames <= 0 }
+    /// `frame` with the ramp applied; `frame` itself when there is no fade, so an unfaded clip renders as before.
+    func applied(to frame: @escaping (Int) -> (Float, Float)) -> (Int) -> (Float, Float) {
+        if isUnity { return frame }
+        return { i in
+            let (a, b) = frame(i)
+            let g = gain(atFrame: i)
+            return (a * g, b * g)
+        }
+    }
+    func gain(atFrame i: Int) -> Float {
+        let x = Double(i)
+        let up = inFrames > 0 ? min(1, max(0, x / inFrames)) : 1
+        let down = outFrames > 0 ? min(1, max(0, (endFrame - x) / outFrames)) : 1
+        return Float(up * down)
     }
 }
 
@@ -409,7 +440,7 @@ public final class AudioGraphRenderer {
         for (a, b) in zip(old.tracks, next.tracks) {
             guard a.id == b.id, a.start == b.start, a.end == b.end, a.pan == b.pan, a.muted == b.muted, a.groupId == b.groupId,
                   a.transitionGain == b.transitionGain,
-                  a.automation == b.automation, sameStem(a.stem, b.stem) else { return false }
+                  a.fadeIn == b.fadeIn, a.fadeOut == b.fadeOut, a.automation == b.automation, sameStem(a.stem, b.stem) else { return false }
             let stage = trackStages[a.id]
             if a.volume != b.volume {
                 if let stage {

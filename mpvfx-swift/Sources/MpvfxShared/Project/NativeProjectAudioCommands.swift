@@ -69,6 +69,8 @@ public func detachNativeVideoAudio(_ source: NativeProjectDocument, videoClipId:
         staticParameters: (video.staticParameters ?? [:]).filter { $0.key.hasPrefix("audio.") }, cropPivotSegments: nil, effects: [],
         parameterTracks: video.parameterTracks.filter { $0.parameterId.hasPrefix("audio.") })
     audioClip.preservesPitch = video.preservesPitch
+    // The fades shape the sound, so they go with it (the video keeps its own for its picture).
+    audioClip.fadeInFrames = video.fadeInFrames; audioClip.fadeOutFrames = video.fadeOutFrames
     var v = video
     v.muted = true; v.audioGroupId = nil; v.audioFxChain = nil; v.audioAutomation = nil
     v.parameterTracks = video.parameterTracks.filter { !$0.parameterId.hasPrefix("audio.") }
@@ -81,7 +83,7 @@ public func detachNativeVideoAudio(_ source: NativeProjectDocument, videoClipId:
     return try parseNativeProjectDocument(d, engine: engine)
 }
 
-/// Reattach only while the two clips still describe the same source interval. Gain, mute and group membership transfer.
+/// Reattach only while the two clips still describe the same source interval. Gain, mute, fades and group membership transfer.
 public func reattachNativeVideoAudio(_ source: NativeProjectDocument, audioClipId: String, engine: KeyframeEngine? = nil) throws -> NativeProjectDocument {
     var d = try parseNativeProjectDocument(source, engine: engine)
     let audioTrackIndex = d.sequence.tracks.firstIndex { $0.clips.contains { $0.id == audioClipId } }
@@ -117,6 +119,7 @@ public func reattachNativeVideoAudio(_ source: NativeProjectDocument, audioClipI
     v.audioFxChain = audio.audioFxChain?.nilIfEmpty
     v.audioAutomation = audio.audioAutomation?.nilIfEmpty
     v.preservesPitch = audio.preservesPitch
+    v.fadeInFrames = audio.fadeInFrames; v.fadeOutFrames = audio.fadeOutFrames
     d.sequence.tracks[vt].clips[vc] = v
     d.sequence.tracks[audioTrackIndex].clips.removeAll { $0.id == audio.id }
     if d.sequence.tracks[audioTrackIndex].clips.isEmpty { d.sequence.tracks.remove(at: audioTrackIndex) }

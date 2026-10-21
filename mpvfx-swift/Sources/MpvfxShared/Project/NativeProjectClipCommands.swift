@@ -178,6 +178,7 @@ private func applyTrimIn(_ d: NativeProjectDocument, _ a: NativeProjectClipAddre
     var next = clip
     next.startFrame = startFrame; setSource(&next, position)
     next.durationFrames = clip.durationFrames - delta
+    next.clampFades(movedEdge: .start)
     next.parameterTracks = tracks
     next.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: tracks, fromFrame: delta, untilFrameExclusive: clip.durationFrames)
     return try succeed(d, try replaceClip(d, loc, [next], engine), engine)
@@ -206,6 +207,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     let tracks = shrinking ? try rebasedTracks(clip, 0, nextDuration, engine) { $0.id } : clip.parameterTracks
     var next = clip
     next.durationFrames = nextDuration
+    next.clampFades(movedEdge: .end)
     next.parameterTracks = tracks
     next.cropPivotSegments = shrinking ? rebaseNativeCropPivotSegments(clip, rebasedTracks: tracks, fromFrame: 0, untilFrameExclusive: nextDuration)
                                        : clip.cropPivotSegments
@@ -239,10 +241,13 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     let rightTracks = try rebasedTracks(clip, local, clip.durationFrames, engine) { nativeSplitTrackId($0.id, rightId, $0.parameterId) }
     var left = clip
     left.durationFrames = local; left.parameterTracks = leftTracks
+    // The cut is a new edge on both parts: the left keeps the fade-in, the right the fade-out.
+    left.fadeOutFrames = nil; left.clampFades(movedEdge: .end)
     left.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: leftTracks, fromFrame: 0, untilFrameExclusive: local)
     var right = clip
     right.id = rightId; right.startFrame = splitFrame; right.durationFrames = clip.durationFrames - local
     setSource(&right, position)
+    right.fadeInFrames = nil; right.clampFades(movedEdge: .start)
     if let rightBinding { right.binding = rightBinding }
     right.parameterTracks = rightTracks
     right.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: rightTracks, fromFrame: local, untilFrameExclusive: clip.durationFrames)
