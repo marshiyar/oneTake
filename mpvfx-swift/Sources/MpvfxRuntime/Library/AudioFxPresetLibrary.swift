@@ -19,29 +19,47 @@ public enum AudioFxPresetLibrary {
     private static func database(_ path: String) throws -> CatalogDatabase {
         guard !path.utf8.contains(0) else { throw LibraryCatalogError("Embedded NUL is not permitted") }
         try SQLiteRequirements.verifyOnce()
-        let db = try CatalogDatabase(path, create: false)
-        guard try db.query("PRAGMA user_version") == "1" else { throw LibraryCatalogError("Unsupported library catalog version") }
-        try db.exec("CREATE TABLE IF NOT EXISTS audioFxPresets(id TEXT PRIMARY KEY, name TEXT NOT NULL, chain TEXT NOT NULL)")
-        return db
+        let catalog = try CatalogDatabase(path, create: false)
+        guard try catalog.query("PRAGMA user_version") == "1" else {
+            throw LibraryCatalogError("Unsupported library catalog version")
+        }
+        try catalog.exec(
+            """
+            CREATE TABLE IF NOT EXISTS audioFxPresets(
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, chain TEXT NOT NULL
+            )
+            """)
+        return catalog
     }
+    /// Saves the node's active A/B settings as a named preset in an existing library catalog.
     public static func save(_ path: String, name: String, node: FxNode) throws {
-        guard !path.utf8.contains(0), !name.utf8.contains(0) else { throw LibraryCatalogError("Embedded NUL is not permitted") }
+        guard !path.utf8.contains(0), !name.utf8.contains(0) else {
+            throw LibraryCatalogError("Embedded NUL is not permitted")
+        }
         let title = try libraryTitle(name)
         guard AudioFx.definition(node.type) != nil else { throw LibraryCatalogError("Unknown audio effect") }
         let captured = FxNode(type: node.type, version: node.version ?? 1, params: node.params)
         let chain = AudioFx.serializeChain(FxChain(version: node.version ?? 1, nodes: [captured]))
-        try database(path).query("INSERT INTO audioFxPresets VALUES(?1,?2,?3)", [UUID().uuidString.lowercased(), title, chain])
+        try database(path).query(
+            "INSERT INTO audioFxPresets VALUES(?1,?2,?3)", [UUID().uuidString.lowercased(), title, chain])
     }
+    /// Reads saved effect presets in stable name/ID order without changing the library's project records.
     public static func presets(_ path: String) throws -> [AudioFxModulePreset] {
-        let text = try database(path).query("SELECT json_group_array(json_object('id',id,'name',name,'chain',chain)) FROM (SELECT * FROM audioFxPresets ORDER BY name,id)")
+        let text = try database(path).query(
+            """
+            SELECT json_group_array(json_object('id',id,'name',name,'chain',chain))
+            FROM (SELECT * FROM audioFxPresets ORDER BY name,id)
+            """)
         guard let rows = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [[String: String]] else {
             throw LibraryCatalogError("Invalid audio preset catalog")
         }
         return try rows.map { row in
             guard let id = row["id"], let name = row["name"], let json = row["chain"],
-                  let node = try AudioFx.parseChain(json).nodes.first else { throw LibraryCatalogError("Invalid audio preset") }
-            return AudioFxModulePreset(id: id, label: name, type: node.type, version: node.version ?? 1,
-                                       params: node.params ?? AudioFx.defaultParams(node.type, version: node.version ?? 1))
+                let node = try AudioFx.parseChain(json).nodes.first
+            else { throw LibraryCatalogError("Invalid audio preset") }
+            return AudioFxModulePreset(
+                id: id, label: name, type: node.type, version: node.version ?? 1,
+                params: node.params ?? AudioFx.defaultParams(node.type, version: node.version ?? 1))
         }
     }
 }

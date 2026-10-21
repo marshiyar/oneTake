@@ -12,10 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 import XCTest
+
 @testable import MpvfxAudioGraph
 
-final class AudioFxABTests: XCTestCase {
-    func testOldChainBytesStayUnchangedAndSlotsRoundTrip() throws {
+internal final class AudioFxABTests: XCTestCase {
+    internal func testOldChainBytesStayUnchangedAndSlotsRoundTrip() throws {
         let old = try AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"gain","id":"g","params":{"gain":-12}}]}"#)
         let bytes = AudioFx.serializeChain(old)
         XCTAssertEqual(bytes, #"{"version":1,"nodes":[{"type":"gain","id":"g","params":{"gain":-12}}]}"#)
@@ -33,7 +34,7 @@ final class AudioFxABTests: XCTestCase {
         edited.nodes[0].copyAToB()
         XCTAssertEqual(edited.nodes[0].paramsA, edited.nodes[0].paramsB)
     }
-    func testUpdatingSoundMigratesBothSlots() throws {
+    internal func testUpdatingSoundMigratesBothSlots() throws {
         var chain = try AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"compressor","params":{"knee":2}}]}"#)
         chain.nodes[0].selectSlotB(true)
         chain.nodes[0].params?["knee"] = .number(4)
@@ -43,11 +44,12 @@ final class AudioFxABTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(updated.nodes[0].paramsB).num("knee"), 20 * log10(4), accuracy: 0.01)
     }
 
-    func testFactoryDefaultsExistForEveryEffectAndPresetsKeepOtherSlot() throws {
+    internal func testFactoryDefaultsExistForEveryEffectAndPresetsKeepOtherSlot() throws {
         for def in AudioFx.definitions {
             XCTAssertFalse(AudioFxPresets.modulePresets(def.id).isEmpty, def.id)
         }
-        var node = FxNode(type: "gain", version: 2, params: AudioFx.normalize("gain", ["gain": .number(-20)], version: 2))
+        var node = FxNode(
+            type: "gain", version: 2, params: AudioFx.normalize("gain", ["gain": .number(-20)], version: 2))
         node.selectSlotB(true)
         let preset = try XCTUnwrap(AudioFxPresets.modulePresets("gain").first)
         let loaded = preset.applying(to: node)
