@@ -148,6 +148,20 @@ final class ExportOverlapTests: XCTestCase {
         XCTAssertLessThanOrEqual(pipeline.mostOutstanding, 2)
     }
 
+    #if os(Linux)
+    /// The encoder thread runs at a lower priority (nice 10); the painter's thread, the caller's, keeps its own.
+    func testTheEncoderRunsAtALowerPriorityThanThePainter() throws {
+        let which = __priority_which_t(PRIO_PROCESS.rawValue)
+        let painter = getpriority(which, 0)
+        var encoder: Int32 = -99
+        let pipeline = ExportEncodePipeline(depth: 2, cancellation: nil) { _ in encoder = getpriority(which, 0) }
+        try pipeline.submit(ExportPaintedFrame(index: 0, rgba: [], sound: nil))
+        try pipeline.finish()
+        XCTAssertEqual(encoder, Swift.max(painter, EXPORT_ENCODER_NICE))
+        XCTAssertEqual(getpriority(which, 0), painter, "only the encoder's thread is lowered")
+    }
+    #endif
+
     // MARK: cancel, progress, failures
 
     func testCancelStopsWithinOneFrame() throws {

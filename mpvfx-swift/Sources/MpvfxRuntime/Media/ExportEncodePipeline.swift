@@ -18,6 +18,9 @@
 import Foundation
 import MpvfxShared
 
+/// The nice value of the export's encoder thread on Linux (0 is the default, 19 the lowest priority).
+let EXPORT_ENCODER_NICE: Int32 = 10
+
 /// One painted output frame on its way to the encoder: its index, its picture and its slice of the mix.
 struct ExportPaintedFrame {
     let index: Int
@@ -84,6 +87,7 @@ final class ExportEncodePipeline: @unchecked Sendable {
     }
 
     private func run() {
+        lowerEncoderPriority()
         while let frame = take() {
             do {
                 try cancellation?.throwIfCancelled()
@@ -95,6 +99,18 @@ final class ExportEncodePipeline: @unchecked Sendable {
             }
         }
         condition.lock(); stopped = true; condition.broadcast(); condition.unlock()
+    }
+
+    /// The painter is the slower stage (one thread drawing the frame), and the encoder's worker threads compete with it
+    /// for the cores. On Linux this thread, and the workers the engine's encoder starts from it, run at nice
+    /// `EXPORT_ENCODER_NICE`, so the painter gets the cores it needs and the encoder uses the rest (MpvfxPreviewBench
+    /// export, issue #98). Linux keeps the nice value per thread, and a new thread starts with its creator's
+    /// (https://man7.org/linux/man-pages/man2/setpriority.2.html, read 2026-10-21; `who` 0 is the calling thread).
+    /// Elsewhere the encoder keeps the default priority.
+    private func lowerEncoderPriority() {
+        #if os(Linux)
+        _ = setpriority(__priority_which_t(PRIO_PROCESS.rawValue), 0, EXPORT_ENCODER_NICE)
+        #endif
     }
 
     private func take() -> ExportPaintedFrame? {
