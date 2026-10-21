@@ -114,6 +114,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
 | Grade: copy grade to current file media / all project media | done | close |
+| Saved looks: save, rename and delete named grade/effect looks in user data, apply to selected clips | implemented (#456): Design’s Saved looks group; name field and buttons are keyboard-operable. Durable `looks.json` writes; one apply undo step; missing LUT is a typed actionable error. Saved effects use the existing preview/export painter (`UserLookTests`, `UserLookDurableWriteTests`, `UserLookRenderParityTests`) | close |
 | Grade: Auto balance (Exposure, Warmth and Tint from the frame's statistics; one undo step; Tab + Enter) | done (`AutoBalanceTests`) | close |
 | Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma waveform, RGB overlay, RGB parade, vectorscope with targets, skin line and zoom, luma + RGB histogram and false colour work for the selected clip or the composited program (Clip / Program switch), up to four at once (`docs/SCOPES.md`); CIE diagram and a full-size view are missing | close |
 | Grade: hold to show original; captured-frame preset preview thumbnails | missing (panels) | n/a |

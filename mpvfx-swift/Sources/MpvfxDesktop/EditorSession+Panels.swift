@@ -68,6 +68,13 @@ final class SessionPanels {
         let filterStore = MediaFilterStore(url: URL(fileURLWithPath: userData).appendingPathComponent("media-bin.json"))
         left.filter = filterStore.load()
         left.onFilterChange = { filterStore.save($0) }
+        do {
+            right.inspector.userLookStore = try UserLookStore(path: URL(fileURLWithPath: userData).appendingPathComponent("looks.json").path) { data, path in
+                try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+                try NativeDurableWrite().write(data, to: path)
+            }
+        } catch { session.onError("Saved looks unavailable", error.localizedDescription) }
+        right.inspector.resolveUserLookLut = { [weak session] source in session?.absoluteMediaPath(source) ?? source }
         wireLeft()
         wireRight()
     }
