@@ -176,10 +176,24 @@ func sleepUntil(_ deadline: Double) {
 /// (`DrawCadence`: draw interval and wake lateness p95 and max, draws that repeated the previous picture, ticks dropped
 /// after a late draw). Each draw is due in the middle of its frame, so OS wake jitter under half a frame never decides
 /// which frame a draw samples, and a draw that overruns drops the ticks it missed, as a display timer does.
+/// `realtime_paint_ms_per_draw` separates a slow draw from a late wake.
+///
+/// On macOS the run is declared a latency-critical, user-initiated activity: a command-line process on the hosted
+/// runner is not a foreground app, and its 1080p draws began 126 ms after their deadlines and 152 ms apart at p95
+/// (bench run 39538341200), where the editor plays in a foreground window. `latencyCritical` asks for "the highest
+/// amount of timer and I/O precision
+/// available" (https://developer.apple.com/documentation/foundation/processinfo/activityoptions/latencycritical,
+/// read 2026-10-21).
 func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Double) -> [String: String] {
+    #if os(macOS)
+    let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical],
+                                                         reason: "real-time playback benchmark")
+    defer { ProcessInfo.processInfo.endActivity(activity) }
+    #endif
     let run = Run(doc, width: width, height: height)
     run.show(0, playing: false)
     guard var cadence = DrawCadence(fps: 30) else { return [:] }
+    let paint0 = run.paintSeconds
     var exact = 0, lag = 0
     let t0 = now()
     while true {
@@ -200,6 +214,7 @@ func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Do
     out["realtime_draws"] = "\(cadence.starts.count)"
     out["realtime_new_frames_per_s"] = fmt(Double(cadence.changes) / seconds)
     out["realtime_mean_lag_frames"] = fmt(Double(lag) / draws)
+    out["realtime_paint_ms_per_draw"] = fmt((run.paintSeconds - paint0) / draws * 1000)
     for (key, value) in cadence.metrics() { out["realtime_\(key)"] = fmt(value) }
     return out
 }
