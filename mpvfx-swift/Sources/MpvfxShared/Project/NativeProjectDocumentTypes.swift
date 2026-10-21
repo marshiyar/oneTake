@@ -303,7 +303,7 @@ public extension NativeProjectDocument {
 
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
-        [undrawnElementLayersNotice, unsupportedColorKeysNotice].compactMap { $0 }
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedTextLooksNotice].compactMap { $0 }
     }
 }
 

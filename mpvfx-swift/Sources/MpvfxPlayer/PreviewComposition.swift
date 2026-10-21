@@ -344,7 +344,11 @@ public enum PreviewPainter {
                     c.drawImage(image, in: picture, opacity: layer.opacity)
                 }
             } else if let text = layer.text {
-                TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale) {
+                    c.drawImage(look.image, in: look.rect, opacity: layer.opacity)
+                } else {
+                    TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                }
             }
             if let style = layer.style, style.visibleStrokeWidth > 0, let color = CanvasColor(hex: style.resolvedStrokeColor) {
                 // Inside the box edge, like export's drawbox.
