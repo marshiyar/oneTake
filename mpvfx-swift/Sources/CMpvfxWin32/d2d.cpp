@@ -321,15 +321,20 @@ struct MpvfxD2DBitmap {
     uint32_t width = 0, height = 0;
 };
 
-mpvfx_hresult mpvfx_d2d_bitmap_create(MpvfxD2DTarget *t, const MpvfxPixels *pixels, MpvfxD2DBitmap **out) {
-    if (!out) return E_POINTER;
-    *out = nullptr;
+namespace {
+
+/// E_POINTER / E_INVALIDARG when the pixels cannot become a bitmap of `t` (missing, empty, larger than it allows).
+HRESULT checkBitmapInput(const MpvfxD2DTarget *t, const MpvfxPixels *pixels) {
     if (!t || !t->rt || !pixels || !pixels->rgba) return E_POINTER;
-    const uint8_t *rgba = pixels->rgba;
-    const uint32_t width = pixels->width, height = pixels->height;
     const UINT32 maxSide = t->rt->GetMaximumBitmapSize();
-    if (width == 0 || height == 0 || width > maxSide || height > maxSide) return E_INVALIDARG;
-    std::vector<uint8_t> bgra(static_cast<size_t>(width) * height * 4);
+    const bool fits = pixels->width > 0 && pixels->height > 0 && pixels->width <= maxSide && pixels->height <= maxSide;
+    return fits ? S_OK : E_INVALIDARG;
+}
+
+/// Straight RGBA8 -> premultiplied BGRA8 (rounded), the layout of the bitmap.
+std::vector<uint8_t> premultipliedBGRA(const MpvfxPixels &pixels) {
+    const uint8_t *rgba = pixels.rgba;
+    std::vector<uint8_t> bgra(static_cast<size_t>(pixels.width) * pixels.height * 4);
     for (size_t i = 0; i < bgra.size(); i += 4) {
         const uint32_t a = rgba[i + 3];
         bgra[i + 0] = static_cast<uint8_t>((rgba[i + 2] * a + 127) / 255);
@@ -337,6 +342,18 @@ mpvfx_hresult mpvfx_d2d_bitmap_create(MpvfxD2DTarget *t, const MpvfxPixels *pixe
         bgra[i + 2] = static_cast<uint8_t>((rgba[i + 0] * a + 127) / 255);
         bgra[i + 3] = static_cast<uint8_t>(a);
     }
+    return bgra;
+}
+
+}  // namespace
+
+mpvfx_hresult mpvfx_d2d_bitmap_create(MpvfxD2DTarget *t, const MpvfxPixels *pixels, MpvfxD2DBitmap **out) {
+    if (!out) return E_POINTER;
+    *out = nullptr;
+    const HRESULT valid = checkBitmapInput(t, pixels);
+    if (FAILED(valid)) return valid;
+    const uint32_t width = pixels->width, height = pixels->height;
+    const std::vector<uint8_t> bgra = premultipliedBGRA(*pixels);
     const D2D1_BITMAP_PROPERTIES props =
         D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f);
     Com<ID2D1Bitmap> bitmap;
