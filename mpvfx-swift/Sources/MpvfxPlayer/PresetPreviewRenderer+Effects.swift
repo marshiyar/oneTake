@@ -35,11 +35,11 @@ extension PresetPreviewRenderer {
         let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
         let t = max(first, min(last, time))
         let layer = comp.layer(entry, at: t)
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        let want = layer.isStill ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
         guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
             return compositor.decodesMedia && !decodeGaveUp(lane: layer.laneKey) ? .rendering : .unavailable
         }
-        let shownFrame = layer.kind == .image ? comp.frameIndex(at: t) : source.frame
+        let shownFrame = layer.isStill ? comp.frameIndex(at: t) : source.frame
         let key = Key(lane: layer.laneKey, frame: source.frame, preset: "\(slot)|\(shownFrame)|\(EffectPreviewRenderer.gradeText(grade))",
                       lut: "", width: pixelWidth, height: pixelHeight)
         if let hit = cachedOrQueue(key, slot: slot) { return hit }

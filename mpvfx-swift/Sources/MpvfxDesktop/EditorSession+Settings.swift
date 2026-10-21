@@ -16,9 +16,10 @@ import MpvfxAudio
 import MpvfxDesktopCore
 import MpvfxPanels
 import MpvfxShared
+import MpvfxTimeline
 
-// Settings (Cmd/Ctrl+,): appearance, interface size, audio output device, preview cache size and default export
-// folder, each kept in `<userData>/preferences.json` and applied as soon as it changes.
+// Settings (Cmd/Ctrl+,): appearance, interface size, audio output device, preview cache size, default export folder
+// and default hold length, each kept in `<userData>/preferences.json` and applied as soon as it changes.
 extension EditorSession {
     /// Reads the stored settings, applies the ones the session owns (interface size, audio device, preview cache) and
     /// puts the card on the window router.
@@ -38,15 +39,18 @@ extension EditorSession {
         router.interfaceScale = Self.interfaceScale(prefs.interfaceScalePercent)
         applyAudioDevice(prefs.audioOutputDevice)
         applyPreviewCache(prefs.previewCacheMB)
+        timeline.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
     }
 
     /// The router's scale for an interface size in percent.
     static func interfaceScale(_ percent: Int) -> Double { EditorShellRouter.validScale(Double(percent) / 100) }
 
     func currentSettings(_ prefs: DesktopPreferences) -> SettingsPanel.Values {
-        SettingsPanel.Values(appearance: appearance?.appearance ?? .system, audioDevice: prefs.audioOutputDevice,
-                             previewCacheMB: prefs.previewCacheMB, exportFolder: prefs.defaultExportFolder,
-                             interfaceScalePercent: prefs.interfaceScalePercent)
+        var values = SettingsPanel.Values(appearance: appearance?.appearance ?? .system, audioDevice: prefs.audioOutputDevice,
+                                          previewCacheMB: prefs.previewCacheMB, exportFolder: prefs.defaultExportFolder,
+                                          interfaceScalePercent: prefs.interfaceScalePercent)
+        values.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
+        return values
     }
 
     func showSettings() { settingsPanel.open(); redraw() }
@@ -62,6 +66,7 @@ extension EditorSession {
         if v.audioDevice != prefs.audioOutputDevice { prefs.audioOutputDevice = v.audioDevice; applyAudioDevice(v.audioDevice) }
         if v.previewCacheMB != prefs.previewCacheMB { prefs.previewCacheMB = v.previewCacheMB; applyPreviewCache(v.previewCacheMB) }
         if v.exportFolder != prefs.defaultExportFolder { prefs.defaultExportFolder = v.exportFolder; panels?.refreshRenders() }
+        if v.holdSeconds != (prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds) { prefs.holdSeconds = v.holdSeconds; timeline.holdSeconds = v.holdSeconds }
         settingsPanel.saveError = prefs.lastWriteError.map { "Could not save settings (\($0)); they last until you quit." }
         redraw()
     }

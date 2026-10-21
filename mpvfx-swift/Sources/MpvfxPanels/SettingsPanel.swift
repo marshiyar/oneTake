@@ -17,12 +17,13 @@ import MpvfxTheme
 import MpvfxTimeline   // EditorKey
 
 /// The Settings window (Cmd/Ctrl+,): a modal card over the editor with the per-user settings kept in
-/// `<userData>/preferences.json`: appearance, interface size, audio output device, preview cache size and the default export folder.
+/// `<userData>/preferences.json`: appearance, interface size, audio output device, preview cache size, the default
+/// export folder and the default hold length (⇧H).
 /// The host owns persistence: every change goes out through `onChange` with the new values, and "Choose…" asks the
 /// host for a folder (`onChooseExportFolder`), which answers by setting `values.exportFolder`.
 ///
 /// Keyboard (issue #104): the card opens with focus on its first control and the ring showing. Tab / ⇧Tab cycle
-/// Appearance, Audio output, Preview cache, Choose…, Reset and Close without leaving the card; the appearance
+/// Appearance, Audio output, Preview cache, Choose…, Reset, Hold length and Close without leaving the card; the appearance
 /// segments are one stop, and Left / Right move to and apply the next one. Enter / Space press the focused control
 /// (the lists open with the current choice highlighted, the arrows choose and Enter commits); Escape closes.
 public final class SettingsPanel {
@@ -36,6 +37,8 @@ public final class SettingsPanel {
         public var exportFolder: String?
         /// How much larger the whole editor draws, in percent (one of `interfaceSizeChoices`; 100 is normal).
         public var interfaceScalePercent: Int
+        /// How long ⇧H holds a frame, in seconds.
+        public var holdSeconds = 2.0
         public init(appearance: ThemeAppearance = .system, audioDevice: String? = nil, previewCacheMB: Int? = nil, exportFolder: String? = nil,
                     interfaceScalePercent: Int = 100) {
             self.appearance = appearance; self.audioDevice = audioDevice; self.previewCacheMB = previewCacheMB; self.exportFolder = exportFolder
@@ -44,13 +47,15 @@ public final class SettingsPanel {
     }
     public struct Device: Equatable { public var id, name: String
         public init(id: String, name: String) { self.id = id; self.name = name } }
-    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, cache, chooseFolder, resetFolder, card }
+    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, cache, chooseFolder, resetFolder, hold, card }
 
     /// The cache sizes offered (MB); nil is automatic.
     public static let cacheChoicesMB: [Int?] = [nil, 512, 1024, 2048, 4096, 8192]
     /// The interface sizes offered, in percent (issue #106; the same list as `DesktopPreferences.interfaceScaleChoices`).
     public static let interfaceSizeChoices = [100, 125, 150, 175, 200]
     public static func interfaceSizeLabel(_ percent: Int) -> String { "\(percent)%" }
+    /// The hold lengths offered, in seconds.
+    public static let holdChoicesSeconds: [Double] = [0.5, 1, 2, 3, 5, 10]
     public static let width = 520.0
 
     public private(set) var isOpen = false
@@ -93,6 +98,11 @@ public final class SettingsPanel {
         return mb >= 1024 && mb % 1024 == 0 ? "\(mb / 1024) GB" : "\(mb) MB"
     }
 
+    /// "2 s", "0.5 s".
+    public static func holdLabel(_ seconds: Double) -> String {
+        seconds == seconds.rounded() ? "\(Int(seconds)) s" : "\(seconds) s"
+    }
+
     var audioLabel: String {
         guard let id = values.audioDevice else { return "System default" }
         return devices.first { $0.id == id }?.name ?? id
@@ -121,8 +131,8 @@ public final class SettingsPanel {
     private static var body: CanvasFont { PanelTheme.font(11) }
     private static var note: CanvasFont { PanelTheme.font(10) }
     static let rowH = 28.0, rowGap = 18.0, pad = 20.0, labelW = 132.0, header = 48.0
-    /// Appearance, interface size, audio output, preview cache, export folder.
-    static let rowCount = 5
+    /// Appearance, interface size, audio output, preview cache, export folder, hold length.
+    static let rowCount = 6
 
     public func cardRect(in size: CanvasSize) -> CanvasRect {
         let h = Self.header + 12 + Double(Self.rowCount) * (Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
@@ -153,7 +163,7 @@ public final class SettingsPanel {
         PanelDraw.hline(c, x0: card.x + 1, x1: card.maxX - 1, y: card.y + Self.header, PanelTheme.panelBorderInput)
 
         var row = Row(x: x, cx: x + Self.labelW, cw: max(0, w - Self.labelW), y: card.y + Self.header + 12)
-        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder] {
+        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold] {
             drawRow(c, row)
             row.y += Self.rowH + Self.rowGap
         }
@@ -249,6 +259,15 @@ public final class SettingsPanel {
         noteLine(c, row, "For projects outside a library; library projects use their library's folder.")
     }
 
+    private func drawHold(_ c: CanvasContext, _ row: Row) {
+        rowLabel(c, row, "Hold length")
+        let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
+        field(c, r)
+        PanelSelect.draw(c, r.insetBy(1), text: Self.holdLabel(values.holdSeconds), hovered: hovered == .hold)
+        hits.add(r, .hold)
+        noteLine(c, row, "How long Hold frame (⇧H) freezes the picture.")
+    }
+
     // MARK: Input (window coordinates). While open the card is modal: it takes every press, move, wheel and key.
 
     /// True when the press was taken (always while open; a press outside the card closes it). A press hides the
@@ -272,6 +291,7 @@ public final class SettingsPanel {
         case .audio: openAudioList()
         case .cache: openCacheList()
         case .chooseFolder: onChooseExportFolder?()
+        case .hold: openHoldList()
         case .resetFolder:   // Reset goes away once used; focus stays on the row, on Choose…
             focus.current = .chooseFolder; change(\.exportFolder, nil)
         case .card: break
@@ -308,6 +328,15 @@ public final class SettingsPanel {
         }
         openDropdown(.cache, options, values.previewCacheMB.map { String($0) } ?? "") { [weak self] v in
             self?.change(\.previewCacheMB, Int(v))
+        }
+    }
+
+    private func openHoldList() {
+        let options = Self.holdChoicesSeconds.map { choice in
+            PanelDropdown.Option(value: String(choice), label: Self.holdLabel(choice))
+        }
+        openDropdown(.hold, options, String(values.holdSeconds)) { [weak self] v in
+            if let seconds = Double(v) { self?.change(\.holdSeconds, seconds) }
         }
     }
 
