@@ -217,8 +217,8 @@ jobs:
       - name: Signing certificate (Developer ID, when the optional secrets are set)
         id: cert
         env:
-          MACOS_CERT_P12_BASE64: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_P12_BASE64 || '' }}
-          MACOS_CERT_PASSWORD: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_PASSWORD || '' }}
+          MACOS_CERT_P12_BASE64: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && secrets.MACOS_CERT_P12_BASE64 || '' }}
+          MACOS_CERT_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && secrets.MACOS_CERT_PASSWORD || '' }}
         run: |
           if [ -n "$MACOS_CERT_P12_BASE64" ]; then
             echo "identity=$(sh packaging/macos/import-cert.sh)" >> "$GITHUB_OUTPUT"
@@ -228,12 +228,12 @@ jobs:
       - name: Package (disk image with the engine libraries in Contents/Frameworks)
         id: package
         env:
-          # A release tag must be notarized; on main a rejected notarization login is a warning (owner, 2026-10-21).
-          NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}
+          # Only a stable v<X.Y.Z> tag (the public launch) must be notarized; nothing else gets the credentials.
+          NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && '1' || '0' }}
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
-          APPLE_ID: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
-          APPLE_APP_PASSWORD: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_ID: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && secrets.APPLE_ID || '' }}
+          APPLE_APP_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && secrets.APPLE_APP_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && secrets.APPLE_TEAM_ID || '' }}
           MPVFX_BUILD: ${{ github.sha }}
           MPVFX_SYMBOLS_DIR: ${{ github.workspace }}/symbols
         run: |
