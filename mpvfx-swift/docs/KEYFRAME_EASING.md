@@ -8,7 +8,7 @@ timing curve with no context: what the motion does over time, how fast it goes, 
 ## 1. What the keyframe engine supports (cvkf.h API 1, keyframes 1.0.0 in binaries.lock)
 
 | Capability | Engine | Panel |
-|---|---|---|
+| --- | --- | --- |
 | Hold segment | yes (`CVKF_HOLD`) | Hold preset |
 | Linear segment | yes (`CVKF_LINEAR`) | Linear preset |
 | Cubic timing curve per segment, `(0,0) (x1,y1) (x2,y2) (1,1)`, x1/x2 in 0…1 (validated), y free | yes (`CVKF_CUBIC_BEZIER`) | Bézier handles, presets, influence and velocity |
@@ -105,3 +105,5 @@ The clipboard lives for the session.
 2. Custom presets in `project.json` (MpvfxShared) and the panel model with its edits (MpvfxPanels).
 3. The panel view, the Easing tab, the inspector "Easing…" button (MpvfxPanels).
 4. Wiring: selection following, "Edit Easing…", the menu items, F9 / ⇧F9 / ⌘⇧F9 (MpvfxDesktop, MpvfxTimeline).
+
+<!-- markdownlint-disable-file MD043 -- the required-headings rule has no heading list configured, so any heading fails it -->

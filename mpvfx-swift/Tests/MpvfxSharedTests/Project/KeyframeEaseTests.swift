@@ -90,4 +90,32 @@ final class KeyframeEaseTests: XCTestCase {
         XCTAssertEqual(i.x2, 2.0 / 3, accuracy: 1e-12); XCTAssertEqual(i.y2, 1)
         XCTAssertEqual(KeyframeEase.easyEase(.hold, out: true, in: true), .hold, "a hold stays a hold")
     }
+
+    func testSettingOneEndKeepsTheOtherEndAndUnknownKeys() throws {
+        let p = try NativeJSONValue.parse(#"{"x1":0.4,"y1":0,"x2":1,"y2":2.5,"tool":"kept"}"#).decode(CubicBezierControlPoints.self)
+        let q = KeyframeEase.setting(.out, of: p, influence: 0.5, slope: 0.5)
+        XCTAssertEqual(q.x1, 0.5); XCTAssertEqual(q.y1, 0.25)
+        XCTAssertEqual(q.x2, 1, "the in side is not clamped to the 0.1 % reach"); XCTAssertEqual(q.y2, 2.5, "nor its height to −1…2")
+        XCTAssertEqual(q.spread, p.spread, "unknown control-point keys survive")
+        let r = KeyframeEase.setting(.in, of: p, influence: 0.25, slope: 0)
+        XCTAssertEqual(r.x1, 0.4); XCTAssertEqual(r.y1, 0); XCTAssertEqual(r.x2, 0.75); XCTAssertEqual(r.y2, 1)
+    }
+
+    func testHugeFiniteHandlesStayFinite() throws {
+        let p = points(0.001, .greatestFiniteMagnitude, 0.999, -.greatestFiniteMagnitude)
+        let h = try XCTUnwrap(KeyframeEase.handles(p))
+        XCTAssertTrue([h.outSlope, h.inSlope].allSatisfy(\.isFinite))
+        for t in [0.0, 0.3, 0.5, 1] {
+            XCTAssertTrue(KeyframeEase.progress(.cubicBezier(p), at: t).isFinite, "progress at \(t)")
+            XCTAssertTrue(KeyframeEase.slope(.cubicBezier(p), at: t).isFinite, "slope at \(t)")
+        }
+    }
+
+    func testVelocityAndSlopeAreSignedInverses() {
+        for slope in [-0.75, 0, 0.5, 2] {
+            let v = KeyframeEase.velocity(slope: slope, valueChange: -40, seconds: 0.5)
+            XCTAssertEqual(KeyframeEase.slope(velocity: v, valueChange: -40, seconds: 0.5), slope, accuracy: 1e-12)
+        }
+        XCTAssertLessThan(KeyframeEase.velocity(slope: -0.5, valueChange: 10, seconds: 1), 0, "running back is a negative speed")
+    }
 }
