@@ -28,7 +28,7 @@ extension EditorShellRouter {
         } else {
             dock.draw(c, in: f.dock) { [self] id, c, size in paintPanel(id, c, size) }
             c.fillRect(CanvasRect(x: 0, y: f.dock.maxY, width: size.width, height: PanelTheme.seamWidth), PanelTheme.studioBg)
-            ShellStatusLine.draw(c, f.statusLine, hint: statusHint)
+            ShellStatusLine.draw(c, f.statusLine, hint: statusHint, error: saveFailureStatus())
         }
         crossPaneDrag?.drawDrag(c)
         dockMenu.draw(c)

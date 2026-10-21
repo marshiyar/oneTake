@@ -126,6 +126,8 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
     /// Every workspace's layout as saved, and where it is saved (`restoreDock`).
     var dockFile: DockFile?
     var dockStore: DockLayoutStore?
+    /// The last save failure, drawn in the status line until a save succeeds (nil: none).
+    var saveFailureStatus: () -> String? = { nil }
     private(set) var frames: EditorShellFrames?
     /// Pane that got the press; it receives moves/up until release (pointer capture).
     var captured: Region?

@@ -234,7 +234,12 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         self.session = session
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 900),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        w.title = "MpVFX"
+        session.documentStateChanged = { [weak session, weak w] in
+            guard let session else { return }
+            w?.title = session.windowTitle
+            w?.isDocumentEdited = session.isDirty
+        }
+        session.documentStateChanged()
         w.minSize = NSSize(width: 1024, height: 640)
         let bg = ThemeTokens.studioBgPair.dark   // retinted by installAppearance below
         w.backgroundColor = NSColor(srgbRed: bg.r, green: bg.g, blue: bg.b, alpha: 1)

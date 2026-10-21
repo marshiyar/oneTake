@@ -142,18 +142,53 @@ final class EditorSession {
     // MARK: Save / import (through the DesktopBackend)
 
     var isDirty: Bool { project != nil && editor.document != savedDocument }
+    var windowTitle: String { "\(editor.document.sequence.name) — MpVFX" }
+    var markedWindowTitle: String { (isDirty ? "• " : "") + windowTitle }
+    /// The shells update their title and native document-edited indicator on the UI thread.
+    var documentStateChanged: () -> Void = {}
+    private(set) var lastSaveError: DesktopError?
+    private var reportedSaveFailure = false
+    var saveFailureStatus: String? {
+        lastSaveError.map { "Not saved: \($0.saveFailure?.reason ?? $0.message)" }
+    }
+
+    private func saveStateChanged() { documentStateChanged(); redraw() }
+
+    private func clearSaveFailure() {
+        lastSaveError = nil
+        reportedSaveFailure = false
+        saveStateChanged()
+    }
+
+    private func recordSaveFailure(_ error: Error) {
+        lastSaveError = (error as? DesktopError) ?? DesktopError("\(error)")
+        saveStateChanged()
+    }
+
+    private func reportSaveFailure(_ error: Error) {
+        recordSaveFailure(error)
+        guard !reportedSaveFailure else { return }
+        reportedSaveFailure = true   // set before the modal can run a nested event loop
+        onError("Could not save the project", "\(error)")
+    }
 
     /// Writes the document through the backend (journaled, crash-safe) and waits for it. No-op when nothing changed.
     /// Explicit saves only (Cmd+S, before a render, the close barrier); edits autosave in the background.
     func save() throws {
         saveQueue.sync {}   // an autosave in flight lands first, so writes stay in order
         guard let backend, let project, isDirty else { return }
+        saveGeneration += 1   // pending autosave callbacks predate this explicit attempt
         let document = editor.document
-        let content = try serializeNativeProjectDocument(document, engine: engine)
-        try backend.saveProject(id: project.id, content: content)
-        saveGeneration += 1   // an autosave still posting its result back is older than this write
-        self.project?.content = content
-        savedDocument = document
+        do {
+            let content = try serializeNativeProjectDocument(document, engine: engine)
+            try backend.saveProject(id: project.id, content: content)
+            self.project?.content = content
+            savedDocument = document
+            clearSaveFailure()
+        } catch {
+            recordSaveFailure(error)
+            throw error
+        }
     }
 
     // MARK: Autosave and external changes
@@ -171,6 +206,7 @@ final class EditorSession {
     private var conflictOpen = false
 
     private func documentChanged() {
+        saveStateChanged()
         guard autosaveEnabled, project != nil, let schedule else { return }
         cancelAutosave?()
         cancelAutosave = schedule(Self.autosaveDelay) { [weak self] in self?.autosave() }
@@ -211,13 +247,16 @@ final class EditorSession {
 
     private func autosaveFinished(_ document: NativeProjectDocument, generation: Int, _ result: Result<String, Error>) {
         autosaveInFlight = false
-        switch result {
-        case .success(let content):
-            if generation == saveGeneration { project?.content = content; savedDocument = document }
-        case .failure(let e as DesktopError) where e.name == "ConflictError":
-            resolveConflict(diskContent: nil)
-        case .failure(let e):
-            onError("Could not save the project", "\(e)")
+        if generation == saveGeneration {
+            switch result {
+            case .success(let content):
+                project?.content = content; savedDocument = document
+                clearSaveFailure()
+            case .failure(let e as DesktopError) where e.name == "ConflictError":
+                resolveConflict(diskContent: nil)
+            case .failure(let e):
+                reportSaveFailure(e)
+            }
         }
         if autosaveAgain { autosaveAgain = false; autosave() }
     }
@@ -269,7 +308,7 @@ final class EditorSession {
     func overwriteDisk() {
         guard let backend, let project else { return }
         do { _ = try backend.reloadProject(id: project.id); try save() }
-        catch { onError("Could not save the project", "\(error)") }
+        catch { reportSaveFailure(error) }
     }
 
     /// Replaces the open document with saved text (no undo entry).
@@ -281,6 +320,8 @@ final class EditorSession {
         autosaveEnabled = wasAutosave
         self.project?.content = content
         savedDocument = doc
+        saveGeneration += 1   // ignore callbacks for the document we just replaced
+        clearSaveFailure()
         playback.duration = editor.duration
         syncStage(); redraw()
     }
@@ -338,7 +379,7 @@ final class EditorSession {
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
         case "s":
-            do { try save() } catch { if !projectFolderVanished(error, explicitSave: true) { onError("Could not save the project", "\(error)") } }
+            do { try save() } catch { if !projectFolderVanished(error, explicitSave: true) { reportSaveFailure(error) } }
             return true
         case "i":
             guard let onImportRequested, project != nil else { return false }
