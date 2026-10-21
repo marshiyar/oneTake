@@ -70,7 +70,7 @@ extension InspectorPanel {
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
         let presets = ColorGrading.gradePresets
-        let lut = g.lut
+        let lut = g.lut, version = g.version
         // Sections `space-y-3`: Scopes, then the preset block (`space-y-1.5`) whose "Retry look previews" link shows
         // while the look frames are unavailable (an inline button on an 18px line).
         rows.append(.init(.custom(scopesRow(s.id))))
@@ -81,7 +81,7 @@ extension InspectorPanel {
         }
         rows.append(.init(.custom(presetGrid(presets, selected: g.preset, preview: { [weak self] id, w, h in
             self?.presetPreview?(PresetPreviewRequest(clipId: s.id, presetId: id, lutSrc: lut?.src, lutIntensity: lut?.intensity ?? 1,
-                                                      pixelWidth: w, pixelHeight: h)) ?? .unavailable
+                                                      pixelWidth: w, pixelHeight: h, version: version)) ?? .unavailable
         }, onPick: { p in commit(g.applying(p)) }))))
         gap(6)
         rows.append(.init(.slider(.init(key: "grade:amount", label: "Amount", position: g.intensity * 100, min: 0, max: 100,
