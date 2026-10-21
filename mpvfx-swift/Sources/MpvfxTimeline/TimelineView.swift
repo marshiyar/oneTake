@@ -116,6 +116,19 @@ public enum TimelineRuler {
         }
         return formatTime(t)
     }
+
+    /// Timecode (docs/DESIGN.md Principle 5): `MM:SS:FF`, or `HH:MM:SS:FF` when `hours` is set or `t` reaches an hour.
+    /// `t` rounds to the nearest frame; frames count at the nominal rate (29.97 counts 30 a second, non-drop-frame).
+    public static func timecode(_ t: Double, frameRate: Double, hours: Bool = false) -> String {
+        guard t.isFinite, frameRate.isFinite, frameRate > 0 else { return hours ? "00:00:00:00" : "00:00:00" }
+        let base = max(1, Int(frameRate.rounded()))
+        let frames = Int((max(0, t) * frameRate).rounded()), s = frames / base
+        // The hours field follows the real time: at fractional rates the nominal frame count lags it.
+        if hours || t >= 3600 || s >= 3600 {
+            return String(format: "%02d:%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60, frames % base)
+        }
+        return String(format: "%02d:%02d:%02d", s / 60, s % 60, frames % base)
+    }
 }
 
 /// One expanded property lane (a property group, e.g. Position), keyframe times clip-local seconds.
@@ -478,37 +491,41 @@ public final class TimelineView {
             c.stroke(Self.clipPath(o, radius: t.clipRadius + 3, squareLeft: squareLeft),
                      active ? CanvasColor(ThemeTokens.blue400) : CanvasColor(ThemeTokens.white.alpha(0.98)), StrokeStyle(width: 2))
         }
-        // Clip content (useRenderClipContent), clipped to the rounded clip: waveform for audio, filmstrip for video/image.
+        // Clip content (useRenderClipContent), clipped to the rounded clip: waveform for audio, filmstrip for video/image,
+        // both in the body below the header strip. The header is the clip's kind colour on every clip (docs/DESIGN.md
+        // Principle 3), so kind, hover and the name read the same with or without content.
+        let header = Self.clipHeaderRect(r), content = Self.clipContentRect(r)
         c.withState {
             c.clip(path)
             if clip.kind == .audio, let id = clip.assetId, let peaks = waveforms[id], !peaks.isEmpty {
-                Self.drawWaveform(c, peaks, in: r, startFraction: clip.sourceStartFraction, endFraction: clip.sourceEndFraction)
+                Self.drawWaveform(c, peaks, in: content, startFraction: clip.sourceStartFraction, endFraction: clip.sourceEndFraction)
             } else if thumbnailsEnabled, clip.kind == .video || clip.kind == .image, let id = clip.assetId, let strip = thumbnails[id], !strip.frames.isEmpty {
-                Self.drawFilmstrip(c, strip, in: r)
-                // The name sits on a strip of the clip's kind colour, so kind, hover and the label survive thumbnails.
-                c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: min(ThemeTokens.clipHeaderHeight, r.height / 2)),
-                           Self.clipBackground(audio: false, hovered: hovered, dragging: dragging))
+                Self.drawFilmstrip(c, strip, in: content)
             }
+            c.fillRect(header, Self.clipBackground(audio: clip.kind == .audio, hovered: hovered, dragging: dragging))
         }
         c.withState {
             c.clip(r)
             // Keyframe diamonds (TimelineClipDiamonds), drawn when the bar is at least 20 px wide.
             if r.width >= 20 { drawDiamonds(c, clip, group: nil, barX: r.x, cy: r.y + r.height / 2) }
-            // Clip name: top 6, left 12, right 10, 10px/500, ellipsis; on the opaque kind fill at clipNameAlpha.
+            // Clip name: centred in the header strip, left 12, right 10, 10px/500, ellipsis, at clipNameAlpha.
+            let nameY = header.y + max(0, (header.height - 10) / 2)
             if r.width >= 40 || selected {
                 let f = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .medium)
                 if let label = Self.ellipsize(c, clip.name, font: f, maxWidth: r.width - 22) {
-                    c.drawText(label, at: .init(r.x + 12, r.y + 6), font: f, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipNameAlpha)))
+                    c.drawText(label, at: .init(r.x + 12, nameY), font: f, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipNameAlpha)))
                 }
-                // Timecode: bottom 6, left 12, mono 9px, "start-ends", at clipTimecodeAlpha.
+                // Duration as timecode: bottom 6, left 12, mono 9px, at clipTimecodeAlpha; left out when the
+                // row is too short to fit it below the header.
+                let tcY = r.maxY - 6 - 9
                 let tf = CanvasFont(family: Self.clipMonoFamily, size: 9)
-                let tc = String(format: "%.1f-%.1fs", clip.start, clip.end)
-                if let tcs = Self.ellipsize(c, tc, font: tf, maxWidth: r.width - 12) {
-                    c.drawText(tcs, at: .init(r.x + 12, r.maxY - 6 - 9), font: tf, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipTimecodeAlpha)))
+                if tcY >= header.maxY + 1,
+                   let tcs = Self.ellipsize(c, TimelineRuler.timecode(clip.duration, frameRate: frameRate), font: tf, maxWidth: r.width - 12) {
+                    c.drawText(tcs, at: .init(r.x + 12, tcY), font: tf, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipTimecodeAlpha)))
                 }
             }
             if clip.effectCount > 0 {
-                c.drawText("fx", at: .init(r.maxX - 22, r.y + 6), font: CanvasFont(family: Self.uiFontFamily, size: 10, weight: .semibold), color: t.accent.withAlpha(0.8))
+                c.drawText("fx", at: .init(r.maxX - 22, nameY), font: CanvasFont(family: Self.uiFontFamily, size: 10, weight: .semibold), color: t.accent.withAlpha(0.8))
             }
             // Trim handle bars: 2px, inset 4px, top/bottom 6px, rgba(255,255,255,.55) at opacity*0.6 (width >= 32 or selected).
             let op = Self.handleOpacity(hovered: hovered, selected: selected, dragging: dragging) * 0.6
@@ -528,6 +545,16 @@ public final class TimelineView {
     }
 
     static let hiddenTrackOpacity = 0.35, lockedTrackOpacity = 0.7
+
+    /// Header strip along the top of a clip: clipHeaderHeight, at most half the clip on short rows.
+    static func clipHeaderRect(_ r: CanvasRect) -> CanvasRect {
+        CanvasRect(x: r.x, y: r.y, width: r.width, height: min(ThemeTokens.clipHeaderHeight, r.height / 2))
+    }
+    /// The clip below its header, where the waveform or filmstrip is drawn.
+    static func clipContentRect(_ r: CanvasRect) -> CanvasRect {
+        let h = clipHeaderRect(r).height
+        return CanvasRect(x: r.x, y: r.y + h, width: r.width, height: r.height - h)
+    }
 
     /// Audio waveform: 2px bars every 3px, bottom-aligned, height max(2, amp * h),
     /// rgba(75,163,210, 0.45 + amp * 0.4), peaks windowed to the trimmed source slice.
@@ -586,9 +613,9 @@ public final class TimelineView {
         typealias L = TimelineLayout
         let t = theme, pps = pixelsPerSecond
         c.fillRect(CanvasRect(x: 0, y: 0, width: size.width, height: L.rulerHeight), t.shellBackground)
-        let fps: Double? = timeDisplay == .frame ? frameRate : nil
-        let major = TimelineRuler.majorInterval(duration: duration, pps: pps, frameRate: fps)
-        let parts = TimelineRuler.minorSubdivisions(major: major, pps: pps, frameRate: fps)
+        // Ticks land on whole frames in both displays, so timecode labels never repeat a frame.
+        let major = TimelineRuler.majorInterval(duration: duration, pps: pps, frameRate: frameRate)
+        let parts = TimelineRuler.minorSubdivisions(major: major, pps: pps, frameRate: frameRate)
         let firstVisible = max(0, time(forX: L.contentOrigin) - major)
         let lastVisible = min(duration, time(forX: size.width) + major)
         c.withState {
@@ -599,7 +626,8 @@ public final class TimelineView {
                 if tm > lastVisible || tm > duration { break }
                 let mx = Self.snappedLineLeft(centre: x(for: tm))
                 c.fillRect(CanvasRect(x: mx, y: 0, width: 1, height: L.rulerHeight), t.tickMajor)
-                let label = timeDisplay == .frame ? "\(Int((tm * frameRate).rounded()))" : TimelineRuler.label(tm, duration: duration, major: major)
+                let label = timeDisplay == .frame ? "\(Int((tm * frameRate).rounded()))"
+                    : TimelineRuler.timecode(tm, frameRate: frameRate, hours: duration >= 3600)
                 c.drawText(label, at: .init(mx + 5, 5), font: .mono(10), color: t.tickText)
                 if parts > 1 {
                     for s in 1..<parts {

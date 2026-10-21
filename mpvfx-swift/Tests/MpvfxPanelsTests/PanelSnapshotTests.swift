@@ -88,19 +88,20 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let s = Self.sidebarFixture()
             let t = snapshot("left-sidebar", w: 370, h: 1040, scale: scale) { s.draw($0, size: CanvasSize(370, 1040)) }
-            // At 370×1040: the tab strip (0…32), the library navigator, a hairline, then the media bin. Below the
-            // navigator's "Open project… / Recent" row (one line + gap, issue #31) everything sits 24px lower.
+            // At 370×1040: the tab strip (0…32), one header row (switcher, Import, "…"), the search row, then the grid.
             let tab = try XCTUnwrap(s.hits.rect { $0 == .tab(.assets) }), imp = try XCTUnwrap(s.hits.rect { $0 == .importMedia })
-            assertPixel(t, 150, 1000, scale: scale, "#1d1d1d")       // flat body: bg-panel-bg
+            let sw = try XCTUnwrap(s.hits.rect { $0 == .switcher }), search = try XCTUnwrap(s.hits.rect { $0 == .search })
+            let tile = try XCTUnwrap(s.hits.rect { $0 == .tile(.media("v1")) })
             assertPixel(t, 0, 0, scale: scale, "#1d1d1d")            // no rounded corner: the strip reaches the panel's corner
             assertPixel(t, tab.midX, 31, scale: scale, "#4c8df0")    // the Media tab's accent underline
             assertPixel(t, 200, 31, scale: scale, "#141414")         // the strip's hairline
-            assertPixel(t, imp.x + 4, imp.midY, scale: scale, "#0e0e0e")   // Import media (24 tall): bg-panel-input
-            assertPixel(t, 100, 80, scale: scale, "#0e0e0e")         // library select (12,68 346×28): bg-panel-input
-            assertPixel(t, 100, 296, scale: scale, "#141414")        // hairline between the navigator and the bin
-            assertPixel(t, 300, 319, scale: scale, "#0e0e0e")        // search (16,307 338×26.5): bg-panel-input
-            assertPixel(t, 19, 399, scale: scale, "#3a3a3a", tol: 10)    // "Added" badge: neutral-950/80 over the frame
-            assertPixel(t, 60, 439, scale: scale, "#fafafa", tol: 10)    // the first tile shows the frame
+            XCTAssertEqual(sw.y, PanelTabStrip.height + MediaPanelMetrics.rowGap)   // the header row sits right under the strip
+            assertPixel(t, sw.x + 3, sw.midY, scale: scale, "#0e0e0e")     // the switcher: bg-panel-input
+            assertPixel(t, imp.x + 3, imp.midY, scale: scale, "#2f6fd6")   // Import: the primary fill
+            assertPixel(t, search.x + 3, search.midY, scale: scale, "#0e0e0e")
+            assertPixel(t, 200, search.maxY + 4, scale: scale, "#1d1d1d")  // no divider between the search row and the grid
+            assertPixel(t, tile.x + 6, tile.y + 6, scale: scale, "#3a3a3a", tol: 10)   // the in-timeline check badge: neutral-950/80 over the frame
+            assertPixel(t, tile.x + 40, tile.y + 40, scale: scale, "#fafafa", tol: 10) // the first tile shows the frame
         }
     }
 

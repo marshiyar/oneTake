@@ -312,7 +312,10 @@ public struct PanelScroller: Equatable {
     }
 
     /// Jumps (a drag on the thumb, reveal-into-view, a reset): cancels any glide.
-    public mutating func set(_ v: Double, max: Double) {
+    public mutating func set(_ v: Double, max: Double) { jump(to: v, max: max) }
+
+    /// `set` by another name, with no ceiling by default for callers whose next draw clamps to the content.
+    public mutating func jump(to v: Double, max: Double = .infinity) {
         offset = Swift.min(Swift.max(0, max), Swift.max(0, v)); target = offset; gliding = false
     }
 

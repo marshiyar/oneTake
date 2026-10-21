@@ -61,6 +61,26 @@ final class ExportFramePainterTests: XCTestCase {
         XCTAssertEqual(pixel(img, 100, 180), [0, 0, 0, 0])
     }
 
+    /// When the project canvas covers the whole output, the opaque background is painted in one pass (issue #98): the
+    /// frame is byte-identical to painting the pad and then the background over it, with and without layers on top.
+    func testTheOnePassBackgroundPaintsTheSameBytesAsPadThenBackground() throws {
+        let layers: [String: CanvasImage] = ["A": PreviewCompositorTests.solid(255, 0, 0, 90), "B": PreviewCompositorTests.solid(0, 0, 255, 128)]
+        for (w, h) in [(400, 200), (64, 32), (1920, 960), (1000, 500)] {
+            for pad in [CanvasColor(r: 0, g: 0, b: 0), CanvasColor.transparent] {
+                let fast = try painter(w, h, pad: pad), reference = try painter(w, h, pad: pad)
+                reference.singlePassBackground = false
+                XCTAssertTrue(fast.fillsTheOutput(fast.frame.rect), "\(w)x\(h) takes the one-pass path")
+                for provider in [{ (_: PreviewLayer) -> CanvasImage? in nil }, { layers[$0.clipId] }] {
+                    let a = try fast.paint(time: 0) { layer, _, _, _ in provider(layer) }
+                    let b = try reference.paint(time: 0) { layer, _, _, _ in provider(layer) }
+                    XCTAssertTrue(a.rgba == b.rgba, "\(w)x\(h) pad \(pad): the frames differ")
+                }
+            }
+        }
+        let padded = try painter(200, 200)
+        XCTAssertFalse(padded.fillsTheOutput(padded.frame.rect), "a 1:1 output of the 2:1 canvas shows the pad")
+    }
+
     func testHalfTransparentLayerBlendsOverTheOneBelow() throws {
         let p = try painter(200, 100)
         let img = try p.paint(time: 0) { layer, _, _, _ in

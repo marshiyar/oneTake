@@ -1,0 +1,71 @@
+name: Feature slice
+description: One buildable step of a feature, small enough for one pull request, with checkable acceptance lines.
+title: ""
+labels: [type:feature]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A slice is one pull request's worth of work: the goal in user terms, what in `mpvfx-swift/docs/STATUS.md` it
+        moves, the files it touches, and acceptance lines a reviewer can check one by one. Look at issues #85-#106 for
+        examples. Triage adds the area, priority and `buildable` labels and the milestone.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What someone using MpVFX can do after this slice that they cannot do now, in one or two sentences.
+      placeholder: A media clip can fill its box (cropping the overflow) or stretch to it, instead of always fitting inside it.
+    validations:
+      required: true
+  - type: input
+    id: status-row
+    attributes:
+      label: STATUS row it moves
+      description: The Feature column of the row in mpvfx-swift/docs/STATUS.md, with its status now and after this slice.
+      placeholder: "Media fit mode: missing -> partial"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Why this is needed now, read from the code or the docs, with file:line references and the date you read them.
+      placeholder: "What the code does today, as Sources/<Module>/<File>.swift:<line> references, and the date you read it."
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: The files the slice changes or adds, the tests included.
+      placeholder: |
+        Sources/<Module>/<File>.swift (what changes in it)
+        Tests/<Module>Tests/<Name>Tests.swift (new)
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: One checkbox per line. Each line is something a test or a reviewer can check, with numbers where there are any.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this slice deliberately leaves for later, so the pull request stays small.
+    validations:
+      required: true
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone
+      description: Where you think it belongs; triage sets the milestone itself.
+      options:
+        - Public beta
+        - "1.0"
+        - Not sure
+    validations:
+      required: true
