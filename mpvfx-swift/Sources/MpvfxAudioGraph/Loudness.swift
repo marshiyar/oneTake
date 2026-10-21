@@ -18,6 +18,7 @@ public enum LoudnessError: Error, Equatable, CustomStringConvertible, Sendable {
     case noChannels
     case unequalChannelLengths
     case invalidChannelWeights(expected: Int, actual: Int)
+    case invalidChannelWeight(index: Int, value: Double)
     case nonFiniteSample(channel: Int, frame: Int)
     case insufficientAudio(minimumFrames: Int, actualFrames: Int)
     case silence
@@ -29,6 +30,7 @@ public enum LoudnessError: Error, Equatable, CustomStringConvertible, Sendable {
         case .noChannels: "Loudness measurement needs at least one audio channel"
         case .unequalChannelLengths: "Loudness measurement needs channels with equal frame counts"
         case .invalidChannelWeights(let expected, let actual): "Loudness measurement needs \(expected) channel weights; got \(actual)"
+        case .invalidChannelWeight(let index, let value): "Loudness measurement channel weight \(index) must be finite and non-negative; got \(value)"
         case .nonFiniteSample(let channel, let frame): "Audio channel \(channel) has a non-finite sample at frame \(frame)"
         case .insufficientAudio(let minimum, let actual): "Integrated loudness needs at least \(minimum) frames; got \(actual)"
         case .silence: "Integrated loudness is below the BS.1770 absolute gate (-70 LKFS)"
@@ -50,20 +52,27 @@ public enum LoudnessMeter {
         guard weights.count == channels.count else {
             throw LoudnessError.invalidChannelWeights(expected: channels.count, actual: weights.count)
         }
-        let block = Int((sampleRate * 0.4).rounded())
-        let hop = Int((sampleRate * 0.1).rounded())
+        for (index, weight) in weights.enumerated() where !weight.isFinite || weight < 0 {
+            throw LoudnessError.invalidChannelWeight(index: index, value: weight)
+        }
+        let roundedBlock = (sampleRate * 0.4).rounded()
+        let roundedHop = (sampleRate * 0.1).rounded()
+        guard roundedBlock.isFinite, roundedHop.isFinite,
+              let block = Int(exactly: roundedBlock), let hop = Int(exactly: roundedHop) else {
+            throw LoudnessError.invalidSampleRate(sampleRate)
+        }
         guard count >= block else { throw LoudnessError.insufficientAudio(minimumFrames: block, actualFrames: count) }
 
         var power = [Float](repeating: 0, count: count)
         for channelIndex in channels.indices where weights[channelIndex] != 0 {
             var shelf = Biquad.highShelf(sampleRate: sampleRate)
             var highPass = Biquad.highPass(sampleRate: sampleRate)
-            let weight = Float(weights[channelIndex])
+            let powerWeight = Float(weights[channelIndex] * weights[channelIndex])
             for frame in 0..<count {
                 let input = channels[channelIndex][frame]
                 guard input.isFinite else { throw LoudnessError.nonFiniteSample(channel: channelIndex, frame: frame) }
                 let value = highPass.process(shelf.process(input))
-                power[frame] += weight * value * value
+                power[frame] += powerWeight * value * value
             }
         }
 

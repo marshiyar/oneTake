@@ -38,6 +38,36 @@ final class LoudnessTests: XCTestCase {
         }
     }
 
+    func testAmplitudeChannelWeightsAreSquaredForPower() throws {
+        let signal = sine(levelDBFS: -20)
+        let unweighted = try LoudnessMeter.integrated([signal], sampleRate: Double(sampleRate), channelWeights: [1])
+        let surround = try LoudnessMeter.integrated(
+            [signal], sampleRate: Double(sampleRate), channelWeights: [sqrt(2)]
+        )
+        XCTAssertEqual(surround - unweighted, 10 * log10(2), accuracy: 0.001)
+    }
+
+    func testInvalidChannelWeightsProduceTypedErrors() {
+        let signal = sine(levelDBFS: -20)
+        for weight: Double in [-1, .infinity, -.infinity, .nan] {
+            XCTAssertThrowsError(
+                try LoudnessMeter.integrated([signal], sampleRate: Double(sampleRate), channelWeights: [weight])
+            ) {
+                guard case .invalidChannelWeight(index: 0, value: let value) = $0 as? LoudnessError else {
+                    return XCTFail("unexpected error: \($0)")
+                }
+                if weight.isNaN { XCTAssertTrue(value.isNaN) } else { XCTAssertEqual(value, weight) }
+            }
+        }
+    }
+
+    func testUnrepresentableWindowSizesProduceTypedSampleRateError() {
+        let sampleRate = Double.greatestFiniteMagnitude
+        XCTAssertThrowsError(try LoudnessMeter.integrated([[0]], sampleRate: sampleRate)) {
+            XCTAssertEqual($0 as? LoudnessError, .invalidSampleRate(sampleRate))
+        }
+    }
+
     func testTenMinuteStereoBudgetOffMainThread() async throws {
         let reusableSecond = sine(levelDBFS: -20, seconds: 1)
         let channel = Array(repeating: reusableSecond, count: 600).flatMap { $0 }
