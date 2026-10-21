@@ -52,6 +52,8 @@ public final class DockView {
         public var panel: DockPanelID
         public var point: CanvasPoint
         public var preview: DockDropPreview?
+        /// ⌥ was held at the last move (a release recomputes the drop with it).
+        public var swap = false
     }
 
     public struct SplitterDrag: Equatable, Sendable {
