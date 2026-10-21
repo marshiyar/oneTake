@@ -37,6 +37,7 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Keyboard nudge of a focused seam (±16 px) | missing (panels) | n/a |
 | Collapse / show sidebars (rail with show button), "Hide sidebar" | done | exact |
 | Persist widths, collapsed state, right tab, left tab | done (`<userData>/panel-layout.json`) | n/a |
+| Dockable Scopes panel (Window / Panels → Scopes), Program frame at the playhead, waveform / parade / vectorscope / histogram; Tab/Enter and arrows choose the kind, saved with panel layout preferences | done (`DockedScopesPanelTests`, `ScopesDockShellTests`); closed by default, dock beside the preview or anywhere in the workspace | n/a |
 | Timeline height resize (min 100, preview floor 200), persisted | done (shell router, `panel-layout.json`); arrow-key resize missing | close |
 | Splash ("Starting video editor…", "Connecting to project…") | missing (mac-shell) | n/a |
 | Toasts (dismiss, technical details) | partial: player toasts (recording, remove silence); no technical-details expander (preview) | close |
