@@ -732,7 +732,7 @@ jobs:
           done
 
   publish:
-    needs: [plan, checks, linux, linux-test, windows, windows-test]
+    needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards]
     # Only main (nightly prerelease) and v* tags publish; publish.sh decides which release.
     # Owner ruling 2026-10-21: no OS holds another back. Linux and Windows publish as soon as they pass, without waiting
     # for a macOS runner; publish-macos adds the disk image to the same release when the macOS job finishes. A stable
@@ -747,12 +747,16 @@ jobs:
     permissions:
       contents: write
     env:
+      # An OS passed when its build and every shard did: those here (linux-test, windows-test) and those sent to
+      # OneTake-actionRunners-1 (remote-shards; it is not needed only when nothing of that OS was sent).
       LINUX_OK: >-
         ${{ needs.linux.result == 'success' && (needs.linux-test.result == 'success'
-        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]')) }}
+        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_linux == '[]') }}
       WINDOWS_OK: >-
         ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
-        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]')) }}
+        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_windows == '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -788,7 +792,7 @@ jobs:
     # After publish (so the two never race to create the release), whatever publish's result: on main and prerelease
     # tags it uploads the macOS disk image into the same release; on a stable v<X.Y.Z> tag it publishes every OS at
     # once and fails unless all of them passed.
-    needs: [plan, checks, linux, linux-test, windows, windows-test, macos, publish]
+    needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards, macos, publish]
     if: >-
       always() && github.event_name != 'pull_request'
       && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
@@ -800,12 +804,16 @@ jobs:
       contents: write
     env:
       STABLE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+      # An OS passed when its build and every shard did: those here (linux-test, windows-test) and those sent to
+      # OneTake-actionRunners-1 (remote-shards; it is not needed only when nothing of that OS was sent).
       LINUX_OK: >-
         ${{ needs.linux.result == 'success' && (needs.linux-test.result == 'success'
-        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]')) }}
+        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_linux == '[]') }}
       WINDOWS_OK: >-
         ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
-        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]')) }}
+        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_windows == '[]') }}
       MACOS_OK: ${{ needs.macos.result == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

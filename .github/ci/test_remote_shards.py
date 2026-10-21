@@ -112,6 +112,13 @@ class RemoteJob(unittest.TestCase):
         self.assertEqual(len(saves), 3)
         self.assertTrue(all(i > waited for i in saves))
 
+    def test_both_publish_jobs_wait_for_it_and_count_it_for_each_os(self):
+        for name in ("publish", "publish-macos"):
+            job = self.jobs[name]
+            self.assertIn("remote-shards", job["needs"], name)
+            self.assertIn("(needs.remote-shards.result == 'success' || needs.plan.outputs.remote_linux == '[]')", job["env"]["LINUX_OK"], name)
+            self.assertIn("(needs.remote-shards.result == 'success' || needs.plan.outputs.remote_windows == '[]')", job["env"]["WINDOWS_OK"], name)
+
     def test_ci_ok_requires_it(self):
         gate = self.jobs["ci-ok"]
         self.assertIn("remote-shards", gate["needs"])
