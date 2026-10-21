@@ -105,12 +105,22 @@ public struct CanvasPath: Equatable, Sendable {
 }
 
 /// RGBA8 straight-alpha bitmap, row-major, tightly packed.
+///
+/// A backend converts the pixels to its own drawable form (a cairo surface, a CGImage, a Direct2D bitmap) on the
+/// first draw and keeps it on the image (`drawable(_:reuse:make:)` in CanvasDrawable.swift): every copy shares it, it
+/// is freed with the last copy, and changing `rgba` drops it. Caches that hold images count it through `heldBytes`.
 public struct CanvasImage: Equatable, Sendable {
     public let width: Int, height: Int
-    public var rgba: [UInt8]
+    public var rgba: [UInt8] { didSet { drawables = CanvasImageDrawables() } }
+    /// The backends' converted forms of these pixels, shared by every copy of this image.
+    var drawables = CanvasImageDrawables()
     public init(width: Int, height: Int, rgba: [UInt8]) {
         precondition(rgba.count == width * height * 4, "CanvasImage: rgba must be width*height*4 bytes")
         self.width = width; self.height = height; self.rgba = rgba
+    }
+    /// Equal pixels are equal images, whether or not either has been drawn yet.
+    public static func == (a: CanvasImage, b: CanvasImage) -> Bool {
+        a.width == b.width && a.height == b.height && a.rgba == b.rgba
     }
     /// Copy with every alpha multiplied by `opacity` (clamped to 0...1).
     public func withOpacity(_ opacity: Double) -> CanvasImage {

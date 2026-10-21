@@ -223,7 +223,7 @@ private final class MacCanvasAccessibilitySwitch: NSAccessibilityElement {
         setAccessibilityRole(.checkBox)
         setAccessibilityLabel(label)
         setAccessibilityParent(parent)
-        accessibilityFrameInParentSpace = frame
+        setAccessibilityFrameInParentSpace(frame)
         setAccessibilityValue(value)
     }
     override func accessibilityPerformPress() -> Bool { action(); return true }

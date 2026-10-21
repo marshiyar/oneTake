@@ -48,7 +48,8 @@ final class MediaThumbnails {
     var onForget: (_ path: String?, _ source: String?) -> Void = { _, _ in }
     private let queue = DispatchQueue(label: "mpvfx.media-thumbnails", qos: .utility)
     /// Cached pictures kept (oldest dropped first): at most `frameLimit`, and pictures plus filmstrips together
-    /// within `budgetBytes` (`MemoryBudget.mediaThumbnails`: 2% of RAM, 64…256 MB).
+    /// within `budgetBytes` (`MemoryBudget.mediaThumbnails`: 2% of RAM, 64…256 MB), each counted with the canvas
+    /// drawable its draw makes (`CanvasImage.drawnBytes`, #95).
     let frameLimit = 400
     var budgetBytes = MemoryBudget.mediaThumbnails()
     private(set) var frameBytes = 0, stripBytes = 0
@@ -76,7 +77,7 @@ final class MediaThumbnails {
     private func trim(to limit: Int) {
         while bytes > limit, !frameOrder.isEmpty {
             let drop = frameOrder.removeFirst()
-            if let f = frames.removeValue(forKey: drop) { frameBytes -= f.rgba.count }
+            if let f = frames.removeValue(forKey: drop) { frameBytes -= f.drawnBytes }
         }
         var dropped = false
         while bytes > limit, !stripOrder.isEmpty {
@@ -86,7 +87,7 @@ final class MediaThumbnails {
         if dropped { onForget(nil, nil) }
     }
 
-    static func size(_ s: Strip) -> Int { s.frames.reduce(0) { $0 + $1.rgba.count } }
+    static func size(_ s: Strip) -> Int { s.frames.reduce(0) { $0 + $1.drawnBytes } }
 
     /// The frame of `path` (absolute) at `seconds`, fitted inside width×height; nil until decoded (onReady fires) or when
     /// the engine cannot decode it (not retried until `forget`).
@@ -104,11 +105,11 @@ final class MediaThumbnails {
                 self.framePending.remove(key)
                 guard let img else { self.frameFailed.insert(key); return }
                 self.frames[key] = img
-                self.frameBytes += img.rgba.count
+                self.frameBytes += img.drawnBytes
                 self.frameOrder.append(key)
                 if self.frameOrder.count > self.frameLimit {
                     let drop = self.frameOrder.removeFirst()
-                    if let f = self.frames.removeValue(forKey: drop) { self.frameBytes -= f.rgba.count }
+                    if let f = self.frames.removeValue(forKey: drop) { self.frameBytes -= f.drawnBytes }
                 }
                 self.trim(to: self.budgetBytes)
                 self.onReady()
@@ -218,7 +219,7 @@ final class MediaThumbnails {
 
     /// Drops everything cached for a file (renamed, deleted or replaced on disk).
     func forget(path: String) {
-        for (k, f) in frames where k.path == path { frames[k] = nil; frameBytes -= f.rgba.count }
+        for (k, f) in frames where k.path == path { frames[k] = nil; frameBytes -= f.drawnBytes }
         frameFailed = frameFailed.filter { $0.path != path }
         frameOrder.removeAll { $0.path == path }
         for (k, s) in strips where k.path == path { strips[k] = nil; stripBytes -= Self.size(s) }

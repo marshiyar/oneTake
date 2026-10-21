@@ -44,6 +44,11 @@ public final class InspectorPanel {
     public var onEdited: (() -> Void)?
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
+    /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
+    public var onCopyGrade: (() -> Bool)?
+    public var onPasteGrade: (() -> Bool)?
+    /// Whether the timeline currently holds a copied grade. Selection compatibility is checked by the panel.
+    public var gradeClipboardAvailable = false
     /// Called after a header click opened or closed a group (the host redraws); saving is done by `openGroupId`.
     public var onOpenGroupChanged: ((String) -> Void)?
 
@@ -389,7 +394,12 @@ public final class InspectorPanel {
             hits.add(target, .groupEnabled(g.id))
         }
         if open {
-            PanelDraw.text(c, g.title, in: inner, font: PanelTheme.font(12, .semibold), color: PanelTheme.text0)
+            let t = PanelDraw.text(c, g.title, in: inner, font: PanelTheme.font(12, .semibold), color: PanelTheme.text0)
+            if g.enabled == false {   // a bypassed group says so beside its title, not only by the switch position
+                let x = inner.x + t.width + 8
+                PanelDraw.text(c, g.summary, in: CanvasRect(x: x, y: inner.y + 1, width: max(0, inner.maxX - 90 - x), height: inner.height),
+                               font: PanelTheme.mono(9), color: PanelTheme.text4)
+            }
             PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text3)
             if g.reset != nil {
                 let offset = g.enabled == nil ? 34.0 : 78.0
