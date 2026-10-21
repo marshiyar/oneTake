@@ -155,6 +155,10 @@ public final class TimelineController {
         view.scrollX = TimelineLayout.contentOrigin + anchorTime * view.pixelsPerSecond - ax
         clampScroll(); onZoomChange?(zoomMode, manualZoomPercent); needsDisplay?()
     }
+    /// Zoom to an absolute scale (clamped like any zoom), whatever the fit is at this viewport and duration.
+    public func setZoom(pixelsPerSecond pps: Double, anchorX: Double? = nil) {
+        setZoom(percent: pps / max(fitPixelsPerSecond, 1e-9) * 100, anchorX: anchorX)
+    }
     public func zoom(in dirIn: Bool) { setZoom(percent: TimelineZoom.next(dirIn, mode: zoomMode, manual: manualZoomPercent, fit: fitPixelsPerSecond)) }
     public func zoomToFit() { zoomMode = .fit; view.scrollX = 0; relayout(); onZoomChange?(zoomMode, manualZoomPercent) }
     /// Restore a persisted zoom without reporting it back (studioUiPreferences on startup).

@@ -258,7 +258,7 @@ final class InspectorRenderAuditTests: XCTestCase {
     /// A timeline over the audit document at 100 px/s; row 0 is the video track.
     func timeline() -> TimelineController {
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: editor)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         return c
     }
     func tx(_ t: Double) -> Double { 264 + 100 * t }
