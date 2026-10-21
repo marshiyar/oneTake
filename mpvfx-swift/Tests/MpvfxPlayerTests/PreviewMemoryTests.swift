@@ -59,7 +59,7 @@ final class PreviewMemoryTests: XCTestCase {
         let cache = PreviewFrameCache(budgetBytes: frameBytes * 10, pressure: nil)
         for f in 0..<10 { cache.store(Self.image(64, 36, 1), lane: "a", frame: f) }
         XCTAssertEqual(cache.bytes, cache.budgetBytes, "full")
-        let first = cache.reserve(frameBytes), second = cache.reserve(frameBytes)
+        let first = cache.reserve(frameBytes, lane: "b"), second = cache.reserve(frameBytes, lane: "c")
         XCTAssertEqual(cache.inFlightBytes, 2 * frameBytes)
         XCTAssertLessThanOrEqual(cache.bytes + cache.inFlightBytes, cache.budgetBytes,
                                  "room is made before the frames exist")
@@ -73,6 +73,56 @@ final class PreviewMemoryTests: XCTestCase {
         XCTAssertEqual(cache.inFlightBytes, 0, "a dropped frame gives its reservation back")
         XCTAssertLessThanOrEqual(cache.peakHeldBytes, cache.budgetBytes, "cached plus in flight never above the budget")
         XCTAssertEqual(cache.peakInFlightBytes, 2 * frameBytes)
+    }
+
+    /// Many lanes reserving at once (Codex review of #132): a reservation that would take the frames in flight past
+    /// the budget waits for another to settle, so cached plus in flight stays within the budget for any number of
+    /// lanes, down to a budget of one frame.
+    func testConcurrentReservationsKeepCachedPlusInFlightWithinTheBudget() {
+        let frameBytes = 64 * 36 * 4
+        for frames in [1, 3] {
+            let cache = PreviewFrameCache(budgetBytes: frameBytes * frames, pressure: nil)
+            DispatchQueue.concurrentPerform(iterations: 6) { lane in
+                for frame in 0..<20 {
+                    let reserved = cache.reserve(frameBytes, lane: "lane\(lane)")
+                    if frame % 5 == 2 { cache.release(reserved); continue }   // some decodes are dropped
+                    cache.store(Self.image(64, 36, UInt8(lane)), lane: "lane\(lane)", frame: frame, reserved: reserved)
+                }
+            }
+            XCTAssertLessThanOrEqual(cache.peakHeldBytes, cache.budgetBytes, "budget of \(frames) frames")
+            XCTAssertLessThanOrEqual(cache.peakInFlightBytes, cache.budgetBytes)
+            XCTAssertEqual(cache.inFlightBytes, 0, "every reservation settled")
+            XCTAssertGreaterThan(cache.count, 0, "the last decode of every lane is stored")
+        }
+    }
+
+    /// A reservation keeps the reserving lane's most recent frame while it fits beside the frames in flight: it is
+    /// what the layer shows when the decode fails (end of the media). Another lane's frames go first.
+    func testAReservationKeepsItsLanesLastFrameWhenItFits() {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 4, pressure: nil)
+        cache.store(Self.image(64, 36, 1), lane: "a", frame: 0)
+        for f in 0..<3 { cache.store(Self.image(64, 36, 2), lane: "b", frame: f) }
+        let reserved = cache.reserve(frameBytes, lane: "a")
+        XCTAssertTrue(cache.contains(lane: "a", frame: 0), "the lane's fallback frame stays, though the oldest")
+        XCTAssertFalse(cache.contains(lane: "b", frame: 0), "the oldest frame of another lane made the room")
+        cache.release(reserved)
+        // One frame of budget: the fallback cannot fit beside the frame in flight, and the bound wins.
+        let tiny = PreviewFrameCache(budgetBytes: frameBytes, pressure: nil)
+        tiny.store(Self.image(64, 36, 1), lane: "a", frame: 0)
+        tiny.release(tiny.reserve(frameBytes, lane: "a"))
+        XCTAssertLessThanOrEqual(tiny.peakHeldBytes, tiny.budgetBytes)
+    }
+
+    /// A memory warning halves the budget for what is held, frames in flight included.
+    func testAMemoryWarningCountsFramesInFlight() {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 10, pressure: nil)
+        for f in 0..<4 { cache.store(Self.image(64, 36, 1), lane: "a", frame: f) }
+        let reserved = cache.reserve(frameBytes * 4, lane: "b")
+        cache.purge(.warning)
+        XCTAssertLessThanOrEqual(cache.bytes + cache.inFlightBytes, cache.budgetBytes / 2)
+        cache.release(reserved)
     }
 
     func testMemoryPressureEmptiesTheFrameCacheAndAReleasedCacheStopsObserving() {
@@ -188,8 +238,10 @@ final class PreviewMemoryTests: XCTestCase {
     }
 
     /// Draws at `t`, lets the decoders and the grader catch up, draws again (what the app's redraw after `frameReady` does).
-    func draw(_ cx: PreviewCompositor, _ c: CanvasContext, _ t: Double, playing: Bool, speed: Double = 1,
-              rect: CanvasRect = CanvasRect(x: 0, y: 0, width: 160, height: 90)) {
+    /// The view is the project's canvas size, so frames decode at canvas pixels.
+    func draw(_ cx: PreviewCompositor, _ c: CanvasContext, _ t: Double, playing: Bool, speed: Double = 1) {
+        let size = cx.composition?.canvas
+        let rect = CanvasRect(x: 0, y: 0, width: size?.width ?? 160, height: size?.height ?? 90)
         cx.draw(c, in: rect, time: t, elements: [], context: FrameDrawContext(isPlaying: playing, speed: speed))
         for l in cx.lanes.values { l.wait() }
         cx.draw(c, in: rect, time: t, elements: [], context: FrameDrawContext(isPlaying: playing, speed: speed))
@@ -285,10 +337,9 @@ final class PreviewMemoryTests: XCTestCase {
         defer { cx.stopAll() }
         cx.composition = PreviewComposition(document: ed.document, projectDir: dir, engine: nil)
         let (c, keep) = try canvas(width: 1920, height: 1080); _ = keep
-        let rect = CanvasRect(x: 0, y: 0, width: 1920, height: 1080)
         // The peaks are taken under the cache's lock at every reservation and store; reading bytes and in-flight
         // bytes here one after the other would race the lanes.
-        for f in 0..<30 { draw(cx, c, Double(f) / 30, playing: true, rect: rect) }
+        for f in 0..<30 { draw(cx, c, Double(f) / 30, playing: true) }
         XCTAssertEqual(Set(cx.lanes.values.map(\.layer.clipId)), ["clip:a", "clip:b"], "two lanes")
         let decoded = cx.lanes.values.reduce(0) { $0 + $1.framesDecoded }
         XCTAssertGreaterThan(decoded, 16, "decoding ran well past what the budget holds, so eviction ran")

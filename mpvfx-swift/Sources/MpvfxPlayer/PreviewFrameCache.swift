@@ -22,7 +22,9 @@ import MpvfxShared
 ///
 /// A frame a decode lane is producing is counted before it exists: the lane reserves its bytes (`reserve`), which
 /// evicts to make room, and hands the reservation over with the frame (`store(_:lane:frame:reserved:)`) or gives it
-/// back (`release`). So cached plus in-flight frames stay within the budget, not the cached frames alone (issue #97).
+/// back (`release`). A reservation that would take the frames in flight past the budget waits until another one is
+/// settled, so cached plus in-flight frames stay within the budget for any number of lanes (issue #97). The one
+/// exception is a single frame larger than the whole budget: it is still decoded and kept, alone.
 public final class PreviewFrameCache: @unchecked Sendable {
     public struct Key: Hashable, Sendable { public var lane: String; public var frame: Int }
 
@@ -34,35 +36,41 @@ public final class PreviewFrameCache: @unchecked Sendable {
             lock.lock(); defer { lock.unlock() }
             budget = max(1, newValue)
             evict(to: budget - inFlight, protecting: nil)
+            lock.broadcast()
         }
     }
-    let lock = NSLock()
+    /// Guards everything below; reservations wait on it for frames in flight to settle.
+    let lock = NSCondition()
     var frames: [Key: (image: CanvasImage, tick: UInt64)] = [:]
     var byLane: [String: Set<Int>] = [:]
     var tick: UInt64 = 0
-    public private(set) var bytes = 0
-    /// Most bytes ever held at once (tests: never above the budget).
-    public private(set) var peakBytes = 0
+    var cached = 0, inFlight = 0
+    var peakCached = 0, peakHeld = 0, peakInFlight = 0
+    var pressureToken: MemoryPressureMonitor.Token?
+
+    /// Bytes of the frames cached now.
+    public var bytes: Int { lock.lock(); defer { lock.unlock() }; return cached }
+    /// Most bytes ever cached at once (tests: never above the budget).
+    public var peakBytes: Int { lock.lock(); defer { lock.unlock() }; return peakCached }
     /// Bytes reserved for frames decode lanes are producing now and have not stored yet.
     public var inFlightBytes: Int { lock.lock(); defer { lock.unlock() }; return inFlight }
-    var inFlight = 0
     /// Most bytes ever held at once counting frames in flight: cached plus reserved (tests, the preview benchmark).
-    public private(set) var peakHeldBytes = 0
+    public var peakHeldBytes: Int { lock.lock(); defer { lock.unlock() }; return peakHeld }
     /// Most bytes ever in flight at once.
-    public private(set) var peakInFlightBytes = 0
-    var pressureToken: MemoryPressureMonitor.Token?
+    public var peakInFlightBytes: Int { lock.lock(); defer { lock.unlock() }; return peakInFlight }
 
     public init(budgetBytes: Int = MemoryBudget.previewFrames(), pressure: MemoryPressureMonitor? = .shared) {
         budget = max(1, budgetBytes)
         pressureToken = pressure?.observe { [weak self] level in self?.purge(level) }
     }
 
-    /// Memory pressure: a warning keeps the most recent half of the budget, critical drops everything.
+    /// Memory pressure: a warning keeps the most recent half of the budget (frames in flight included), critical
+    /// drops every cached frame.
     public func purge(_ level: MemoryPressureMonitor.Level) {
         lock.lock(); defer { lock.unlock() }
         switch level {
-        case .warning: evict(to: budget / 2, protecting: nil)
-        case .critical: frames = [:]; byLane = [:]; bytes = 0
+        case .warning: evict(to: budget / 2 - inFlight, protecting: nil)
+        case .critical: frames = [:]; byLane = [:]; cached = 0
         }
     }
 
@@ -74,29 +82,31 @@ public final class PreviewFrameCache: @unchecked Sendable {
     /// cached, so a frame that was made room for evicts nothing more when it lands.
     public func store(_ image: CanvasImage, lane: String, frame: Int, reserved: Int = 0) {
         lock.lock(); defer { lock.unlock() }
-        inFlight = max(0, inFlight - reserved)
+        settle(reserved)
         let key = Key(lane: lane, frame: frame)
-        if let old = frames[key] { bytes -= Self.size(old.image) }
+        if let old = frames[key] { cached -= Self.size(old.image) }
         tick += 1
         frames[key] = (image, tick)
         byLane[lane, default: []].insert(frame)
-        bytes += Self.size(image)
+        cached += Self.size(image)
         let room = budget - inFlight
-        if bytes > room { evict(to: room, protecting: key) }   // least recently used first
-        peakBytes = max(peakBytes, bytes)
+        if cached > room { evict(to: room, protecting: key) }   // least recently used first
         notePeaks()
     }
 
-    /// Counts the `frameBytes` of a frame about to be decoded against the budget, evicting least recently used
-    /// frames to make room now rather than after the frame exists. The most recently used frame stays (it is the
-    /// one most likely on screen). Returns the bytes reserved: pass them to `store(_:lane:frame:reserved:)` with
-    /// the frame, or to `release` when no frame is stored.
-    public func reserve(_ frameBytes: Int) -> Int {
+    /// Counts the `frameBytes` of a frame `lane` is about to decode against the budget, evicting least recently
+    /// used frames to make room now rather than after the frame exists. When the frames already in flight leave no
+    /// room for it, it waits until one of them is stored or released (a reservation never waits when nothing else
+    /// is in flight). The lane's own most recent frame stays while it fits beside the frames in flight: it is what
+    /// the layer shows if this decode fails. Returns the bytes reserved: pass them to
+    /// `store(_:lane:frame:reserved:)` with the frame, or to `release` when no frame is stored.
+    public func reserve(_ frameBytes: Int, lane: String) -> Int {
         lock.lock(); defer { lock.unlock() }
         let reserved = max(0, frameBytes)
+        while inFlight > 0 && inFlight + reserved > budget { lock.wait() }
         inFlight += reserved
         let room = budget - inFlight
-        if bytes > room { evict(to: room, protecting: newestKey()) }
+        if cached > room { evict(to: room, protecting: fallback(of: lane, within: room)) }
         notePeaks()
         return reserved
     }
@@ -104,30 +114,46 @@ public final class PreviewFrameCache: @unchecked Sendable {
     /// Gives back a reservation whose frame was not stored (the media ended, or the frame was dropped).
     public func release(_ reserved: Int) {
         lock.lock(); defer { lock.unlock() }
-        inFlight = max(0, inFlight - reserved)
+        settle(reserved)
     }
 
-    /// The most recently used frame. Call with `lock` held.
-    func newestKey() -> Key? { frames.max { $0.value.tick < $1.value.tick }?.key }
+    /// A reservation ends: its bytes leave the frames in flight and waiting reservations look again. Call with
+    /// `lock` held.
+    func settle(_ reserved: Int) {
+        inFlight = max(0, inFlight - reserved)
+        lock.broadcast()
+    }
+
+    /// The most recently used frame of `lane`, when it fits in `room`. Call with `lock` held.
+    func fallback(of lane: String, within room: Int) -> Key? {
+        guard let held = byLane[lane] else { return nil }
+        let entries = held.compactMap { frame in
+            frames[Key(lane: lane, frame: frame)].map { (key: Key(lane: lane, frame: frame), entry: $0) }
+        }
+        guard let newest = entries.max(by: { $0.entry.tick < $1.entry.tick }),
+              Self.size(newest.entry.image) <= room else { return nil }
+        return newest.key
+    }
 
     /// Call with `lock` held.
     func notePeaks() {
-        peakHeldBytes = max(peakHeldBytes, bytes + inFlight)
-        peakInFlightBytes = max(peakInFlightBytes, inFlight)
+        peakCached = max(peakCached, cached)
+        peakHeld = max(peakHeld, cached + inFlight)
+        peakInFlight = max(peakInFlight, inFlight)
     }
 
     func evict(to limit: Int, protecting keep: Key?) {
-        guard bytes > limit else { return }
+        guard cached > limit else { return }
         let victims = frames.filter { $0.key != keep }.sorted { $0.value.tick < $1.value.tick }
         for v in victims {
-            if bytes <= limit { break }
+            if cached <= limit { break }
             remove(v.key)
         }
     }
 
     func remove(_ key: Key) {
         guard let old = frames.removeValue(forKey: key) else { return }
-        bytes -= Self.size(old.image)
+        cached -= Self.size(old.image)
         byLane[key.lane]?.remove(key.frame)
         if byLane[key.lane]?.isEmpty == true { byLane[key.lane] = nil }
     }
@@ -178,6 +204,6 @@ public final class PreviewFrameCache: @unchecked Sendable {
 
     public func removeAll() {
         lock.lock(); defer { lock.unlock() }
-        frames = [:]; byLane = [:]; bytes = 0
+        frames = [:]; byLane = [:]; cached = 0
     }
 }

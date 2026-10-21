@@ -35,8 +35,11 @@ background loop.
   Least recently used entries go first.
 - **Frames being decoded count against the frame budget.** A decode lane reserves a frame's bytes in
   `PreviewFrameCache` before it decodes it (`reserve`, which evicts to make room) and hands the reservation over when
-  it stores the frame, or gives it back when the media ended or the frame was dropped. Cached plus in-flight frames
-  stay within `MemoryBudget.previewFrames`; before, each lane decoding at a full cache held one more frame outside it
+  it stores the frame, or gives it back when the media ended or the frame was dropped. A reservation that would take
+  the frames in flight past the budget waits until another is settled, and the reserving lane's newest frame is kept
+  while it fits (it is what the layer shows if the decode fails). Cached plus in-flight frames stay within
+  `MemoryBudget.previewFrames` for any number of lanes (a single frame larger than the whole budget is still kept);
+  before, each lane decoding at a full cache held one more frame outside it
   (`PreviewMemoryTests.testTwoStacked1080pLanesKeepCachedPlusInFlightFramesWithinTheBudget`). Lookahead
   (`PreviewCompositor.maxLookahead`, 12) and reverse chunks are cache entries, inside the budget.
 - **Memory pressure gives memory back.** `MemoryPressureMonitor` listens to macOS memory warnings. On a warning the
@@ -79,7 +82,8 @@ background loop.
 - Preview benchmark (`tools/MpvfxPreviewBench`, run by `.github/workflows/bench.yml`): each scenario's line has
   `peak_rss_mib`, `cache_bytes_mib` (frames cached plus in flight at their peak), `in_flight_mib`,
   `grader_bytes_mib`, `budget_sum_mib`, `start_rss_mib` (before any decoding) and `unaccounted_mib`
-  (`peak_rss_mib` minus the caches' peaks).
+  (`peak_rss_mib` minus the caches' peaks: a lower bound on what the process held outside the caches at its peak,
+  since the peaks need not coincide).
 - Smoke run: `MPVFX_SMOKE_MEMORY=<rounds>` launches the app, drives the open project through rounds of play, scrub,
   grade edits, reverse and replay, simulates a memory warning halfway, and exits 0 (`PASS`) or 4 (`FAIL`) with a
   footprint report. `MPVFX_SMOKE_MEMORY_LIMIT_MB` sets the allowed growth beyond what the caches hold (default 256),

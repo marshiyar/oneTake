@@ -42,8 +42,10 @@ import CoreGraphics
 // grader_bytes_mib: graded pictures, sampled at every draw), their budgets (budget_sum_mib, MemoryBudget.previewTotal
 // for this machine), the process before any decoding (start_rss_mib) and peak_rss_mib minus the caches' peaks
 // (unaccounted_mib: the binaries and engine libraries, the engine's decoder state, canvas surfaces, allocator
-// overhead). The playback phase's compositor is released before the real-time phase starts its own, as closing a
-// project does, so the two phases' caches are never held at once.
+// overhead). The cache peaks may come from different moments than the RSS peak, so unaccounted_mib is a lower bound
+// on what the process held outside the caches at its peak: at that moment the caches held at most their peaks.
+// The playback phase's compositor is released before the real-time phase starts its own, as closing a project
+// does, so the two phases' caches are never held at once.
 
 func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
 
@@ -267,7 +269,8 @@ func main() throws {
         print("       MpvfxPreviewBench --make-clips <fixtures dir>"); exit(2)
     }
     let (width, height) = (1280, 720)
-    let startRSS = mib(ResidentMemory.footprintBytes() ?? 0)
+    // Measured as peak_rss_mib is (getrusage / the peak working set), so the two compare on every OS.
+    let startRSS = peakMiB()
     let doc = try document(sc.clips, dir: args[2], seconds: sc.seconds)
     let frames = args.count > 4 ? Int(args[4]) ?? 120 : Int(sc.seconds * 30) - 2
     var result: [String: String] = ["scenario": args[1], "display": "\(width)x\(height)"]

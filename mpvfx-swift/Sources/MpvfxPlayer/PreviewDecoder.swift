@@ -317,7 +317,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     /// budget while it is in flight (issue #97). nil at the end of the media, with the reservation given back; the
     /// caller hands `reserved` to `cache.store` with the frame or to `cache.release` when it drops it.
     func reservedNext(_ s: MediaFrameStream) -> (image: CanvasImage, reserved: Int)? {
-        let reserved = cache.reserve(s.width * s.height * 4)
+        let reserved = cache.reserve(s.width * s.height * 4, lane: key)
         guard let image = timedNext(s) else { cache.release(reserved); return nil }
         return (image, reserved)
     }
