@@ -50,6 +50,15 @@ class Scan(unittest.TestCase):
         text = "#if canImport(CMpvfxVulkan) || os(Windows)\nlet r = VulkanColorRenderer()\n#endif\n"
         self.assertEqual(guard.scan(text), [2])
 
+    def test_and_followed_by_or_does_not_guard(self):
+        # `&&` binds tighter: the condition is true on Windows without CMpvfxVulkan.
+        text = "#if canImport(CMpvfxVulkan) && os(Linux) || os(Windows)\nlet r = VulkanColorRenderer()\n#endif\n"
+        self.assertEqual(guard.scan(text), [2])
+
+    def test_and_alone_guards(self):
+        text = "#if canImport(CMpvfxVulkan) && os(Linux)\nlet r = VulkanColorRenderer()\n#endif\n"
+        self.assertEqual(guard.scan(text), [])
+
     def test_comments_and_strings_are_ignored(self):
         text = '/// `VulkanColorRenderer` on Linux\nlet s = "VulkanColorRenderer"  // VulkanColorRenderer\n'
         self.assertEqual(guard.scan(text), [])
