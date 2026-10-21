@@ -62,6 +62,10 @@ public final class GraphAudioSource: AudioRenderSource {
     }
     /// Next frame the graph will render.
     public var position: Int { lock.lock(); defer { lock.unlock() }; return renderer.position }
+    /// Last block actually pulled by playback; never publishes seek pre-roll meters.
+    public var meters: [String: AudioGraphRenderer.Meter] { meterLock.lock(); defer { meterLock.unlock() }; return liveMeters }
+    private let meterLock = NSLock()
+    private var liveMeters: [String: AudioGraphRenderer.Meter] = [:]
     public var lastPreRoll: PreRoll? { lock.lock(); defer { lock.unlock() }; return lastPreRoll_ }
 
     public func seek(_ t: Double) { seek(frame: Int(((t.isFinite ? max(0, t) : 0) * project.sampleRate).rounded())) }
@@ -247,9 +251,12 @@ public final class GraphAudioSource: AudioRenderSource {
 
     public func render(frames: Int) -> [Float] {
         lock.lock()
+        renderer.collectsMeters = true
         var out = renderer.render(frames)
+        renderer.collectsMeters = false
         if out.count < frames * 2 { out += [Float](repeating: 0, count: frames * 2 - out.count) } // past the end: silence
         if fadingOut != nil { crossfadeFromOldGraph(&out, frames) }
+        meterLock.lock(); liveMeters = renderer.meters; meterLock.unlock()
         renderedSinceSeek = true
         lock.unlock()
         applyTransportGain(&out, frames)

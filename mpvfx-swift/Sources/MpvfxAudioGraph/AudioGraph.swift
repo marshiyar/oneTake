@@ -36,6 +36,8 @@ public struct AudioGraphTrack: Sendable {
     public var id: String
     /// Stereo planes at the graph's sample rate.
     public var stem: [[Float]]
+    public var mixerGain: Double = 1
+    public var meterId: String? = nil
     public var start: Double
     public var end: Double
     public var volume: Double
@@ -220,7 +222,12 @@ final class TrackStage: FrameSource {
         bakedVolume = baked
         startFrame = Int(jsMathRound(t.start * 1000)) * Int(sr) / 1000
         panGains = equalPower(t.pan)
+        mixerGain = Float(t.mixerGain)
     }
+
+    var captureMeter = false
+    var meterSamples: [Float] = []
+    var mixerGain: Float = 1
 
     func pull(_ count: Int, _ l: inout [Float], _ r: inout [Float], _ offset: Int) {
         for k in 0..<count {
@@ -232,6 +239,8 @@ final class TrackStage: FrameSource {
                 a *= g; b *= g
                 if let (gl, gr) = panGains { a *= gl; b *= gr }
             }
+            a *= mixerGain; b *= mixerGain
+            if captureMeter { meterSamples.append(a); meterSamples.append(b) }
             l[offset + k] = a; r[offset + k] = b
         }
         produced += count
@@ -376,6 +385,12 @@ public final class AudioGraphRenderer {
     let scale: Float
     let makeup: Float
     public private(set) var position = 0
+    /// Live-only tap after each clip fader/pan and before bus processing.
+    public var collectsMeters = false
+    public struct Meter: Equatable, Sendable {
+        public var peak: Double, rms: Double
+    }
+    public private(set) var meters: [String: Meter] = [:]
     public var totalFrames: Int { project.totalFrames }
 
     public init(_ project: AudioGraphProject) {
@@ -412,11 +427,25 @@ public final class AudioGraphRenderer {
     /// Next `frames` frames (clamped to the end), interleaved stereo.
     public func render(_ frames: Int) -> [Float] {
         let count = max(0, min(frames, totalFrames - position))
+        for stage in trackStages.values { stage.captureMeter = collectsMeters; stage.meterSamples.removeAll(keepingCapacity: true) }
         var outL = [Float](repeating: 0, count: count), outR = outL
         var l = outL, r = outR
         for input in inputs {
             input.pull(count, &l, &r, 0)
             for k in 0..<count { outL[k] += l[k] * scale; outR[k] += r[k] * scale }
+        }
+        if collectsMeters {
+            var sums: [String: [Float]] = [:]
+            for t in project.tracks {
+                guard let id = t.meterId, let stage = trackStages[t.id] else { continue }
+                var samples = sums[id] ?? [Float](repeating: 0, count: count * 2)
+                for i in 0..<min(samples.count, stage.meterSamples.count) { samples[i] += stage.meterSamples[i] }
+                sums[id] = samples
+            }
+            meters = sums.mapValues { samples in
+                Meter(peak: Double(samples.map { abs($0) }.max() ?? 0),
+                      rms: sqrt(samples.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(max(1, samples.count))))
+            }
         }
         position += count
         var out = [Float](repeating: 0, count: count * 2)
@@ -456,6 +485,7 @@ public final class AudioGraphRenderer {
     /// Applied before the first render, the output is bit-identical to `AudioGraphRenderer(next)`; mid-stream,
     /// the filters keep their state, so the edit is heard at once instead of after a pre-roll from frame 0.
     public func applyParameterEdits(_ next: AudioGraphProject) -> Bool {
+        guard zip(project.tracks, next.tracks).allSatisfy({ $0.mixerGain == $1.mixerGain && $0.meterId == $1.meterId }) else { return false }
         let old = project
         guard old.duration == next.duration, old.sampleRate == next.sampleRate, old.quantizeIntermediates == next.quantizeIntermediates,
               old.tracks.count == next.tracks.count, old.groups.count == next.groups.count else { return false }

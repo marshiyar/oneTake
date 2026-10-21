@@ -245,6 +245,9 @@ public struct NativeProjectTrack: Codable, Equatable, Sendable {
     /// A soloed audio track is heard alone: while any audio track is soloed, the clips of every other track are left
     /// out of the mix (live playback and export). Ignored on video and mixed tracks. Absent means not soloed.
     public var soloed: Bool?
+    /// Mixer controls: absent means unity gain and centered pan.
+    public var mixerGainDB: Double? = nil
+    public var mixerPan: Double? = nil
 
     public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil,
                 locked: Bool? = nil, soloed: Bool? = nil, transitions: [NativeCutTransition]? = nil) {
