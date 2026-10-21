@@ -19,7 +19,7 @@ public struct SilenceRange: Codable, Equatable {
     public init(start: Double, end: Double) { self.start = start; self.end = end }
 }
 
-public struct SilenceRemovalOptions: Codable, Equatable {
+public struct SilenceRemovalOptions: Codable, Equatable, Sendable {
     public var thresholdDb: Double; public var minimumSilenceSeconds: Double; public var paddingSeconds: Double
     public init(thresholdDb: Double, minimumSilenceSeconds: Double, paddingSeconds: Double) {
         self.thresholdDb = thresholdDb; self.minimumSilenceSeconds = minimumSilenceSeconds; self.paddingSeconds = paddingSeconds

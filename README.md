@@ -24,6 +24,9 @@ x64), and a Linux `.deb` (Ubuntu 24.04 or newer, Debian 13) and archive.
 The Windows installer is not code-signed yet, so the first time you run it Windows SmartScreen shows "Windows protected
 your PC": choose **More info**, then **Run anyway**.
 
+New to the app? [`docs/GETTING_STARTED.md`](mpvfx-swift/docs/GETTING_STARTED.md) walks through opening the sample project
+([`samples/getting-started`](mpvfx-swift/samples/getting-started)), importing, cutting, grading and exporting.
+
 ## What it does
 
 - **Editor:** the same custom-drawn editor on every platform (GTK 3 + Cairo on Linux, AppKit + Core Graphics on
@@ -125,7 +128,8 @@ macOS after every green run on `main`, weekly, and by hand: startup to the first
 | [`Sources/MpvfxTimeline`](mpvfx-swift/Sources/MpvfxTimeline), [`Sources/MpvfxPanels`](mpvfx-swift/Sources/MpvfxPanels), [`Sources/MpvfxCanvas`](mpvfx-swift/Sources/MpvfxCanvas) | timeline, inspector and side panels, drawing abstraction |
 | [`Sources/MpvfxShared`](mpvfx-swift/Sources/MpvfxShared) | document schema, validation, export policy, shared types |
 | [`Sources/OneTakeMedia`](mpvfx-swift/Sources/OneTakeMedia), [`Sources/OneTakeKeyframes`](mpvfx-swift/Sources/OneTakeKeyframes) | Swift adapters over the two engines' C interfaces |
-| [`docs/`](mpvfx-swift/docs/) | [`STATUS.md`](mpvfx-swift/docs/STATUS.md), [`FEATURES.md`](mpvfx-swift/docs/FEATURES.md), [`PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), [`MEMORY.md`](mpvfx-swift/docs/MEMORY.md) |
+| [`docs/`](mpvfx-swift/docs/) | [`GETTING_STARTED.md`](mpvfx-swift/docs/GETTING_STARTED.md), [`STATUS.md`](mpvfx-swift/docs/STATUS.md), [`FEATURES.md`](mpvfx-swift/docs/FEATURES.md), [`PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), [`MEMORY.md`](mpvfx-swift/docs/MEMORY.md) |
+| [`samples/getting-started`](mpvfx-swift/samples/getting-started) | the sample project the getting started guide opens |
 | [`binaries.lock`](mpvfx-swift/binaries.lock) | engine versions, download URLs and SHA-256 per platform |
 | [`.github/`](.github/) | CI, release publishing, strip check, benchmarks |
 

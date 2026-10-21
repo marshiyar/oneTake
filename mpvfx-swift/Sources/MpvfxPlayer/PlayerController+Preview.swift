@@ -16,7 +16,8 @@ import MpvfxCanvas
 import MpvfxTimeline
 import MpvfxShared
 
-/// Gesture recording, asset drops, arrow-key nudge, gesture cancel and persisted preferences.
+/// The per-draw tick, asset drops, arrow-key nudge, gesture cancel and persisted preferences (Record motion is in
+/// PlayerController+Record.swift).
 extension PlayerController {
     /// Work done at the start of each draw: sample the recording, commit a settled nudge, persist a settled zoom.
     func frameTick() {
@@ -33,109 +34,6 @@ extension PlayerController {
     }
 
     var wantsFrames: Bool { recorder != nil || nudgeAt != nil || zoomTouchedAt != nil }
-
-    // MARK: Gesture recording
-
-    /// Turns on the tools bar Record button and the R key. `document` reads the open document; `commit` stores the
-    /// recorded one as a single undo step and returns whether it was accepted.
-    public func enableGestureRecording(engine: KeyframeEngine? = nil, document: @escaping () -> NativeProjectDocument?,
-                                       commit: @escaping (_ edited: NativeProjectDocument, _ before: NativeProjectDocument) -> Bool) {
-        recordingEngine = engine
-        recordingDocument = document
-        onRecordingCommit = commit
-        view.toolbar.onToggleRecording = { [weak self] in self?.toggleRecording() }
-    }
-
-    public var isRecording: Bool { recorder != nil }
-
-    /// handleToggleRecording: start on the selected element at the playhead, or stop and commit.
-    public func toggleRecording() {
-        if recorder != nil { stopRecording(commit: true); return }
-        guard view.selectedIds.count == 1, let e = selected else { view.showToast("Select an element first", isError: true); needsDisplay?(); return }
-        guard let doc = recordingDocument?() else { view.showToast("Native keyframing is not ready for this recording", isError: true); needsDisplay?(); return }
-        let pb = view.playback
-        let start = pb.currentTime >= pb.duration - 1e-9 ? 0 : pb.currentTime   // play() rewinds from the very end
-        guard let base = GestureKeyframes.base(doc, clipId: e.id, time: start, engine: recordingEngine) else {
-            view.showToast("This layer is not available for native gesture recording", isError: true); needsDisplay?(); return
-        }
-        if view.cropActive { cancelCrop() }
-        gesture = nil
-        recorder = GestureRecorder(clipId: e.id, startTime: start, fps: pb.fps, base: base, viewScale: view.scale(in: size), pointer: lastPointer)
-        recordingStart = e
-        recordingProjectId = doc.id
-        let clipEnd = doc.sequence.tracks.lazy.flatMap(\.clips).first { $0.id == e.id }.map { ($0.startFrame + $0.durationFrames) / max(pb.fps, 1) }
-        recordingLimit = min(clipEnd ?? .infinity, pb.duration)
-        view.toolbar.recording = .recording
-        view.recordingTrail = []
-        // Recording runs on the transport clock: forward at 1×, from the playhead (the original seeks per frame).
-        if pb.isPlaying { pb.pause() }
-        pb.togglePlay()
-        needsDisplay?()
-    }
-
-    /// One display frame while recording: sample the pointer at the transport time, preview it on the element,
-    /// and stop at the clip's end, the composition's end, or when playback stops.
-    func recordingTick() {
-        guard var r = recorder else { return }
-        let pb = view.playback
-        let time = max(0, pb.currentTime - r.startTime)
-        if r.tick(time: time) {
-            recorder = r
-            view.recordingTrail = r.trail
-            preview(r)
-        }
-        if !pb.isPlaying || (recordingLimit > 0 && pb.currentTime >= recordingLimit - 0.05) { stopRecording(commit: true) }
-    }
-
-    /// Shows the live values on the recorded element (position, rotation, opacity, scale).
-    func preview(_ r: GestureRecorder) {
-        guard let start = recordingStart, let i = view.elements.firstIndex(where: { $0.id == r.clipId }) else { return }
-        var e = view.elements[i]
-        if let x = r.live["x"] { e.rect.x = start.rect.x + x - r.base.x }
-        if let y = r.live["y"] { e.rect.y = start.rect.y + y - r.base.y }
-        if let a = r.live["rotation"] { e.rotation = a }
-        if let o = r.live["opacity"] { e.opacity = o }
-        if let s = r.live["scale"] { e.scale = s }
-        view.elements[i] = e
-    }
-
-    /// stopAndCommitRecording: freeze the samples, pause, write the keyframes (one undo step), seek back to the start.
-    public func stopRecording(commit: Bool) {
-        guard let r = recorder else { return }
-        recorder = nil
-        view.toolbar.recording = .idle
-        view.recordingTrail = []
-        let pb = view.playback
-        if pb.isPlaying { pb.pause() }
-        defer {
-            if let i = view.elements.firstIndex(where: { $0.id == r.clipId }), let s = recordingStart {
-                view.elements[i].opacity = nil; view.elements[i].scale = nil
-                if view.elements[i].rect != s.rect || view.elements[i].rotation != s.rotation { view.elements[i].rect = s.rect; view.elements[i].rotation = s.rotation }
-            }
-            recordingStart = nil
-            pb.seek(r.startTime)
-            needsDisplay?()
-        }
-        guard commit else { return }
-        guard let doc = recordingDocument?(), doc.id == recordingProjectId else {
-            view.showToast("Recording cancelled because the active project changed"); return
-        }
-        let samples = r.samples
-        let duration = samples.last?.time ?? 0
-        let bounds = recordingStart.map { NativeSelectionBounds(width: $0.rect.width, height: $0.rect.height) }
-        do {
-            let (edited, count) = try GestureKeyframes.apply(doc, clipId: r.clipId, startTime: r.startTime, duration: duration,
-                                                             samples: samples, bounds: bounds, engine: recordingEngine)
-            guard onRecordingCommit?(edited, doc) == true else {
-                view.showToast("Gesture commit failed: the recording could not be saved", isError: true); return
-            }
-            view.showToast("Recorded \(count) keyframes")
-        } catch let f as GestureKeyframes.Failure {
-            view.showToast(f.message, isError: true)
-        } catch {
-            view.showToast("Gesture commit failed: \(error)", isError: true)
-        }
-    }
 
     // MARK: Asset drop (a hook for the media bin / library panels)
 
@@ -213,10 +111,22 @@ extension PlayerController {
             for st in starts { update(st.id) { $0 = st } }
         case .marquee:
             view.marquee = nil; view.marqueeCandidates = []
-        case .pan: break
+        case .pan, .compare: break   // the compare divider is preview-only state; nothing to restore
         }
         needsDisplay?()
         return true
+    }
+
+    /// Esc, innermost first: a take, a drag, the menu, the grid popover, the crop tool, armed Record, fullscreen.
+    func escapeKey() -> Bool {
+        if recorder != nil { return recordEscape() }
+        if cancelGesture() { return true }
+        if view.contextMenu != nil { view.contextMenu = nil; needsDisplay?(); return true }
+        if view.toolbar.gridPopoverOpen { view.toolbar.gridPopoverOpen = false; needsDisplay?(); return true }
+        if view.cropActive { cancelCrop(); return true }
+        if recordEscape() { return true }   // disarms Record
+        if view.isFullscreen { view.isFullscreen = false; needsDisplay?(); return true }   // Esc leaves fullscreen
+        return false
     }
 
     /// The speed menu picked a rate (setPlaybackRate persists it; J/L shuttle speeds are not saved).
@@ -226,8 +136,10 @@ extension PlayerController {
 
     // MARK: Fullscreen and global keys
 
-    /// Keys the preview answers from any focus (dispatchPlainAppKey): F toggles fullscreen, R records a gesture.
+    /// Keys the preview answers from any focus (dispatchPlainAppKey): F toggles fullscreen, R arms or disarms Record,
+    /// Esc cancels a take or disarms Record.
     public func globalKey(_ k: EditorKey) -> Bool {
+        if recordEscapeKey(k) { return true }
         guard !k.command, !k.alt, !k.shift, !k.isRepeat, case .char(let ch) = k.code else { return false }
         switch ch {
         case "f", "F": view.isFullscreen.toggle(); needsDisplay?(); return true
