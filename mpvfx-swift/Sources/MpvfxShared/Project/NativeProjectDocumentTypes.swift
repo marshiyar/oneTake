@@ -214,9 +214,13 @@ public struct NativeProjectTrack: Codable, Equatable {
     public var hidden: Bool?
     /// A locked track refuses clip edits (move, trim, split, delete, paste). Absent means unlocked.
     public var locked: Bool?
+    /// A soloed track is heard alone: while any track is soloed, the clips of every other track are left out of the
+    /// mix (live playback and export). Absent means not soloed.
+    public var soloed: Bool?
 
-    public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil, locked: Bool? = nil) {
-        self.id = id; self.kind = kind; self.lane = lane; self.clips = clips; self.hidden = hidden; self.locked = locked
+    public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil,
+                locked: Bool? = nil, soloed: Bool? = nil) {
+        self.id = id; self.kind = kind; self.lane = lane; self.clips = clips; self.hidden = hidden; self.locked = locked; self.soloed = soloed
     }
 }
 

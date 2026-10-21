@@ -19,12 +19,13 @@ import MpvfxTheme
 /// value the user changes (toolbar Track height slider, timelineTrackHeight), so it is instance
 /// state; everything else is fixed.
 public struct TimelineLayout: Equatable, Sendable {
-    /// Media row height: 32...96 in steps of 8 on the slider, stored rounded and clamped (setTimelineTrackHeight).
+    /// Media row height: 28...96 in steps of 4 on the slider, stored rounded and clamped (setTimelineTrackHeight).
     public var trackHeight: Double { didSet { trackHeight = Self.clampTrackHeight(trackHeight) } }
     public init(trackHeight: Double = defaultTrackHeight) { self.trackHeight = Self.clampTrackHeight(trackHeight) }
-    /// TRACK_H: default media row height and the fixed height of an audio-group header row.
-    public static let defaultTrackHeight = 48.0, groupHeaderHeight = 48.0
-    public static let minTrackHeight = 32.0, maxTrackHeight = 96.0, trackHeightStep = 8.0
+    /// Compact track headers (docs/DESIGN.md step 4): 28 px is the default media row height and the fixed height of an
+    /// audio-group header row. A stored height from before (32...96) stays valid.
+    public static let defaultTrackHeight = 28.0, groupHeaderHeight = 28.0
+    public static let minTrackHeight = 28.0, maxTrackHeight = 96.0, trackHeightStep = 4.0
     public static func clampTrackHeight(_ h: Double) -> Double {
         guard h.isFinite else { return defaultTrackHeight }
         return max(minTrackHeight, min(maxTrackHeight, (h + 0.5).rounded(.down)))
@@ -168,7 +169,7 @@ public struct TimelineTrackModel: Sendable, Equatable {
     public var id: String; public var name: String; public var kind: String; public var clips: [TimelineClipModel]
     public var groupId: String?
     /// Track header state mirrored from the document (TimelineEditor+Tracks).
-    public var hidden = false, locked = false, muted = false
+    public var hidden = false, locked = false, muted = false, soloed = false
     public init(id: String? = nil, name: String, kind: String = "video", clips: [TimelineClipModel]) {
         self.id = id ?? name; self.name = name; self.kind = kind; self.clips = clips
     }
@@ -204,6 +205,9 @@ public final class TimelineView {
     /// Playhead time a keyframe retime is snapped to (the accent snap guide).
     public var keyframeSnapTime: Double?
     public var hoveredClip: String?
+    /// Track header control under the pointer, and the targeted tracks (the accent tags).
+    public var hoveredHeader: TimelineHeaderHover?
+    public var trackTargets = TimelineTrackTargets()
     public var drag: TimelineDragPreview?
     /// Where a live clip move lands (placeholder slot or new-track line); `dragLiftY` is the pointer's vertical travel,
     /// so the dragged clips follow the pointer between rows (TimelineCanvas drag actor).
@@ -479,34 +483,27 @@ public final class TimelineView {
                      active ? CanvasColor(ThemeTokens.blue400) : CanvasColor(ThemeTokens.white.alpha(0.98)), StrokeStyle(width: 2))
         }
         // Clip content (useRenderClipContent), clipped to the rounded clip: waveform for audio, filmstrip for video/image.
+        let kindFill = Self.clipBackground(audio: clip.kind == .audio, hovered: hovered, dragging: dragging)
+        var filmstrip = false
         c.withState {
             c.clip(path)
             if clip.kind == .audio, let id = clip.assetId, let peaks = waveforms[id], !peaks.isEmpty {
                 Self.drawWaveform(c, peaks, in: r, startFraction: clip.sourceStartFraction, endFraction: clip.sourceEndFraction)
             } else if thumbnailsEnabled, clip.kind == .video || clip.kind == .image, let id = clip.assetId, let strip = thumbnails[id], !strip.frames.isEmpty {
                 Self.drawFilmstrip(c, strip, in: r)
+                filmstrip = true
                 // The name sits on a strip of the clip's kind colour, so kind, hover and the label survive thumbnails.
-                c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: min(ThemeTokens.clipHeaderHeight, r.height / 2)),
-                           Self.clipBackground(audio: false, hovered: hovered, dragging: dragging))
+                // A compact clip has no room for a strip: its name gets a chip of that colour instead (drawClipText).
+                if r.height >= Self.fullClipLabelHeight {
+                    c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: min(ThemeTokens.clipHeaderHeight, r.height / 2)), kindFill)
+                }
             }
         }
         c.withState {
             c.clip(r)
             // Keyframe diamonds (TimelineClipDiamonds), drawn when the bar is at least 20 px wide.
             if r.width >= 20 { drawDiamonds(c, clip, group: nil, barX: r.x, cy: r.y + r.height / 2) }
-            // Clip name: top 6, left 12, right 10, 10px/500, ellipsis; on the opaque kind fill at clipNameAlpha.
-            if r.width >= 40 || selected {
-                let f = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .medium)
-                if let label = Self.ellipsize(c, clip.name, font: f, maxWidth: r.width - 22) {
-                    c.drawText(label, at: .init(r.x + 12, r.y + 6), font: f, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipNameAlpha)))
-                }
-                // Timecode: bottom 6, left 12, mono 9px, "start-ends", at clipTimecodeAlpha.
-                let tf = CanvasFont(family: Self.clipMonoFamily, size: 9)
-                let tc = String(format: "%.1f-%.1fs", clip.start, clip.end)
-                if let tcs = Self.ellipsize(c, tc, font: tf, maxWidth: r.width - 12) {
-                    c.drawText(tcs, at: .init(r.x + 12, r.maxY - 6 - 9), font: tf, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipTimecodeAlpha)))
-                }
-            }
+            if r.width >= 40 || selected { drawClipText(c, clip, in: r, chip: Self.nameChip(filmstrip: filmstrip, r, kindFill)) }
             if clip.effectCount > 0 {
                 c.drawText("fx", at: .init(r.maxX - 22, r.y + 6), font: CanvasFont(family: Self.uiFontFamily, size: 10, weight: .semibold), color: t.accent.withAlpha(0.8))
             }
@@ -528,6 +525,35 @@ public final class TimelineView {
     }
 
     static let hiddenTrackOpacity = 0.35, lockedTrackOpacity = 0.7
+    /// Clip bar height that holds the name, the timecode and a thumbnail strip under the name; a shorter (compact) bar,
+    /// as in the default 28 px row, shows the name alone.
+    static let fullClipLabelHeight = 2 * ThemeTokens.clipHeaderHeight
+
+    /// The fill behind a clip's name: a chip of the kind colour over a compact filmstrip, else none (the bar's own fill
+    /// or the name strip is behind it).
+    static func nameChip(filmstrip: Bool, _ r: CanvasRect, _ fill: CanvasColor) -> CanvasColor? {
+        filmstrip && r.height < fullClipLabelHeight ? fill : nil
+    }
+
+    /// Clip name: top 6, left 12, right 10, 10px/500, ellipsis, on the opaque kind fill at clipNameAlpha (on a `chip`
+    /// of that fill over a compact filmstrip). Timecode: bottom 6, left 12, mono 9px, "start-ends", at
+    /// clipTimecodeAlpha, on bars tall enough for both lines.
+    func drawClipText(_ c: CanvasContext, _ clip: TimelineClipModel, in r: CanvasRect, chip: CanvasColor?) {
+        let f = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .medium)
+        if let label = Self.ellipsize(c, clip.name, font: f, maxWidth: r.width - 22) {
+            if let chip {
+                let w = c.measureText(label, font: f).width
+                c.fillRoundedRect(CanvasRect(x: r.x + 8, y: r.y + 4, width: w + 8, height: 15), radius: 3, chip)
+            }
+            c.drawText(label, at: .init(r.x + 12, r.y + 6), font: f, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipNameAlpha)))
+        }
+        guard r.height >= Self.fullClipLabelHeight else { return }
+        let tf = CanvasFont(family: Self.clipMonoFamily, size: 9)
+        let tc = String(format: "%.1f-%.1fs", clip.start, clip.end)
+        if let tcs = Self.ellipsize(c, tc, font: tf, maxWidth: r.width - 12) {
+            c.drawText(tcs, at: .init(r.x + 12, r.maxY - 6 - 9), font: tf, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipTimecodeAlpha)))
+        }
+    }
 
     /// Audio waveform: 2px bars every 3px, bottom-aligned, height max(2, amp * h),
     /// rgba(75,163,210, 0.45 + amp * 0.4), peaks windowed to the trimmed source slice.

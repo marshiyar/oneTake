@@ -186,7 +186,7 @@ final class SessionPanels {
             guard let assetId = existing ?? editor.addAsset(kind: kind, name: entry.name, source: path, durationFrames: frames,
                                                             naturalSize: natural) else { return }
             let t = time ?? self.session.playback.currentTime
-            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: trackId) else {
+            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: self.insertTrack(trackId, time, assetId, t)) else {
                 if existing == nil { editor.undo() }
                 return
             }
@@ -221,6 +221,13 @@ final class SessionPanels {
                 else { post { self?.session.onError("Could not add media", "\(error)") } }
             }
         }
+    }
+
+    /// Where `addToTimeline` puts its clip: the track asked for; for an add at the playhead (no `time`) the targeted
+    /// track when it is free there (the accent V / A tag); else nil, the first free lane.
+    func insertTrack(_ trackId: String?, _ time: Double?, _ assetId: String, _ t: Double) -> String? {
+        if let trackId { return trackId }
+        return time == nil ? session.timeline.targetedInsertTrack(assetId: assetId, at: t) : nil
     }
 
     /// AssetContextMenu rename: the file is renamed in place (same folder) and the document's assets follow it.

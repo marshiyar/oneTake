@@ -47,6 +47,7 @@ public enum DocumentAudioGraph {
         let fps = doc.frameRate.numerator / max(doc.frameRate.denominator, 1e-9)
         let assets = Dictionary(doc.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let clips = doc.sequence.tracks.flatMap(\.clips)
+        let silenced = soloSilencedClipIds(doc)
         let detached = Set(clips.compactMap { $0.audioDetachedFrom?.isEmpty == false ? $0.audioDetachedFrom : nil })
         var tracks: [Inputs.Track] = []
         for c in clips {
@@ -61,10 +62,17 @@ public enum DocumentAudioGraph {
             let stem = StemKey(path: path, sourceIn: c.sourceInFrame / fps, duration: end - start, rate: rate,
                                preservesPitch: c.preservesPitch ?? true)
             tracks.append(.init(id: c.id, stem: stem,
-                                start: start, end: end, volume: volume, muted: c.muted,
+                                start: start, end: end, volume: volume, muted: c.muted || silenced.contains(c.id),
                                 fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty))
         }
         return Inputs(duration: duration, tracks: tracks, groups: doc.sequence.audioGroups ?? [])
+    }
+
+    /// The clips solo leaves out of the mix: while any track is soloed, every clip on a track that is not.
+    public static func soloSilencedClipIds(_ doc: NativeProjectDocument) -> Set<String> {
+        let tracks = doc.sequence.tracks
+        guard tracks.contains(where: { $0.soloed == true }) else { return [] }
+        return Set(tracks.filter { $0.soloed != true }.flatMap(\.clips).map(\.id))
     }
 
     /// Unparseable FX chains / automation are dropped (reported through `issues`), never fatal to playback. A stem

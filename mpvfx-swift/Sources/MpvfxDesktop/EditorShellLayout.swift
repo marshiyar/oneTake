@@ -412,6 +412,7 @@ extension EditorSession {
         shellInputs = [ti, pi]
         router.panes[.player] = ShellPane(input: pi) { [weak self] c, size in self?.drawPlayer(c, size: size) }
         router.panes[.timeline] = ShellPane(input: ti) { c, size in region.draw(c, size: size) }
+        router.panes[.timeline]?.hint = { [weak region] in region?.hint }
         router.needsDisplay = { [weak self] in self?.redraw() }
         installPanels(router, userData: userData)
         installSettings(router, userData: userData)
