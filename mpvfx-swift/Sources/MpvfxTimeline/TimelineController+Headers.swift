@@ -44,7 +44,7 @@ public extension TimelineController {
         let track = view.tracks[row]
         switch control {
         case .target:
-            return .toggledTarget(row: row, targeted: view.trackTargets.toggle(track.id, in: view.tracks))
+            return .toggledTarget(row: row, targeted: view.trackTargets.toggle(track.id, in: view.targetableTracks))
         case .lock:
             toggleTrackLocked(row: row); return .toggledLocked(row: row)
         case .visibility:
@@ -75,7 +75,7 @@ public extension TimelineController {
     func targetedInsertTrack(assetId: String, at time: Double) -> String? {
         guard let editor, let asset = editor.document.assets.first(where: { $0.id == assetId }) else { return nil }
         let family: TimelineTrackTargets.Family = asset.kind == .audio ? .audio : .video
-        guard let id = view.trackTargets.target(family, in: view.tracks),
+        guard let id = view.trackTargets.target(family, in: view.targetableTracks),
               let track = editor.document.sequence.tracks.first(where: { $0.id == id }), track.locked != true else { return nil }
         // Frame counts, rounded the way insertClip rounds them.
         let start = max(0, (time * editor.fps).rounded()), end = start + max(1, asset.durationFrames.rounded())

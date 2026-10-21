@@ -208,6 +208,11 @@ public final class TimelineView {
     /// Track header control under the pointer, and the targeted tracks (the accent tags).
     public var hoveredHeader: TimelineHeaderHover?
     public var trackTargets = TimelineTrackTargets()
+    /// Every track, including the members of collapsed groups that `tracks` leaves out (set on reload), so tags and
+    /// targets do not change when a group folds.
+    public var allTracks: [TimelineTrackModel] = []
+    /// The tracks tags and targets are resolved against: `allTracks` once the controller set it.
+    var targetableTracks: [TimelineTrackModel] { allTracks.isEmpty ? tracks : allTracks }
     public var drag: TimelineDragPreview?
     /// Where a live clip move lands (placeholder slot or new-track line); `dragLiftY` is the pointer's vertical travel,
     /// so the dragged clips follow the pointer between rows (TimelineCanvas drag actor).

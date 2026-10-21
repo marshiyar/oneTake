@@ -113,7 +113,7 @@ public final class TimelineController {
             let before = all[..<first].filter { t in visible.contains { $0.id == t.id } }.count
             return (g.id, before)
         }
-        view.tracks = visible
+        view.tracks = visible; view.allTracks = all
         // useAutoExpandKeyframedClips: expand a clip when it first gains property lanes.
         let laned = Set(all.flatMap(\.clips).filter { !$0.lanes.isEmpty }.map(\.id))
         view.expandedClips.formUnion(laned.subtracting(clipsWithLanes))

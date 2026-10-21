@@ -37,6 +37,12 @@ public struct TimelineTrackTargets: Equatable, Sendable {
         return out
     }
 
+    /// The tags of the `shown` tracks, counted over `all` of them (the shown ones plus folded group members).
+    public static func tags(of shown: [TimelineTrackModel], among all: [TimelineTrackModel]) -> [String] {
+        let byId = Dictionary(zip(all.map(\.id), tags(all)), uniquingKeysWith: { first, _ in first })
+        return shown.map { byId[$0.id, default: ""] }
+    }
+
     /// The targeted track of `family`: the user's pick while that track exists, else V1 / A1; nil when turned off.
     public func target(_ family: Family, in tracks: [TimelineTrackModel]) -> String? {
         if let id = chosen[family] {

@@ -28,14 +28,29 @@ final class TrackSoloTests: XCTestCase {
         XCTAssertEqual(inputs(doc).tracks.map(\.muted), [false, true], "the fixture's detached clip is muted on its own")
     }
 
-    func testSoloingATrackSilencesEveryOtherTrack() throws {
+    /// The fixture (t1 video [cv, ci], t2 audio [ca, cd]) plus a third, soloed audio track t3 [cx].
+    func soloedDocument() throws -> NativeProjectDocument {
         var doc = try GraphPlaybackTests.document()
-        doc.sequence.tracks[0].soloed = true   // t1: the video track, whose sound was detached onto t2
-        XCTAssertEqual(DocumentAudioGraph.soloSilencedClipIds(doc), ["ca", "cd"])
-        XCTAssertEqual(inputs(doc).tracks.map(\.muted), [true, true])
-        doc.sequence.tracks[1].soloed = true   // both soloed: t2 is heard again
+        var cx = doc.sequence.tracks[1].clips[0]
+        cx.id = "cx"
+        doc.sequence.tracks.append(NativeProjectTrack(id: "t3", kind: .audio, clips: [cx], soloed: true))
+        return doc
+    }
+
+    func testSoloingAnAudioTrackLeavesEveryOtherTrackOutBeforeDecoding() throws {
+        var doc = try soloedDocument()
+        XCTAssertEqual(DocumentAudioGraph.soloSilencedClipIds(doc), ["cv", "ci", "ca", "cd"])
+        XCTAssertEqual(inputs(doc).tracks.map(\.id), ["cx"], "unheard stems are not even in the inputs, so never decoded")
+        doc.sequence.tracks[1].soloed = true   // t2 soloed too: it is heard again
+        XCTAssertEqual(DocumentAudioGraph.soloSilencedClipIds(doc), ["cv", "ci"])
+        XCTAssertEqual(inputs(doc).tracks.map(\.id), ["ca", "cd", "cx"])
+    }
+
+    func testSoloOnAVideoTrackIsIgnored() throws {
+        var doc = try GraphPlaybackTests.document()
+        doc.sequence.tracks[0].soloed = true   // t1 is a video track: it has no solo button, so the flag does nothing
         XCTAssertEqual(DocumentAudioGraph.soloSilencedClipIds(doc), [])
-        XCTAssertEqual(inputs(doc).tracks.first { $0.id == "ca" }?.muted, false)
+        XCTAssertEqual(inputs(doc).tracks.map(\.id), ["ca", "cd"])
     }
 
     func testSoloRoundTripsThroughTheDocumentAndIsValidated() throws {

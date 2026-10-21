@@ -49,10 +49,11 @@ extension TimelineView {
     static let groupMemberIndent = 14.0  // GROUP_MEMBER_INDENT
     static var groupMemberRail: CanvasColor { CanvasColor(ThemeTokens.mint.alpha(0x59 / 255)) }
 
-    /// Tags of the current tracks (`V1`, `A1`, ...), in display order.
-    public var trackTags: [String] { TimelineTrackTargets.tags(tracks) }
-    /// Ids of the targeted tracks.
-    public var targetedTrackIds: Set<String> { trackTargets.targeted(in: tracks) }
+    /// Tags of the shown tracks (`V1`, `A1`, ...), in display order, counted over every track so a folded group
+    /// does not renumber the others.
+    public var trackTags: [String] { TimelineTrackTargets.tags(of: tracks, among: targetableTracks) }
+    /// Ids of the targeted tracks (a member of a folded group stays targeted).
+    public var targetedTrackIds: Set<String> { trackTargets.targeted(in: targetableTracks) }
 
     /// Left edge of a row's header content: after the group rail and indent for a group member.
     func headerContentX(row i: Int) -> Double {
@@ -91,7 +92,8 @@ extension TimelineView {
         return items
     }
 
-    static func fxWidth(_ count: Int) -> Double { count > 0 ? 30 : 20 }   // px-1 + "FX" / "FX n" at 10px semibold
+    /// "FX" / "FX n" at 10px semibold with px-1 padding, never under the 24 px minimum target.
+    static func fxWidth(_ count: Int) -> Double { count > 0 ? 30 : headerButton }
 
     public func headerControl(atX x: Double, y: Double, row: Int) -> TimelineHeaderControl? {
         headerControls(row: row).first { x >= $0.rect.x && x <= $0.rect.maxX && y >= $0.rect.y && y <= $0.rect.maxY }
@@ -137,26 +139,30 @@ extension TimelineView {
     /// (filled lock and headphones, slashed eye, crossed speaker, filled tag), so the state never rests on colour alone.
     func drawHeaderControl(_ c: CanvasContext, _ control: TimelineHeaderControl, in r: CanvasRect, row i: Int) {
         let track = tracks[i], o = CanvasPoint(r.centerX, r.centerY)
-        let idle = CanvasColor(ThemeTokens.trackControlIdlePair.now)
-        let fxFont = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .semibold)
         switch control {
-        case .target:
-            drawTrackTag(c, row: i, in: r)
-        case .lock:
-            Self.drawLock(c, center: o, locked: track.locked, color: track.locked ? theme.accent : idle)
-        case .visibility:
-            guard !track.clips.isEmpty else { return }
-            let audio = track.kind == "audio", on = audio ? track.muted : track.hidden
-            if audio { Self.drawSpeaker(c, center: o, muted: on, color: on ? theme.accent : idle) }
-            else { Self.drawEye(c, center: o, slashed: on, color: on ? theme.accent : idle) }
-        case .solo:
-            Self.drawHeadphones(c, center: o, filled: track.soloed, color: track.soloed ? theme.accent : idle)
-        case .fx(let id):
-            let n = track.clips.first { $0.id == id }?.fxCount ?? 0
-            c.drawText(n > 0 ? "FX \(n)" : "FX", at: .init(r.x + 4, r.centerY - 5.5), font: fxFont, color: n > 0 ? theme.accent : idle)
-        case .groupPointer:
-            c.drawText("FX", at: .init(r.x + 4, r.centerY - 5.5), font: fxFont, color: idle)
+        case .target: drawTrackTag(c, row: i, in: r)
+        case .lock: Self.drawLock(c, center: o, locked: track.locked, color: controlInk(track.locked))
+        case .visibility: drawVisibility(c, track, at: o)
+        case .solo: Self.drawHeadphones(c, center: o, filled: track.soloed, color: controlInk(track.soloed))
+        case .fx(let id): drawFxLabel(c, track.clips.first { $0.id == id }?.fxCount ?? 0, in: r)
+        case .groupPointer: drawFxLabel(c, 0, in: r)
         }
+    }
+
+    /// A header control's ink: the accent when on, else the idle grey.
+    func controlInk(_ on: Bool) -> CanvasColor { on ? theme.accent : CanvasColor(ThemeTokens.trackControlIdlePair.now) }
+
+    /// Eye (video rows, slashed when hidden) or speaker (audio rows, crossed when muted); nothing on an empty track.
+    func drawVisibility(_ c: CanvasContext, _ track: TimelineTrackModel, at o: CanvasPoint) {
+        guard !track.clips.isEmpty else { return }
+        if track.kind == "audio" { Self.drawSpeaker(c, center: o, muted: track.muted, color: controlInk(track.muted)) }
+        else { Self.drawEye(c, center: o, slashed: track.hidden, color: controlInk(track.hidden)) }
+    }
+
+    /// "FX", or "FX n" in the accent when `n` effects are enabled, centred in its button.
+    func drawFxLabel(_ c: CanvasContext, _ n: Int, in r: CanvasRect) {
+        let font = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .semibold), text = n > 0 ? "FX \(n)" : "FX"
+        c.drawText(text, at: .init(r.centerX - c.measureText(text, font: font).width / 2, r.centerY - 5.5), font: font, color: controlInk(n > 0))
     }
 
     /// The track tag: an accent pill with `onAccentMint` text when targeted, else a 1 px outline.

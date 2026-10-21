@@ -70,6 +70,29 @@ final class TimelineTrackTargetTests: XCTestCase {
         XCTAssertEqual(c.view.targetedTrackIds, ["track:v1", "track:a1"])
     }
 
+    func testFoldingAGroupKeepsTheTagsAndTheTarget() throws {
+        let (c, e) = try make()
+        let a2 = try XCTUnwrap(e.addTrack(kind: .audio))
+        let second = try XCTUnwrap(e.insertClip(assetId: "asset:music", at: 0, trackId: a2, durationFrames: 30))
+        let group = try XCTUnwrap(e.createAudioGroup(clipIds: ["clip:music", second]))
+        let row = try XCTUnwrap(c.view.tracks.firstIndex { $0.id == a2 })
+        XCTAssertEqual(c.view.trackTags[row], "A2")
+        _ = click(c, row: row, .target)
+        c.toggleGroup(group)
+        XCTAssertFalse(c.view.tracks.contains { $0.id == a2 }, "the folded group's members are not shown")
+        XCTAssertEqual(c.view.trackTags, ["V2", "V1"])
+        XCTAssertEqual(c.view.targetedTrackIds, ["track:v1", a2], "the folded target stays targeted")
+        XCTAssertEqual(c.targetedInsertTrack(assetId: "asset:music", at: 20), a2)
+        c.toggleGroup(group)
+        XCTAssertEqual(c.view.trackTags[row], "A2")
+    }
+
+    func testSoloIsRefusedOnAVideoTrack() throws {
+        let (_, e) = try make()
+        XCTAssertFalse(e.setTrackSoloed("track:v1", true))
+        XCTAssertNil(e.document.sequence.tracks.first { $0.id == "track:v1" }?.soloed)
+    }
+
     func testAddAtPlayheadUsesTheTargetedTrackWhenItIsFree() throws {
         let (c, e) = try make()
         _ = click(c, row: 0, .target)                                    // target V2 (logo spans 0.5 s ... 3.5 s)
@@ -125,14 +148,17 @@ final class TimelineTrackTargetTests: XCTestCase {
     /// text buttons only need the height), a control outside the row or past the label column, two that overlap.
     func layoutProblems(_ c: TimelineController, row: Int) -> [String] {
         let controls = c.view.headerControls(row: row), top = c.view.rowTop(row)
-        var out: [String] = []
-        for (control, r) in controls {
-            let textButton: Bool = { if case .fx = control { return true }; return control == .groupPointer }()
-            if r.height < 24 || (!textButton && r.width < 24) { out.append("\(control) is \(r.width) x \(r.height)") }
-            if r.y < top || r.maxY > top + c.view.trackHeight || r.maxX > TimelineLayout.labelColumnWidth { out.append("\(control) leaves the header") }
+        var out = controls.flatMap { sizeProblems($0.control, $0.rect) }
+        for (control, r) in controls where r.y < top || r.maxY > top + c.view.trackHeight || r.maxX > TimelineLayout.labelColumnWidth {
+            out.append("\(control) leaves the header")
         }
         for (a, b) in zip(controls, controls.dropFirst()) where a.rect.maxX > b.rect.x { out.append("\(a.control) overlaps \(b.control)") }
         return out
+    }
+
+    /// A hit box under 24 x 24, the FX buttons included.
+    func sizeProblems(_ control: TimelineHeaderControl, _ r: CanvasRect) -> [String] {
+        r.height < 24 || r.width < 24 ? ["\(control) is \(r.width) x \(r.height)"] : []
     }
 
     func testTrackHeightRangeStartsAtTheCompactDefault() {
@@ -172,19 +198,18 @@ final class TimelineTrackHeaderPixelTests: XCTestCase {
         return (t, c)
     }
     func rgb(_ t: CairoImageTarget, _ x: Double, _ y: Double) -> [Int] { let p = t.pixel(Int(x), Int(y)); return [Int(p.r), Int(p.g), Int(p.b)] }
+    /// An opaque colour as the 8-bit RGB a pixel of it reads back as.
+    func ints(_ c: CanvasColor) -> [Int] { [c.r, c.g, c.b].map { Int(($0 * 255).rounded()) } }
 
     func testTargetedTagIsFilledWithTheAccent() throws {
         let (t, c) = try render()
-        let accent = c.view.theme.accent
-        let want = [Int((accent.r * 255).rounded()), Int((accent.g * 255).rounded()), Int((accent.b * 255).rounded())]
+        let want = ints(c.view.theme.accent)
         let v1 = try XCTUnwrap(c.view.headerControls(row: 1).first { $0.control == .target }?.rect)
         let v2 = try XCTUnwrap(c.view.headerControls(row: 0).first { $0.control == .target }?.rect)
         // Inside the pill, clear of the letters: the pill's left padding.
         XCTAssertEqual(rgb(t, v1.x + 2, v1.centerY), want, "V1 is targeted")
         XCTAssertNotEqual(rgb(t, v2.x + 2, v2.centerY), want, "V2 is not")
-        let gutter = c.view.theme.gutterBackground
-        XCTAssertEqual(rgb(t, v2.x + 2, v2.centerY), [Int((gutter.r * 255).rounded()), Int((gutter.g * 255).rounded()), Int((gutter.b * 255).rounded())],
-                       "an idle tag is an outline over the gutter")
+        XCTAssertEqual(rgb(t, v2.x + 2, v2.centerY), ints(c.view.theme.gutterBackground), "an idle tag is an outline over the gutter")
     }
 
     /// A 22 px clip bar (28 px row) keeps its filmstrip under the name and draws the name on a chip of the kind colour;
@@ -196,7 +221,7 @@ final class TimelineTrackHeaderPixelTests: XCTestCase {
         let top = c.view.rowTop(1) + TimelineLayout.clipY
         XCTAssertGreaterThan(rgb(compact, 264 + 300, top + 5)[0], 200, "no strip over the frames at the top of a compact clip")
         let fill = TimelineView.clipBackground(audio: false, hovered: false, dragging: false)
-        let want = [Int((fill.r * 255).rounded()), Int((fill.g * 255).rounded()), Int((fill.b * 255).rounded())]
+        let want = ints(fill)
         XCTAssertEqual(rgb(compact, 264 + 9, top + 11), want, "the name's chip, left of its first letter")
         let (tall, c48) = try render { thumbs($0); $0.setTrackHeight(48) }
         XCTAssertEqual(rgb(tall, 264 + 300, c48.view.rowTop(1) + TimelineLayout.clipY + 5), want, "a 42 px clip has the full-width strip")
@@ -207,8 +232,7 @@ final class TimelineTrackHeaderPixelTests: XCTestCase {
         let (locked, _) = try render { XCTAssertTrue($0.toggleTrackLocked(row: 1)) }
         let r = try XCTUnwrap(c.view.headerControls(row: 1).first { $0.control == .lock }?.rect)
         // The lock body's centre: filled only when locked.
-        let accent = c.view.theme.accent
-        XCTAssertEqual(rgb(locked, r.centerX, r.centerY + 3), [Int((accent.r * 255).rounded()), Int((accent.g * 255).rounded()), Int((accent.b * 255).rounded())])
+        XCTAssertEqual(rgb(locked, r.centerX, r.centerY + 3), ints(c.view.theme.accent))
         XCTAssertNotEqual(rgb(plain, r.centerX, r.centerY + 3), rgb(locked, r.centerX, r.centerY + 3))
     }
 }
