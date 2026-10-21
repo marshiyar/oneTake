@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: doc-links
@@ -20,6 +19,9 @@ concurrency:
 
 jobs:
   check:
+    permissions:
+      contents: read
+      issues: write   # the one "Dead documentation links" issue
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
