@@ -49,6 +49,12 @@ extension DockView {
         perform { $0.activate(id) }
     }
 
+    /// The group whose tab bar is under `p` and its menu button (a secondary click there opens the group's menu).
+    public func menuAnchor(at p: CanvasPoint) -> (group: DockGroup, anchor: CanvasRect)? {
+        guard let f = geometry.groups.first(where: { $0.strip.contains(p) }) else { return nil }
+        return (f.group, DockTabBar.menuRect(f.strip))
+    }
+
     func openMenu(_ groupID: String) {
         guard let f = geometry.frame(of: groupID) else { return }
         onMenu(f.group, DockTabBar.menuRect(f.strip))

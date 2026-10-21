@@ -14,7 +14,7 @@
 import Foundation
 import MpvfxShared
 
-/// Track operations on the native document: add, remove, reorder, mute, hide, lock.
+/// Track operations on the native document: add, remove, reorder, mute, solo, hide, lock.
 /// Every op is one undo step (restoreDocument inverse).
 public extension TimelineEditor {
     func isTrackLocked(_ trackId: String) -> Bool {
@@ -89,6 +89,17 @@ public extension TimelineEditor {
         return updateTrack(trackId, muted ? "Mute track" : "Unmute track") { t in for i in t.clips.indices where muted || !detached.contains(t.clips[i].id) { t.clips[i].muted = muted } }
     }
 
+    /// Solo or unsolo an audio track: while any audio track is soloed only soloed tracks are heard (DocumentAudioGraph).
+    /// Solo changes what is monitored, not the clips, so a locked track accepts it too, as it accepts unlocking.
+    /// Refused for video and mixed tracks, which have no solo button.
+    @discardableResult
+    func setTrackSoloed(_ trackId: String, _ soloed: Bool) -> Bool {
+        guard let i = document.sequence.tracks.firstIndex(where: { $0.id == trackId && $0.kind == .audio }) else { return false }
+        var d = document
+        d.sequence.tracks[i].soloed = soloed ? true : nil
+        return commit(d, soloed ? "Solo track" : "Unsolo track")
+    }
+
     /// A track counts as muted when it has clips and all of them are muted.
     func isTrackMuted(_ trackId: String) -> Bool {
         guard let t = document.sequence.tracks.first(where: { $0.id == trackId }), !t.clips.isEmpty else { return false }
@@ -146,6 +157,8 @@ public extension TimelineEditor {
         case let .trimIn(a, _), let .trimOut(a, _), let .delete(a): return locked.contains(a.trackId)
         case let .split(a, _, _): return locked.contains(a.trackId)
         case .deleteMany(let list): return list.contains { locked.contains($0.trackId) }
+        case let .slip(a, _): return locked.contains(a.trackId)
+        case .roll(let roll): return locked.contains(roll.outgoing.trackId) || locked.contains(roll.incoming.trackId)
         }
     }
 }

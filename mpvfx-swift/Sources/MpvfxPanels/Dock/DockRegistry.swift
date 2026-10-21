@@ -70,7 +70,7 @@ public struct DockRegistry: Equatable, Sendable {
     public static let maxExtent = 4096.0
     public init() {}
 
-    /// The built-in editor panels: Media, Preview, Design, Renders, Timeline.
+    /// The built-in editor panels: Media, Preview, Design, Renders, Timeline, History, Info.
     public static var editor: DockRegistry {
         var r = DockRegistry()
         for spec in DockPanels.builtIn + DesignGroups.specs { r.specs.append(spec) }
@@ -114,6 +114,8 @@ public enum DockPanels {
     public static let inspector: DockPanelID = "inspector"
     public static let renders: DockPanelID = "renders"
     public static let timeline: DockPanelID = "timeline"
+    public static let history: DockPanelID = "history"
+    public static let info: DockPanelID = "info"
 
     /// Minimums follow `PanelFit` (the preview's 360 × 200 floor, the 200 / 280 pt side panels, the 100 pt timeline).
     public static let builtIn: [DockPanelSpec] = [
@@ -127,5 +129,7 @@ public enum DockPanels {
             .preferring(CanvasSize(409, 0)),
         DockPanelSpec(id: timeline, title: "Timeline", defaultDock: .bottom, minSize: CanvasSize(320, PanelFit.minTimelineHeight))
             .preferring(CanvasSize(0, 360)).alwaysOpen(),
+        DockPanelSpec(id: history, title: "History", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
+        DockPanelSpec(id: info, title: "Info", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
     ]
 }

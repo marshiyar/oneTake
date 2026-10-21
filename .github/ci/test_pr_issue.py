@@ -144,8 +144,11 @@ class Exemptions(unittest.TestCase):
                       ["x.md"] * pr_issue.DOCS_MAX_FILES):
             with self.subTest(files=None if files is None else files[:2]):
                 self.assertFalse(pr_issue.docs_only(files))
-        with open(os.path.join(HERE, "..", "workflows", "mpvfx-ci.yml"), encoding="utf-8") as f:
-            self.assertIn(pr_issue.DOCS_FILE.pattern, f.read())
+        # The changes job and this check read the same rules: platforms.py.
+        for files in (["README.md", "LICENSE", ".gitignore"], ["mpvfx-swift/docs/DESIGN.md"], ["Package.swift"]):
+            with self.subTest(files=files):
+                self.assertEqual(pr_issue.docs_only(files), not pr_issue.PLATFORMS.classify(files)[0])
+        self.assertFalse(pr_issue.docs_only(["mpvfx-swift/docs/DESIGN.md"]))
 
 
 class FakeApi:

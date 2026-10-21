@@ -17,32 +17,53 @@ import Foundation
 public enum TimelineZoomMode: String, Codable, Equatable, Sendable { case fit, manual }
 
 public enum TimelineZoom {
-    public static let minPercent = 10.0
+    /// Half the fit is the zoom-out limit (docs/TIMELINE.md "Zoom"): room to drag a clip past the end, never the
+    /// minutes of empty lanes a tenth of the fit showed.
+    public static let minPercent = 50.0
     static let maxFrameWidthPx = 48.0
     public static let previewFPS = 30.0            // STUDIO_PREVIEW_FPS
     static let zoomOutFactor = 0.5, zoomInFactor = 2.0, pinchSensitivity = 0.014
-    public static let minExtentSeconds = 60.0       // MIN_TIMELINE_EXTENT_S
-    public static let fitHeadroom = 1.2             // FIT_ZOOM_HEADROOM
+    /// The shortest span fit shows, so an empty or one-frame sequence still gets a readable ruler.
+    public static let minFitSpan = 5.0
 
     /// JS Math.round (round half up).
     static func jsRound(_ x: Double) -> Double { (x + 0.5).rounded(.down) }
 
+    /// Room after the sequence end, in seconds: 5% of the end, at least 1 s, so the end marker and the last clip's
+    /// trim handle are never at the viewport edge.
+    public static func endMargin(_ end: Double) -> Double {
+        max(1, (end.isFinite && end > 0 ? end : 0) * 0.05)
+    }
+    /// The time span the timeline lays out: the sequence end plus its margin (at least `minFitSpan`). Fit shows all
+    /// of it, the ruler stops at its end and horizontal scrolling stops there.
+    public static func span(duration: Double) -> Double {
+        let end = duration.isFinite && duration > 0 ? duration : 0
+        return max(end + endMargin(end), minFitSpan)
+    }
+
     public static func fitPixelsPerSecond(viewportWidth: Double, duration: Double, contentOrigin: Double) -> Double {
-        let safe = duration.isFinite && duration > 0 ? duration : 0
-        let span = max(safe * fitHeadroom, minExtentSeconds)
         guard viewportWidth.isFinite, viewportWidth > contentOrigin else { return 100 }
-        return (viewportWidth - contentOrigin - 2) / span
+        return (viewportWidth - contentOrigin - 2) / span(duration: duration)
+    }
+
+    /// Where a zoom from a button, key or the slider is anchored: the playhead while it is in the visible lanes, else
+    /// the middle of them, so the part of the sequence being edited stays on screen.
+    public static func anchorX(playheadX: Double, contentLeft: Double, viewportWidth: Double) -> Double {
+        guard playheadX.isFinite else { return (contentLeft + viewportWidth) / 2 }
+        return playheadX >= contentLeft && playheadX <= viewportWidth ? playheadX : (contentLeft + viewportWidth) / 2
     }
     public static func maxPercent(fit: Double) -> Double {
         guard fit.isFinite, fit > 0 else { return 100 }
         return max(100, jsRound(previewFPS * maxFrameWidthPx / fit * 100))
     }
-    public static func clamp(_ percent: Double, fit: Double) -> Double {
+    /// The zoom percent within the limits; `rounded` (the buttons, slider and pinch) also snaps it to a whole percent,
+    /// while an absolute scale (`TimelineController.setZoom(pixelsPerSecond:)`) keeps its exact ratio.
+    public static func clamp(_ percent: Double, fit: Double, rounded: Bool = true) -> Double {
         guard percent.isFinite else { return 100 }
-        return max(minPercent, min(maxPercent(fit: fit), jsRound(percent)))
+        return max(minPercent, min(maxPercent(fit: fit), rounded ? jsRound(percent) : percent))
     }
     public static func percent(_ mode: TimelineZoomMode, manual: Double, fit: Double) -> Double {
-        mode == .fit ? 100 : clamp(manual, fit: fit)
+        mode == .fit ? 100 : clamp(manual, fit: fit, rounded: false)   // stored values were clamped on the way in
     }
     public static func pixelsPerSecond(fit: Double, mode: TimelineZoomMode, manual: Double) -> Double {
         guard fit.isFinite, fit > 0 else { return 100 }

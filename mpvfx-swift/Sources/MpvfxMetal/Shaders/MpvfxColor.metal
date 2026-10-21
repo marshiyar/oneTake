@@ -402,8 +402,27 @@ float3 applySecondary(float3 color, int index, Tex1 secT) {
     return mix3(color, corrected, mask);
 }
 
+// Lift / Gamma / Gain / Offset (issue #176): a colour (hue, amount) plus a master level per wheel. Lift moves black
+// and keeps white, gain scales and keeps black, gamma bends between them, offset shifts everything.
+inline float gammaChannel(float x, float e) { return x > 0.0f ? POW(x, e) : x; }
+inline float3 balanceVector(float hue, float amount, float level, float hueScale, float levelScale) {
+    return wheelDirection(hue) * (amount * hueScale) + V3S(level * levelScale);
+}
+float3 applyBalance(float3 input, constant float* u) {
+    if (!(U(balanceOn) > 0.0f)) { return input; }
+    float3 lift3 = balanceVector(U(liftHue), U(liftAmount), U(liftLevel), 0.2f, 0.25f);
+    float3 gamma3 = balanceVector(U(gammaHue), U(gammaAmount), U(gammaLevel), 0.3f, 0.5f);
+    float3 gain3 = balanceVector(U(gainHue), U(gainAmount), U(gainLevel), 0.4f, 0.5f);
+    float3 offset3 = balanceVector(U(offsetHue), U(offsetAmount), U(offsetLevel), 0.2f, 0.25f);
+    float3 color = input + lift3 * (V3S(1.0f) - input);
+    color = color * (V3S(1.0f) + gain3);
+    color = V3(gammaChannel(color.x, 1.0f / FMAX(1.0f + gamma3.x, 0.1f)), gammaChannel(color.y, 1.0f / FMAX(1.0f + gamma3.y, 0.1f)),
+               gammaChannel(color.z, 1.0f / FMAX(1.0f + gamma3.z, 0.1f)));
+    return color + offset3;
+}
+
 float3 applyAdvancedGrade(float3 input, P_ALL) {
-    float3 color = applyTonalWheels(input, u);
+    float3 color = applyTonalWheels(applyBalance(input, u), u);
     color = applyRgbCurves(color, curvesT, u);
     color = applyHueCurves(color, hueT, u);
     int n = int(U(secondaryCount));
@@ -476,7 +495,7 @@ float3 applyPrimaryGrade(float3 input, constant float* u) {
         color.z -= U(temperature) * 0.08f - U(tint) * 0.04f;
         color.y -= U(tint) * 0.08f;
     }
-    color = (color - 0.5f) * FMAX(0.0f, 1.0f + U(contrast)) + 0.5f;
+    color = (color - V3S(U(pivot))) * FMAX(0.0f, 1.0f + U(contrast)) + V3S(U(pivot));
     float satLuma = lumaOf(color);
     float currentSat = clampf(colorSaturation(color), 0.0f, 1.0f);
     float skinLike = smoothstepf(0.02f, 0.18f, color.x - color.y) * smoothstepf(0.0f, 0.16f, color.y - color.z) * smoothstepf(0.18f, 0.82f, satLuma);
@@ -877,7 +896,19 @@ float4 shade(float2 frag, P_ALL) {
     }
     if (crtCurvature > 0.0f) { color *= displayMask; }
     float3 graded = clamp3(color, 0.0f, 1.0f);
-    return V43(graded, sampleColor.w);
+    float alpha = sampleColor.w;
+    if (U(keyEnabled) > 0.0f) {
+        float3 key = V3(U(keyR), U(keyG), U(keyB));
+        float3 source = sampleColor.xyz;
+        float y = lumaOf(source), keyY = lumaOf(key);
+        float2 chroma = V2((source.z - y) / 1.8556f, (source.x - y) / 1.5748f);
+        float2 keyChroma = V2((key.z - keyY) / 1.8556f, (key.x - keyY) / 1.5748f);
+        float distance = SQRT(POW(chroma.x - keyChroma.x, 2.0f) + POW(chroma.y - keyChroma.y, 2.0f));
+        alpha *= smoothstepf(U(keySimilarity), U(keySimilarity) + FMAX(U(keySmoothness), 0.000001f), distance);
+        float excessGreen = FMAX(0.0f, graded.y - FMAX(graded.x, graded.z));
+        graded.y -= excessGreen * U(keySpill);
+    }
+    return V43(graded, alpha);
 }
 
 // MARK: Kernels

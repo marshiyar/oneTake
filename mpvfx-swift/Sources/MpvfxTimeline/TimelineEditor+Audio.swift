@@ -35,6 +35,35 @@ public extension TimelineEditor {
         return 1
     }
 
+    /// Applies precomputed loudness-match gains atomically. Measurement belongs off the main thread; this short
+    /// document mutation is one undo step and changes the same `audio.volume` consumed by preview and export.
+    @discardableResult
+    func applyLoudnessMatch(_ gains: [String: Double]) -> Bool {
+        guard !gains.isEmpty else { return false }
+        var resolved: [String: Double] = [:]
+        for (id, gain) in gains {
+            guard gain.isFinite, gain >= 0, !isClipLocked(id), let (_, clip) = clip(id),
+                  let kind = document.assets.first(where: { $0.id == clip.assetId })?.kind,
+                  kind == .audio || kind == .video else {
+                lastFailure = .init(code: .incompatibleDestination,
+                                    message: "Cannot match loudness for clip \(id): its gain is invalid or it is missing, locked, or non-audio")
+                return false
+            }
+            resolved[id] = gain
+        }
+        var next = document
+        for trackIndex in next.sequence.tracks.indices {
+            for clipIndex in next.sequence.tracks[trackIndex].clips.indices {
+                let id = next.sequence.tracks[trackIndex].clips[clipIndex].id
+                guard let gain = resolved[id] else { continue }
+                var parameters = next.sequence.tracks[trackIndex].clips[clipIndex].staticParameters ?? [:]
+                parameters[Self.audioVolumeParameter] = .number(gain)
+                next.sequence.tracks[trackIndex].clips[clipIndex].staticParameters = parameters
+            }
+        }
+        return commit(next, "Match loudness")
+    }
+
     /// Serialized FX chain on the clip (nil removes it).
     @discardableResult
     func setClipFxChain(clipId: String, _ chain: String?) -> Bool {
@@ -45,6 +74,26 @@ public extension TimelineEditor {
     @discardableResult
     func setClipAutomation(clipId: String, _ automation: String?) -> Bool {
         updateAudioClip(clipId, "Set clip automation") { $0.audioAutomation = automation?.isEmpty == false ? automation : nil }
+    }
+
+    /// Serialized automation for several clips at once, as one undo step (nil removes a clip's automation).
+    /// Nothing changes unless every clip is an unlocked audio or video clip.
+    @discardableResult
+    func setClipsAutomation(_ automation: [String: String?], label: String) -> Bool {
+        guard !automation.isEmpty else { return false }
+        var d = document
+        for (clipId, value) in automation {
+            guard !isClipLocked(clipId), let (_, c) = clip(clipId),
+                  let kind = document.assets.first(where: { $0.id == c.assetId })?.kind, kind == .audio || kind == .video else {
+                lastFailure = .init(code: .incompatibleDestination, message: "Clip \(clipId) is not an unlocked audio or video clip"); return false
+            }
+            for ti in d.sequence.tracks.indices {
+                if let ci = d.sequence.tracks[ti].clips.firstIndex(where: { $0.id == clipId }) {
+                    d.sequence.tracks[ti].clips[ci].audioAutomation = value?.isEmpty == false ? value : nil
+                }
+            }
+        }
+        return commit(d, label)
     }
 
     // MARK: Audio groups

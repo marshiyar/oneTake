@@ -48,11 +48,18 @@ extension EditorSession {
         redraw()
     }
 
-    /// Keyframe menu "Edit Easing…": the keys' easing editor in Design (the timeline already selected the clip and keys).
+    /// Keyframe menu "Edit Easing…": the Keyframe Easing panel on those keys (the timeline already selected the clip
+    /// and keys).
     func openKeyframeEasing(clipId: String, refs: Set<TimelineKeyframeRef>) {
-        guard let panels, panels.right.inspector.showKeyframeEasing(clipId: clipId, refs: refs) else { return }
+        guard let panels, panels.right.showKeyframeEasing(clipId: clipId, refs: refs) else { return }
+        redraw()
+    }
+
+    /// View > Keyframe Easing (macOS) and the right panel's menu: the panel on the current selection.
+    func showKeyframeEasingPanel() {
+        guard let panels else { return }
         panels.right.layout.setRightCollapsed(false)
-        panels.right.layout.setRightTab(.design)
+        panels.right.layout.setRightTab(.easing)
         redraw()
     }
 

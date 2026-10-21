@@ -91,6 +91,10 @@ public enum AudioFx {
 
     /// Every effect, in panel order (HF_AUDIO_FX).
     public static let definitions: [FxDef] = [
+        FxDef(id: "denoise", label: "Noise Reduction", group: "filter", params: [
+            num("amount", "Amount", "", 0, 1, 0.01, 0.7), num("learn", "Learn length", "ms", 100, 5000, 10, 500),
+            num("learn_from", "Learn from", "s", 0, 600, 0.1, 0),
+        ], implementation: "spectral-denoise"),
         FxDef(id: "gain", label: "Gain", group: "dynamics", params: [gainDb(-60, 12, 0)], implementation: "gain"),
         FxDef(id: "peaking", label: "Peaking EQ", group: "filter", params: [freq("frequency", "Frequency", 1000), gainDb(-40, 40, 0), qParam(1)], implementation: "biquad-peaking"),
         FxDef(id: "lowshelf", label: "Low Shelf", group: "filter", params: [freq("frequency", "Frequency", 200, 20, 2000), gainDb(-40, 40, 0)], implementation: "biquad-lowshelf"),

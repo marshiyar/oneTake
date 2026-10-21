@@ -22,7 +22,7 @@ final class TimelineEditingOpsTests: XCTestCase {
     func make() throws -> (TimelineController, TimelineEditor) {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)   // 100 px/s
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         return (c, e)
     }
     func clip(_ e: TimelineEditor, _ id: String) -> NativeProjectClip? {
@@ -254,7 +254,7 @@ final class TimelineSplitUndoTests: XCTestCase {
     func testRazorShiftClickSplitsAllTracksInOneUndoStep() throws {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         let before = e.document
         c.tool = .razor
         c.pointerDown(x: 264 + 200, y: TimelineLayout.rowTop(1) + 20, shift: true)   // 2s: logo, a, music

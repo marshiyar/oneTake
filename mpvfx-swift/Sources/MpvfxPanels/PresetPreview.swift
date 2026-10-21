@@ -22,9 +22,12 @@ public struct PresetPreviewRequest: Hashable, Sendable {
     public var lutSrc: String?
     public var lutIntensity: Double
     public var pixelWidth: Int, pixelHeight: Int
-    public init(clipId: String, presetId: String, lutSrc: String?, lutIntensity: Double, pixelWidth: Int, pixelHeight: Int) {
+    /// The grade contract of the clip's grade, so a tile draws the look as a click would apply it (issue #172).
+    public var version: Int
+    public init(clipId: String, presetId: String, lutSrc: String?, lutIntensity: Double, pixelWidth: Int, pixelHeight: Int,
+                version: Int = ColorGrading.contractVersion) {
         self.clipId = clipId; self.presetId = presetId; self.lutSrc = lutSrc; self.lutIntensity = lutIntensity
-        self.pixelWidth = pixelWidth; self.pixelHeight = pixelHeight
+        self.pixelWidth = pixelWidth; self.pixelHeight = pixelHeight; self.version = version
     }
 }
 

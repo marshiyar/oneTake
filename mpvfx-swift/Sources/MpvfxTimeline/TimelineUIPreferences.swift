@@ -34,7 +34,7 @@ public struct TimelineUIPreferences: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         if let h = try? c.decode(Double.self, forKey: .timelineTrackHeight), h.isFinite {
-            timelineTrackHeight = max(32, min(96, h.rounded()))
+            timelineTrackHeight = max(TimelineLayout.minTrackHeight, min(TimelineLayout.maxTrackHeight, h.rounded()))
         }
         timelineZoomMode = try? c.decode(TimelineZoomMode.self, forKey: .timelineZoomMode)
         if let p = try? c.decode(Double.self, forKey: .timelineManualZoomPercent), p.isFinite { timelineManualZoomPercent = p }

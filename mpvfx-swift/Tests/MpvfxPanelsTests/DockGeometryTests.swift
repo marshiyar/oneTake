@@ -16,7 +16,7 @@ import MpvfxCanvas
 @testable import MpvfxPanels
 
 final class DockGeometryTests: XCTestCase {
-    let registry = DockRegistry.editor
+    let registry = DockRegistry.corePanels
 
     func geometry(_ w: Double, _ h: Double, _ layout: DockLayout? = nil) -> DockGeometry {
         DockGeometry.compute(layout ?? DockDefaults.layout(registry), registry: registry, in: CanvasRect(x: 0, y: 0, width: w, height: h))

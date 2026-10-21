@@ -29,6 +29,9 @@ public struct AudioFxUIState: Equatable {
     public var collapsedRuns: Set<String> = []
     /// Nodes (by id) whose Details are open.
     public var details: Set<String> = []
+    /// A response-graph handle drag in flight, and each graph's plot from the last draw (by row id).
+    public var graphDrag: AfxGraphDrag?
+    public var graphBoxes: [String: AfxGraphBox] = [:]
 }
 
 /// One run of the hand-built chain: a preset's consecutive nodes, or one bare node (FxSection `runs`).
@@ -164,11 +167,12 @@ extension InspectorPanel {
                              color: (resetOn && hovered == .reset(key) ? PanelTheme.text0 : PanelTheme.text2).withAlpha(alpha * (resetOn ? 1 : 0.4)))
         if resetOn { addHit(reset, .reset(key)) }
         right = reset.x - 8
+        // The unit column is kept when a knob has no unit, so every row's slider, field and reset line up.
         if !unit.isEmpty {
             PanelDraw.text(c, unit, in: CanvasRect(x: right - 22, y: midY - 6.75, width: 22, height: 13.5), font: PanelTheme.mono(9),
                            color: PanelTheme.text2.withAlpha(alpha))
-            right -= 22 + 8
         }
+        right -= 22 + 8
         let box = CanvasRect(x: right - 54, y: midY - 9.5, width: 54, height: 19)
         let editing = field?.key == key
         c.fillRoundedRect(box, radius: 3, (editing ? PanelTheme.panelInput : PanelTheme.panelSurface).withAlpha(alpha))
@@ -230,7 +234,12 @@ extension InspectorPanel {
                 reset: { set(0) }, vertical: true))))
         }
         let tint = Self.afxTint(FxNode(type: "eq", fromEq: eqId))
-        let h = 2 + Self.eqHeadH + (open ? Self.eqOpenBodyH : Self.eqSummaryH)
+        let h = 2 + Self.eqHeadH + (open ? Self.afxGraphBlockH + Self.eqOpenBodyH : Self.eqSummaryH)
+        let graph = Self.afxEqGraphParts(chain, eqId: eqId)
+        let graphPointer = afxGraphPointer(row: id, handles: graph.handles) { handle, _, gain in
+            guard let band = handle.band else { return }
+            write(AudioEq.setBandGain(chain, eqId: eqId, band: band, gain: (gain * 2).rounded() / 2))
+        }
         return .init(.custom(InspectorCustomRow(id: id, height: h, draw: { [weak self] c, r, _ in
             guard let self else { return }
             Self.afxModuleFrame(c, r, tint: tint, alpha: 1)
@@ -245,12 +254,15 @@ extension InspectorPanel {
             PanelDraw.text(c, "Tone", in: CanvasRect(x: nameR.x, y: midY - 8.25, width: nameR.width, height: 16.5), font: PanelTheme.mono(11, .medium),
                            color: self.hovered == .button("eq:\(eqId):open") ? PanelTheme.text1 : PanelTheme.text0)
             self.addHit(nameR, .button("eq:\(eqId):open"))
-            let body = CanvasRect(x: r.x + 2 + 8, y: head.maxY, width: r.width - 3 - 16, height: r.maxY - 1 - head.maxY)
+            let card = CanvasRect(x: r.x + 2 + 8, y: head.maxY, width: r.width - 3 - 16, height: r.maxY - 1 - head.maxY)
             guard open else {
-                PanelDraw.text(c, AudioEq.summary(bands), in: CanvasRect(x: body.x, y: body.y, width: body.width, height: 16.5),
+                PanelDraw.text(c, AudioEq.summary(bands), in: CanvasRect(x: card.x, y: card.y, width: card.width, height: 16.5),
                                font: PanelTheme.font(11), color: PanelTheme.text2)
                 return
             }
+            self.afxDrawResponse(c, CanvasRect(x: card.x, y: card.y + 6, width: card.width, height: Self.afxGraphH),
+                                 AfxGraphSpec(row: id, nodes: graph.nodes, handles: graph.handles, alpha: 1))
+            let body = CanvasRect(x: card.x, y: card.y + Self.afxGraphBlockH, width: card.width, height: card.height - Self.afxGraphBlockH)
             let n = Double(Swift.max(1, bands.count)), gapX = 6.0
             let colW = (body.width - gapX * (n - 1)) / n
             for (i, band) in bands.enumerated() {
@@ -262,7 +274,7 @@ extension InspectorPanel {
             let bw = c.measureText("BOOST", font: PanelTheme.mono(8)).width + 1
             PanelDraw.tracked(c, "BOOST", in: CanvasRect(x: foot.maxX - bw, y: foot.y, width: bw, height: 12), font: PanelTheme.mono(8),
                               tracking: 0.2, color: PanelTheme.text2)
-        })), controls: controls)
+        }, pointer: graphPointer)), controls: controls)
     }
 
     /// One fader column: the 74px travel (centre detent line, 3px accent fill from 0 dB to the value, the cap), the
@@ -469,7 +481,9 @@ extension InspectorPanel {
         let paramsH: ([AfxParam]) -> Double = { ps in ps.isEmpty ? 0 : 1 + 12 + Double(ps.count) * 24 + Double(ps.count - 1) * 2 }
         let endsH = !shownFace.isEmpty && copy != nil ? 17.5 : 0
         let detailsH = 1 + 21.5 - (oneKnob ? 0 : 4)
-        let openH = open ? doesH + paramsH(shownFace) + endsH + detailsH + paramsH(shownAll) : 0
+        let graphH = Self.afxGraphHeight(node.type)
+        let openH = open ? doesH + graphH + paramsH(shownFace) + endsH + detailsH + paramsH(shownAll) : 0
+        let graphPointer = afxNodeGraphPointer(node, i, update: update)
         let cardH = 2 + Self.nodeHeadH + (summary != nil ? Self.nodeSummaryH : 0) + openH
         let topGap = inRun != nil ? 4.0 : 0
         let name = Self.afxLettered(label, family: family)
@@ -529,6 +543,11 @@ extension InspectorPanel {
                 }
                 y += doesH
             }
+            if graphH > 0 {
+                rule()
+                self.afxDrawModuleGraph(c, CanvasRect(x: bx + 6, y: y + 1 + 6, width: bw - 12, height: Self.afxGraphH), (i: i, node: node), alpha: a)
+                y += graphH
+            }
             func drawParams(_ ps: [AfxParam]) {
                 guard !ps.isEmpty else { return }
                 rule()
@@ -559,7 +578,7 @@ extension InspectorPanel {
             if oneKnob { self.addHit(dr, .button("\(fxKey):details")) }
             y += detailsH
             drawParams(shownAll)
-        })), controls: controls)
+        }, pointer: graphPointer)), controls: controls)
     }
 
     /// Width of `PanelDraw.tracked` text (no tracking after the last glyph).
@@ -602,14 +621,14 @@ extension InspectorPanel {
             let toPos: (Double) -> Double = { x in log ? lo + (Foundation.log(x) - Foundation.log(lo)) / (Foundation.log(hi) - Foundation.log(lo)) * (hi - lo) : x }
             let fromPos: (Double) -> Double = { x in log ? exp(Foundation.log(lo) + (x - lo) / (hi - lo) * (Foundation.log(hi) - Foundation.log(lo))) : x }
             let dec = Self.afxDecimals(step)
-            let show: (Double) -> String = { String(format: "%.\(dec)f", $0) }
+            let show: (Double) -> String = { AfxValueFormat.text($0, key: p.key, step: step) }
             let set: (Double) -> Void = { x in
                 var n = params; let c = Swift.max(lo, Swift.min(hi, x))
                 n[p.key] = .number((c / step).rounded() * step == c ? c : jsRoundTo(c, dec + 1)); update(n)
             }
             return Self.afxParamControls(key: key, label: p.label, position: toPos(v), min: lo, max: hi, display: show(v),
                                          format: { show(fromPos($0)) }, atDefault: v == dv,
-                                         commitPosition: { set(fromPos($0)) }, commitText: { t in if let x = PanelFormat.parse(t) { set(x) } },
+                                         commitPosition: { set(fromPos($0)) }, commitText: { t in if let x = AfxValueFormat.parse(t) { set(x) } },
                                          reset: { set(dv) })
         case let .enumeration(_, _, options, dv):
             let cur = params[p.key]?.string ?? dv
@@ -635,9 +654,9 @@ extension InspectorPanel {
             let log = scale == .log && lo > 0
             let toPos: (Double) -> Double = { x in log ? lo + (Foundation.log(x) - Foundation.log(lo)) / (Foundation.log(hi) - Foundation.log(lo)) * (hi - lo) : x }
             let fromPos: (Double) -> Double = { x in log ? exp(Foundation.log(lo) + (x - lo) / (hi - lo) * (Foundation.log(hi) - Foundation.log(lo))) : x }
-            let dec = Self.afxDecimals(step)
-            afxParamRowDraw(c, r, key: key, label: p.label, position: toPos(v), display: String(format: "%.\(dec)f", v), unit: unit,
-                            atDefault: v == dv, enabled: enabled, alpha: alpha, format: { String(format: "%.\(dec)f", fromPos($0)) }, min: lo, max: hi)
+            afxParamRowDraw(c, r, key: key, label: p.label, position: toPos(v), display: AfxValueFormat.text(v, key: p.key, step: step), unit: unit,
+                            atDefault: v == dv, enabled: enabled, alpha: alpha, format: { AfxValueFormat.text(fromPos($0), key: p.key, step: step) },
+                            min: lo, max: hi)
         case let .enumeration(_, _, options, dv):
             // The enum row: name, a `bg-panel-surface` mono 10 select filling the row, the reset.
             let cur = params[p.key]?.string ?? dv
@@ -785,7 +804,7 @@ extension InspectorPanel {
             })
         }
         let presetsLabel = ui.menu == .presets ? "Close" : "Presets", addLabel = ui.menu == .add ? "Close" : "+ effect"
-        return .init(.custom(InspectorCustomRow(id: "afx:buttons", height: 31.5 + 4 + 15, draw: { [weak self] c, r, _ in
+        return .init(.custom(InspectorCustomRow(id: "afx:buttons", height: 31.5 + PanelTheme.minTarget, draw: { [weak self] c, r, _ in
             guard let self else { return }
             let pr = CanvasRect(x: r.x, y: r.y, width: r.width, height: 31.5).snapped
             let hot = self.hovered == .button("fx:presets")
@@ -798,7 +817,7 @@ extension InspectorPanel {
             let ar = CanvasRect(x: r.maxX - w, y: pr.maxY + 4, width: w, height: 15)
             PanelDraw.text(c, addLabel, in: CanvasRect(x: ar.x + 4, y: ar.y, width: w - 8 + 1, height: 15), font: PanelTheme.font(10),
                            color: self.hovered == .button("fx:add") ? PanelTheme.text0 : PanelTheme.text2)
-            self.addHit(ar, .button("fx:add"))
+            self.addHit(CanvasRect(x: ar.x, y: pr.maxY, width: ar.width, height: PanelTheme.minTarget), .button("fx:add"))
         })), controls: [.init(.buttons(picks))])
     }
 }

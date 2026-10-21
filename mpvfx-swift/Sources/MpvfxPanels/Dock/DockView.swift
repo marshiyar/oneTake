@@ -42,7 +42,7 @@ public final class DockView {
     var lastSplitterPress: (path: [Int], index: Int, at: Double)?
     /// Hit regions and tab rects of the last draw (pointer events resolve against them).
     var hits = HitMap<Hit>()
-    var tabs: [String: [DockTabBar.Tab]] = [:]
+    public internal(set) var tabs: [String: [DockTabBar.Tab]] = [:]
 
     public enum Hit: Equatable, Sendable {
         case tab(DockPanelID), close(DockPanelID), menu(String), strip(String), splitter(Int)
