@@ -117,6 +117,29 @@ public final class CoreGraphicsCanvas: CanvasContext {
         CTLineDraw(l, ctx)
         ctx.restoreGState()
     }
+    public func textUnits(_ text: String, font: CanvasFont) -> [TextUnit] {
+        let shaped = line(text, font, CanvasColor(r: 0, g: 0, b: 0))
+        return TextUnits.graphemes(text).map { range in
+            var secondaryStart: CGFloat = 0, secondaryEnd: CGFloat = 0
+            let primaryStart = CTLineGetOffsetForStringIndex(shaped, range.lowerBound, &secondaryStart)
+            let primaryEnd = CTLineGetOffsetForStringIndex(shaped, range.upperBound, &secondaryEnd)
+            // At bidi transitions Core Text returns two caret positions. Use the adjacent pair,
+            // rather than a primary caret belonging to the neighbouring directional run.
+            let pair = [(primaryStart, primaryEnd), (primaryStart, secondaryEnd),
+                        (secondaryStart, primaryEnd), (secondaryStart, secondaryEnd)]
+                .min { abs($0.1 - $0.0) < abs($1.1 - $1.0) }!
+            let start = pair.0, end = pair.1
+            return TextUnit(range: range, rect: CanvasRect(x: Double(min(start, end)), y: 0,
+                                                          width: Double(abs(end - start)), height: font.size))
+        }
+    }
+    public func textWordRanges(_ text: String) -> [Range<Int>] {
+        var ranges: [Range<Int>] = []
+        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: .byWords) { _, range, _, _ in
+            ranges.append(range.lowerBound.utf16Offset(in: text)..<range.upperBound.utf16Offset(in: text))
+        }
+        return ranges
+    }
     public func measureText(_ text: String, font: CanvasFont) -> CanvasSize {
         let b = CTLineGetTypographicBounds(line(text, font, CanvasColor(r: 0, g: 0, b: 0)), nil, nil, nil)
         return CanvasSize(b, font.size)

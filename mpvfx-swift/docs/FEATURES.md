@@ -287,3 +287,23 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+### Text unit API (#276)
+
+`TextLayout.units(_:width:on:)` returns grapheme clusters, native words and wrapped line boxes.
+Each unit carries a half-open UTF-16 range into the original text and a typographic rectangle relative
+to the layout origin. Units stay in logical reading order on RTL lines. Empty lines keep a line box;
+wrapping delimiters and newlines carry no glyph box. Words contain letters or numbers; whitespace,
+punctuation-only spans and emoji stay available as clusters. Native word boundaries come from Pango
+log attributes, Foundation's platform word enumerator, and Windows Uniscribe `ScriptBreak`; Windows
+shaped boxes come from DirectWrite hit testing. Dictionary segmentation of contiguous CJK can differ
+between hosts; the shared expected-count corpus uses separated ideographs.
+
+`TextLayout.draw(_:in:on:selecting:opacity:)` accepts cluster, word or line selections. It paints each
+original shaped run once, clipping a partial reveal to its selected advance boxes. Full runs bypass
+clipping to preserve overhang and exact static pixels. This keeps Arabic joining and ligatures intact;
+a partial selection of a shared ligature reveals the selected typographic region. These are derived
+layout results with no persisted setting or editor command. macOS tests cover Latin, Persian/Arabic,
+CJK, combining marks, emoji ZWJ and skin-tone modifiers, transparent raster parity, RTL order, repeated
+words, wrapping, blank lines and letter spacing. Linux and Windows tests are compiled conditionally
+against their real raster backends and require their CI hosts; they were not executed locally.

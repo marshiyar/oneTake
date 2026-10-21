@@ -152,6 +152,10 @@ public protocol CanvasContext: AnyObject {
     func stroke(_ path: CanvasPath, _ color: CanvasColor, _ style: StrokeStyle)
     /// Draws `text` with its top-left at `origin` (like an absolutely positioned CSS span with line-height: 1).
     func drawText(_ text: String, at origin: CanvasPoint, font: CanvasFont, color: CanvasColor)
+    /// Native shaped grapheme advance boxes, in UTF-16 logical reading order.
+    func textUnits(_ text: String, font: CanvasFont) -> [TextUnit]
+    /// Native platform word boundaries as half-open UTF-16 ranges.
+    func textWordRanges(_ text: String) -> [Range<Int>]
     func measureText(_ text: String, font: CanvasFont) -> CanvasSize
     func drawImage(_ image: CanvasImage, in rect: CanvasRect)
     /// Draws `image` at `opacity` (0...1) multiplied into its alpha. Backends composite it natively;

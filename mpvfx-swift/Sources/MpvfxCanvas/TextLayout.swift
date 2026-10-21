@@ -41,46 +41,88 @@ public enum TextLayout {
 
     /// The runs a block draws in a box `width` wide. `measure` gives a string's advance width without letter spacing.
     public static func layout(_ b: TextBlock, width: Double, measure: (String) -> Double) -> [Run] {
+        details(b, width: width, measure: measure).runs
+    }
+
+    /// Retain source offsets during wrapping; searching the final runs loses empty lines and spaces.
+    static func details(_ b: TextBlock, width: Double, measure: (String) -> Double)
+        -> (runs: [Run], ranges: [Range<Int>], lines: [TextUnit], spaces: [TextUnit]) {
         let space = b.letterSpacing
         func w(_ s: String) -> Double { s.isEmpty ? 0 : measure(s) + space * Double(s.count) }
-        var lines: [(words: [String], last: Bool)] = []
+        var lines: [(words: [String], last: Bool, start: Int)] = []
+        var paragraphOffset = 0
         for para in b.text.components(separatedBy: "\n") {
             let words = para.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-            var line: [String] = []
+            var line: [String] = [], lineStart = paragraphOffset, offset = paragraphOffset
             for word in words {
-                if line.isEmpty { line = [word]; continue }
-                let candidate = (line + [word]).joined(separator: " ")
-                if w(candidate) <= width + 1e-6 { line.append(word) } else { lines.append((line, false)); line = [word] }
+                if line.isEmpty { line = [word]; lineStart = offset }
+                else {
+                    let candidate = (line + [word]).joined(separator: " ")
+                    if w(candidate) <= width + 1e-6 { line.append(word) }
+                    else { lines.append((line, false, lineStart)); line = [word]; lineStart = offset }
+                }
+                offset += word.utf16.count + 1
             }
-            lines.append((line, true))
+            lines.append((line, true, lineStart))
+            paragraphOffset += para.utf16.count + 1
         }
-        var runs: [Run] = []
+        var runs: [Run] = [], ranges: [Range<Int>] = [], lineUnits: [TextUnit] = [], spaces: [TextUnit] = []
         let glyphTop = (b.lineHeight - b.font.size) / 2
+        func append(_ text: String, x: Double, y: Double, offset: Int) {
+            let placed = place(text, x: x, y: y, spacing: space, measure: measure)
+            if space != 0 {
+                var prefix = "", characterOffset = offset
+                for (index, character) in text.enumerated() {
+                    let value = String(character), length = value.utf16.count
+                    if character.isWhitespace {
+                        spaces.append(TextUnit(range: characterOffset..<(characterOffset + length),
+                                               rect: CanvasRect(x: x + (prefix.isEmpty ? 0 : measure(prefix)) + space * Double(index),
+                                                                y: y, width: measure(value), height: b.font.size)))
+                    }
+                    prefix += value; characterOffset += length
+                }
+            }
+            var cursor = 0
+            for run in placed {
+                // place either returns the complete string or one Character at a time.
+                if space == 0 || text.count <= 1 { ranges.append(offset..<(offset + text.utf16.count)) }
+                else {
+                    let suffix = String(decoding: Array(text.utf16)[cursor...], as: UTF16.self)
+                    if let found = suffix.range(of: run.text) {
+                        cursor += found.lowerBound.utf16Offset(in: suffix)
+                        ranges.append((offset + cursor)..<(offset + cursor + run.text.utf16.count))
+                        cursor += run.text.utf16.count
+                    }
+                }
+            }
+            runs += placed
+        }
         for (i, line) in lines.enumerated() {
             let y = Double(i) * b.lineHeight + glyphTop
             let text = line.words.joined(separator: " ")
-            guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
             let lineWidth = w(text)
-            if b.align == .justify && !line.last && line.words.count > 1 {
-                // Extra width goes between the words; each word is placed on its own.
-                let wordsWidth = line.words.reduce(0) { $0 + w($1) }
-                let gap = (width - wordsWidth) / Double(line.words.count - 1)
-                var x = 0.0
-                for word in line.words {
-                    runs += place(word, x: x, y: y, spacing: space, measure: measure)
-                    x += w(word) + gap
-                }
-                continue
-            }
             let x: Double
             switch b.align {
             case .left, .justify: x = 0
             case .center: x = (width - lineWidth) / 2
             case .right: x = width - lineWidth
             }
-            runs += place(text, x: x, y: y, spacing: space, measure: measure)
+            let justified = b.align == .justify && !line.last && line.words.count > 1
+            lineUnits.append(TextUnit(range: line.start..<(line.start + text.utf16.count),
+                                      rect: CanvasRect(x: x, y: Double(i) * b.lineHeight,
+                                                       width: justified ? width : lineWidth, height: b.lineHeight)))
+            guard !text.isEmpty else { continue }
+            if justified {
+                let wordsWidth = line.words.reduce(0) { $0 + w($1) }
+                let gap = (width - wordsWidth) / Double(line.words.count - 1)
+                var wordX = 0.0, offset = line.start
+                for word in line.words {
+                    append(word, x: wordX, y: y, offset: offset)
+                    wordX += w(word) + gap; offset += word.utf16.count + 1
+                }
+            } else { append(text, x: x, y: y, offset: line.start) }
         }
-        return runs
+        return (runs, ranges, lineUnits, spaces)
     }
 
     /// A string as one run, or one run per character when letter spacing separates them (each character after the

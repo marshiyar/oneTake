@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 #if os(Linux)
 import CGtk3
+import Foundation
 
 /// Cairo + Pango backend. Wraps a caller-owned cairo_t (e.g. GtkDrawingArea "draw").
 public final class CairoCanvas: CanvasContext {
@@ -85,6 +86,36 @@ public final class CairoCanvas: CanvasContext {
         pango_cairo_show_layout(cr, l)
     }
 
+    public func textUnits(_ text: String, font: CanvasFont) -> [TextUnit] {
+        let l = layout(text, font)
+        defer { g_object_unref(UnsafeMutableRawPointer(l)) }
+        return TextUnits.graphemes(text).map { range in
+            let value = String(decoding: Array(text.utf16)[range], as: UTF16.self)
+            let prefix = String(decoding: Array(text.utf16)[..<range.lowerBound], as: UTF16.self)
+            var byte = prefix.utf8.count, boxes: [CanvasRect] = []
+            for scalar in value.unicodeScalars {
+                var r = PangoRectangle()
+                pango_layout_index_to_pos(l, Int32(byte), &r)
+                let x = Double(r.x) / Double(PANGO_SCALE), width = Double(r.width) / Double(PANGO_SCALE)
+                boxes.append(CanvasRect(x: min(x, x + width), y: 0, width: abs(width), height: font.size))
+                byte += scalar.utf8.count
+            }
+            return TextUnit(range: range, rect: TextUnits.union(boxes))
+        }
+    }
+    public func textWordRanges(_ text: String) -> [Range<Int>] {
+        let l = layout(text, CanvasFont(size: 12))
+        defer { g_object_unref(UnsafeMutableRawPointer(l)) }
+        var offset = 0, start: Int?, result: [Range<Int>] = []
+        let scalars = Array(text.unicodeScalars)
+        for index in 0...scalars.count {
+            let flags = mpvfx_pango_word_boundary(l, Int32(index))
+            if flags & 2 != 0, let s = start { result.append(s..<offset); start = nil }
+            if flags & 1 != 0 { start = offset }
+            if index < scalars.count { offset += scalars[index].utf16.count }
+        }
+        return result
+    }
     public func measureText(_ text: String, font: CanvasFont) -> CanvasSize {
         let l = layout(text, font)
         defer { g_object_unref(UnsafeMutableRawPointer(l)) }

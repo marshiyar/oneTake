@@ -6,6 +6,7 @@
 #include <d2d1.h>
 #include <d2d1helper.h>
 #include <dwrite.h>
+#include <usp10.h>
 #include <wincodec.h>
 
 #include <algorithm>
@@ -334,6 +335,47 @@ mpvfx_hresult mpvfx_d2d_measure_text(const MpvfxText *text, float *width, float 
     hr = layout->GetMetrics(&m);
     if (FAILED(hr)) return hr;
     *width = m.widthIncludingTrailingWhitespace; *height = m.height;
+    return S_OK;
+}
+
+mpvfx_hresult mpvfx_d2d_text_ranges(const MpvfxText *text, const int32_t *starts,
+                                   const int32_t *lengths, MpvfxRect *rects, int32_t count) {
+    if (!text || count < 0 || (count && (!starts || !lengths || !rects))) return E_INVALIDARG;
+    Com<IDWriteTextLayout> layout;
+    HRESULT hr = makeLayout(*text, layout);
+    if (FAILED(hr)) return hr;
+    for (int32_t i = 0; i < count; ++i) {
+        if (starts[i] < 0 || lengths[i] <= 0 || starts[i] > text->length - lengths[i]) return E_INVALIDARG;
+        UINT32 needed = 0;
+        hr = layout->HitTestTextRange(starts[i], lengths[i], 0, 0, nullptr, 0, &needed);
+        if (FAILED(hr) && hr != E_NOT_SUFFICIENT_BUFFER) return hr;
+        std::vector<DWRITE_HIT_TEST_METRICS> metrics(needed);
+        hr = layout->HitTestTextRange(starts[i], lengths[i], 0, 0, metrics.data(), needed, &needed);
+        if (FAILED(hr)) return hr;
+        float left = 1.0e6f, right = -1.0e6f;
+        for (const auto &m : metrics) { left = std::min(left, m.left); right = std::max(right, m.left + m.width); }
+        rects[i] = {left, 0, std::max(0.0f, right - left), text->size};
+    }
+    return S_OK;
+}
+
+mpvfx_hresult mpvfx_d2d_word_stops(const MpvfxText *text, uint8_t *stops) {
+    if (!text || !stops || text->length < 0) return E_INVALIDARG;
+    std::fill(stops, stops + text->length + 1, 0);
+    stops[0] = stops[text->length] = 1;
+    if (text->length == 0) return S_OK;
+    std::vector<SCRIPT_ITEM> items(static_cast<size_t>(text->length) + 2);
+    int count = 0;
+    const auto *chars = reinterpret_cast<const wchar_t *>(text->text);
+    HRESULT hr = ScriptItemize(chars, text->length, text->length + 1, nullptr, nullptr, items.data(), &count);
+    if (FAILED(hr)) return hr;
+    for (int i = 0; i < count; ++i) {
+        const int start = items[i].iCharPos, length = items[i + 1].iCharPos - start;
+        std::vector<SCRIPT_LOGATTR> attrs(length);
+        hr = ScriptBreak(chars + start, length, &items[i].a, attrs.data());
+        if (FAILED(hr)) return hr;
+        for (int j = 0; j < length; ++j) if (attrs[j].fWordStop) stops[start + j] = 1;
+    }
     return S_OK;
 }
 
