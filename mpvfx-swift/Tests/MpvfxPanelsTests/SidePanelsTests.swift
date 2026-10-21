@@ -124,6 +124,55 @@ final class InspectorPanelTests: XCTestCase {
         XCTAssertEqual(audio.groups.map(\.title), ["Audio FX", "Media"])
     }
 
+    func testGradeHeaderBypassIsOneUndoableEdit() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        p.openGroupId = "grade"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("grade") })
+        let before = editor.colorGrading(clipId: "clip:a")?.enabled ?? true
+        XCTAssertGreaterThanOrEqual(toggle.width, 24)
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled, !before)
+        XCTAssertEqual(editor.undoStack.count, 1)
+        XCTAssertTrue(editor.undo())
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled ?? true, before)
+    }
+
+    func testGradeAndEffectsBypassesPublishAccessibleSwitches() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        p.openGroupId = "grade"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let controls = p.accessibilityControls
+        XCTAssertEqual(Set(controls.map(\.label)), ["Grade enabled", "Effects enabled"])
+        XCTAssertTrue(controls.allSatisfy { $0.frame.width >= 24 && $0.frame.height >= 24 })
+        try XCTUnwrap(controls.first { $0.label == "Grade enabled" }).press()
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled, false)
+    }
+
+    func testEffectsHeaderBypassPreservesAmounts() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        var grade = editor.colorGrading(clipId: "clip:a") ?? ColorGrading(); grade.effects["blur"] = 0.45
+        XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", grade))
+        p.openGroupId = "effects"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effectsEnabled, false)
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        XCTAssertTrue(p.pointerDown(center(try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") }))))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+    }
+
+    func testEffectsHeaderBypassPersistsOnANeutralGrade() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        XCTAssertNil(editor.colorGrading(clipId: "clip:a"))
+        p.openGroupId = "effects"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effectsEnabled, false)
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        XCTAssertNotNil(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(c.drawnStrings.contains("off"))
+    }
+
     /// The accordion entrance (hf-flat-group-enter, 120 ms ease-out): the toggled group and the one it closed
     /// animate while a host clock drives `tick`; nothing animates without one.
     func testAccordionEntranceRunsFor120ms() throws {
@@ -340,8 +389,33 @@ final class ColorGradingTests: XCTestCase {
             XCTAssertGreaterThan(amount.y, last.maxY, "Amount starts after the grid at \(panelW)")
         }
     }
+    func testPasteGradeRequiresClipboardAndVisualSelection() throws {
+        func pasteHit(_ p: InspectorPanel) -> CanvasRect? {
+            let canvas = PanelMeasureCanvas()
+            p.gradeClipboardRow().draw(canvas, CanvasRect(x: 0, y: 0, width: 360, height: 28), p)
+            return p.hits.rect { $0 == .custom("grade:clipboard", 1) }
+        }
+
+        let editor = try demoEditor()
+        let emptyClipboard = InspectorPanel()
+        emptyClipboard.editor = editor; emptyClipboard.selection = ["clip:a"]
+        emptyClipboard.onPasteGrade = { true }
+        XCTAssertNil(pasteHit(emptyClipboard), "a wired callback does not imply that a grade is available")
+
+        let audioOnly = InspectorPanel()
+        audioOnly.editor = editor; audioOnly.selection = ["clip:music"]
+        audioOnly.gradeClipboardAvailable = true; audioOnly.onPasteGrade = { true }
+        XCTAssertNil(pasteHit(audioOnly), "an audio-only selection is not a grade target")
+
+        let visual = InspectorPanel()
+        visual.editor = editor; visual.selection = ["clip:music", "clip:a"]
+        visual.gradeClipboardAvailable = true; visual.onPasteGrade = { true }
+        XCTAssertNotNil(pasteHit(visual), "any visual clip in a mixed selection enables grade paste")
+    }
     func testGradeUiWheelDragAndCurvePoint() throws {
         let editor = try demoEditor()
+        // A contract 2 grade (saved before Lift / Gamma / Gain / Offset), which keeps its tonal wheels (issue #176).
+        XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", ColorGrading(json: ["adjust": .object(["contrast": .number(0.1)])])))
         let p = InspectorPanel(); p.editor = editor; p.selection = ["clip:a"]; p.openGroupId = "grade"
         let c = PanelMeasureCanvas(); let rect = CanvasRect(x: 0, y: 0, width: 380, height: 4000)
         p.draw(c, in: rect)
@@ -382,7 +456,7 @@ final class MediaBinTests: XCTestCase {
         let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
         s.items = [.init(id: "media/b-roll.mp4", name: "b-roll.mp4", path: "media/b-roll.mp4", category: .video, duration: 4, used: false)]
         let c = PanelMeasureCanvas(); s.draw(c, size: CanvasSize(370, 800))
-        let card = try XCTUnwrap(s.hits.rect { $0 == .asset("media/b-roll.mp4") })
+        let card = try XCTUnwrap(s.hits.rect { $0 == .tile(.media("media/b-roll.mp4")) })
         let p = center(card)
         XCTAssertTrue(s.pointerDown(p, time: 10))
         _ = s.pointerMove(CanvasPoint(p.x + 2, p.y))
@@ -435,11 +509,12 @@ final class MediaBinTests: XCTestCase {
         XCTAssertEqual(s.categorized[0].1.map(\.id), ["v2", "v1"], "used first")
         let c = PanelMeasureCanvas()
         s.draw(c, size: CanvasSize(370, 800))
-        XCTAssertTrue(c.drawnStrings.contains("Added")); XCTAssertTrue(c.drawnStrings.contains("05:36"))
-        XCTAssertTrue(c.drawnStrings.contains("Import media")); XCTAssertTrue(c.drawnStrings.contains("Search assets..."))
+        XCTAssertFalse(c.drawnStrings.contains("Added"), "a clip in the timeline carries a check, not an Added badge")
+        XCTAssertTrue(c.drawnStrings.contains("05:36"))
+        XCTAssertTrue(c.drawnStrings.contains("Import")); XCTAssertTrue(c.drawnStrings.contains("Search media…"))
         var added: String?
         s.onAddAtPlayhead = { added = $0 }
-        let card = try XCTUnwrap(s.hits.rect { $0 == .asset("v1") })
+        let card = try XCTUnwrap(s.hits.rect { $0 == .tile(.media("v1")) })
         XCTAssertTrue(s.secondaryClick(center(card)))
         c.reset(); s.draw(c, size: CanvasSize(370, 800))
         let item = try XCTUnwrap(s.hits.rect { $0 == .menuItem("v1", 0) })
@@ -454,6 +529,8 @@ final class MediaBinTests: XCTestCase {
         XCTAssertTrue(s.layout.effectiveLeftCollapsed)
     }
 
+    /// The library lives in the header: the switcher shows "library ▸ event", the "…" menu runs the library
+    /// commands, and the library's files and exports are grid sections (not text lists above the bin).
     func testLibraryNavigatorCommands() throws {
         let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
         s.library.available = true
@@ -464,15 +541,45 @@ final class MediaBinTests: XCTestCase {
         s.onLibrary = { cmds.append($0) }
         let c = PanelMeasureCanvas()
         s.draw(c, size: CanvasSize(370, 900))
-        for t in ["Libraries", "New library", "Open", "test", "Media", "New event", "jk", "New project", "Library media (1)", "Library exports (1)",
-                  "Show library in Finder", "Open existing standalone project"] {
-            XCTAssertTrue(c.drawnStrings.contains(t), "missing \(t)")
+        for t in ["test", "Media", "Library media", "clip.mp4", "Exports", "jk"] { XCTAssertTrue(c.drawnStrings.contains(t), "missing \(t)") }
+        for t in ["Libraries", "New library", "New event", "Library media (1)", LeftSidebarPanel.revealLabel] {
+            XCTAssertFalse(c.drawnStrings.contains(t), "\(t) is a menu item now, not a row")
         }
-        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .reveal })))
-        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .newEvent })))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["New library…", "Open library…", "New event…", "Import into Media…", "Copy files into the library",
+                                                         "Link to the original files", LeftSidebarPanel.revealLabel, "jk", "New project…", "Open project…",
+                                                         "Open existing standalone project"])
+        s.dropdown.pick("reveal")
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
+        s.dropdown.pick("newEvent")
+        c.reset(); s.draw(c, size: CanvasSize(370, 900))
         for ch in "Day 2" { _ = s.keyDown(ch == " " ? EditorKey(.space) : EditorKey(.char(ch))) }
         _ = s.keyDown(EditorKey(.enter))
         XCTAssertEqual(cmds, [.reveal(libraryId: "L"), .createEvent(libraryId: "L", name: "Day 2")])
+    }
+
+    /// "Open project…" asks for a folder; the recent projects are a group of the "…" menu and open the one picked.
+    func testOpenProjectAndRecentProjects() throws {
+        let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
+        s.library.available = true
+        s.library.isStandalone = true
+        var cmds: [LibraryNavCommand] = []
+        s.onLibrary = { cmds.append($0) }
+        let c = PanelMeasureCanvas()
+        s.draw(c, size: CanvasSize(370, 900))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
+        XCTAssertTrue(s.dropdown.options.contains { $0.label == "Open project…" })
+        XCTAssertFalse(s.dropdown.options.contains { $0.group == "Recent projects" }, "no recent projects: no Recent group")
+        s.dropdown.pick("openProject")
+        XCTAssertEqual(cmds, [.openProject])
+
+        s.library.recentProjects = [.init(path: "/p/Alpha", name: "Alpha"), .init(path: "/q/Beta", name: "Beta")]
+        c.reset(); s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more }))))
+        XCTAssertTrue(s.dropdown.isOpen)
+        XCTAssertEqual(s.dropdown.options.filter { $0.group == "Recent projects" }.map(\.label), ["Alpha", "Beta"])
+        s.dropdown.pick("recent:/q/Beta")
+        XCTAssertEqual(cmds, [.openProject, .openRecentProject("/q/Beta")])
     }
 }
 
@@ -537,7 +644,7 @@ final class RightPanelTests: XCTestCase {
         let c = PanelMeasureCanvas()
         r.draw(c, size: CanvasSize(409, 600))
         XCTAssertTrue(r.keyDown(EditorKey(.tab)))
-        XCTAssertEqual(r.focus.current, .design, "Tab starts at the strip's first tab")
+        XCTAssertEqual(r.focus.current, .renders, "Tab starts at the strip's selected tab: the tab bar is one stop (docs/DESIGN.md \"Tabs\")")
         var n = 0
         while r.focus.current != .export, n < 30 { _ = r.keyDown(EditorKey(.tab)); n += 1 }
         XCTAssertEqual(r.focus.current, .export)
@@ -615,12 +722,12 @@ final class PanelTabStripTests: XCTestCase {
         XCTAssertTrue(r.pointerMove(center(menu)))
         XCTAssertEqual(r.hint, "Panel menu")
         _ = r.pointerDown(center(menu))
-        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide panel"], "nothing finished to hide yet")
+        XCTAssertEqual(r.dropdown.options.map(\.label), ["Keyframe easing", "Hide panel"], "nothing finished to hide yet; Keyframe easing opens the Easing tab")
         r.dropdown.close()
         r.jobs = [.init(id: "1", name: "Main.mp4", status: .complete), .init(id: "2", name: "Next.mp4", status: .rendering)]
         c.reset(); r.draw(c, size: CanvasSize(409, 800))
         _ = r.pointerDown(center(menu))
-        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide finished renders", "Hide panel"])
+        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide finished renders", "Keyframe easing", "Hide panel"])
         r.dropdown.pick("hideFinished")
         XCTAssertEqual(actions, [.hideFinished])
         _ = r.pointerDown(center(menu))
@@ -638,7 +745,7 @@ final class PanelTabStripTests: XCTestCase {
         s.onImport = { imports += 1 }
         let c = PanelMeasureCanvas()
         s.draw(c, size: CanvasSize(370, 800))
-        XCTAssertTrue(c.drawnStrings.contains("Media")); XCTAssertTrue(c.drawnStrings.contains("Import media"))
+        XCTAssertTrue(c.drawnStrings.contains("Media")); XCTAssertTrue(c.drawnStrings.contains("Import"))
         let tab = try XCTUnwrap(s.hits.rect { $0 == .tab(.assets) })
         XCTAssertEqual(tab.y, 0); XCTAssertEqual(tab.height, PanelTabStrip.height)
         let menu = try XCTUnwrap(s.hits.rect { $0 == .panelMenu })
@@ -649,10 +756,11 @@ final class PanelTabStripTests: XCTestCase {
         let importButton = try XCTUnwrap(s.hits.rect { $0 == .importMedia })
         XCTAssertTrue(s.pointerMove(center(importButton)))
         XCTAssertEqual(s.hint, "Import media files into the project")
-        // At 120 points the label does not fit beside the tab: the button keeps only its plus.
-        c.reset(); s.draw(c, size: CanvasSize(120, 800))
-        XCTAssertFalse(c.drawnStrings.contains("Import media"))
-        XCTAssertEqual(try XCTUnwrap(s.hits.rect { $0 == .importMedia }).width, PanelTabStrip.buttonSize)
+        // At 200 points with the library switcher beside it the label does not fit: the button keeps only its plus.
+        s.onLibrary = { _ in }
+        c.reset(); s.draw(c, size: CanvasSize(200, 800))
+        XCTAssertFalse(c.drawnStrings.contains("Import"))
+        XCTAssertEqual(try XCTUnwrap(s.hits.rect { $0 == .importMedia }).width, MediaPanelMetrics.control)
         _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .panelMenu })))
         s.dropdown.pick("hide")
         XCTAssertTrue(s.layout.effectiveLeftCollapsed)

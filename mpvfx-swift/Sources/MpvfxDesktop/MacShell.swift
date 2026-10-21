@@ -43,6 +43,8 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
     var pendingTerminate = false
     /// View menu appearance items (checkmark follows the setting) and the system appearance observation.
     var appearanceItems: [ThemeAppearance: NSMenuItem] = [:]
+    /// Window > Panels, filled from the dock each time it opens (menuNeedsUpdate).
+    var panelsMenu: NSMenu?
     var appearanceObservation: NSKeyValueObservation?
 
     init(paths: AppPaths, backend: DesktopBackend) { self.paths = paths; self.backend = backend }
@@ -69,6 +71,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
             let sub = NSMenu(title: menu.label)
             for item in menu.items {
                 if item.separatorBefore { sub.addItem(.separator()) }
+                if item.command == .openRecent || item.command == .panels { sub.addItem(filledOnOpen(item)); continue }
                 if item.command == .services {
                     let services = NSMenu(title: item.label)
                     let mi = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
@@ -80,9 +83,12 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                 let selector: Selector
                 switch item.command {
                 case .about: selector = #selector(NSApplication.orderFrontStandardAboutPanel(_:))
-                case .services: continue
-                case .settings:
-                    let mi = NSMenuItem(title: item.label, action: #selector(openSettings(_:)), keyEquivalent: item.key ?? "")
+                case .services, .openRecent, .panels: continue
+                case .openProject, .settings, .closePanel, .keyframeEasing:
+                    let action = item.command == .settings ? #selector(openSettings(_:))
+                        : item.command == .closePanel ? #selector(closePanel(_:))
+                        : item.command == .keyframeEasing ? #selector(openKeyframeEasing(_:)) : #selector(openProject(_:))
+                    let mi = NSMenuItem(title: item.label, action: action, keyEquivalent: item.key ?? "")
                     mi.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
                     mi.target = self
                     sub.addItem(mi); continue
@@ -120,6 +126,17 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         return main
     }
 
+    /// A submenu filled each time it opens (menuNeedsUpdate): Open Recent from the backend's recent projects,
+    /// Window > Panels from the dock.
+    func filledOnOpen(_ item: MenuItem) -> NSMenuItem {
+        let menu = NSMenu(title: item.label)
+        menu.delegate = self
+        if item.command == .panels { panelsMenu = menu }
+        let mi = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
+        mi.submenu = menu
+        return mi
+    }
+
     static func modifierMask(_ modifiers: Set<MenuItem.Modifier>) -> NSEvent.ModifierFlags {
         var mask: NSEvent.ModifierFlags = []
         if modifiers.contains(.command) { mask.insert(.command) }
@@ -131,6 +148,28 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
 
     /// MpVFX > Settings… (⌘, in the editor reaches the same card through EditorSession.commandKey).
     @objc func openSettings(_ sender: NSMenuItem) { session?.showSettings() }
+
+    /// View > Keyframe Easing: the Keyframe Easing panel.
+    @objc func openKeyframeEasing(_ sender: NSMenuItem) { session?.showKeyframeEasingPanel() }
+
+    /// File > Open…: the folder dialog (⌘O in the editor reaches the same call through EditorSession.commandKey).
+    @objc func openProject(_ sender: NSMenuItem) { session?.requestOpenProject() }
+
+    /// Window > Close Panel (⌘⇧W in the editor reaches the same call through the dock's keys).
+    @objc func closePanel(_ sender: NSMenuItem) { session?.shell?.closeFocusedPanel() }
+
+    /// Window > Panels > <panel>: opens it at its last place, or closes it when it is open.
+    @objc func togglePanel(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        session?.shell?.togglePanelFromMenu(id)
+    }
+
+    @objc func openRecentProject(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? String else { return }
+        session?.openProject(path: path)
+    }
+
+    @objc func clearRecentProjects(_ sender: NSMenuItem) { session?.clearRecentProjects() }
 
     @objc func chooseAppearance(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let a = ThemeAppearance(rawValue: raw) else { return }
@@ -233,6 +272,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         let router = session.installShell(userData: paths.userData) { [weak self] in self?.ensurePlayTimer() }
         let host = MacCanvasHost { [router] c, size in router.draw(c, size: size) }
         host.input = router
+        host.accessibilityControls = { [router] in router.accessibilityControls }
         host.onFilesDragged = { [weak session] p in session?.panels?.assetDrag?.filesDragged(over: p) }
         host.onFilesDropped = { [weak session] paths, p in session?.panels?.assetDrag?.dropFiles(paths, at: p) }
         host.cursorAt = { [router] x, y in
@@ -253,6 +293,13 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
             alert.messageText = "The project file changed on disk"
             alert.informativeText = "It was changed outside MpVFX while you have unsaved edits."
             alert.addButton(withTitle: "Keep My Edits"); alert.addButton(withTitle: "Use the File on Disk")
+            answer(alert.runModal() == .alertFirstButtonReturn)
+        }
+        session.onProjectMoved = { message, answer in
+            let alert = NSAlert(); alert.alertStyle = .warning
+            alert.messageText = "The project folder is missing"
+            alert.informativeText = message
+            alert.addButton(withTitle: "Locate Folder…"); alert.addButton(withTitle: "Keep Editing")
             answer(alert.runModal() == .alertFirstButtonReturn)
         }
         session.redraw = { [weak host] in host?.invalidate() }
@@ -342,6 +389,35 @@ extension MacShell: SmokeHost {
     func quitAfterSmoke() { requestTerminate() }
 
     func smokeAppearanceChanged() { syncAppearanceMenu() }
+}
+
+/// File > Open Recent: the recent projects (title, folder as tooltip), then Clear Menu.
+extension MacShell: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        if menu === panelsMenu { fillPanelsMenu(menu); return }
+        let recent = session?.recentProjects ?? []
+        for p in recent {
+            let mi = NSMenuItem(title: p.title, action: #selector(openRecentProject(_:)), keyEquivalent: "")
+            mi.target = self; mi.representedObject = p.directory; mi.toolTip = p.directory
+            menu.addItem(mi)
+        }
+        if !recent.isEmpty { menu.addItem(.separator()) }
+        let clear = NSMenuItem(title: "Clear Menu", action: recent.isEmpty ? nil : #selector(clearRecentProjects(_:)), keyEquivalent: "")
+        clear.target = self
+        menu.addItem(clear)
+    }
+}
+
+extension MacShell {
+    /// Window > Panels: every panel, a checkmark on the open ones.
+    func fillPanelsMenu(_ menu: NSMenu) {
+        for p in session?.shell?.windowMenuPanels ?? [] {
+            let mi = NSMenuItem(title: p.title, action: #selector(togglePanel(_:)), keyEquivalent: "")
+            mi.target = self; mi.representedObject = p.id; mi.state = p.checked ? .on : .off
+            menu.addItem(mi)
+        }
+    }
 }
 
 /// The appearance items show a checkmark on the current setting whenever the View menu opens.

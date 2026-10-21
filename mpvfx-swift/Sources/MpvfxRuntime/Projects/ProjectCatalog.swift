@@ -80,6 +80,12 @@ public final class RecentProjects: @unchecked Sendable {
         try persist(snapshot)
     }
 
+    /// Every recorded folder, also those `list()` leaves out because they are not there now (an unmounted drive).
+    public func removeAll() throws {
+        lock.withLock { paths = [] }
+        try persist([])
+    }
+
     private func persist(_ list: [String]) throws {
         try ProjectFS.mkdirRecursive(PosixPath.dirname(file))
         try libraryAtomicJson(file, .array(list.map { .string($0) }))
@@ -87,20 +93,29 @@ public final class RecentProjects: @unchecked Sendable {
 }
 
 /// Polls an open project's document and reports content that differs from what the store last read or
-/// saved: an edit made outside the app (another editor, a sync client, version control).
+/// saved: an edit made outside the app (another editor, a sync client, version control), and a document that is
+/// gone because its folder was moved, renamed or deleted.
 public final class ProjectDocumentWatcher: @unchecked Sendable {
     private let store: ProjectDocumentStore
     private let interval: Double
-    private let onChange: @Sendable (String) -> Void
+    private let onEvent: @Sendable (ProjectDocumentEvent) -> Void
     private let lock = NSLock()
     private var stopped = false
     private var lastStamp: (Int64, Int128, UInt64)?
     private var lastReported: String?
+    private var reportedMissing = false
 
-    /// `onChange` runs on a background queue with the document text now on disk.
-    public init(store: ProjectDocumentStore, interval: Double = 1, onChange: @escaping @Sendable (String) -> Void) {
-        self.store = store; self.interval = interval; self.onChange = onChange
+    /// `onEvent` runs on a background queue. `.missing` is reported once per disappearance.
+    public init(store: ProjectDocumentStore, interval: Double = 1, onEvent: @escaping @Sendable (ProjectDocumentEvent) -> Void) {
+        self.store = store; self.interval = interval; self.onEvent = onEvent
         schedule()
+    }
+
+    /// Only external edits, with the document text now on disk.
+    public convenience init(store: ProjectDocumentStore, interval: Double = 1, onChange: @escaping @Sendable (String) -> Void) {
+        self.init(store: store, interval: interval) { event in
+            if case .changed(let text) = event { onChange(text) }
+        }
     }
 
     public func stop() { lock.withLock { stopped = true } }
@@ -116,12 +131,21 @@ public final class ProjectDocumentWatcher: @unchecked Sendable {
     /// One poll; public so tests and the backend can check on demand.
     public func check() {
         let path = PosixPath.join(store.directory, NATIVE_PROJECT_DOCUMENT_PATH)
-        guard let info = try? ProjectFS.statInfo(path) else { return }
+        let info: FileInfo
+        do { info = try ProjectFS.statInfo(path) } catch {
+            // Unreadable for another reason (permissions, a drive waking up): the next poll looks again.
+            guard ProjectDocumentPresence.isGone(path), !reportedMissing else { return }
+            reportedMissing = true
+            lastStamp = nil
+            onEvent(.missing)
+            return
+        }
+        reportedMissing = false
         let stamp = (info.size, info.mtimeNs, info.ino)
         if let last = lastStamp, last == stamp { return }
         lastStamp = stamp
         guard let text = try? ProjectFS.readUTF8(path), text != store.savedContent, text != lastReported else { return }
         lastReported = text
-        onChange(text)
+        onEvent(.changed(text))
     }
 }

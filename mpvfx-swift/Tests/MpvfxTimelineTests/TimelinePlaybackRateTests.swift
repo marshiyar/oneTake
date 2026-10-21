@@ -31,4 +31,20 @@ final class TimelinePlaybackRateTests: XCTestCase {
         XCTAssertTrue(editor.setTrackLocked("track:v1", true))
         XCTAssertFalse(editor.setPlaybackRate(clipId: "clip:b", 0.5))
     }
+
+    /// A speed-up shortens the clip; its fades (issue #85) are clamped so the document stays valid.
+    func testSpeedUpClampsTheClipFades() throws {
+        let engine = try? KeyframeRuntime()
+        var doc = try parseNativeProjectDocument(try NativeJSONValue.parse(TimelineEditor.demoJSON), engine: engine)
+        let t = try XCTUnwrap(doc.sequence.tracks.firstIndex { $0.clips.contains { $0.id == "clip:b" } })
+        let c = try XCTUnwrap(doc.sequence.tracks[t].clips.firstIndex { $0.id == "clip:b" })
+        let duration = doc.sequence.tracks[t].clips[c].durationFrames
+        doc.sequence.tracks[t].clips[c].fadeInFrames = (duration / 2).rounded(.down)
+        doc.sequence.tracks[t].clips[c].fadeOutFrames = (duration / 2).rounded(.down)
+        let editor = try TimelineEditor(json: try serializeNativeProjectDocument(doc, engine: engine), engine: engine)
+        XCTAssertTrue(editor.setPlaybackRate(clipId: "clip:b", 4))
+        let sped = try XCTUnwrap(editor.clip("clip:b")?.clip)
+        XCTAssertEqual(sped.fadeInFrames, min((duration / 2).rounded(.down), sped.durationFrames), "the fade-in keeps its length, cut to the clip")
+        XCTAssertLessThanOrEqual((sped.fadeInFrames ?? 0) + (sped.fadeOutFrames ?? 0), sped.durationFrames)
+    }
 }

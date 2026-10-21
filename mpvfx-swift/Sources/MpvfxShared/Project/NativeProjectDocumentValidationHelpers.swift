@@ -34,6 +34,13 @@ func pushIssue(_ issues: inout Issues, _ code: NativeProjectDocumentValidationCo
     issues.append(.init(code: code, path: path, message: message))
 }
 
+/// A clip's look: `style`, `fit` and `text`, in that issue order (NativeProjectIssueOrderTests pins style before text).
+func validateNativeClipPresentation(_ clip: NativeJSONValue, _ clipPath: String, _ issues: inout Issues) {
+    validateNativeClipStyle(clip["style"], "\(clipPath).style", &issues)
+    validateNativeMediaFit(clip["fit"], "\(clipPath).fit", &issues)
+    validateNativeClipText(clip["text"], "\(clipPath).text", &issues)
+}
+
 func validateTrackLane(_ raw: NativeJSONValue?, _ trackIndex: Int, _ path: String, _ issues: inout Issues) -> NativeProjectTrackLane? {
     guard let raw else { return defaultTrackLane(trackIndex) }
     guard raw.isRecord else { pushIssue(&issues, .invalidTrack, path, "Track lane metadata must be an object"); return nil }

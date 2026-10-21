@@ -14,13 +14,14 @@
 // The keyframe engine interface and its process-wide install slot.
 // The implementation is KeyframeRuntime from the keyframe engine adapter OneTakeKeyframes (Engine/KeyframeRuntimeKeyframeEngine.swift).
 import Foundation
+import Synchronization
 
 public let VKF_ENGINE_API_VERSION = 1
 public let VKF_MAX_MATERIALIZED_FRAMES: Double = 24 * 60 * 60 * 120
 
 /// KeyframeTrack: what the engine needs from a track.
-public struct KeyframeTrack: Equatable {
-    public struct Key: Equatable {
+public struct KeyframeTrack: Equatable, Sendable {
+    public struct Key: Equatable, Sendable {
         public var frame: Double; public var value: NativeParameterValue
         public var outgoing: NativeInterpolation; public var outgoingPath: NativeMotionPath?
         public init(frame: Double, value: NativeParameterValue, outgoing: NativeInterpolation, outgoingPath: NativeMotionPath? = nil) {
@@ -69,7 +70,8 @@ public struct KeyframeEngineNotLoadedError: Error, CustomStringConvertible {
 }
 
 /// The keyframe engine interface: validation, evaluation and slicing of parameter tracks.
-public protocol KeyframeEngine: AnyObject {
+/// Sendable: the installed engine is shared by the UI and the export threads.
+public protocol KeyframeEngine: AnyObject, Sendable {
     var version: String { get }
     /// Throws KeyframeEngineError (track code) when the engine rejects the track.
     func validate(_ track: KeyframeTrack) throws
@@ -81,18 +83,15 @@ public protocol KeyframeEngine: AnyObject {
 }
 
 /// One engine per process (installed at startup). Functions also accept an explicit engine.
-private let engineLock = NSLock()
-nonisolated(unsafe) private var installedEngine: KeyframeEngine?
+private let installedEngine = Mutex<KeyframeEngine?>(nil)
 
 public func installKeyframeEngine(_ engine: KeyframeEngine?) {
-    engineLock.lock(); installedEngine = engine; engineLock.unlock()
+    installedEngine.withLock { $0 = engine }
 }
 public func keyframeEngine() throws -> KeyframeEngine {
-    engineLock.lock(); defer { engineLock.unlock() }
-    guard let e = installedEngine else { throw KeyframeEngineNotLoadedError() }
+    guard let e = installedEngine.withLock({ $0 }) else { throw KeyframeEngineNotLoadedError() }
     return e
 }
 public func keyframeEngineInstalled() -> Bool {
-    engineLock.lock(); defer { engineLock.unlock() }
-    return installedEngine != nil
+    installedEngine.withLock { $0 != nil }
 }

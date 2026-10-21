@@ -18,17 +18,30 @@
 //   web-only items (Reload, Force Reload, Toggle Developer Tools, page zoom, Speech, Help > Learn More).
 //   Quit is routed through ShellLifecycle.quitRequested() -> SaveBarrier. The editor sees a key
 //   first and the menu only acts on shortcuts the editor did not handle.
+// File > Open… (Cmd+O) and Open Recent on macOS; Linux and Windows open projects with Ctrl+O and from the
+// left sidebar's "Open project…" and "Recent" (EditorSession.requestOpenProject, recentProjects).
 public struct MenuItem: Equatable, Sendable {
     public enum Command: String, Sendable {
         case about, services, hide, hideOthers, showAll, quit
         /// MpVFX > Settings… (Cmd+,): the editor's Settings card (Ctrl+, on Linux and Windows).
         case settings
+        case openProject
+        /// File > Open Recent: a submenu the shell fills from `DesktopBackend.recentProjects()` when it opens.
+        case openRecent
         case closeWindow
         case undo, redo, cut, copy, paste, pasteAndMatchStyle, delete, selectAll
         case toggleFullScreen
         /// View > appearance (native addition): System / Light / Dark.
         case appearanceSystem, appearanceLight, appearanceDark
+        /// View > Keyframe Easing: the Keyframe Easing panel (the right panel's Easing tab).
+        case keyframeEasing
         case minimize, zoom, bringAllToFront
+        /// Window > Panels: a submenu the shell fills from the dock each time it opens (every panel, a checkmark on the
+        /// open ones; choosing one opens it at its last place or closes it). Linux and Windows have the same list in
+        /// every panel group's ⋯ menu.
+        case panels
+        /// Window > Close Panel (⌘⇧W): closes the focused panel (Preview and Timeline stay).
+        case closePanel
     }
     public var label: String, command: Command
     /// Key equivalent without modifiers ("q"); modifier set below.
@@ -61,7 +74,9 @@ public enum MenuModel {
                     MenuItem(label: "Quit \(appName)", command: .quit, key: "q", modifiers: [.command], separatorBefore: true),
                 ]),
                 Menu(label: "File", items: [
-                    MenuItem(label: "Close Window", command: .closeWindow, key: "w", modifiers: [.command]),
+                    MenuItem(label: "Open…", command: .openProject, key: "o", modifiers: [.command]),
+                    MenuItem(label: "Open Recent", command: .openRecent),
+                    MenuItem(label: "Close Window", command: .closeWindow, key: "w", modifiers: [.command], separatorBefore: true),
                 ]),
                 Menu(label: "Edit", items: [
                     MenuItem(label: "Undo", command: .undo, key: "z", modifiers: [.command]),
@@ -75,6 +90,7 @@ public enum MenuModel {
                 ]),
                 Menu(label: "View", items: [
                     MenuItem(label: "Toggle Full Screen", command: .toggleFullScreen, key: "f", modifiers: [.command, .control]),
+                    MenuItem(label: "Keyframe Easing", command: .keyframeEasing, separatorBefore: true),
                     MenuItem(label: "System Appearance", command: .appearanceSystem, separatorBefore: true),
                     MenuItem(label: "Light Appearance", command: .appearanceLight),
                     MenuItem(label: "Dark Appearance", command: .appearanceDark),
@@ -82,6 +98,8 @@ public enum MenuModel {
                 Menu(label: "Window", items: [
                     MenuItem(label: "Minimize", command: .minimize, key: "m", modifiers: [.command]),
                     MenuItem(label: "Zoom", command: .zoom),
+                    MenuItem(label: "Panels", command: .panels, separatorBefore: true),
+                    MenuItem(label: "Close Panel", command: .closePanel, key: "w", modifiers: [.command, .shift]),
                     MenuItem(label: "Bring All to Front", command: .bringAllToFront, separatorBefore: true),
                 ]),
             ]
