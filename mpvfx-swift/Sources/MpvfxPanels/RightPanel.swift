@@ -103,6 +103,7 @@ public final class RightPanel {
         self.layout = layout
         // The group the user left open last time; Transform when nothing was saved.
         inspector.openGroupId = layout.prefs.openInspectorGroup ?? "layout"
+        if let order = layout.prefs.designGroupOrder { inspector.designOrder = DesignGroups.sanitized(order: order) }
         inspector.layout = layout
         // The inspector's selects (the Composition preset) open this panel's popover, drawn over both tabs.
         inspector.onOpenDropdown = { [weak self] key, options, selected, anchor, pick in

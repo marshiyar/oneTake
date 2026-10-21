@@ -80,6 +80,8 @@ public struct PanelPreferences: Codable, Equatable, Sendable {
     public var rightPanelTab: RightPanelTab?
     public var sidebarTab: LeftSidebarTab?
     public var openInspectorGroup: String?
+    /// The Design tab's order of its detachable groups (`DesignGroups` panel ids).
+    public var designGroupOrder: [String]?
     /// Timeline section height (NLEContext / studioUiPreferences `timelineHeight`).
     public var timelineHeight: Double?
     public init() {}
