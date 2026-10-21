@@ -31,8 +31,9 @@ Debian 13), with a clean-room media engine and no FFmpeg.
   mode with visible seams and outlined fields (#72).
 
 ### Installers
-- macOS disk image (Developer ID signed and notarized), Windows per-user setup.exe and portable zip, Linux .deb and
-  archive. Every shipped binary is stripped (#12).
+- macOS disk image (Developer ID signed), Windows per-user setup.exe and portable zip, Linux .deb and archive. Every
+  shipped binary is stripped (#12).
+- The macOS disk image may not be notarized yet: the first time, right-click MpVFX and choose Open.
 - The Windows installer is not code-signed yet: SmartScreen asks for "More info > Run anyway" (#75).
 
 ### Known issues
