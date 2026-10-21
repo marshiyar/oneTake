@@ -66,6 +66,10 @@ public enum AudioFxCopy {
                              params: ["semitones": "How far", "mix": "Blend with the original"]),
         "delay": Effect(title: "Echo", does: "Repeats the sound after a gap.", primary: "mix", ends: ("A hint", "Washed out"),
                         params: ["time": "Gap between repeats", "feedback": "How many repeats", "mix": "How loud"]),
+        "reverb-v2": Effect(title: "Stereo room", does: "Surrounds the sound with a wide room tail.", primary: "wet",
+                            ends: ("Dry", "Distant"), params: ["size": "Room size", "damping": "Soft walls",
+                                "width": "Stereo width", "preDelay": "Before the room", "lowCut": "Cut low rumble",
+                                "wet": "How much room", "dry": "How much original"]),
         "reverb": Effect(title: "Room", does: "Puts the sound somewhere, instead of nowhere.", primary: "strength",
                          ends: ("A small tight room", "A big open hall"),
                          params: ["size": "How big the space is", "damping": "How soft the walls are", "wet": "How much room", "dry": "How much original"]),
@@ -143,7 +147,7 @@ public enum AudioFxCopy {
             let st = n(p, "semitones")
             return st == 0 ? "Unchanged pitch" : "\(st > 0 ? "Up" : "Down") \(s(abs(st))) semitones"
         case "delay": return "Echo every \(s(n(p, "time", 250))) ms"
-        case "reverb":
+        case "reverb", "reverb-v2":
             return "\(strength(n(p, "size", 0.7), ["A small", "A medium", "A large"])) room, \(strength(n(p, "wet", 0.35), ["lightly", "moderately", "heavily"]))"
         case "chorus": return "Thickened\(n(p, "mix", 0.5) > 0.6 ? ", wobbling" : "")"
         case "phaser": return "Swirling"

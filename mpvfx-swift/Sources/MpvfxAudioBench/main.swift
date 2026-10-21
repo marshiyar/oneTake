@@ -39,3 +39,24 @@ for frac in [0.25, 0.5, 0.95] {
     let p = src.lastPreRoll!
     print(String(format: "seek pre-roll to %5.1f s: %.3f s", Double(p.targetFrame) / 48000, p.seconds))
 }
+
+// Isolated size-1 v2 reverb: setup is outside the measured render, like playback.
+// The existing every-FX fixture keeps measuring the legacy effects unchanged.
+var reverbParams = AudioFx.defaultParams("reverb-v2")
+reverbParams["size"] = .number(1)
+let reverbChain = FxChain(nodes: [FxNode(type: "reverb-v2", params: reverbParams)])
+let reverbBlock: [Float] = (0..<128).map { Float(0.1 * sin(Double($0) * 0.17)) }
+let reverbFrames = max(128, Int(seconds * 48000))
+var reverbBest = Double.infinity
+var reverbChecksum = 0.0
+for _ in 0..<3 {
+    let processor = FxChainProcessor(reverbChain, sampleRate: 48000)
+    let start = now()
+    for frame in stride(from: 0, to: reverbFrames, by: 128) {
+        let rendered = processor.process([reverbBlock, reverbBlock], frame: frame)
+        reverbChecksum += Double(rendered[0][0])
+    }
+    reverbBest = min(reverbBest, now() - start)
+}
+print(String(format: "reverb-v2 size 1: %.3f s  -> %.1fx real time (target >=20x); checksum %.6f",
+             reverbBest, Double(reverbFrames) / 48000 / reverbBest, reverbChecksum))

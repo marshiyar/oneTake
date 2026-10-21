@@ -286,3 +286,9 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+Audio: **Stereo room** (`reverb-v2`, #208) is available from the audio FX add menu,
+with room size, damping, stereo width, pre-delay, low cut, wet and dry controls.
+The original Room effect and presets retain the legacy reverb sound. The v2
+convolver and regression tests are implemented; Swift test execution and the
+release benchmark target remain unverified in the contribution environment.

@@ -61,3 +61,12 @@ through the real runtime. Only publishing is refused on purpose ("Publishing is 
 | Linux | works: GTK 3 shell, Cairo canvas, PulseAudio output | `Sources/MpvfxDesktop/LinuxShell.swift`, `Sources/MpvfxCanvas/CairoCanvas.swift` |
 | macOS | partial: the AppKit shell runs the same editor as Linux (Core Graphics canvas, Core Audio output); built and tested in CI, little hands-on use yet | `Sources/MpvfxDesktop/MacShell.swift`, `MacCanvasHost.swift`, `Sources/MpvfxCanvas/CoreGraphicsCanvas.swift`, `Sources/MpvfxAudio/CoreAudioOutput.swift` |
 | Windows | partial: builds and passes its tests on Windows in CI; the green `windows` job builds both packages and installs, launches and uninstalls setup.exe. What is written: Win32 shell with a full-window Direct2D canvas (`WindowsCanvasHost`: DPI, mouse, wheel, keys, cursors, dropped files), item dialogs, clipboard, Explorer, system light/dark; Direct2D/DirectWrite canvas, WASAPI output; the project, library, import and durable-write filesystem layer on Win32 (`NativeFileWin32.swift`, drive-letter and UNC roots in `PosixPath`). On Linux the shared code builds and its tests pass, including the Windows path arithmetic (`WindowsPathTests`) | `Sources/MpvfxDesktop/WindowsShell.swift`, `WindowsCanvasHost.swift`, `Sources/MpvfxCanvas/Direct2DCanvas.swift`, `Sources/CMpvfxWin32`, `Sources/MpvfxRuntime/Projects/NativeFileWin32.swift`, `docs/PACKAGING.md` |
+
+Stereo room (#208): the separate `reverb-v2` audio effect adds independent channel
+impulses, Width, Pre-delay (0–200 ms) and Low cut. `reverb` and the existing presets
+retain their version-1 DSP. Both playback and export build `ReverbV2Unit` through
+the shared audio graph. `NonUniformConvolver` uses a 128-tap direct head and
+successively doubled FFT tail partitions with preallocated processing buffers.
+`ReverbV2Tests` covers stereo correlation, width, delay, low cut, exact convolution
+and persistence. `MpvfxAudioBench` reports size-1 v2 speed; the >=20x release target
+has not been measured in the contribution environment (no Swift toolchain).

@@ -249,6 +249,7 @@ func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, ela
     case "delay-feedback": return FeedbackDelayUnit(p, sr)
     case "chorus-lfo": return ChorusUnit(p, sr, elapsed: elapsed)
     case "allpass-phaser": return PhaserUnit(p, sr, elapsed: elapsed)
+    case "convolver-v2": return ReverbV2Unit(p, sr)
     case "convolver": return ReverbUnit(p, sr)
     case "spectral-denoise": return DenoiseUnit(p, sr)
     default: fatalError("No builder for \(def.implementation)")
