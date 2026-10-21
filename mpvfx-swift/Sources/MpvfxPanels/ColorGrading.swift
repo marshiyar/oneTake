@@ -48,6 +48,8 @@ public struct ColorGrading: Equatable, Sendable {
         public init(src: String, intensity: Double = 1) { self.src = src; self.intensity = intensity } }
 
     public var enabled = true
+    /// Bypasses stylize effects without discarding their authored amounts.
+    public var effectsEnabled = true
     /// The contract this grade is written under (see `contractVersion`).
     public var version = ColorGrading.contractVersion
     public var preset: String? = nil
@@ -145,6 +147,7 @@ public struct ColorGrading: Equatable, Sendable {
         }
         o["details"] = num(details, keys: Self.detailKeys)
         if !effects.isEmpty { var e = NativeJSONObject(); for (k, v) in effects.sorted(by: { $0.key < $1.key }) { e[k] = .number(v) }; o["effects"] = .object(e) }
+        if !effectsEnabled { o["effectsEnabled"] = .bool(false) }
         o["palette"] = palette.map { .array($0.map { .string($0) }) } ?? .null
         o["lut"] = lut.map { .object(["src": .string($0.src), "intensity": .number($0.intensity)]) } ?? .null
         o["colorSpace"] = .string("rec709")
@@ -194,6 +197,7 @@ public struct ColorGrading: Equatable, Sendable {
         effects = Self.limitedValues(obj(o["effects"]), keys: GradeValues.effectKeys, fallback: { p?.effects[$0] ?? GradeValues.effectDefaults[$0] ?? 0 },
                                      GradeValues.effectLimit)
             .merging(nums(o["effects"]).filter { !GradeValues.effectKeys.contains($0.key) }) { a, _ in a }   // keep keys this build does not know
+        if case .bool(false)? = o["effectsEnabled"] { effectsEnabled = false }
         if case .array(let a)? = o["palette"] { palette = a.compactMap { if case .string(let s) = $0 { return s }; return nil } }
         // A blank source is no LUT; the strength is clamped to 0…1 and a non-number reads as 1, as the renderer does.
         func source(_ s: String) -> String? { let t = s.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t }

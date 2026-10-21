@@ -127,6 +127,11 @@ public final class ColorGradeRenderer: Equatable, Sendable {
         func balance(_ k: String) -> V3 { let w = g.balance[k] ?? .init(); return V3(f(w.hue / 360), f(w.amount), f(w.level)) }
         u.liftWheel = balance("lift"); u.gammaWheel = balance("gamma"); u.gainWheel = balance("gain"); u.offsetWheel = balance("offset")
         u.balanceOn = g.hasBalance
+        if let key = g.colorKey {
+            u.keyEnabled = true
+            u.keyColor = V3(f(key.color.x), f(key.color.y), f(key.color.z))
+            u.keySimilarity = f(key.similarity); u.keySmoothness = f(key.smoothness); u.keySpill = f(key.spill)
+        }
         let pal = g.resolvedPalette
         let last = pal.last ?? "#ffffff"
         u.paletteSize = Float(pal.count)
@@ -206,6 +211,6 @@ extension ColorGradeParams {
         let h = ColorGradeParams.hueCurveKeys.map { "\(hueCurves[$0] ?? [])" }.joined(separator: ";")
         let s = secondaries.map { "\($0)" }.joined(separator: ";")
         let b = GradeValues.balanceKeys.map { k in let x = balance[k] ?? .init(); return "\(x.hue),\(x.amount),\(x.level)" }.joined(separator: ";")
-        return "v\(version)|p\(pivot)|\(b)|\(intensity)|\(d(adjust))|\(d(details))|\(d(effects))|\(w)|\(c)|\(h)|\(s)|\(palette ?? [])|\(lut.map { "\($0.src)@\($0.intensity)" } ?? "")"
+        return "v\(version)|p\(pivot)|\(b)|\(intensity)|\(d(adjust))|\(d(details))|\(d(effects))|\(w)|\(c)|\(h)|\(s)|\(palette ?? [])|\(lut.map { "\($0.src)@\($0.intensity)" } ?? "")|\(String(describing: colorKey))"
     }
 }

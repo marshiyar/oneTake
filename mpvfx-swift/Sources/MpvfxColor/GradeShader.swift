@@ -95,6 +95,11 @@ struct GradeUniforms: Sendable {
     /// Lift / Gamma / Gain / Offset: (hue / 360, amount, level) each, and whether any of them is off neutral.
     var liftWheel = V3.zero, gammaWheel = V3.zero, gainWheel = V3.zero, offsetWheel = V3.zero
     var balanceOn = false
+    var keyEnabled = false
+    var keyColor = V3(0, 1, 0)
+    var keySimilarity: Float = 0.1
+    var keySmoothness: Float = 0.1
+    var keySpill: Float = 0
     var intensity: Float = 1
     var e = [Float](repeating: 0, count: EK.allCases.count)
     var palette: [V3] = []
@@ -868,8 +873,20 @@ struct GradeProgram: Sendable {
             color *= 1 - mask * clampf(u.vignette, 0, 1) * 0.75
         }
         if crtCurvature > 0 { color *= displayMask }
-        let graded = clamp3(color, 0, 1)
-        return V4(graded.x, graded.y, graded.z, sampleColor.w)
+        var graded = clamp3(color, 0, 1)
+        var alpha = sampleColor.w
+        if u.keyEnabled {
+            func chroma(_ value: V3) -> V2 {
+                let y = lumaOf(value)
+                return V2((value.z - y) / 1.8556, (value.x - y) / 1.5748)
+            }
+            let distance = length2(chroma(V3(sampleColor.x, sampleColor.y, sampleColor.z)) - chroma(u.keyColor))
+            let matte = smoothstep(u.keySimilarity, u.keySimilarity + Swift.max(u.keySmoothness, 0.000001), distance)
+            alpha *= matte
+            let excessGreen = Swift.max(0, graded.y - Swift.max(graded.x, graded.z))
+            graded.y -= excessGreen * u.keySpill
+        }
+        return V4(graded.x, graded.y, graded.z, alpha)
     }
 
     // MARK: Multipass (blur / bloom, Kuwahara)

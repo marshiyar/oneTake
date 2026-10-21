@@ -173,6 +173,8 @@ extension ColorGradeRenderer {
         set(GU_gammaHue, u.gammaWheel.x); set(GU_gammaAmount, u.gammaWheel.y); set(GU_gammaLevel, u.gammaWheel.z)
         set(GU_gainHue, u.gainWheel.x); set(GU_gainAmount, u.gainWheel.y); set(GU_gainLevel, u.gainWheel.z)
         set(GU_offsetHue, u.offsetWheel.x); set(GU_offsetAmount, u.offsetWheel.y); set(GU_offsetLevel, u.offsetWheel.z)
+        set(GU_keyEnabled, flag(u.keyEnabled)); set(GU_keyR, u.keyColor.x); set(GU_keyG, u.keyColor.y); set(GU_keyB, u.keyColor.z)
+        set(GU_keySimilarity, u.keySimilarity); set(GU_keySmoothness, u.keySmoothness); set(GU_keySpill, u.keySpill)
         for i in 0..<6 {
             let c = i < u.palette.count ? u.palette[i] : V3.zero
             a[Int(GU_p0r.rawValue) + i * 3] = c.x; a[Int(GU_p0r.rawValue) + i * 3 + 1] = c.y; a[Int(GU_p0r.rawValue) + i * 3 + 2] = c.z
