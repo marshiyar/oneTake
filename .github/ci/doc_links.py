@@ -43,9 +43,19 @@ MAX_REDIRECTS = 5
 # http.client, not urllib: it speaks HTTP and HTTPS only, so a link can never make the checker open a file:// path.
 CONNECTIONS = {"https": http.client.HTTPSConnection, "http": http.client.HTTPConnection}
 USER_AGENT = "MpVFX-doc-links/1 (+https://github.com/marshiyar/oneTake)"
-URL = re.compile(r"https://[^\s<>()\[\]{}\"'`|\\]+")
+URL = re.compile(r"https://[^\s<>\[\]{}\"'`|\\]+")
 CODE_SPAN = re.compile(r"`[^`]*`")
 TRAILING = ".,;:!?*_~"
+
+
+def trimmed(url):
+    """url without the punctuation of the sentence or Markdown around it: trailing marks, and each trailing `)` that
+    closes no `(` inside the link (`[x](https://a/b)` gives https://a/b, `https://w/Foo_(bar)` stays whole)."""
+    while True:
+        url = url.rstrip(TRAILING)
+        if not url.endswith(")") or url.count(")") <= url.count("("):
+            return url
+        url = url[:-1]
 
 
 def urls_in(text):
@@ -58,7 +68,7 @@ def urls_in(text):
         if fenced:
             continue
         for m in URL.finditer(CODE_SPAN.sub("", line)):
-            yield n, m.group().rstrip(TRAILING)
+            yield n, trimmed(m.group())
 
 
 def links(root):

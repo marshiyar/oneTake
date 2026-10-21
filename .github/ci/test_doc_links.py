@@ -52,6 +52,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             code = 405
         elif self.path == "/flaky":
             code = 503 if CALLS[key] <= 2 else 200
+        elif self.path == "/busy":
+            code = 429 if CALLS[key] <= 1 else 200
         else:
             code = 404
         self.send_response(code)
@@ -110,6 +112,10 @@ class Server(unittest.TestCase):
         self.assertIsNone(self.check("/flaky"))
         self.assertEqual(len(self.slept), 2)
 
+    def test_rate_limited_is_retried(self):
+        self.assertIsNone(self.check("/busy"))
+        self.assertEqual(self.slept, [doc_links.BACKOFF])
+
     def test_connection_refused_is_dead_after_retries(self):
         reason = doc_links.check("http://127.0.0.1:1/nothing-listens-here", sleep=self.slept.append)
         self.assertTrue(reason and reason.startswith("unreachable"), reason)
@@ -142,6 +148,13 @@ class Links(unittest.TestCase):
             "https://example.org/b": ["README.md:1"],
             "https://example.org/c": ["docs/guide.md:4"],
         })
+
+
+class Trim(unittest.TestCase):
+    def test_parentheses_of_markdown_and_of_the_link(self):
+        line = "[a](https://e.org/x). See (https://e.org/w/Foo_(bar)), https://e.org/y)."
+        self.assertEqual([u for _, u in doc_links.urls_in(line)],
+                         ["https://e.org/x", "https://e.org/w/Foo_(bar)", "https://e.org/y"])
 
 
 class FakeAPI:
