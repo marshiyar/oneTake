@@ -64,6 +64,7 @@ extension InspectorPanel {
         editor = source.editor; selection = source.selection; time = source.time
         audioGroupId = source.audioGroupId; selectedKeyframes = source.selectedKeyframes
         onEdited = source.onEdited; onSeek = source.onSeek; onClearSelection = source.onClearSelection
+        userLookStore = source.userLookStore; resolveUserLookLut = source.resolveUserLookLut; userLookLutExists = source.userLookLutExists
         onAnimate = source.onAnimate; onAudition = source.onAudition; onImportLut = source.onImportLut
         presetPreview = source.presetPreview; effectPreview = source.effectPreview
         presetPreviewsAvailable = source.presetPreviewsAvailable; onRetryPresetPreviews = source.onRetryPresetPreviews
