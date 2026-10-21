@@ -80,8 +80,8 @@ extension InspectorPanel {
             gap(6)
         }
         rows.append(.init(.custom(presetGrid(presets, selected: g.preset, preview: { [weak self] id, w, h in
-            self?.presetPreview?(PresetPreviewRequest(clipId: s.id, presetId: id, lutSrc: lut?.src, lutIntensity: lut?.intensity ?? 1,
-                                                      pixelWidth: w, pixelHeight: h)) ?? .unavailable
+            self?.lookPreview(PresetPreviewRequest(clipId: s.id, presetId: id, lutSrc: lut?.src, lutIntensity: lut?.intensity ?? 1,
+                                                   pixelWidth: w, pixelHeight: h)) ?? .failed(.noRenderer)
         }, onPick: { p in commit(g.applying(p)) }))))
         gap(6)
         rows.append(.init(.slider(.init(key: "grade:amount", label: "Amount", position: g.intensity * 100, min: 0, max: 100,
@@ -207,7 +207,7 @@ extension InspectorPanel {
             case nil: status = "Off"
             case .ready?: status = "ready"
             case .rendering?: status = "loading"
-            case .unavailable?: status = "unavailable"
+            case .unavailable?, .failed?: status = "unavailable"
             }
             let head = CanvasRect(x: r.x, y: r.y, width: r.width, height: 28)
             let refreshW = open ? 18.0 + 8 : 0
@@ -287,8 +287,8 @@ extension InspectorPanel {
 
     /// FLAT_PREVIEW_GRID (`repeat(auto-fill,minmax(120px,1fr)) gap-1`): bordered tiles, a 16:9 `bg-black/20`
     /// preview over the label (`px-2 py-1.5 text-[10px]`). The selected tile: `border-panel-accent
-    /// bg-panel-accent/10 text-panel-text-0`; the rest hairline-bordered, text-3. The preview area stays empty
-    /// until a rendered look frame exists.
+    /// bg-panel-accent/10 text-panel-text-0`; the rest hairline-bordered, text-3. The preview area shows the look
+    /// frame, its "Rendering" caption, or a placeholder with the reason (`drawPreviewFrame`), never nothing.
     /// FLAT_PREVIEW_GRID height: ceil(count / columns) rows of (1 + 16:9 frame + 27 label + 1) tiles, `gap` apart.
     static func previewGridHeight(count: Int, width: Double, columns: Int = 3, gap: Double = 4) -> Double {
         guard count > 0 else { return 0 }
@@ -315,15 +315,9 @@ extension InspectorPanel {
                 let hov = panel.hovered == .custom("grade:presets", i)
                 if on { c.fillRect(tr, PanelTheme.accent.withAlpha(0.1)) }
                 let sw = CanvasRect(x: tr.x + 1, y: tr.y + 1, width: tr.width - 2, height: (tr.width - 2) * 9 / 16)
-                c.fillRect(sw, PanelTheme.stageScrim.withAlpha(0.2))
                 // The look frame, `object-contain` in the 16:9 frame, at the tile's device pixels.
                 let k = max(1, c.deviceScale)
-                if case .ready(let img) = preview(p.id, Int((sw.width * k).rounded()), Int((sw.height * k).rounded())) {
-                    c.withState {
-                        c.clip(sw)
-                        c.drawImage(img, in: Self.containRect(img.width, img.height, in: sw))
-                    }
-                }
+                Self.drawPreviewFrame(c, sw, preview(p.id, Int((sw.width * k).rounded()), Int((sw.height * k).rounded())))
                 PanelDraw.text(c, p.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(10),
                                color: on ? PanelTheme.text0 : (hov ? PanelTheme.text1 : PanelTheme.text3))
                 c.strokeRect(tr.insetBy(0.5), on ? PanelTheme.accent : (hov ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)

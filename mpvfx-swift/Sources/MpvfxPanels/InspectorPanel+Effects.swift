@@ -82,8 +82,8 @@ extension InspectorPanel {
             gap(8)
             let fam = EffectSpecs.families.first { $0.label == effectsUI.catalogFamily } ?? EffectSpecs.families[0]
             let looks = fam.presets.compactMap(ColorGrading.preset)
-            var tiles: [(label: String, on: Bool)] = looks.map { ($0.label, g.preset == $0.id) }
-            tiles += fam.effects.map { ($0.label, EffectSpecs.isActive(g, $0.key)) }
+            var tiles: [CatalogTile] = looks.map { ($0.label, g.preset == $0.id, Self.lookDemo($0, base: g, clipId: s.id)) }
+            tiles += fam.effects.map { ($0.label, EffectSpecs.isActive(g, $0.key), Self.effectDemo($0, base: g, clipId: s.id)) }
             rows.append(.init(.custom(tileGrid(id: "fx:tiles", tiles) { [weak self] i in
                 if i < looks.count {
                     var n = g.applying(looks[i]); n.lut = g.lut; commit(n)   // a look replaces the grade, keeping the LUT
@@ -211,13 +211,15 @@ extension InspectorPanel {
     }
 
     /// FLAT_PREVIEW_GRID tiles (`grid-cols-3 gap-1`): a 16:9 bg-black/20 frame over a `px-2 py-1.5` 10px label, the
-    /// active ones accent/10 on the accent border.
-    func tileGrid(id: String, _ tiles: [(label: String, on: Bool)], onPick: @escaping (Int) -> Void) -> InspectorCustomRow {
-        let cols = 3, gap = 4.0, contentW = 375.0
-        let tileW = (contentW - gap * Double(cols - 1)) / Double(cols)
-        let tileH = 2 + (tileW - 2) * 9 / 16 + 27
-        let rowsN = max(1, (tiles.count + cols - 1) / cols)
-        return InspectorCustomRow(id: id, height: Double(rowsN) * tileH + Double(rowsN - 1) * gap, draw: { c, r, panel in
+    /// active ones accent/10 on the accent border. The frame shows the host's sample picture with the tile's look or
+    /// effect (`effectPreview`), its "Rendering" caption, or a placeholder with the reason.
+    typealias CatalogTile = (label: String, on: Bool, demo: TileDemo)
+
+    func tileGrid(id: String, _ tiles: [CatalogTile], onPick: @escaping (Int) -> Void) -> InspectorCustomRow {
+        let cols = 3, gap = 4.0
+        // The height follows the width the body draws at (the panel is resizable), as the Grade preset grid's does.
+        let height = Self.previewGridHeight(count: max(1, tiles.count), width: bodyContentWidth, columns: cols, gap: gap)
+        return InspectorCustomRow(id: id, height: height, draw: { [weak self] c, r, panel in
             let w = (r.width - gap * Double(cols - 1)) / Double(cols)
             let h = 2 + (w - 2) * 9 / 16 + 27
             for (i, t) in tiles.enumerated() {
@@ -225,7 +227,9 @@ extension InspectorPanel {
                 let hov = panel.hovered == .custom(id, i)
                 if t.on { c.fillRect(tr, PanelTheme.accent.withAlpha(0.1)) }   // bg-panel-bg-soft resolves to transparent
                 let sw = CanvasRect(x: tr.x + 1, y: tr.y + 1, width: tr.width - 2, height: (tr.width - 2) * 9 / 16)
-                c.fillRect(sw, PanelTheme.stageScrim.withAlpha(0.2))
+                // The sample picture with the tile's look or effect, at the tile's device pixels.
+                let k = max(1, c.deviceScale), pw = Int((sw.width * k).rounded()), ph = Int((sw.height * k).rounded())
+                Self.drawPreviewFrame(c, sw, self?.samplePreview(t.demo, pw, ph) ?? .failed(.noRenderer))
                 PanelDraw.text(c, t.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(10),
                                color: t.on ? PanelTheme.text1 : (hov ? PanelTheme.text1 : PanelTheme.text3))
                 c.strokeRect(tr.insetBy(0.5), t.on ? PanelTheme.accent : (hov ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)

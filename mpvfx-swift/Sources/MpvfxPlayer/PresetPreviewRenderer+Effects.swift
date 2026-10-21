@@ -1,0 +1,61 @@
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of MpVFX.
+//
+// Copyright (c) 2026 Arshiya Rahgozar.
+//
+// Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0) or the MIT license (LICENSE-MIT
+// or http://opensource.org/licenses/MIT), at your option.
+//
+// SPDX-License-Identifier: MIT OR Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+import Foundation
+import MpvfxCanvas
+import MpvfxColor
+import MpvfxShared
+
+/// Effects catalog tiles on the clip: the selected clip's frame (the same source lookup, queue, cache and budget as the
+/// Grade preset tiles) graded with a tile's grade JSON, which is the clip's own grade plus the effect or look.
+extension PresetPreviewRenderer {
+    /// `clipId`'s frame at `time` graded with `grade`, at most `pixelWidth` x `pixelHeight`. `slot` names the tile
+    /// ("fx:blur"): a newer request for it drops an older one still queued. `.unavailable` when the clip has no
+    /// picture (the host then shows the sample picture). Call on the UI thread.
+    public func effectPreview(clipId: String, slot: String, grade: NativeJSONObject, time: Double,
+                              pixelWidth: Int, pixelHeight: Int) -> State {
+        guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
+              let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
+        let c = entry.clip
+        let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
+        let t = max(first, min(last, time))
+        let layer = comp.layer(entry, at: t)
+        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
+            return compositor.decodesMedia ? .rendering : .unavailable
+        }
+        let shownFrame = layer.kind == .image ? comp.frameIndex(at: t) : source.frame
+        let key = Key(lane: layer.laneKey, frame: source.frame, preset: "\(slot)|\(shownFrame)|\(EffectPreviewRenderer.gradeText(grade))",
+                      lut: "", width: pixelWidth, height: pixelHeight)
+        if let hit = cachedOrQueue(key, slot: slot) { return hit }
+        let dir = projectDir(), renderer = colorRenderer, gradeTime = Double(shownFrame) / comp.fps
+        queue.async { [weak self] in
+            self?.render(key, slot: slot, raw: source.image, time: gradeTime, renderer: renderer) {
+                ColorGradeRenderer.forClip(ColorGradeParams(json: grade), clipId: clipId, projectDir: dir)
+            }
+        }
+        return .rendering
+    }
+
+    /// The cached tile for `key`, or nil after marking it the newest for `slot` and queueing it (`.rendering` when it
+    /// is already queued).
+    func cachedOrQueue(_ key: Key, slot: String) -> State? {
+        lock.lock(); defer { lock.unlock() }
+        latest[slot] = key
+        if let hit = images[key] {
+            tick += 1; images[key] = (hit.image, tick)
+            return .ready(hit.image)
+        }
+        return pending.insert(key).inserted ? nil : .rendering
+    }
+}
