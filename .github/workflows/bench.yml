@@ -121,7 +121,9 @@ jobs:
     # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: windows-2022
-    timeout-minutes: 90
+    # The full run took 84-86 min before the export scenarios (about 12 min more: 5 runs each of export and
+    # export-serial at about 1 min per run); 90 min cancelled it mid-run.
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
