@@ -116,27 +116,38 @@ public final class PreviewGrader: @unchecked Sendable {
         slots = slots.filter { $0.value.busy || $0.key == newest }
     }
 
-    /// Drops least recently used idle slots (not `keep`) until the pictures fit the budget. Call with `lock` held.
-    func trimLocked(keep: String) {
+    /// Drops least recently used idle slots (not `keep`, none used after `usedAfter`) until the pictures fit the
+    /// budget. Call with `lock` held.
+    func trimLocked(keep: String, usedAfter: UInt64 = .max) {
         var total = slots.values.reduce(0) { $0 + $1.bytes }
         guard total > budgetBytes else { return }
-        for (clip, slot) in slots.sorted(by: { $0.value.used < $1.value.used }) where clip != keep && !slot.busy {
+        for (clip, slot) in slots.sorted(by: { $0.value.used < $1.value.used }) where clip != keep && !slot.busy && slot.used <= usedAfter {
             if total <= budgetBytes { break }
             total -= slot.bytes
             slots[clip] = nil
         }
     }
 
+    /// The tick of the last `fitBudget`: slots used after it belong to the draw being fitted.
+    var fittedTick: UInt64 = 0
+
     /// Drops least recently used idle slots until the pictures, with the canvas drawables their draws made, fit the
-    /// budget again (never the slot asked for last). The preview calls it after every draw.
+    /// budget again; never one asked for since the last fit (the draw that just ran shows it). The preview calls it
+    /// after every draw.
     public func fitBudget() {
         lock.lock(); defer { lock.unlock() }
-        guard let newest = slots.max(by: { $0.value.used < $1.value.used })?.key else { return }
-        trimLocked(keep: newest)
+        trimLocked(keep: "", usedAfter: fittedTick)
+        fittedTick = tick
     }
 
-    /// The latest finished picture for `clip`, if any.
-    public func latest(_ clip: String) -> Result? { lock.lock(); defer { lock.unlock() }; return slots[clip]?.result }
+    /// The latest finished picture for `clip`, if any. Asking marks the slot used (a picture on screen is kept by
+    /// `fitBudget`).
+    public func latest(_ clip: String) -> Result? {
+        lock.lock(); defer { lock.unlock() }
+        guard let slot = slots[clip] else { return nil }
+        tick += 1; slot.used = tick
+        return slot.result
+    }
 
     /// Asks for `request` on `clip` (no-op when it is already finished, running or waiting). Never blocks.
     public func request(_ clip: String, _ request: Request) {

@@ -74,6 +74,21 @@ final class PreviewMemoryTests: XCTestCase {
         XCTAssertNil(cache.frame(lane: "a", frame: 0), "the least recently used one went")
     }
 
+    /// Codex review on #136: a held frame the draw showed (looked up with `nearest`) is not the fit's first victim,
+    /// though it was stored first.
+    func testTheFitAfterADrawKeepsTheHeldFrameItShowed() throws {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 10, pressure: nil)
+        storeFrames(cache, 10)
+        cache.fitBudget()   // the draw before this one
+        let held = try XCTUnwrap(cache.nearest(lane: "a", to: 0))
+        _ = held.image.drawable(StandInDrawable.self, make: { StandInDrawable(frameBytes) })
+        cache.fitBudget()
+        XCTAssertEqual(held.frame, 0)
+        XCTAssertTrue(cache.contains(lane: "a", frame: 0), "the frame on screen is kept")
+        XCTAssertFalse(cache.contains(lane: "a", frame: 1), "the least recently used other frame went")
+    }
+
     func testMemoryPressureEmptiesTheFrameCacheAndAReleasedCacheStopsObserving() {
         let monitor = MemoryPressureMonitor()
         var cache: PreviewFrameCache? = PreviewFrameCache(budgetBytes: 100 * 64 * 36 * 4, pressure: monitor)
@@ -129,6 +144,7 @@ final class PreviewMemoryTests: XCTestCase {
         let grader = PreviewGrader(renderer: CPUColorRenderer(), pressure: nil)
         grader.budgetBytes = frame * 2
         try gradeTwoClips(grader)
+        grader.fitBudget()   // the draw before this one
         XCTAssertEqual(grader.bytes, frame * 2)
         let shown = try XCTUnwrap(grader.latest("clip1")).image
         _ = shown.drawable(StandInDrawable.self, make: { StandInDrawable(frame) })

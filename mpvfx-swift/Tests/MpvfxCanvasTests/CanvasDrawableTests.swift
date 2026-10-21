@@ -92,6 +92,19 @@ final class CanvasDrawableModelTests: XCTestCase {
         XCTAssertEqual(CanvasImage.liveDrawableBytes, live, "and the ledger is back where it was")
     }
 
+    /// Draws `image` for owners 1 and 2 in turn, `rounds` times each.
+    func alternate(_ image: CanvasImage, rounds: Int) { (0..<rounds).forEach { _ in _ = make(image, owner: 1); _ = make(image, owner: 2) } }
+
+    func testTwoOwnersDrawingInTurnEachConvertOnceAndAThirdDropsTheOldest() {
+        let image = DrawableFixtures.mixed
+        alternate(image, rounds: 50)
+        XCTAssertEqual(image.drawableConversions, 2, "a window target and a snapshot target drawn in turn keep theirs")
+        _ = make(image, owner: 3)
+        XCTAssertEqual(image.drawableBytes, 48 * CanvasImageDrawables.keptPerType, "at most keptPerType are held")
+        _ = make(image, owner: 2)
+        XCTAssertEqual(image.drawableConversions, 3, "owner 2 was used more recently than owner 1, so it was kept")
+    }
+
     func testAFailedConversionIsNotKeptAndAnotherOwnerMakesItsOwn() {
         let image = DrawableFixtures.opaque
         XCTAssertNil(image.drawable(CountingDrawable.self, make: { nil }))
@@ -99,7 +112,7 @@ final class CanvasDrawableModelTests: XCTestCase {
         let a = make(image, owner: 1), b = make(image, owner: 2)
         XCTAssertFalse(a === b, "a drawable of another owner (render target) is made again")
         XCTAssertEqual(image.drawableConversions, 2)
-        XCTAssertEqual(image.drawableBytes, 48, "only the current one is held")
+        XCTAssertEqual(image.drawableBytes, 96, "both owners keep theirs")
         image.releaseDrawables()
         XCTAssertEqual(image.drawableBytes, 0)
         XCTAssertEqual(image, DrawableFixtures.opaque, "equality is the pixels only")
@@ -230,6 +243,16 @@ final class Direct2DDrawableTests: XCTestCase {
         XCTAssertEqual(image.drawableConversions, 2, "a second render target makes its own bitmap")
         XCTAssertEqual(try other.straightRGBA(), once, "and draws the same pixels")
         XCTAssertNil(other.canvas.drawError)
+    }
+
+    /// Codex review on #136: a window target and an offscreen target drawn in turn each keep their bitmap.
+    func testTwoTargetsDrawingInTurnConvertOnceEach() throws {
+        let image = DrawableFixtures.mixed
+        let a = try Direct2DImageTarget(width: 8, height: 7), b = try Direct2DImageTarget(width: 8, height: 7)
+        (0..<50).forEach { _ in drawRepeatedly(a.canvas, image, times: 1); drawRepeatedly(b.canvas, image, times: 1) }
+        XCTAssertEqual(image.drawableConversions, 2)
+        XCTAssertEqual(try a.straightRGBA(), try b.straightRGBA())
+        XCTAssertNil(a.canvas.drawError)
     }
 }
 #endif

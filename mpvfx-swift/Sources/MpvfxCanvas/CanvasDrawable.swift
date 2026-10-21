@@ -20,13 +20,18 @@ public protocol CanvasDrawable: AnyObject {
     var byteCount: Int { get }
 }
 
-/// The drawables made from one image's pixels, one per backend type, shared by every copy of the image.
+/// The drawables made from one image's pixels, shared by every copy of the image: per backend type, the ones for the
+/// last `keptPerType` owners (Direct2D render targets; Cairo and Core Graphics have one owner).
 ///
 /// Thread-safe: images are made on decode and grade queues and drawn on the UI thread; the last copy can be released
 /// on any of them, and the drawables go with it.
 final class CanvasImageDrawables: @unchecked Sendable {
+    /// Drawables kept per backend type: a window's target and one offscreen target (a snapshot) drawn in turn each
+    /// keep theirs.
+    static let keptPerType = 2
     let lock = NSLock()
-    private var entries: [ObjectIdentifier: CanvasDrawable] = [:]
+    /// Per type, least recently used first.
+    private var entries: [ObjectIdentifier: [CanvasDrawable]] = [:]
     private var bytes = 0
     private var conversions = 0
 
@@ -35,18 +40,23 @@ final class CanvasImageDrawables: @unchecked Sendable {
     var heldBytes: Int { lock.lock(); defer { lock.unlock() }; return bytes }
     var conversionCount: Int { lock.lock(); defer { lock.unlock() }; return conversions }
 
-    /// The kept `D`, or a new one from `make` (kept unless it is nil). `reuse` false replaces the kept one (a
-    /// Direct2D bitmap of another render target). `make` runs under the lock, so two threads drawing one image
-    /// convert it once.
+    /// A kept `D` that `reuse` accepts, or a new one from `make` (kept unless it is nil; past `keptPerType` the least
+    /// recently used one goes). `make` runs under the lock, so two threads drawing one image convert it once.
     func drawable<D: CanvasDrawable>(_ type: D.Type, reuse: (D) -> Bool, make: () -> D?) -> D? {
         lock.lock(); defer { lock.unlock() }
         let id = ObjectIdentifier(type)
-        if let kept = entries[id] as? D, reuse(kept) { return kept }
-        if let old = entries.removeValue(forKey: id) { change(-old.byteCount) }
+        var list = entries[id] ?? []
+        if let i = list.firstIndex(where: { ($0 as? D).map(reuse) ?? false }), let kept = list[i] as? D {
+            list.append(list.remove(at: i))
+            entries[id] = list
+            return kept
+        }
         guard let made = make() else { return nil }
-        entries[id] = made
+        list.append(made)
         conversions += 1
         change(made.byteCount)
+        while list.count > Self.keptPerType { change(-list.removeFirst().byteCount) }
+        entries[id] = list
         return made
     }
 
@@ -83,8 +93,14 @@ public extension CanvasImage {
     /// How many times these pixels were converted to a drawable (diagnostics, tests).
     var drawableConversions: Int { drawables.conversionCount }
 
-    /// What holding this image costs: its pixels plus their drawables. Caches budget this, not `rgba.count`.
+    /// What holding this image costs now: its pixels plus their drawables. Caches that count it live budget this.
     var heldBytes: Int { rgba.count + drawableBytes }
+
+    /// What holding this image costs once it is drawn on one target: its pixels plus one drawable of the same size
+    /// (a cairo surface, CGImage or Direct2D bitmap of an image is width x height x 4 bytes). Constant, so caches that
+    /// keep a running byte count charge it on store and take the same amount back on removal; only a Direct2D image
+    /// drawn on a second render target holds one more drawable than this counts (`keptPerType`).
+    var drawnBytes: Int { rgba.count * 2 }
 
     /// Frees the drawables made from these pixels (memory pressure); the next draw makes them again.
     func releaseDrawables() { drawables.removeAll() }
