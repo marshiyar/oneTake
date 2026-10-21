@@ -49,6 +49,9 @@ permissions: {}
 jobs:
   test:
     if: github.event_name == 'pull_request'
+    concurrency:
+      group: project-board-test-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
