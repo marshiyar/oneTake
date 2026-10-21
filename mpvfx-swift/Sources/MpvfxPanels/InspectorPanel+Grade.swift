@@ -364,7 +364,7 @@ extension InspectorPanel {
                 PanelDraw.text(c, labels[i], in: CanvasRect(x: x, y: r.y, width: colW - 14, height: 15), font: PanelTheme.font(10, .medium), color: PanelTheme.text2)
                 let reset = CanvasRect(x: x + colW - 10, y: r.y + 2.5, width: 10, height: 10)
                 PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("grade:wheels", 10 + i) ? PanelTheme.text1 : PanelTheme.text4)
-                panel.addHit(reset.insetBy(-3), .custom("grade:wheels", 10 + i))
+                panel.addHit(reset.target(in: CanvasRect(x: x, y: r.y - 6, width: colW, height: 27)), .custom("grade:wheels", 10 + i))   // above the wheel
                 let size = min(colW, 112)
                 let wr = CanvasRect(x: x + (colW - size) / 2, y: r.y + 21, width: size, height: size)
                 geometry.append(wr)
@@ -444,14 +444,14 @@ extension InspectorPanel {
             guard let self else { return }
             var x = r.x
             c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-            for (i, t) in Self.curveTabs.enumerated() {
-                let w = c.measureText(t.label, font: PanelTheme.font(9)).width + 4
+            for (i, t) in Self.curveTabs.enumerated() {   // a one-letter tab is a pointer target wide
+                let w = max(c.measureText(t.label, font: PanelTheme.font(9)).width + 4, PanelTheme.minTarget)
                 let tr = CanvasRect(x: x, y: r.y, width: w, height: 23.5)
                 let on = self.grade.curveTab == t.key
                 PanelDraw.text(c, t.label, in: CanvasRect(x: tr.x, y: tr.y + 4, width: w, height: 13.5), font: PanelTheme.font(9),
                                color: on ? PanelTheme.text1 : (panel.hovered == .custom("grade:curvetabs", i) ? PanelTheme.text2 : PanelTheme.text4), align: .center)
                 if on { c.fillRect(CanvasRect(x: tr.x, y: tr.maxY - 2, width: tr.width, height: 2), PanelTheme.accent) }
-                panel.addHit(tr, .custom("grade:curvetabs", i))
+                panel.addHit(CanvasRect(x: tr.x, y: r.y, width: tr.width, height: r.height), .custom("grade:curvetabs", i))
                 x = tr.maxX + 8
             }
         }, pointer: { [weak self] part, _, phase in
@@ -590,7 +590,7 @@ extension InspectorPanel {
             }
             let reset = CanvasRect(x: r.maxX - 11, y: r.maxY - 13, width: 11, height: 11)
             PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("grade:curvefoot", 0) ? PanelTheme.text1 : PanelTheme.text4)
-            panel.addHit(reset.insetBy(-3), .custom("grade:curvefoot", 0))
+            panel.addHit(reset.target(in: r), .custom("grade:curvefoot", 0))
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
             if part == 0 { self.grade.selectedPoint = nil; commit(self.writeCurve(g, Self.curveTabs.first { $0.key == self.grade.curveTab }!.hue ? [] : [[0, 0], [1, 1]])) }

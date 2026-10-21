@@ -282,12 +282,13 @@ public final class InspectorPanel {
         var ax = row.maxX
         let clear = CanvasRect(x: ax - 13, y: row.y + (h - 13) / 2, width: 13, height: 13)
         PanelIcon.close.draw(c, in: clear, color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3)
-        hits.add(clear.insetBy(-5), .headerClear)
+        let t = PanelTheme.minTarget
+        hits.add(CanvasRect(x: clear.x - 5, y: clear.midY - t / 2, width: t, height: t), .headerClear)   // 5 into the gap, 6 past
         ax = clear.x - 10
         if let editor, editor.clip(s.id).map({ $0.clip.staticParameters != nil || !$0.clip.parameterTracks.isEmpty || $0.clip.crop != nil }) == true {
             let reset = CanvasRect(x: ax - 13, y: row.y + (h - 13) / 2, width: 13, height: 13)
             PanelIcon.reset.draw(c, in: reset, color: hovered == .headerReset ? PanelTheme.text1 : PanelTheme.text3)
-            hits.add(reset.insetBy(-5), .headerReset)
+            hits.add(CanvasRect(x: reset.maxX + 5 - t, y: reset.midY - t / 2, width: t, height: t), .headerReset)   // meets clear's
             ax = reset.x - 10
         }
         let nameX = row.x + 15 + 10
@@ -450,10 +451,16 @@ public final class InspectorPanel {
         let lw = c.measureText(n.label, font: labelFont).width
         let labelRect = CanvasRect(x: r.x + pad, y: r.midY - 8.25, width: lw, height: 16.5)
         PanelDraw.text(c, n.label, in: labelRect, font: labelFont, color: n.tier.labelColor)
-        let labelHit = CanvasRect(x: labelRect.x, y: r.y, width: lw + 4, height: r.height)
-        if n.scrub != nil && !n.disabled { hits.add(labelHit, .scrub(n.key)) }
         let fieldX = compact ? labelRect.maxX + 4 : max(labelRect.maxX + 12, right - 146)
         let field = CanvasRect(x: fieldX, y: r.midY - 9.25, width: max(0, right - fieldX), height: 18.5)
+        // The label scrub zone: at least a pointer target wide, from the row's (compact: the box's) left edge.
+        let scrubX = compact ? r.x : labelRect.x
+        let labelHit = CanvasRect(x: scrubX, y: r.y, width: max(labelRect.maxX + 4 - scrubX, PanelTheme.minTarget), height: r.height)
+        let scrubs = n.scrub != nil && !n.disabled
+        if scrubs { hits.add(labelHit, .scrub(n.key)) }
+        // The field's own target starts after the scrub zone and ends before the stopwatch's.
+        let fieldHitX = scrubs ? max(field.x, labelHit.maxX) : field.x
+        let fieldHitMaxX = min(field.maxX, n.keyframe == nil || compact ? field.maxX : hits.rect(where: { $0 == .stopwatch(n.key) })?.x ?? field.maxX)
         let editing = self.field?.key == n.key
         var text = n.text
         if let s = scrub, s.key == n.key, let fmt = n.scrub?.format { text = fmt(s.current) }
@@ -468,7 +475,7 @@ public final class InspectorPanel {
             ? PanelTheme.accent.withAlpha(isHover ? 0.7 : 0.3)
             : PanelTheme.panelBorderInput.withAlpha(isHover ? 1 : 0.5)
         c.fillRect(CanvasRect(x: field.x, y: field.maxY - 1, width: field.width, height: 1).snapped, editing ? PanelTheme.accent : underline)
-        if !n.disabled { hits.add(CanvasRect(x: field.x, y: r.y, width: field.width, height: r.height), .field(n.key)) }
+        if !n.disabled { hits.add(CanvasRect(x: fieldHitX, y: r.y, width: max(0, fieldHitMaxX - fieldHitX), height: r.height), .field(n.key)) }
     }
 
     /// Keyframe controls on the property's row (docs/DESIGN.md Rollout 5): the 12px stopwatch (Phosphor Timer, the
@@ -486,7 +493,7 @@ public final class InspectorPanel {
         let watchColor = kf.state == .none ? arrow.over(bg, opacity: hovered == .stopwatch(key) ? 1 : 0.6)
             : (hovered == .stopwatch(key) ? PanelTheme.text0 : PanelTheme.accent)
         PanelIcon.phosphor(.timer).draw(c, in: watch, color: watchColor)
-        hits.add(watch.insetBy(-2), .stopwatch(key))
+        hits.add(watch.target, .stopwatch(key))
         let prevBtn = CanvasRect(x: x0, y: midY - 10, width: 12, height: 20)
         let hasPrev = kf.prev != nil, hasNext = kf.next != nil
         c.strokeSVG(["M5 1L1 5L5 9"], viewBox: 10, in: CanvasRect(x: prevBtn.x + 3, y: midY - 5, width: 10, height: 10),

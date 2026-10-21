@@ -42,7 +42,6 @@ final class UICopyTests: XCTestCase {
     /// Raw error interpolations into user-facing messages at this revision, per file (measured when the test was added). Lower a
     /// number when you replace one with a message the user can act on; remove the line at zero. Never raise one.
     static let rawErrorBaseline: [String: Int] = [
-        "MpvfxDesktop/EditorSession+OpenProject.swift": 1,
         "MpvfxDesktop/EditorSession+Panels.swift": 6,
         "MpvfxDesktop/EditorSession+Renders.swift": 1,
         "MpvfxDesktop/EditorSession+TimelineHooks.swift": 1,

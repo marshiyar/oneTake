@@ -120,6 +120,9 @@ public enum PanelTheme {
     public static let seamWidth = 1.0, seamHitWidth = 13.0
     /// Collapsed rail width (`w-10`); a seam follows a rail as it follows a panel.
     public static let railBox = 40.0
+    /// The smallest pointer target, in points (WCAG 2.2 SC 2.5.8; docs/DESIGN.md "Accessibility floors"). A hit rect
+    /// grows to it around its glyph (`CanvasRect.target`); the glyph keeps its drawn size.
+    public static let minTarget = 24.0
 }
 
 /// Value coloring of a property row (value tier).
@@ -150,6 +153,20 @@ extension CanvasColor {
 extension CanvasRect {
     var midY: Double { y + height / 2 }
     var midX: Double { x + width / 2 }
+    /// This rect grown about its centre to at least `PanelTheme.minTarget` in each dimension: the hit rect of a
+    /// glyph drawn smaller than a pointer target. A dimension already that large is kept.
+    var target: CanvasRect {
+        let w = max(width, PanelTheme.minTarget), h = max(height, PanelTheme.minTarget)
+        return CanvasRect(x: midX - w / 2, y: midY - h / 2, width: w, height: h)
+    }
+    /// `target`, slid (never shrunk) to stay inside `bounds` where it fits, so it does not cover the control beside
+    /// it: a reset glyph in a column's corner keeps its 24 points inside the column.
+    func target(in bounds: CanvasRect) -> CanvasRect {
+        let t = target
+        func slide(_ v: Double, _ len: Double, _ lo: Double, _ hi: Double) -> Double { hi - lo < len ? v : min(max(v, lo), hi - len) }
+        return CanvasRect(x: slide(t.x, t.width, bounds.x, bounds.maxX), y: slide(t.y, t.height, bounds.y, bounds.maxY),
+                          width: t.width, height: t.height)
+    }
     /// The rect with its edges on whole layout pixels (rounded half up), as Chromium snaps backgrounds and borders
     /// laid out at fractional positions (a 44.5px header paints 45).
     var snapped: CanvasRect {
