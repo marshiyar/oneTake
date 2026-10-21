@@ -150,7 +150,7 @@ class Rules(unittest.TestCase):
                          [])
 
 
-GATED = f"""\
+GATED = """\
 name: mpvfx-ci
 on:
   pull_request:
