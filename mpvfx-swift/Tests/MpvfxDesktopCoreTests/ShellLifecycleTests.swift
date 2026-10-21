@@ -140,7 +140,11 @@ final class ShellLifecycleTests: XCTestCase {
         XCTAssertEqual(mac[3].items.map(\.command), [.toggleFullScreen, .keyframeEasing, .appearanceSystem, .appearanceLight, .appearanceDark])
         XCTAssertTrue(mac[3].items[1].separatorBefore)
         XCTAssertEqual(mac[3].items[0].modifiers, [.command, .control])
-        XCTAssertEqual(mac[4].items.map(\.command), [.minimize, .zoom, .bringAllToFront])
+        // Window lists the dock's panels (a submenu the shell fills) and closes the focused one with ⌘⇧W.
+        XCTAssertEqual(mac[4].items.map(\.command), [.minimize, .zoom, .panels, .closePanel, .bringAllToFront])
+        XCTAssertEqual(mac[4].items.map(\.label), ["Minimize", "Zoom", "Panels", "Close Panel", "Bring All to Front"])
+        XCTAssertTrue(mac[4].items[2].separatorBefore)
+        XCTAssertEqual(mac[4].items[3].key, "w"); XCTAssertEqual(mac[4].items[3].modifiers, [.command, .shift])
         let all = mac.flatMap(\.items).map(\.label).joined(separator: " ")
         for webOnly in ["Reload", "Developer", "Actual Size", "Zoom In", "Learn More"] { XCTAssertFalse(all.contains(webOnly), webOnly) }
         #if os(macOS)

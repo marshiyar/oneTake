@@ -16,6 +16,8 @@
 `swift build -c release`).
 
   python3 ../.github/ci/bench.py --out <dir> [--runs N] [--launcher "<cmd...>"] [--only a,b] [--skip a,b]
+                                 [--budgets <file> [--baseline <main bench-<os>.json>]]
+  python3 ../.github/ci/bench.py --check <bench-<os>.json> --budgets <file> [--baseline <main bench-<os>.json>]
 
 Benchmarks (each a separate process per run, so one run's state never reaches the next):
   startup   the app (MpVFX) launched with a hidden window on the built-in demo until its first painted frame is
@@ -33,8 +35,23 @@ Every number is recorded with its unit, the samples, n, p50, p95 and max (neares
 cores, memory, GPU as the grade bench names it, class), the commit and the date; the result is <out>/bench-<os>.json
 plus a Markdown table on stdout. A GitHub-hosted runner is a shared machine: compare runs of the same class only,
 and read trends, not single runs.
+With --budgets (.github/ci/bench-budgets.json) the report is then checked: a metric's p50 past its ceiling or floor, a
+budgeted metric missing from a benchmark that ran, or (with --baseline, main's latest report of the same runner class)
+a p50 more than the file's regression_pct worse than main's fails, and the failed metrics are printed as a table.
+Exit 1 on a failed budget, 2 on an unusable input. --check checks an existing report without running anything.
 """
-import argparse, datetime, json, math, os, platform, re, shlex, subprocess, tempfile, time
+import argparse
+import datetime
+import json
+import math
+import os
+import platform
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
 
 HERE = os.getcwd()
 
@@ -46,30 +63,41 @@ def sh(*cmd):
         return ""
 
 
+def _first_field(path, prefix):
+    """The text after `prefix` on the first line of `path` that starts with it, or None."""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith(prefix):
+                return line[len(prefix):].lstrip(" \t:")
+    return None
+
+
+def _linux_cpu_ram(cpu):
+    model = _first_field("/proc/cpuinfo", "model name")
+    mem = _first_field("/proc/meminfo", "MemTotal")
+    return (model.strip() if model else cpu), (round(int(mem.split()[0]) / 1048576, 1) if mem else None)
+
+
+def _darwin_cpu_ram(cpu):
+    mem = sh("sysctl", "-n", "hw.memsize")
+    return sh("sysctl", "-n", "machdep.cpu.brand_string") or cpu, round(int(mem) / 1073741824, 1) if mem.isdigit() else None
+
+
+def _windows_cpu_ram(cpu):
+    out = sh("powershell", "-NoProfile", "-Command",
+             "(Get-CimInstance Win32_Processor).Name; (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory")
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return cpu, None
+    return lines[0], round(int(lines[1]) / 1073741824, 1) if lines[1].isdigit() else None
+
+
 def machine():
     """What the numbers were measured on."""
     system = platform.system()
-    cpu, ram = platform.processor() or platform.machine(), None
-    if system == "Linux":
-        with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                if line.startswith("model name"):
-                    cpu = line.split(":", 1)[1].strip(); break
-        with open("/proc/meminfo", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("MemTotal"):
-                    ram = round(int(line.split()[1]) / 1048576, 1); break
-    elif system == "Darwin":
-        cpu = sh("sysctl", "-n", "machdep.cpu.brand_string") or cpu
-        mem = sh("sysctl", "-n", "hw.memsize")
-        ram = round(int(mem) / 1073741824, 1) if mem.isdigit() else None
-    elif system == "Windows":
-        out = sh("powershell", "-NoProfile", "-Command",
-                 "(Get-CimInstance Win32_Processor).Name; (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory")
-        lines = [l.strip() for l in out.splitlines() if l.strip()]
-        if len(lines) >= 2:
-            cpu = lines[0]
-            ram = round(int(lines[1]) / 1073741824, 1) if lines[1].isdigit() else None
+    probe = {"Linux": _linux_cpu_ram, "Darwin": _darwin_cpu_ram, "Windows": _windows_cpu_ram}.get(system)
+    cpu = platform.processor() or platform.machine()
+    cpu, ram = probe(cpu) if probe else (cpu, None)
     return {"os": f"{system} {platform.release()}", "cpu": cpu, "cores": os.cpu_count(), "ram_gb": ram,
             "class": "github-hosted runner" if os.environ.get("GITHUB_ACTIONS") else "local machine"}
 
@@ -186,22 +214,30 @@ def bench_preview(bin_dir, runs, out_dir, r):
             if code != 0:
                 raise SystemExit(f"preview {scenario} run {i + 1}: exit {code}\n{out[-3000:]}")
     with open(results, encoding="utf-8") as f:
-        result_lines = f.readlines()
-    for line in result_lines:
-        line = line.strip()
-        if not line:
+        for line in f:
+            if line.strip():
+                preview_record(json.loads(line), r)
+
+
+def preview_unit(key):
+    if "fps" in key:
+        return "fps"
+    if "mib" in key.lower() or "rss" in key.lower():
+        return "MiB"
+    return "ms" if "ms" in key else ""
+
+
+def preview_record(rec, r):
+    """One MpvfxPreviewBench result line into `r`, as preview.<scenario>.<key>."""
+    scenario = rec.get("scenario", "unknown")
+    for key, value in rec.items():
+        # The bench writes every value as a JSON string ("fps":"29.9"); text such as "display" does not parse.
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
             continue
-        rec = json.loads(line)
-        scenario = rec.get("scenario", "unknown")
-        for key, value in rec.items():
-            # The bench writes every value as a JSON string ("fps":"29.9"); text such as "display" does not parse.
-            try:
-                value = float(value)
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(value) and key != "frames":
-                unit = "fps" if "fps" in key else "MiB" if "mib" in key.lower() or "rss" in key.lower() else "ms" if "ms" in key else ""
-                r.add(f"preview.{scenario}.{key}", unit, value)
+        if math.isfinite(value) and key != "frames":
+            r.add(f"preview.{scenario}.{key}", preview_unit(key), value)
 
 
 def table(metrics):
@@ -211,24 +247,214 @@ def table(metrics):
     return "\n".join(lines)
 
 
-def main():
+# --- budgets ------------------------------------------------------------------------------------------------------------
+# .github/ci/bench-budgets.json: per OS, a ceiling ("max") or a floor ("min") on each budgeted metric's p50, for one
+# runner class. A metric past its budget fails, and so does a budgeted metric missing from a benchmark that ran. With a
+# baseline (main's latest report of the same class and OS), a metric not marked "noisy" also fails when its p50 is more
+# than regression_pct worse than the baseline's.
+
+OS_KEYS = {"linux": "linux", "darwin": "macos", "windows": "windows"}
+
+
+class BudgetError(ValueError):
+    """The budget file, the report or the baseline cannot be checked."""
+
+
+def number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def load_json(path, what):
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError) as e:
+        raise BudgetError(f"{what} {path}: {e}") from e
+    if not isinstance(doc, dict):
+        raise BudgetError(f"{what} {path}: not a JSON object")
+    return doc
+
+
+def machine_of(report):
+    m = report.get("machine")
+    return m if isinstance(m, dict) else {}
+
+
+def os_key(report):
+    return OS_KEYS.get(str(machine_of(report).get("os", "")).split(" ")[0].lower())
+
+
+def budget_entry(name, e):
+    """("min" or "max", the limit) of one budget entry, which needs a unit and exactly one numeric min or max."""
+    kinds = [k for k in ("min", "max") if k in e] if isinstance(e, dict) else []
+    if len(kinds) != 1 or not isinstance(e.get("unit"), str) or not number(e[kinds[0]]):
+        raise BudgetError(f"budget {name!r}: needs a unit and exactly one numeric min or max")
+    return kinds[0], e[kinds[0]]
+
+
+def breach(m, e, kind, limit):
+    """Why the result `m` breaks the budget `e`, or None when it holds."""
+    if not isinstance(m, dict) or not number(m.get("p50")):
+        return "missing from the results"
+    if m.get("unit") != e["unit"]:
+        return f"unit is {m.get('unit')!r}, the budget's is {e['unit']!r}"
+    if kind == "max" and m["p50"] > limit:
+        return "over the ceiling"
+    if kind == "min" and m["p50"] < limit:
+        return "under the floor"
+    return None
+
+
+def budget_failures(report, budgets):
+    """Rows (metric, unit, p50 or None, budget, why) for each budget the report breaks. Budgets of a benchmark the run
+    left out (--only, --skip) are not checked."""
+    ran, got, rows = set(report.get("benchmarks") or ()), report.get("metrics") or {}, []
+    for name, e in sorted(budgets.items()):
+        kind, limit = budget_entry(name, e)
+        if name.split(".")[0] not in ran:
+            continue
+        m = got.get(name)
+        why = breach(m, e, kind, limit)
+        if why:
+            p50 = m["p50"] if isinstance(m, dict) and number(m.get("p50")) else None
+            rows.append((name, e["unit"], p50, f"{'≥' if kind == 'min' else '≤'} {limit:g}", why))
+    return rows
+
+
+def worse_by(m, t, kind):
+    """How much worse m's p50 is than t's, as a fraction (negative when better); None when not comparable. A ceiling
+    metric that was 0 on main and is above 0 now (a skipped frame, a stage that now does work) is infinitely worse."""
+    if not (isinstance(m, dict) and isinstance(t, dict)) or m.get("unit") != t.get("unit"):
+        return None
+    a, b = m.get("p50"), t.get("p50")
+    if not (number(a) and number(b)):
+        return None
+    if b == 0:
+        return math.inf if kind == "max" and a > 0 else None
+    return (a - b) / b if kind == "max" else (b - a) / b
+
+
+def regression_failures(report, base, budgets, pct):
+    """Rows for each budgeted metric not marked noisy whose p50 is more than pct% worse than the baseline's."""
+    mine, theirs, rows = report.get("metrics") or {}, base.get("metrics") or {}, []
+    for name, e in sorted(budgets.items()):
+        kind, _ = budget_entry(name, e)
+        worse = None if e.get("noisy") else worse_by(mine.get(name), theirs.get(name), kind)
+        if worse is not None and worse > pct / 100:
+            why = "above main's 0" if math.isinf(worse) else f"{worse * 100:.0f}% worse than main"
+            rows.append((name, e["unit"], mine[name]["p50"], f"main {theirs[name]['p50']:g}", why))
+    return rows
+
+
+def os_budgets(budgets, report):
+    """(OS key, the file's block for the report's OS)."""
+    key, by_os = os_key(report), budgets.get("os")
+    if not isinstance(by_os, dict):
+        raise BudgetError('the budget file\'s "os" is not an object')
+    block = by_os.get(key) if key else None
+    if not isinstance(block, dict) or not isinstance(block.get("metrics"), dict):
+        raise BudgetError(f"the budget file has no block for OS {machine_of(report).get('os')!r}")
+    return key, block
+
+
+def regression_rows(report, base, budgets, block):
+    """(rows, note) of the regression rule against `base`, main's latest report."""
+    if base is None:
+        return [], "no main baseline: the regression rule was not applied"
+    if machine_of(base).get("class") != machine_of(report).get("class") or os_key(base) != os_key(report):
+        return [], "the main baseline is from another machine class or OS: the regression rule was not applied"
+    pct = budgets.get("regression_pct")
+    if not number(pct) or pct <= 0:
+        raise BudgetError("regression_pct must be a positive number")
+    note = f"regression rule: p50 more than {pct:g}% worse than main `{str(base.get('commit', ''))[:7]}` fails"
+    return regression_failures(report, base, block["metrics"], pct), note
+
+
+def runner_class(report, budgets, strict):
+    """The report's machine class; BudgetError when it or the file's is not a string, or (strict) they differ."""
+    klass, wanted = machine_of(report).get("class"), budgets.get("class")
+    if not isinstance(klass, str) or not isinstance(wanted, str):
+        raise BudgetError("the report and the budget file each need a machine class")
+    if strict and klass != wanted:
+        raise BudgetError(f"--strict: the budgets are for a {wanted!r}, this report is from a {klass!r}")
+    return klass
+
+
+def check_budgets(report, budgets, base=None, strict=False):
+    """(failed rows, notes) of `report` against the budget file `budgets` and, when given, main's report `base`.
+    Only a report of the file's runner class is checked (with strict, another class is an error), and an OS marked
+    pending is not."""
+    if not isinstance(report.get("metrics"), dict) or not isinstance(report.get("benchmarks"), list):
+        raise BudgetError("the report has no metrics object or benchmarks list")
+    klass = runner_class(report, budgets, strict)
+    if klass != budgets["class"]:
+        return [], [f"the budgets are for a {budgets['class']!r}, this is a {klass!r}: not checked"]
+    key, block = os_budgets(budgets, report)
+    if block.get("pending"):
+        return [], [f"{key}: budgets pending, not checked ({block['pending']})"]
+    rows = budget_failures(report, block["metrics"])
+    regressed, note = regression_rows(report, base, budgets, block)
+    return rows + regressed, [f"{key}: {len(block['metrics'])} budgets ({klass})", note]
+
+
+def budget_table(rows, notes):
+    """Markdown: the notes, then the failed metrics as a table, or that every budget held."""
+    lines = ["", "#### Budgets (.github/ci/bench-budgets.json)", ""] + [f"- {n}" for n in notes]
+    if not rows:
+        return "\n".join(lines + ["", "Every budget held."])
+    lines += ["", f"**{len(rows)} failed**", "", "| metric | unit | p50 | budget | failed because |", "|---|---|---:|---:|---|"]
+    lines += [f"| `{n}` | {u} | {'-' if v is None else f'{v:g}'} | {lim} | {why} |" for n, u, v, lim, why in rows]
+    return "\n".join(lines)
+
+
+def apply_budgets(report, budgets_path, baseline_path=None, strict=False):
+    """Prints the budget check of `report`. Exit code: 1 when a metric failed, 2 when an input is unusable, else 0. A
+    baseline path that does not exist means main has no report yet (the regression rule is skipped, with a note)."""
+    try:
+        budgets = load_json(budgets_path, "budget file")
+        base = load_json(baseline_path, "baseline") if baseline_path and os.path.exists(baseline_path) else None
+        rows, notes = check_budgets(report, budgets, base, strict)
+    except BudgetError as e:
+        print(f"::error::bench budgets: {e}")
+        return 2
+    print(budget_table(rows, notes))
+    if rows:
+        print(f"::error::bench budgets: {len(rows)} metric(s) failed; see the table above")
+    return 1 if rows else 0
+
+
+# --- main ---------------------------------------------------------------------------------------------------------------
+
+def parse_args(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", required=True, help="directory for bench-<os>.json, logs and fixtures")
+    ap.add_argument("--out", help="directory for bench-<os>.json, logs and fixtures")
     ap.add_argument("--runs", type=int, default=5, help="processes per benchmark (default 5)")
     ap.add_argument("--launcher", default="", help="command that wraps the app for the startup benchmark")
     ap.add_argument("--only", default="", help="comma list of benchmarks to run")
     ap.add_argument("--skip", default="", help="comma list of benchmarks to leave out")
-    args = ap.parse_args()
+    ap.add_argument("--budgets", help="budget file (.github/ci/bench-budgets.json): exit 1 with a table of failed metrics")
+    ap.add_argument("--baseline", help="main's latest bench-<os>.json for the regression rule (a missing file skips it)")
+    ap.add_argument("--strict", action="store_true", help="a report of another machine class than the budgets' is an error (CI)")
+    ap.add_argument("--check", metavar="REPORT", help="check this bench-<os>.json against --budgets instead of running")
+    args = ap.parse_args(argv)
+    if args.check and not args.budgets:
+        ap.error("--check needs --budgets")
+    if not args.check and not args.out:
+        ap.error("--out is required unless --check is given")
+    return args
+
+
+def selected(args):
     names = ["startup", "audio", "grade", "preview"]
     if args.only:
         names = [n for n in names if n in args.only.split(",")]
-    names = [n for n in names if n not in args.skip.split(",")]
-    os.makedirs(args.out, exist_ok=True)
+    return [n for n in names if n not in args.skip.split(",")]
+
+
+def run_benchmarks(args, names, info):
     bin_dir = subprocess.run(["swift", "build", "-c", "release", "--show-bin-path"], capture_output=True, text=True, check=True).stdout.strip()
     launcher = shlex.split(args.launcher) if args.launcher else None
-    info = machine()
     r = Results()
-    started = time.time()
     if "startup" in names:
         bench_startup(bin_dir, args.runs, args.out, launcher, r)
     if "audio" in names:
@@ -237,18 +463,40 @@ def main():
         bench_grade(bin_dir, args.runs, r, info)
     if "preview" in names:
         bench_preview(bin_dir, args.runs, args.out, r)
-    metrics = r.finish()
+    return r.finish()
+
+
+def measure(args):
+    """Runs the selected benchmarks, writes <out>/bench-<os>.json, prints the table; returns the report."""
+    names = selected(args)
+    os.makedirs(args.out, exist_ok=True)
+    info = machine()
+    started = time.time()
+    metrics = run_benchmarks(args, names, info)
     commit = sh("git", "rev-parse", "HEAD") or os.environ.get("GITHUB_SHA", "unknown")
     report = {"schema": 1, "commit": commit, "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
               "machine": info, "runs": args.runs, "benchmarks": names, "elapsed_s": round(time.time() - started, 1), "metrics": metrics}
-    tag = platform.system().lower()
-    path = os.path.join(args.out, f"bench-{tag}.json")
+    path = os.path.join(args.out, f"bench-{platform.system().lower()}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1, sort_keys=True)
     print(f"### {info['os']}: {info['cpu']}, {info['cores']} cores, {info['ram_gb']} GiB, GPU {info.get('gpu', 'not measured')} ({info['class']})")
     print(f"commit {commit[:7]}, {args.runs} runs per benchmark, {report['elapsed_s']} s; `{os.path.basename(path)}` in the artifact\n")
     print(table(metrics))
+    return report
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    if args.check:
+        try:
+            report = load_json(args.check, "report")
+        except BudgetError as e:
+            print(f"::error::bench budgets: {e}")
+            return 2
+    else:
+        report = measure(args)
+    return apply_budgets(report, args.budgets, args.baseline, args.strict) if args.budgets else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

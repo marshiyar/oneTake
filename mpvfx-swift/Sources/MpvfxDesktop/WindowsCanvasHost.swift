@@ -200,7 +200,7 @@ final class WindowsCanvasHost {
         let m = Self.modifiers()
         // Wheel up is a negative dy (content moves down), as GDK_SCROLL_UP; tilting right is a positive dx.
         input?.scroll(dx: horizontal ? step : 0, dy: horizontal ? 0 : -step, x: Double(pt.x) / scale,
-                      ctrl: m.contains(.ctrl), shift: m.contains(.shift), precise: precise)
+                      ctrl: m.zoomsWheel, shift: m.contains(.shift), precise: precise)
     }
 
     private func setCursor(_ lp: LPARAM) -> LRESULT? {

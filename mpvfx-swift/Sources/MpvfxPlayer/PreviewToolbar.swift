@@ -36,8 +36,11 @@ public final class PreviewToolbar {
     public var gridDivisions = 3
     public var snapToGrid = false
     public var gridPopoverOpen = false
-    /// Gesture recording state, shown only when the host handles `onToggleRecording`.
-    public enum Recording: Equatable { case idle, recording, preview }
+    /// Record motion's state, shown only when the host handles `onToggleRecording`: off, armed (waiting for a
+    /// press on the selected layer) or a take in progress.
+    public enum Recording: Equatable { case idle, armed, recording }
+    public var compareEnabled = false
+    public var comparePosition = 0.5
     public var recording: Recording = .idle
     public var cropApplying = false
     public var hovered: Item?
@@ -46,7 +49,7 @@ public final class PreviewToolbar {
     public var onToggleRecording: (() -> Void)?
 
     public enum Item: Equatable {
-        case record, crop, cropReset, cropCancel, cropApply, snap, grid, gridOptions
+        case record, crop, cropReset, cropCancel, cropApply, compare, snap, grid, gridOptions
         case gridPreset(Int), snapToGridToggle, popover, cropGroup
     }
 
@@ -69,6 +72,7 @@ public final class PreviewToolbar {
         let g = out[0].1
         out.append((.gridOptions, CanvasRect(x: g.maxX + 2 - 11, y: g.maxY + 2 - 11, width: 11, height: 11)))
         place(.snap, Self.iconButton, Self.iconButton)
+        place(.compare, textWidth(c, "Compare", Self.label) + 16, 28.5)
         if cropActive {
             let apply = cropApplying ? "Applying…" : "Apply"
             let wApply = textWidth(c, apply, CanvasFont(size: 11, weight: .semibold)) + 16
@@ -86,8 +90,8 @@ public final class PreviewToolbar {
             place(.crop, textWidth(c, "Crop", Self.label) + 16, 28.5)
         }
         if onToggleRecording != nil {
-            let text = recording == .recording ? "Stop" : "Record"
-            out.append((.record, CanvasRect(x: Self.paddingX, y: midY - 14, width: 8 + 8 + 6 + textWidth(c, text, Self.small) + 8, height: 28)))
+            let text = max(textWidth(c, "Record", Self.small), textWidth(c, "Armed", Self.small))   // one width for every state
+            out.append((.record, CanvasRect(x: Self.paddingX, y: midY - 14, width: 8 + 8 + 6 + text + 8, height: 28)))
         }
         if gridPopoverOpen, let r = popoverRect(width: width, c) {
             out.append((.popover, r))
@@ -135,6 +139,7 @@ public final class PreviewToolbar {
         case .gridPreset(let v): gridDivisions = v; gridVisible = true; gridPopoverOpen = false; onPrefsChange?(self)
         case .snapToGridToggle: snapToGrid.toggle(); onPrefsChange?(self)
         case .record: onToggleRecording?()
+        case .compare: compareEnabled.toggle()
         case .crop: return .start
         case .cropReset: return cropApplying ? nil : .reset
         case .cropCancel: return cropApplying ? nil : .cancel
@@ -144,11 +149,12 @@ public final class PreviewToolbar {
         return nil
     }
 
-    /// S toggles snap, G toggles the grid (unmodified keys).
+    /// S toggles snap, G toggles the grid, and backslash toggles Compare (unmodified keys).
     public func key(_ ch: Character) -> Bool {
         switch ch {
         case "s", "S": snapEnabled.toggle(); onPrefsChange?(self); return true
         case "g", "G": gridVisible.toggle(); onPrefsChange?(self); return true
+        case "\\": compareEnabled.toggle(); return true
         default: return false
         }
     }
@@ -185,6 +191,12 @@ public final class PreviewToolbar {
             c.fillRoundedRect(r, radius: 6, Self.wash(hov ? 0.6 : 0.4))
             c.drawText("Crop", at: .init(r.x + 8, r.y + (r.height - 11) / 2), font: Self.label, color: white.withAlpha(hov ? 1 : 0.7))
         }
+        if let r = rect(.compare) {
+            let hov = hovered == .compare
+            c.fillRoundedRect(r, radius: 6, compareEnabled ? Self.accent.withAlpha(0.2) : Self.wash(hov ? 0.6 : 0.4))
+            c.drawText("Compare", at: .init(r.x + 8, r.y + (r.height - 11) / 2), font: Self.label,
+                       color: compareEnabled ? Self.accent : white.withAlpha(hov ? 1 : 0.7))
+        }
         if cropActive, let group = rect(.cropGroup) {
             c.fillRoundedRect(group, radius: 6, PanelTheme.black)
             c.strokeRoundedRect(group.insetBy(0.5), radius: 5.5, white.withAlpha(0.15), width: 1)
@@ -202,10 +214,12 @@ public final class PreviewToolbar {
             }
         }
         if let r = rect(.record) {
-            if hovered == .record { c.fillRoundedRect(r, radius: 4, PanelStyle.neutral800) }
+            if recording != .idle { c.fillRoundedRect(r, radius: 4, Self.red500.withAlpha(recording == .recording ? 0.35 : 0.18)) }
+            else if hovered == .record { c.fillRoundedRect(r, radius: 4, PanelStyle.neutral800) }
             let dot = CanvasRect(x: r.x + 8, y: r.y + (r.height - 8) / 2, width: 8, height: 8)
             c.fillRoundedRect(dot, radius: recording == .recording ? 2 : 4, Self.red500)
-            c.drawText(recording == .recording ? "Stop" : "Record", at: .init(dot.maxX + 6, r.y + (r.height - 11) / 2), font: Self.small, color: PanelStyle.neutral300)
+            let label = recording == .recording ? "Stop" : recording == .armed ? "Armed" : "Record"
+            c.drawText(label, at: .init(dot.maxX + 6, r.y + (r.height - 11) / 2), font: Self.small, color: recording == .idle ? PanelStyle.neutral300 : PanelTheme.red400)
         }
         if gridPopoverOpen, let r = popoverRect(width: width, c) {
             c.fillRoundedRect(r, radius: 8, PanelStyle.neutral800)

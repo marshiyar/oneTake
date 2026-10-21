@@ -41,6 +41,7 @@ keyframe commands, so preview and export read it as they read the inspector's ed
 A self-contained panel view, `KeyframeEasingPanel` (MpvfxPanels), ready for the docking model:
 `id "keyframe-easing"`, title "Keyframe Easing", default dock `bottom` (beside the timeline), minimum size
 360 × 300 pt (the tab layout scrolls when its column is taller than the panel). Until docking lands it opens as a third tab of the right panel, "Easing", beside Design and Renders.
+360 × 220 pt. Until docking lands it opens as a third tab of the right panel, "Easing", beside Design and Renders.
 
 Layout, top to bottom:
 1. Header: property picker (the clip's animated, easable properties: position, x/y, size, rotation, scale, opacity,

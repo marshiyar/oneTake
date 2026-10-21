@@ -21,8 +21,8 @@ extension RightPanel {
     /// when the press is not there (the header, the Renders tab).
     func contentPointerDown(_ p: CanvasPoint) -> Bool? {
         let inContent = !layout.effectiveRightCollapsed && contentRect.contains(p)
-        pressedInInspector = inContent && layout.rightPanelTab == .design
-        pressedInEasing = inContent && layout.rightPanelTab == .easing
+        pressedInInspector = inContent && shownTab == .design
+        pressedInEasing = inContent && shownTab == .easing
         guard pressedInInspector || pressedInEasing else { return nil }
         let r = pressedInInspector ? inspector.pointerDown(p) : easing.pointerDown(p)
         onChange?()
@@ -32,26 +32,12 @@ extension RightPanel {
     /// The pointer over (or dragging from) the open tab's content; true when it changed what is drawn.
     func contentPointerMove(_ p: CanvasPoint) -> Bool {
         let inContent = contentRect.contains(p)
-        if pressedInEasing || (layout.rightPanelTab == .easing && inContent) { return easing.pointerMove(p) }
-        if pressedInInspector || (layout.rightPanelTab == .design && inContent) { return inspector.pointerMove(p) }
+        if pressedInEasing || (shownTab == .easing && inContent) { return easing.pointerMove(p) }
+        if pressedInInspector || (shownTab == .design && inContent) { return inspector.pointerMove(p) }
         guard inspector.hovered != nil else { return false }
         inspector.hovered = nil
         inspector.endAudition()
         return true
-    }
-
-    /// Keys for the open Design or Easing tab: the inspector takes them all, the Easing panel the ones it handles;
-    /// nil when the header and Renders tab handle the key.
-    func tabKeyDown(_ k: EditorKey) -> Bool? {
-        guard !layout.effectiveRightCollapsed else { return nil }
-        switch layout.rightPanelTab {
-        case .design: return inspector.keyDown(k)
-        case .easing:
-            guard easing.keyDown(k) else { return nil }
-            onChange?()
-            return true
-        case .renders: return nil
-        }
     }
 
     /// The panel menu's choice: hide the panel, show Keyframe easing, or hide the finished renders.

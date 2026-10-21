@@ -87,7 +87,7 @@ final class GtkCanvasHost {
             let precise = ev.direction == GDK_SCROLL_SMOOTH && (source == GDK_SOURCE_TOUCHPAD || source == GDK_SOURCE_TOUCHSCREEN)
             let scale = precise ? 10.0 : 53.0
             Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().input?.scroll(
-                dx: dx * scale, dy: dy * scale, x: ev.x, ctrl: ev.state & GDK_CONTROL_MASK.rawValue != 0,
+                dx: dx * scale, dy: dy * scale, x: ev.x, ctrl: GtkCanvasHost.modifiers(ev.state).zoomsWheel,
                 shift: ev.state & GDK_SHIFT_MASK.rawValue != 0, precise: precise)
             return 1
         } as EvCB, to: GCallback.self), me)

@@ -183,6 +183,13 @@ public struct DesktopMediaOperation: Equatable, Sendable {
     }
 }
 
+/// Result of `importCaptions`: the document text with the new caption track, already saved; the editor loads it.
+public struct DesktopCaptionImport: Equatable, Sendable {
+    public var content: String
+    public var cueCount: Int
+    public init(content: String, cueCount: Int) { self.content = content; self.cueCount = cueCount }
+}
+
 /// A library as the sidebar shows it: its events, projects, media and exports.
 public struct DesktopLibraryView: Equatable, Sendable {
     public var id: String
@@ -298,6 +305,12 @@ public protocol DesktopBackend: Sendable {
     /// Calls `onExternalChange` (on a background queue) with the new text whenever the document is changed
     /// on disk by anything other than this backend. Replaces an earlier watch on the same project.
     func watchProject(id: String, onExternalChange: @escaping @Sendable (String) -> Void) throws
+    /// Like `watchProject(id:onExternalChange:)`, and also reports `.missing` when the project's folder was moved or
+    /// deleted (`ProjectMoved.swift`). Replaces an earlier watch on the same project.
+    func watchProjectEvents(id: String, onEvent: @escaping @Sendable (DesktopProjectEvent) -> Void) throws
+    /// Points an open project at the folder it was moved to (`path`: the folder, its `.studio` or the document) and keeps
+    /// its id and watch; returns the document found there. Nothing is written.
+    func relocateProject(id: String, to path: String) throws -> DesktopProject
     /// Project folders in the projects directory and the open libraries, newest first.
     func listProjects() -> [DesktopProjectSummary]
     /// Recently opened projects that still exist, newest first.
@@ -321,6 +334,12 @@ public protocol DesktopBackend: Sendable {
 
     /// Copies a media file next to itself as "name (copy).ext" (then "(copy 2)", ...). Returns the new path.
     func duplicateMedia(projectId: String, path: String) throws -> String
+
+    /// Reads an SRT file into the caption track of `content` (the editor's document) and saves it. All or nothing: a
+    /// file that does not read in full throws an error naming its line, and nothing is saved.
+    func importCaptions(projectId: String, path: String, content: String) throws -> DesktopCaptionImport
+    /// Writes the caption track of `content` as an SRT file at `path` (crash-safe); returns the number of captions.
+    func exportCaptions(projectId: String, path: String, content: String) throws -> Int
 
     /// Typed library views (the `libraries` service has the commands that change them).
     func libraryViews() async throws -> [DesktopLibraryView]
@@ -425,4 +444,11 @@ public struct NotImplementedBackend: DesktopBackend {
     public var libraries: LibraryService? { nil }
     public var preferences: DesktopPreferences? { nil }
     public func close() async throws {}
+}
+
+public extension NotImplementedBackend {
+    func importCaptions(projectId: String, path: String, content: String) throws -> DesktopCaptionImport {
+        throw DesktopError.notImplemented("Caption import")
+    }
+    func exportCaptions(projectId: String, path: String, content: String) throws -> Int { throw DesktopError.notImplemented("Caption export") }
 }

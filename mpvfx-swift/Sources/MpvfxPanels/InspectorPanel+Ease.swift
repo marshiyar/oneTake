@@ -65,6 +65,6 @@ extension InspectorPanel {
         let open = InspectorRow.Button(key: "openEasing", label: "Easing…", style: .chip, action: { [weak self] in
             self?.onOpenEasing?(s.id, Set(refs))
         })
-        return [.init(.spacer(6)), .init(.heading("Keyframe easing", trailing: trailing)), .init(.buttons([open]))]
+        return [.init(.spacer(PanelGrid.unit)), .init(.heading("Keyframe easing", trailing: trailing)), .init(.buttons([open]))]
     }
 }

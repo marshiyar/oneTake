@@ -52,11 +52,10 @@ public struct RenderSettingsModel: Equatable, Codable {
 public enum RenderAction: Equatable { case start(RenderSettingsModel), cancel(String), delete(String), reveal(String), retry(String), hideFinished, publish(String) }
 
 /// The right panel: the tab strip (Design · Easing · Renders (n), then hide and the panel menu), the Design tab (the
-/// flat inspector), the Easing tab (KeyframeEasingPanel) and the Renders tab. Collapsed: the 40px rail with the show
-/// button.
+/// flat inspector), the Easing tab (KeyframeEasingPanel) and the Renders tab. Collapsed: the 40px rail with the show button.
 public final class RightPanel {
     public enum Hit: Equatable {
-        case hide, show, design, easing, renders, showRenders, panelMenu
+        case hide, show, design, easing, renders, showRenders, panelMenu, tabOverflow
         case format, resolution, fps, quality, customW, customH, export, formatInfo
         case job(String), cancel(String), delete(String), reveal(String), retry(String), hideFinished, dismissError
         case confirmDelete(String), keep(String), thumb(String), listScrollbar
@@ -81,6 +80,11 @@ public final class RightPanel {
     public var onRender: ((RenderAction) -> Void)?
     public var onSettingsChanged: ((RenderSettingsModel) -> Void)?
     public var onChange: (() -> Void)?
+    /// In the dock, each tab is its own panel: this instance shows only that tab, over its whole rect, without the
+    /// strip (the dock's tab bar is its header). nil: the Design · Renders strip with both tabs.
+    public var dockedTab: RightPanelTab?
+    /// The tab on show: the docked one, else the strip's choice.
+    var shownTab: RightPanelTab { dockedTab ?? layout.rightPanelTab }
     /// The row whose × was pressed: it shows "Delete?" / "Keep" until answered or the pointer leaves it.
     public var confirmingDelete: String?
     /// Wall clock for "1h ago" (seconds since 1970); tests pin it.
@@ -88,7 +92,7 @@ public final class RightPanel {
     /// Keyboard focus on the Renders tab and the panel header (the inspector keeps its own on the Design tab).
     public var focus = PanelFocus<Hit>()
 
-    public private(set) var hits = HitMap<Hit>()
+    public internal(set) var hits = HitMap<Hit>()
     public var hovered: Hit?
     var size = CanvasSize(0, 0)
     var contentRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
@@ -101,6 +105,8 @@ public final class RightPanel {
     var listRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     var pressedInInspector = false
     var pressedInEasing = false
+    /// The tab strip as the last draw laid it out (the overflow menu lists its hidden tabs).
+    var tabLayout = PanelTabBar.Layout.empty
 
     public init(layout: PanelLayoutState) {
         self.layout = layout
@@ -135,7 +141,7 @@ public final class RightPanel {
         case .easing?: "Keyframe easing: graphs, curve and presets for the selected keys"
         case .renders?, .showRenders?: "Export settings and past renders"
         case .export?: "Render the composition with these settings"
-        default: layout.rightPanelTab == .easing ? easing.hint : nil
+        default: shownTab == .easing ? easing.hint : nil
         }
     }
 
@@ -155,6 +161,12 @@ public final class RightPanel {
         return true
     }
 
+    /// Native controls currently visible in the custom-drawn Design panel.
+    public var accessibilityControls: [CanvasAccessibilityControl] {
+        guard !layout.effectiveRightCollapsed, layout.rightPanelTab == .design else { return [] }
+        return inspector.accessibilityControls
+    }
+
     /// The dropdown key of the panel menu.
     static let menuKey = "panel-menu"
 
@@ -171,32 +183,34 @@ public final class RightPanel {
         c.fillRect(r, PanelTheme.panelBg)
         c.withState {
             c.clip(r)
+            if dockedTab != nil { drawTab(c, r); return }
             let strip = CanvasRect(x: 0, y: 0, width: r.width, height: PanelTabStrip.height)
             PanelTabStrip.drawBackground(c, strip)
-            let tabs: [(RightPanelTab, String, Hit)] = [(.design, "Design", .design), (.easing, "Easing", .easing), (.renders, rendersLabel, .renders)]
-            for (rect, (tab, label, hit)) in zip(PanelTabStrip.tabRects(c, strip, labels: tabs.map(\.1)), tabs) {
-                PanelTabStrip.tab(c, rect, label: label, active: layout.rightPanelTab == tab, hovered: hovered == hit)
-                hits.add(rect, hit)
-            }
             let hide = PanelTabStrip.buttonRect(strip, index: 1), menu = PanelTabStrip.buttonRect(strip, index: 0)
+            drawTabs(c, strip: strip, end: hide.x - PanelTabStrip.buttonGap)
             PanelTabStrip.iconButton(c, hide, icon: .sidebarShowLeft, hovered: hovered == .hide)
             hits.add(hide, .hide)
             PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == Self.menuKey)
             hits.add(menu, .panelMenu)
-            contentRect = CanvasRect(x: 0, y: strip.maxY, width: r.width, height: max(0, r.height - strip.maxY))
-            switch layout.rightPanelTab {
-            case .design: inspector.draw(c, in: contentRect)
-            case .easing: inspector.endAudition(); easing.draw(c, in: contentRect)   // the Design tab's shelf is gone
-            case .renders: inspector.endAudition(); drawRenders(c, contentRect)
-            }
+            drawTab(c, CanvasRect(x: 0, y: strip.maxY, width: r.width, height: max(0, r.height - strip.maxY)))
         }
         if let ring = focus.ringRect(hits) {
             c.withState {
-                if listRect.height > 0, ring.y >= listRect.y - 2, layout.rightPanelTab == .renders { c.clip(listRect) }
+                if listRect.height > 0, ring.y >= listRect.y - 2, shownTab == .renders { c.clip(listRect) }
                 PanelDraw.focusRing(c, ring, radius: PanelTheme.radiusMd)
             }
         }
         dropdown.draw(c)
+    }
+
+    /// The shown tab's content in `rect`.
+    func drawTab(_ c: CanvasContext, _ rect: CanvasRect) {
+        contentRect = rect
+        switch shownTab {
+        case .design: inspector.draw(c, in: contentRect)
+        case .easing: inspector.endAudition(); easing.draw(c, in: contentRect)   // the Design tab's shelf is gone
+        case .renders: inspector.endAudition(); drawRenders(c, contentRect)
+        }
     }
 
     /// What Tab stops on in the header and the Renders tab.
@@ -204,6 +218,25 @@ public final class RightPanel {
         switch h {
         case .content, .job, .listScrollbar: false
         default: true
+        }
+    }
+
+    /// The tab bar is one Tab stop: the selected tab (arrows move between tabs).
+    func isFocusable(_ h: Hit) -> Bool {
+        guard Self.focusable(h) else { return false }
+        switch h {
+        case .design: return layout.rightPanelTab == .design
+        case .easing: return layout.rightPanelTab == .easing
+        case .renders: return layout.rightPanelTab == .renders
+        default: return true
+        }
+    }
+
+    /// The header's controls: the tabs, the overflow button, hide and the panel menu.
+    static func isHeader(_ h: Hit) -> Bool {
+        switch h {
+        case .design, .easing, .renders, .tabOverflow, .hide, .panelMenu: true
+        default: false
         }
     }
 
@@ -558,7 +591,7 @@ public final class RightPanel {
         switch hit {
         case .hide: layout.setRightCollapsed(true)
         case .show: layout.setRightCollapsed(false)
-        case .panelMenu: openPanelMenu()
+        case .panelMenu, .tabOverflow: openMenu(for: hit)
         case .design: layout.setRightTab(.design)
         case .easing: layout.setRightTab(.easing)
         case .renders, .showRenders: layout.setRightTab(.renders)
@@ -622,8 +655,8 @@ public final class RightPanel {
     /// `zoom` (the command key held) zooms the Easing tab's graph instead of panning it.
     public func scroll(_ p: CanvasPoint, dy: Double, precise: Bool = false, zoom: Bool = false) -> Bool {
         if dropdown.isOpen { dropdown.scrollBy(dy); return true }
-        if layout.rightPanelTab == .design { return inspector.scroll(p, dy: dy, precise: precise) }
-        if layout.rightPanelTab == .easing { return easing.scroll(p, dy: dy, zoom: zoom) }
+        if shownTab == .design { return inspector.scroll(p, dy: dy, precise: precise) }
+        if shownTab == .easing { return easing.scroll(p, dy: dy, zoom: zoom) }
         guard listRect.contains(p) else { return false }
         if listScroller.scroll(by: dy, precise: precise, max: listMax) { onAnimate?() }
         return true
@@ -638,32 +671,27 @@ public final class RightPanel {
 
     public var isEditingText: Bool { field != nil || inspector.isEditingText || easing.isEditingText }
 
+    /// Keys: the open popover, then a field being typed, then keyboard focus. On the Design tab the header (tabs,
+    /// hide, panel menu) comes first in the Tab order and the inspector after it; on the Renders tab one focus covers
+    /// the header and the tab's controls.
     public func keyDown(_ k: EditorKey) -> Bool {
         if dropdown.key(k) { onChange?(); return true }
-        if var f = field {
-            switch f.key(k) {
-            case .commit: field = f; commitField()
-            case .cancel: field = nil
-            case .editing: field = f
-            case .none: return false
-            }
+        if field != nil { return fieldKey(k) }
+        if shownTab == .design && !layout.effectiveRightCollapsed { return designKey(k) }
+        if shownTab == .easing && !layout.effectiveRightCollapsed, !(focus.visible && focus.current.map(Self.isHeader) == true), easing.keyDown(k) {
             onChange?(); return true
         }
-        if let handled = tabKeyDown(k) { return handled }
-        switch k.code {
-        case .tab:
-            let moved = focus.move(hits, forward: !k.shift, Self.focusable)
-            onChange?(); return moved
-        case .enter, .space:
-            guard focus.visible, let cur = focus.current, let r = hits.rect(where: { $0 == cur }) else { return false }
-            _ = pointerDown(CanvasPoint(r.midX, r.midY))
-            focus.visible = true; focus.current = cur   // the press keeps keyboard focus where it was
-            onChange?(); return true
-        case .escape:
-            guard focus.visible else { return false }
-            focus.visible = false; onChange?(); return true
-        default: return false
-        }
+        return focusKey(k, forward: { [unowned self] in self.focus.move(self.hits, forward: $0) { self.isFocusable($0) } })
     }
 
+    func fieldKey(_ k: EditorKey) -> Bool {
+        guard var f = field else { return false }
+        switch f.key(k) {
+        case .commit: field = f; commitField()
+        case .cancel: field = nil
+        case .editing: field = f
+        case .none: return false
+        }
+        onChange?(); return true
+    }
 }
