@@ -48,11 +48,16 @@ final class PanelSnapshotTests: XCTestCase {
     /// Asserts pixel (x, y) in points is within `tol` of `hex` on every channel.
     func assertPixel(_ t: CairoImageTarget, _ x: Double, _ y: Double, scale: Double, _ hex: String, tol: Int = 6,
                      file: StaticString = #filePath, line: UInt = #line) {
+        assertPixel(t, x, y, scale: scale, CanvasColor(hex: hex)!, tol: tol, file: file, line: line)
+    }
+
+    /// Asserts pixel (x, y) in points is within `tol` of `want` (a theme token) on every channel.
+    func assertPixel(_ t: CairoImageTarget, _ x: Double, _ y: Double, scale: Double = 1, _ want: CanvasColor, tol: Int = 6,
+                     file: StaticString = #filePath, line: UInt = #line) {
         let p = t.pixel(Int(x * scale), Int(y * scale))
-        let want = CanvasColor(hex: hex)!
         let w = (Int(want.r * 255 + 0.5), Int(want.g * 255 + 0.5), Int(want.b * 255 + 0.5))
         let ok = abs(Int(p.r) - w.0) <= tol && abs(Int(p.g) - w.1) <= tol && abs(Int(p.b) - w.2) <= tol
-        XCTAssertTrue(ok, "pixel (\(x),\(y))@\(scale)x = rgb(\(p.r),\(p.g),\(p.b)), want \(hex)", file: file, line: line)
+        XCTAssertTrue(ok, "pixel (\(x),\(y))@\(scale)x = rgb(\(p.r),\(p.g),\(p.b)), want rgb\(w)", file: file, line: line)
     }
 
     /// A 320×180 test frame (light slide with a dark rule), standing in for a decoded thumbnail.
@@ -180,7 +185,8 @@ final class PanelSnapshotTests: XCTestCase {
             let underlineY = 28.3   // 16 + 26.5/2 - 2 … 29.25
             assertPixel(t, 240 - easeW - 2 - linearW / 2, underlineY, scale: scale, "#4c8df0", tol: 10)
             assertPixel(t, 240 - easeW / 2, underlineY, scale: scale, "#191919")
-            assertPixel(t, 240 - 41 + 14 + 6.5, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)   // 9px diamond centre
+            // 9px diamond centre: the middle of the three 24pt keyframe targets right of the stopwatch (#149).
+            assertPixel(t, 240 - PanelTheme.minTarget * 1.5, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)
         }
     }
 
@@ -401,6 +407,47 @@ final class PanelSnapshotTests: XCTestCase {
             r.inspector.focus.current = .group("layout"); r.inspector.focus.visible = true
             t = snapshot("inspector-focus", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             assertPixel(t, 200, 118, scale: scale, "#4c8df0", tol: 30)
+        }
+    }
+
+    /// Issue #149: the Transform group with keys on both sides of the playhead (rotation on a key), at the right
+    /// panel's default width in the 1440 × 900 and 1280 × 800 windows, dark and light, with the keyboard focus ring
+    /// on each of rotation's four keyframe controls in turn. Each control is a 24pt square with its glyph centred.
+    func testInspectorKeyframeTargets() throws {
+        defer { Theme.setMode(.dark) }
+        for mode in ThemeMode.allCases {
+            Theme.setMode(mode)
+            for (window, height) in [(1440.0, 900.0), (1280.0, 800.0)] {
+                let w = PanelFit.defaults(window).right, size = CanvasSize(w, height)
+                let r = try TargetSizeTests.design(open: "layout", keyed: true)
+                r.draw(PanelMeasureCanvas(), size: size)
+                let watch = try XCTUnwrap(r.inspector.hits.rect { $0 == .stopwatch("rotation") })
+                let diamond = try XCTUnwrap(r.inspector.hits.rect { $0 == .keyframe("rotation") })
+                XCTAssertEqual(diamond.x - watch.x, 2 * PanelTheme.minTarget, "stopwatch, ‹ and ◆ edge to edge")
+                let tag = "inspector-keyframes-\(mode)-\(Int(window))x\(Int(height))"
+                for (name, hit) in [("stopwatch", InspectorPanel.Hit.stopwatch("rotation")), ("prev", .kfPrev("rotation")),
+                                    ("diamond", .keyframe("rotation")), ("next", .kfNext("rotation"))] {
+                    r.inspector.focus.current = hit; r.inspector.focus.visible = true
+                    let t = snapshot("\(tag)-focus-\(name)", w: w, h: height, scale: 1) { r.draw($0, size: size) }
+                    let ring = try XCTUnwrap(r.inspector.hits.rect { $0 == hit })
+                    assertPixel(t, ring.midX, ring.y - 1, PanelTheme.accent, tol: 40)   // the ring just above the target
+                }
+                r.inspector.focus.visible = false
+                let t = snapshot(tag, w: w, h: height, scale: 1) { r.draw($0, size: size) }
+                // Rotation sits on a key: the diamond is filled mint at the centre of its own target.
+                assertPixel(t, diamond.midX, diamond.midY, PanelTheme.mint, tol: 12)
+            }
+            // The slider rows with keyframe controls (opacity, volume) at the 1440 × 900 width and the narrowest panel.
+            let widths = [(PanelFit.defaults(1440).right, "1440x900"), (PanelFit.minRight, "min\(Int(PanelFit.minRight))")]
+            for (group, key) in [("style", "opacity"), ("media", "volume")] {
+                for (w, name) in widths {
+                    let size = CanvasSize(w, 900)
+                    let r = try TargetSizeTests.design(open: group, keyed: true)
+                    snapshot("inspector-keyframes-\(mode)-\(name)-\(group)", w: w, h: 900, scale: 1) { r.draw($0, size: size) }
+                    let next = try XCTUnwrap(r.inspector.hits.rect { $0 == .kfNext(key) })
+                    XCTAssertEqual(next.width, PanelTheme.minTarget); XCTAssertEqual(next.height, PanelTheme.minTarget)
+                }
+            }
         }
     }
 }

@@ -105,9 +105,27 @@ final class TargetSizeTests: XCTestCase {
         return s
     }
 
-    static func design(open group: String) throws -> RightPanel {
+    /// The keyframe-capable properties the keyed fixture animates, with the value each key holds.
+    static let keyedParameters: [(id: String, value: NativeParameterValue)] = [
+        (TimelineEditor.positionId, .vec2(Vec2Value(x: 0, y: 0))), (TimelineEditor.widthId, .number(1280)),
+        (TimelineEditor.heightId, .number(720)), (TimelineEditor.rotationId, .number(15)),
+        (TimelineEditor.scaleId, .vec2(Vec2Value(x: 1.2, y: 1.2))), (TimelineEditor.opacityId, .number(0.8)),
+        (TimelineEditor.volumeId, .number(0.7)),
+    ]
+
+    /// `keyed`: every keyframe-capable property has keys at 0.5 s and 2.5 s and the playhead is at 1.5 s, so each
+    /// row shows its stopwatch, ‹ › (both live) and the diamond; rotation also has a key at 1.5 s (diamond on a key).
+    static func design(open group: String, keyed: Bool = false) throws -> RightPanel {
         let r = RightPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
-        r.inspector.editor = try TimelineEditor(json: TimelineEditor.demoJSON, engine: try? KeyframeRuntime())
+        let editor = try TimelineEditor(json: TimelineEditor.demoJSON, engine: try? KeyframeRuntime())
+        if keyed {
+            for p in keyedParameters {
+                for t in [0.5, 2.5] { XCTAssertTrue(editor.toggleKeyframe(clipId: "clip:a", p.id, time: t, fallback: p.value), "key \(p.id) at \(t)") }
+            }
+            XCTAssertTrue(editor.toggleKeyframe(clipId: "clip:a", TimelineEditor.rotationId, time: 1.5, fallback: .number(15)))
+            r.inspector.time = 1.5
+        }
+        r.inspector.editor = editor
         r.inspector.selection = ["clip:a"]
         if r.inspector.openGroupId != group { r.inspector.toggleGroup(group) }
         return r
@@ -152,6 +170,11 @@ final class TargetSizeTests: XCTestCase {
             maps.append(regions("design", r.hits, in: rightBounds) { $0 == .content })
             maps.append(regions("design/\(group)", r.inspector.hits, in: rightBounds) { $0 == .body })
         }
+        for group in keyedGroups {
+            let r = try design(open: group, keyed: true)
+            r.draw(c, size: rightSize)
+            maps.append(regions("design/\(group)/keyed", r.inspector.hits, in: rightBounds) { $0 == .body })
+        }
         for variant in ["done", "mixed", "error"] {
             let r = renders(variant), size = CanvasSize(409, 900)
             r.draw(c, size: size)
@@ -165,6 +188,13 @@ final class TargetSizeTests: XCTestCase {
         settings.draw(c, size: window)
         maps.append(regions("settings", settings.hits, in: CanvasRect(x: 0, y: 0, width: window.width, height: window.height)) { $0 == .card })
         return maps
+    }
+
+    /// The groups whose rows carry keyframe controls (transform, opacity, volume).
+    static let keyedGroups = ["layout", "style", "media"]
+
+    static func isKeyframeControl(_ action: String) -> Bool {
+        ["stopwatch(", "kfPrev(", "kfNext(", "keyframe("].contains { action.hasPrefix($0) }
     }
 
     /// The failing regions of every state as "<state> <action> <w>x<h>", without the listed exceptions.
@@ -191,6 +221,83 @@ final class TargetSizeTests: XCTestCase {
                        + new.map { "\"\($0)\"," }.joined(separator: "\n"))
         let fixed = Self.knownUndersized.subtracting(found).sorted()
         XCTAssertEqual(fixed, [], "these targets now pass; remove them from knownUndersized:\n" + fixed.joined(separator: "\n"))
+    }
+
+    /// Issue #149: with keys on both sides of the playhead every keyframe row draws all four controls (stopwatch,
+    /// ‹, ◆, ›), each a 24 × 24 target of its own: at least the minimum and overlapping no other target of the row.
+    func testKeyframeControlsAreFullTargetsThatDoNotOverlap() throws {
+        var seen: [String: Int] = [:]
+        // The 1440 × 900 and 1280 × 800 defaults and the narrowest the right panel goes.
+        for (width, group) in [409.0, 364, PanelFit.minRight].flatMap({ w in Self.keyedGroups.map { (w, $0) } }) {
+            let c = PanelMeasureCanvas(), size = CanvasSize(width, 2000), bounds = CanvasRect(x: 0, y: 0, width: width, height: 2000)
+            let r = try Self.design(open: group, keyed: true)
+            r.draw(c, size: size)
+            let map = Self.regions("\(group)@\(Self.fmt(width))", r.inspector.hits, in: bounds) { $0 == .body }.filter { !$0.container }
+            for k in map where Self.isKeyframeControl(k.action) {
+                let kind = String(k.action.prefix { $0 != "(" })
+                seen[kind, default: 0] += 1
+                XCTAssertGreaterThanOrEqual(k.rect.width, Self.minimum, "\(k.state) \(k.action) width")
+                XCTAssertGreaterThanOrEqual(k.rect.height, Self.minimum, "\(k.state) \(k.action) height")
+                for o in map where o.action != k.action {
+                    let a = k.rect, b = o.rect
+                    let overlaps = min(a.maxX, b.maxX) - max(a.x, b.x) > 1e-9 && min(a.maxY, b.maxY) - max(a.y, b.y) > 1e-9
+                    XCTAssertFalse(overlaps, "\(k.state) \(k.action) \(k.rect) overlaps \(o.action) \(o.rect)")
+                }
+            }
+        }
+        // Position, size (both pairs), rotation, scale, opacity and volume: each kind is drawn and audited.
+        for kind in ["stopwatch", "kfPrev", "keyframe", "kfNext"] {
+            XCTAssertGreaterThanOrEqual(seen[kind] ?? 0, 18, "\(kind) drawn on the keyed rows at each width")
+        }
+    }
+
+    /// Codex review of #152: at every right-panel width, down to `PanelFit.minRight`, a keyed slider row (opacity,
+    /// volume) keeps its track a pointer target wide, between its label and its value: the label ends before the
+    /// track starts and the value text starts after the track ends, so the knob never draws over either.
+    func testKeyedSliderRowsKeepTheirTrackClearAtEveryWidth() throws {
+        for width in [409.0, 364, 320, PanelFit.minRight] {
+            for (group, key, label) in [("style", "opacity", "Opacity"), ("media", "volume", "Volume")] {
+                let c = PanelMeasureCanvas(), size = CanvasSize(width, 2000)
+                let r = try Self.design(open: group, keyed: true)
+                r.draw(c, size: size)
+                let track = try XCTUnwrap(r.inspector.hits.rect { $0 == .slider(key) }, "\(key) @\(width)")
+                let stopwatch = try XCTUnwrap(r.inspector.hits.rect { $0 == .stopwatch(key) }, "\(key) @\(width)")
+                XCTAssertGreaterThanOrEqual(track.width, Self.minimum, "\(key) track @\(width)")
+                let row = { (t: (String, CanvasPoint, CanvasFont, CanvasColor)) in abs(t.1.y - track.midY) < track.height / 2 }
+                let texts = c.texts.filter { row($0) && $0.1.x >= 0 && $0.1.x < width }
+                let drawnLabel = try XCTUnwrap(texts.first { $0.0 == label }, "\(key) label drawn in full @\(width)")
+                XCTAssertLessThanOrEqual(drawnLabel.1.x + c.measureText(label, font: drawnLabel.2).width, track.x, "\(key) label clear of the track @\(width)")
+                let value = try XCTUnwrap(texts.first { $0.1.x > track.x && $0.1.x < stopwatch.x }, "\(key) value drawn @\(width)")
+                XCTAssertGreaterThanOrEqual(value.1.x, track.maxX, "\(key) value \(value.0) clear of the track @\(width)")
+            }
+        }
+    }
+
+    /// Issue #149: Tab reaches each keyframe control of a keyed row in reading order (stopwatch, ‹, ◆, ›), and Enter
+    /// on a stepper seeks to the neighbouring key, as a click does.
+    func testKeyboardFocusReachesEachKeyframeControl() throws {
+        let r = try Self.design(open: "layout", keyed: true), c = PanelMeasureCanvas(), size = CanvasSize(409, 2000)
+        var seeks: [Double] = []
+        r.inspector.onSeek = { seeks.append($0) }
+        r.draw(c, size: size)
+        var steps = 0
+        while r.inspector.focus.current != .stopwatch("rotation"), steps < 400 {
+            XCTAssertTrue(r.inspector.keyDown(EditorKey(.tab))); r.draw(c, size: size); steps += 1
+        }
+        XCTAssertEqual(r.inspector.focus.current, .stopwatch("rotation"), "Tab reaches the stopwatch")
+        for want in [InspectorPanel.Hit.kfPrev("rotation"), .keyframe("rotation"), .kfNext("rotation")] {
+            XCTAssertTrue(r.inspector.keyDown(EditorKey(.tab))); r.draw(c, size: size)
+            XCTAssertEqual(r.inspector.focus.current, want)
+            XCTAssertTrue(r.inspector.focus.visible)
+        }
+        XCTAssertTrue(r.inspector.keyDown(EditorKey(.enter)))
+        XCTAssertEqual(seeks, [2.5], "Enter on › seeks to the next key")
+        r.draw(c, size: size)
+        XCTAssertTrue(r.inspector.keyDown(EditorKey(.tab, shift: true))); r.draw(c, size: size)
+        XCTAssertTrue(r.inspector.keyDown(EditorKey(.tab, shift: true))); r.draw(c, size: size)
+        XCTAssertEqual(r.inspector.focus.current, .kfPrev("rotation"), "⇧Tab walks back")
+        XCTAssertTrue(r.inspector.keyDown(EditorKey(.enter)))
+        XCTAssertEqual(seeks, [2.5, 0.5], "Enter on ‹ seeks to the previous key")
     }
 
     /// The rule itself on hand-made maps: a 16 × 16 button alone passes by spacing, two 16 × 16 buttons 20 apart
