@@ -66,10 +66,9 @@ public final class PreviewCompositor: FrameSource {
     /// A raw decoded picture of a clip, the lane and frame it came from, and whether it is the frame being drawn.
     struct Picture { var image: CanvasImage; var frame: Int; var lane: String; var exact: Bool }
     /// The last picture each clip drew: the stand-in of last resort, when the clip's lanes have nothing cached near the
-    /// playhead (least recently used frames evicted, or memory pressure emptied the cache), so a paused seek never
-    /// blanks the clip while its exact frame decodes. One picture per clip in the composition, usually the same
-    /// pixels the cache holds; freed with the clip and by `releaseAll`.
-    var lastPicture: [String: Picture] = [:]
+    /// playhead (its frames evicted by other clips), so a paused seek does not blank the clip while its exact frame
+    /// decodes. Bounded: an eighth of the frame cache budget, clips the last draw drew, nothing under memory pressure.
+    let standIns: PreviewStandIns
     /// Grades frames for display off the main thread (latest request wins).
     public let grader = PreviewGrader()
     /// The renderer that grades preview frames.
@@ -85,6 +84,7 @@ public final class PreviewCompositor: FrameSource {
     public init(decodesMedia: Bool = true, cacheBudgetBytes: Int = MemoryBudget.previewFrames(), background: CanvasColor = CanvasColor(ThemeTokens.stageDefaultBackground)) {
         self.decodesMedia = decodesMedia
         cache = PreviewFrameCache(budgetBytes: cacheBudgetBytes)
+        standIns = PreviewStandIns(budgetBytes: cacheBudgetBytes / 8)
         placeholder = PlaceholderFrameSource(background: background)
         grader.onFinished = { [weak self] in self?.frameReady?() }
     }
@@ -97,7 +97,7 @@ public final class PreviewCompositor: FrameSource {
             cache.removeLane(lane); laneClip[lane] = nil
         }
         for clip in shownLane.keys where !live.contains(clip) { shownLane[clip] = nil }
-        for clip in lastPicture.keys where !live.contains(clip) { lastPicture[clip] = nil }
+        standIns.keepOnly(live)
         grader.keepOnly(live)
     }
 
@@ -111,7 +111,7 @@ public final class PreviewCompositor: FrameSource {
     public func releaseAll() {
         stopAll()
         cache.removeAll()
-        laneClip = [:]; shownLane = [:]; lastPicture = [:]
+        laneClip = [:]; shownLane = [:]; standIns.removeAll()
     }
 
     deinit { for l in lanes.values { l.stop() } }
@@ -176,6 +176,7 @@ public final class PreviewCompositor: FrameSource {
         }
         for (k, lane) in lanes where !used.contains(k) { lane.stop(); lanes[k] = nil }
         lastShown = shown
+        standIns.keepOnly(Set(shown.filter { $0.frame != nil }.map(\.clipId)))   // inactive clips keep no stand-in
 
         // Element clips (no media of their own) keep their labelled box; video/image clips whose file is missing
         // draw nothing, like a media element with an unreadable source.
@@ -187,7 +188,7 @@ public final class PreviewCompositor: FrameSource {
     /// After `pick` was drawn for `layer`: counts a stand-in, keeps the clip's last picture and the lane it drew from.
     func drew(_ pick: Picture, for layer: PreviewLayer) {
         if !pick.exact { heldFrames += 1 }
-        lastPicture[layer.clipId] = pick
+        standIns.store(pick, clip: layer.clipId)
         // A picture from the clip's earlier lane bridges a trim or retime until its own lane draws.
         if pick.lane == layer.laneKey { shownLane[layer.clipId] = layer.laneKey }
     }
@@ -215,7 +216,7 @@ public final class PreviewCompositor: FrameSource {
                 return Picture(image: held.image, frame: held.frame, lane: prev, exact: false)
             }
         }
-        guard var last = lastPicture[layer.clipId] else { return nil }
+        guard var last = standIns.picture(layer.clipId) else { return nil }
         last.exact = false
         return last
     }

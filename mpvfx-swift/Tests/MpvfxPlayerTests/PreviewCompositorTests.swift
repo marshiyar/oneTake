@@ -206,13 +206,14 @@ final class PreviewCompositorTests: XCTestCase {
     }
 
     /// A paused seek into the middle of a GOP shows a picture at once, while the exact frame is still decoding: here
-    /// the clip's last picture, because memory pressure emptied the frame cache. `Shown.exact` stays false until the
-    /// exact frame is decoded and drawn in its place. The decoder's queue is held, so the order is certain.
+    /// the clip's last picture, because another clip's frame evicted its frames from a one-frame cache. `Shown.exact`
+    /// stays false until the exact frame is decoded and drawn in its place. The decoder's queue is held, so the order
+    /// is certain.
     func testAPausedSeekMidGOPDrawsAPictureBeforeTheExactFrameDecodes() throws {
         let dir = try TestMedia.scratch("seek")
         defer { try? FileManager.default.removeItem(at: dir) }
         let src = try Self.redThenBlueMP4(dir.appendingPathComponent("rb.mp4").path)
-        let compositor = PreviewCompositor()
+        let compositor = PreviewCompositor(cacheBudgetBytes: 64 * 32 * 4)   // one decoded frame
         defer { compositor.stopAll() }
         compositor.composition = try Self.singleClip(src)
         let rect = CanvasRect(x: 0, y: 0, width: 64, height: 32)
@@ -227,7 +228,8 @@ final class PreviewCompositorTests: XCTestCase {
         XCTAssertEqual(compositor.lastShown, [.init(clipId: "A", frame: 5, exact: true)])
         XCTAssertGreaterThan(Int(before.images.first?.tag ?? 0), 200, "red at 0.5 s")
 
-        compositor.cache.purge(.critical)
+        compositor.cache.store(Self.solid(9, 0, 0, w: 64, h: 32), lane: "other clip", frame: 0)
+        XCTAssertNil(compositor.cache.nearest(lane: lane.key, to: 15), "the clip's frames were evicted")
         let exactReady = expectation(description: "frame at 1.5 s"); exactReady.assertForOverFulfill = false
         compositor.frameReady = { exactReady.fulfill() }
         lane.queue.suspend()   // the seek's frame cannot decode until the queue is resumed
@@ -256,17 +258,62 @@ final class PreviewCompositorTests: XCTestCase {
         let clipA = try XCTUnwrap(compositor.composition?.layers(at: 0.5).first)
         compositor.cache.store(Self.solid(1, 0, 0), lane: clipA.laneKey, frame: 5)
         compositor.draw(PreviewRecordingCanvas(), in: view, time: 0.5, elements: [])
-        XCTAssertEqual(compositor.lastPicture["A"]?.frame, 5)
+        XCTAssertEqual(compositor.standIns.picture("A")?.frame, 5)
         var without = doc
         without.sequence.tracks[2].clips.removeAll { $0.id == "A" }
         compositor.composition = Self.composition(without)
-        XCTAssertNil(compositor.lastPicture["A"], "a removed clip's last picture is freed with its frames")
+        XCTAssertNil(compositor.standIns.picture("A"), "a removed clip's last picture is freed with its frames")
         compositor.composition = Self.composition(doc)
         compositor.cache.store(Self.solid(1, 0, 0), lane: clipA.laneKey, frame: 5)
         compositor.draw(PreviewRecordingCanvas(), in: view, time: 0.5, elements: [])
-        XCTAssertEqual(compositor.lastPicture["A"]?.frame, 5, "drawn again, kept again")
+        XCTAssertEqual(compositor.standIns.picture("A")?.frame, 5, "drawn again, kept again")
         compositor.releaseAll()
-        XCTAssertTrue(compositor.lastPicture.isEmpty, "closing the project frees every last picture")
+        XCTAssertEqual(compositor.standIns.count, 0, "closing the project frees every last picture")
+    }
+
+    #if os(Windows)
+    /// A drive-letter source is absolute on Windows: it is used as it is, not joined to the project folder.
+    func testAnAbsoluteWindowsSourceIsNotJoinedToTheProjectFolder() throws {
+        var doc = try Self.document()
+        for index in doc.assets.indices where doc.assets[index].id == "a" { doc.assets[index].source = #"C:\media\a.mp4"# }
+        let comp = PreviewComposition(document: doc, projectDir: URL(fileURLWithPath: "/proj"), engine: nil,
+                                      fileExists: { $0 == #"C:\media\a.mp4"# || $0.hasSuffix("b.mp4") })
+        XCTAssertEqual(comp.layers(at: 0).first?.source, #"C:\media\a.mp4"#)
+    }
+    #endif
+
+    /// A clip the last draw did not draw (the playhead left it) keeps no stand-in.
+    func testAClipOffThePlayheadKeepsNoStandIn() throws {
+        let compositor = PreviewCompositor(decodesMedia: false)
+        let view = CanvasRect(x: 0, y: 0, width: 400, height: 200)
+        compositor.composition = Self.composition(try Self.document())
+        let layers = try XCTUnwrap(compositor.composition?.layers(at: 0.5))
+        compositor.cache.store(Self.solid(1, 0, 0), lane: layers[0].laneKey, frame: 5)
+        compositor.cache.store(Self.solid(2, 0, 0), lane: layers[1].laneKey, frame: 3)
+        compositor.draw(PreviewRecordingCanvas(), in: view, time: 0.5, elements: [])
+        XCTAssertNotNil(compositor.standIns.picture("B"))
+        compositor.draw(PreviewRecordingCanvas(), in: view, time: 2.5, elements: [])   // B ends at 2 s
+        XCTAssertNil(compositor.standIns.picture("B"), "B is off the playhead")
+        XCTAssertEqual(compositor.standIns.picture("A")?.frame, 5)
+    }
+
+    /// Stand-ins have a byte budget (least recently stored first, the newest always kept) and memory pressure drops
+    /// them all.
+    func testStandInsStayWithinTheirBudgetAndGoUnderMemoryPressure() {
+        let monitor = MemoryPressureMonitor()
+        let standIns = PreviewStandIns(budgetBytes: 2 * 64, pressure: monitor)   // two 4×4 pictures
+        func picture(_ side: Int) -> PreviewCompositor.Picture {
+            PreviewCompositor.Picture(image: Self.solid(1, 0, 0, w: side, h: side), frame: 0, lane: "L", exact: true)
+        }
+        for clip in ["a", "b", "c"] { standIns.store(picture(4), clip: clip) }
+        XCTAssertNil(standIns.picture("a"), "the least recently stored picture goes first")
+        XCTAssertEqual(standIns.count, 2); XCTAssertEqual(standIns.bytes, 2 * 64)
+        standIns.store(picture(8), clip: "d")   // 256 bytes: alone over the budget
+        XCTAssertEqual(standIns.count, 1, "only the newest is kept")
+        XCTAssertNotNil(standIns.picture("d"))
+        monitor.simulate(.warning)
+        XCTAssertEqual(standIns.count, 0, "memory pressure drops every stand-in")
+        XCTAssertEqual(standIns.bytes, 0)
     }
 
     func testLiveStageEditOverridesBoxRotationAndCrop() throws {

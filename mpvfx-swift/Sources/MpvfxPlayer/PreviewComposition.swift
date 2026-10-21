@@ -131,7 +131,9 @@ public struct PreviewComposition {
                 }
                 guard let asset = assets[clip.assetId], asset.kind == .video || asset.kind == .image,
                       let src = asset.source, !src.isEmpty else { continue }
-                let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
+                // An absolute source in the host's flavor (a drive-letter path on Windows) is used as it is; joining it
+                // to the project folder made every absolute Windows path a missing file.
+                let path = HostPath.isAbsolute(src) ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
                 guard fileExists(path) else { continue }
                 // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
                 guard !sizePending(asset) else { continue }

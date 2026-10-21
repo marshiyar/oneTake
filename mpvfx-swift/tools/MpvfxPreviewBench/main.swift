@@ -205,17 +205,20 @@ func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Do
 }
 
 /// Mean, 95th percentile and maximum of `seconds` in milliseconds, as `<prefix>_mean_ms`, `_p95_ms` and `_max_ms`.
+/// The percentile is the nearest rank, `ceil(0.95 n) - 1` in the sorted samples, as `.github/ci/bench.py` takes it.
 func latencyKeys(_ prefix: String, _ seconds: [Double]) -> [String: String] {
     guard !seconds.isEmpty else { return [:] }
     let sorted = seconds.sorted()
     let mean = seconds.reduce(0, +) / Double(seconds.count)
-    let p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+    let rank = Int((0.95 * Double(sorted.count)).rounded(.up)) - 1
+    let p95 = sorted[max(0, min(sorted.count - 1, rank))]
     return ["\(prefix)_mean_ms": fmt(mean * 1000), "\(prefix)_p95_ms": fmt(p95 * 1000),
             "\(prefix)_max_ms": fmt((sorted.last ?? 0) * 1000)]
 }
 
 /// Random seeks while paused: time until the first picture is on screen (`seek_first_*`: a stand-in such as the
-/// nearest cached frame, or the exact frame when it came first) and until the exact frame is (`seek_*`).
+/// nearest cached frame, or the exact frame when it came first) and until the exact frame is (`seek_*`). A seek that
+/// stalled before any picture adds no first-picture sample; `stalls` counts it.
 func scrub(_ run: Run, seeks: Int, duration: Double) -> [String: String] {
     var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
     var latencies: [Double] = [], firsts: [Double] = []
@@ -226,7 +229,7 @@ func scrub(_ run: Run, seeks: Int, duration: Double) -> [String: String] {
         let first = run.show(Double(frame) / 30, playing: false)
         let exact = now()
         latencies.append(exact - t0)
-        firsts.append((first ?? exact) - t0)
+        if let first { firsts.append(first - t0) }
     }
     var out = latencyKeys("seek", latencies)
     out.merge(latencyKeys("seek_first", firsts)) { $1 }
