@@ -55,6 +55,19 @@ class Scan(unittest.TestCase):
         self.assertEqual(guard.scan(text), [])
 
 
+    def test_elseif_can_import_branch_is_guarded(self):
+        text = "#if os(macOS)\nlet a = 1\n#elseif canImport(CMpvfxVulkan)\nlet r = VulkanColorRenderer()\n#else\nlet v = VulkanColorRenderer()\n#endif\n"
+        self.assertEqual(guard.scan(text), [6])
+
+    def test_block_comment_after_code_spanning_lines_is_ignored(self):
+        text = "let a = 1 /* VulkanColorRenderer\n   vkCreateDevice /* nested */ VulkanColorRenderer\n*/ let b = 2\nlet r = VulkanColorRenderer()\n"
+        self.assertEqual(guard.scan(text), [4])
+
+    def test_raw_and_multiline_strings_are_ignored(self):
+        text = 'let j = #"{"a":"VulkanColorRenderer"}"#\nlet m = """\nVulkanColorRenderer\n"""\nlet r = VulkanColorRenderer()\n'
+        self.assertEqual(guard.scan(text), [5])
+
+
 class Tree(unittest.TestCase):
     def test_no_vulkan_type_outside_can_import_in_sources_or_tools(self):
         """Acceptance: no Sources/ or tools/ file uses a Vulkan type outside canImport(CMpvfxVulkan)."""
