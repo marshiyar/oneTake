@@ -110,7 +110,7 @@ final class CurveGraphTests: XCTestCase {
         if line.count != 1 { problems.append("\(what): \(line.count) curve lines, want 1") }
         // One marker per point the renderer reads (the end points it adds included, none for a hue curve too short to
         // render), so every bend of the line has a handle and no handle sits off the line.
-        let rendered = tab.hue ? GradeCurve.normalizedHue(pts, limit: tab.min...tab.max).count : GradeCurve.normalizedRGB(pts).count
+        let rendered = tab.hue ? GradeCurve.normalizedHue(pts, limit: tab.min...tab.max).count : (tab.min < 0 ? GradeCurve.normalizedDelta(pts) : GradeCurve.normalizedRGB(pts)).count
         if markers.count != rendered { problems.append("\(what): \(markers.count) point markers, want \(rendered)") }
         let stray = line.flatMap(\.points).filter { !(Self.contains(box, $0)) }
         if !stray.isEmpty { problems.append("\(what): line vertices outside the graph \(box): \(stray.prefix(3))") }
@@ -252,4 +252,21 @@ final class RecordingCanvas: CanvasContext {
     func drawText(_ text: String, at origin: CanvasPoint, font: CanvasFont, color: CanvasColor) {}
     func measureText(_ text: String, font: CanvasFont) -> CanvasSize { CanvasSize(Double(text.count) * font.size * 0.55, font.size) }
     func drawImage(_ image: CanvasImage, in rect: CanvasRect) {}
+    func testDeltaCurveGraphMatchesSharedEvaluatorAndEdits() {
+        let raw: [[Double]] = [[0, 0.8], [0.3, -0.7], [0.6, 0.5], [1, -1]]
+        let edit = CurveEditing(hue: false, limit: -1...1)
+        XCTAssertEqual(edit.displayed([]), GradeCurve.flatDelta)
+        XCTAssertNil(edit.stored(GradeCurve.flatDelta))
+        XCTAssertEqual(edit.moving(1, to: [0.3, -0.9], in: raw)[1][1], -0.9)
+        for p in ColorCurveMath.samples(raw, hue: false, limit: -1...1, count: 1023) {
+            XCTAssertEqual(p.y, GradeCurve.valueDelta(raw, at: p.x))
+            XCTAssertEqual(edit.value(raw, at: p.x), p.y)
+        }
+        for key in ColorGrading.deltaCurveKeys {
+            let tab = InspectorPanel.curveTabs.first { $0.key == key }
+            XCTAssertEqual(tab?.hue, false)
+            XCTAssertEqual(tab?.min, -1)
+        }
+    }
+
 }

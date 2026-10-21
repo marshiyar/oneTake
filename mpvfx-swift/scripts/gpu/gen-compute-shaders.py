@@ -164,7 +164,7 @@ def body():
         sys.exit("gen-compute-shaders: texture access section missing")
     b = b[:tex.start()] + "@TEXTURES@\n" + b[tex.end():]
     b = strip_comments(apply_overrides(b))
-    b = rewrite(b, r"\bTex[123]\b", "int", 15)
+    b = rewrite(b, r"\bTex[123]\b", "int", 17)
     b = rewrite(b, r"constant float\* u\b", "int uArg_", 18)
     b = rewrite(b, r"\bu\b(?!\s*\[)", "uArg_", 32)
     b = rewrite(b, r"rows\.read\(uint\(int\((lower|upper)\)\)\)", r"tex1Read(rows, int(\1))", 2)
