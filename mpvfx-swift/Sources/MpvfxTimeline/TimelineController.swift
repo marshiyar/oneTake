@@ -117,7 +117,7 @@ public final class TimelineController {
             let before = all[..<first].filter { t in visible.contains { $0.id == t.id } }.count
             return (g.id, before)
         }
-        view.tracks = visible
+        view.tracks = visible; view.allTracks = all
         // useAutoExpandKeyframedClips: expand a clip when it first gains property lanes.
         let laned = Set(all.flatMap(\.clips).filter { !$0.lanes.isEmpty }.map(\.id))
         view.expandedClips.formUnion(laned.subtracting(clipsWithLanes))
@@ -301,7 +301,7 @@ public final class TimelineController {
         if keyframeGesture != nil { keyframePointerMove(x: x); return }
         guard let g = gesture else {
             if tool == .select, keyframeHover(x: x, y: y) { return }
-            let hit = hitTest(x: x, y: y)
+            let hit = hitTest(x: x, y: y); updateHeaderHover(hit, x: x, y: y)
             var hovered: String?; var cur = Cursor.normal
             if case let .clip(id, _, edge) = hit { hovered = id; cur = edge != nil ? .resize : .pointer }
             if hovered != view.hoveredClip || cur != cursor { view.hoveredClip = hovered; cursor = cur; needsDisplay?() }

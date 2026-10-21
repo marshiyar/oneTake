@@ -55,6 +55,8 @@ public enum PanelTheme {
     public static var panelBorder: CanvasColor { c(T.panelBorderPair) }
     public static var panelBorderInput: CanvasColor { c(T.panelBorderInputPair) }
     public static var panelHairline: CanvasColor { c(T.panelHairlinePair) }
+    public static var checkerLight: CanvasColor { c(T.checkerLightPair) }
+    public static var checkerDark: CanvasColor { c(T.checkerDarkPair) }
     public static var text0: CanvasColor { c(T.textPairs[0]) }
     public static var text1: CanvasColor { c(T.textPairs[1]) }
     public static var text2: CanvasColor { c(T.textPairs[2]) }
@@ -94,6 +96,10 @@ public enum PanelTheme {
     /// White ink and dark scrim for chrome drawn over the picture (the stage stays neutral).
     public static let stageInk = CanvasColor(T.stageInk)
     public static let stageScrim = CanvasColor(T.stageScrim)
+    /// Scope graticule ink, skin-tone line and clipping marks (on the black scope background).
+    public static let scopeInk = CanvasColor(T.scopeInk)
+    public static let scopeSkin = CanvasColor(T.scopeSkin)
+    public static let scopeClip = CanvasColor(T.scopeClip)
 
     // MARK: Derived surfaces used by the shell
     /// A resize seam under the pointer (`white/18`); at rest the seam is the black shell, while dragging the accent.

@@ -92,6 +92,24 @@ SELECT json_object(
 )
 """
 
+/// library_node.cpp:78 the one-statement commands (verbatim), each run with the caller's arguments. A rename changes
+/// only the name column, never an id, so every reference to the event or project stays valid.
+let LIBRARY_CATALOG_STATEMENTS: [String: String] = [
+    "event": "INSERT INTO events VALUES(?1,?2)",
+    "project": "INSERT INTO projects VALUES(?1,?2,?3,'pending')",
+    "projectReady": "UPDATE projects SET state='ready' WHERE id=?1",
+    "renameEvent": "UPDATE events SET name=?2 WHERE id=?1",
+    "renameProject": "UPDATE projects SET name=?2 WHERE id=?1",
+    "asset": "INSERT INTO assets VALUES(?1,?2,?3,?4,?5,?6,?7,'pending')",
+    "assetReady": "UPDATE assets SET state='ready' WHERE id=?1",
+    "relink": "UPDATE assets SET source=?2 WHERE id=?1 AND mode='linked'",
+    "attach": "INSERT INTO placements VALUES(?1,?2,?3) ON CONFLICT(projectId,assetId) DO UPDATE SET path=excluded.path",
+    "job": "INSERT INTO jobs(id,projectId,snapshot,status) VALUES(?1,?2,?3,'rendering')",
+    "jobFinish": "UPDATE jobs SET status=?2,output=?3,error=?4 WHERE id=?1",
+]
+let LIBRARY_CATALOG_RECOVER =
+    "UPDATE jobs SET status='interrupted',error='Application closed before export completion; export again from the saved snapshot' WHERE status='rendering';"
+
 public enum LibraryCatalog {
     /// library_node.cpp:78 command. Returns the catalog snapshot JSON text. N-API argument checks (:118 embedded NUL,
     /// :129 more than 16 arguments) are applied here too.
@@ -109,20 +127,10 @@ public enum LibraryCatalog {
         } else {
             if try d.query("PRAGMA user_version") != "1" { throw LibraryCatalogError("Unsupported library catalog version") }
             try d.exec("BEGIN IMMEDIATE;")
-            switch action {
-            case "event": try d.query("INSERT INTO events VALUES(?1,?2)", args)
-            case "project": try d.query("INSERT INTO projects VALUES(?1,?2,?3,'pending')", args)
-            case "projectReady": try d.query("UPDATE projects SET state='ready' WHERE id=?1", args)
-            case "asset": try d.query("INSERT INTO assets VALUES(?1,?2,?3,?4,?5,?6,?7,'pending')", args)
-            case "assetReady": try d.query("UPDATE assets SET state='ready' WHERE id=?1", args)
-            case "relink": try d.query("UPDATE assets SET source=?2 WHERE id=?1 AND mode='linked'", args)
-            case "attach": try d.query("INSERT INTO placements VALUES(?1,?2,?3) ON CONFLICT(projectId,assetId) DO UPDATE SET path=excluded.path", args)
-            case "job": try d.query("INSERT INTO jobs(id,projectId,snapshot,status) VALUES(?1,?2,?3,'rendering')", args)
-            case "jobFinish": try d.query("UPDATE jobs SET status=?2,output=?3,error=?4 WHERE id=?1", args)
-            case "recover": try d.exec("UPDATE jobs SET status='interrupted',error='Application closed before export completion; export again from the saved snapshot' WHERE status='rendering';")
-            case "read": if !args.isEmpty { throw LibraryCatalogError("Invalid read arguments") }
-            default: throw LibraryCatalogError("Unknown library command")
-            }
+            if let statement = LIBRARY_CATALOG_STATEMENTS[action] { try d.query(statement, args) }
+            else if action == "recover" { try d.exec(LIBRARY_CATALOG_RECOVER) }
+            else if action != "read" { throw LibraryCatalogError("Unknown library command") }
+            else if !args.isEmpty { throw LibraryCatalogError("Invalid read arguments") }
             try d.exec("COMMIT;")
         }
         return try d.query(LIBRARY_CATALOG_SNAPSHOT)

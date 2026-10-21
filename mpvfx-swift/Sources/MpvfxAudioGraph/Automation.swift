@@ -21,8 +21,10 @@ public struct AutomationPoint: Equatable, Sendable {
     public var curve: Double?
     public var viaX: Double?
     public var viaY: Double?
-    public init(t: Double, v: Double, curve: Double? = nil, viaX: Double? = nil, viaY: Double? = nil) {
-        self.t = t; self.v = v; self.curve = curve; self.viaX = viaX; self.viaY = viaY
+    /// Which automatic tool wrote the point (nil: drawn by hand); a tool re-runs over its own points only.
+    public var origin: String?
+    public init(t: Double, v: Double, curve: Double? = nil, viaX: Double? = nil, viaY: Double? = nil, origin: String? = nil) {
+        self.t = t; self.v = v; self.curve = curve; self.viaX = viaX; self.viaY = viaY; self.origin = origin
     }
 }
 
@@ -137,6 +139,12 @@ public enum AudioAutomation {
         var curve: JSONValue? { switch self { case let .json(j): return j["curve"]; case let .point(p): return p.curve.map { .number($0) } } }
         var viaX: JSONValue? { switch self { case let .json(j): return j["viaX"]; case let .point(p): return p.viaX.map { .number($0) } } }
         var viaY: JSONValue? { switch self { case let .json(j): return j["viaY"]; case let .point(p): return p.viaY.map { .number($0) } } }
+        var origin: String? {
+            switch self {
+            case let .json(j): if case let .string(o)? = j["origin"], !o.isEmpty { return o }; return nil
+            case let .point(p): return p.origin?.isEmpty == false ? p.origin : nil
+            }
+        }
     }
 
     static func cleanPoint(_ p: RawPoint, _ range: AutomationRange?) -> AutomationPoint? {
@@ -144,7 +152,7 @@ public enum AudioAutomation {
         let clamped = range.map { min($0.max, max($0.min, v)) } ?? v
         let curve = clampCurve(p.curve)
         let via = clampVia(numberOrNull(p.viaX), numberOrNull(p.viaY))
-        return AutomationPoint(t: max(0, t), v: clamped, curve: curve != 0 ? curve : nil, viaX: via?.x, viaY: via?.y)
+        return AutomationPoint(t: max(0, t), v: clamped, curve: curve != 0 ? curve : nil, viaX: via?.x, viaY: via?.y, origin: p.origin)
     }
 
     static func normalizePoints(_ points: [RawPoint], _ range: AutomationRange?) -> [AutomationPoint] {
@@ -205,6 +213,7 @@ public enum AudioAutomation {
                 var pairs: [(String, JSONValue)] = [("t", .number(p.t)), ("v", .number(p.v))]
                 if let c = p.curve, c != 0 { pairs.append(("curve", .number(c))) }
                 if let x = p.viaX, let y = p.viaY { pairs.append(("viaX", .number(x))); pairs.append(("viaY", .number(y))) }
+                if let o = p.origin, !o.isEmpty { pairs.append(("origin", .string(o))) }
                 return .object(pairs)
             }))])
         }))]))
