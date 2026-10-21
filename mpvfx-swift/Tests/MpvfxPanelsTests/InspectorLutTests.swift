@@ -22,7 +22,7 @@ import XCTest
 internal final class InspectorLutTests: XCTestCase {
     private static let film: String = "/p/luts/film.cube"
     private static let log: String = "/p/luts/log.cube"
-    private let size: CanvasSize = CanvasSize(409, 4_000)
+    private let size = CanvasSize(409, 4_000)
 
     // A1: None, every .cube by name, Import LUT…; each pick is one undo step; Remove clears it; undo restores.
     internal func testPickRemoveAndUndo() throws {
@@ -55,7 +55,7 @@ internal final class InspectorLutTests: XCTestCase {
     internal func testTheSelectOpensTheDropdownAndRemoveIsA24ptButton() throws {
         let (rightPanel, editor): (RightPanel, TimelineEditor) = try panel()
         rightPanel.inspector.grade.lutOpen = true
-        let canvas: PanelMeasureCanvas = PanelMeasureCanvas()
+        let canvas = PanelMeasureCanvas()
         rightPanel.draw(canvas, size: size)
         XCTAssertTrue(canvas.drawnStrings.contains("LUT"))
         XCTAssertTrue(canvas.drawnStrings.contains("None"))
@@ -109,16 +109,16 @@ internal final class InspectorLutTests: XCTestCase {
         let (rightPanel, _): (RightPanel, TimelineEditor) = try panel()
         rightPanel.inspector.lutAssets = { [] }
         rightPanel.inspector.grade.lutOpen = true
-        let canvas: PanelMeasureCanvas = PanelMeasureCanvas()
+        let canvas = PanelMeasureCanvas()
         rightPanel.draw(canvas, size: size)
         let hint: Bool = canvas.drawnStrings.contains { $0.hasPrefix("Choose Import LUT…") }
         XCTAssertTrue(hint, "\(canvas.drawnStrings)")
     }
 
     private func panel(status: LutStatus? = nil) throws -> (RightPanel, TimelineEditor) {
-        let layout: PanelLayoutState = PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1_440)
-        let rightPanel: RightPanel = RightPanel(layout: layout)
-        let editor: TimelineEditor = try TimelineEditor(json: InspectorMediaFitTests.json)
+        let layout = PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1_440)
+        let rightPanel = RightPanel(layout: layout)
+        let editor = try TimelineEditor(json: InspectorMediaFitTests.json)
         rightPanel.inspector.editor = editor
         rightPanel.inspector.selection = ["clip:a"]
         rightPanel.inspector.openGroupId = "grade"
@@ -136,7 +136,7 @@ internal final class InspectorLutTests: XCTestCase {
     private func assertStatusLine(_ status: LutStatus, startsWith prefix: String, color: CanvasColor) throws {
         let (rightPanel, editor): (RightPanel, TimelineEditor) = try panel(status: status)
         try setLut(editor)
-        let canvas: PanelMeasureCanvas = PanelMeasureCanvas()
+        let canvas = PanelMeasureCanvas()
         rightPanel.draw(canvas, size: size)
         let drawn: (String, CanvasPoint, CanvasFont, CanvasColor)? = canvas.texts.first { $0.0.hasPrefix(prefix) }
         let line: (String, CanvasPoint, CanvasFont, CanvasColor) = try XCTUnwrap(drawn, "\(prefix) is drawn")
