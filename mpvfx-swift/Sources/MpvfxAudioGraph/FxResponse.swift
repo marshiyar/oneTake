@@ -43,7 +43,10 @@ public enum AudioFxResponse {
             let k = tan(Double.pi * f / sr), g = type == "highpass" ? 1 / (1 + k) : k / (1 + k)
             return (type == "highpass" ? [g, -g] : [g, g], [1, (k - 1) / (k + 1)])
         }
-        let kind: BiquadType = ["peaking": .peaking, "lowshelf": .lowshelf, "highshelf": .highshelf, "highpass": .highpass][type] ?? .lowpass
+        let kinds: [String: BiquadType] = [
+            "peaking": .peaking, "lowshelf": .lowshelf, "highshelf": .highshelf, "highpass": .highpass,
+        ]
+        let kind: BiquadType = kinds[type] ?? .lowpass
         // BiquadUnit leaves Q at the filter's own default (1) for the shelves, which have no Q knob.
         // The filter's parameters are Float, so the coefficients are made from the Float-rounded values.
         let c = BiquadCoefficients.make(kind, frequency: Double(Float(f)) / (sr / 2), q: Double(Float(p["q"]?.number ?? 1)),
@@ -65,7 +68,10 @@ public enum AudioFxResponse {
         switch node.type {
         case "compressor":
             let knee = 20 * log10(jsMax(1.0001, p.num("knee")))
-            return x + ((node.version ?? 1) >= 2 ? currentKneeGain(x, p.num("threshold"), p.num("ratio"), p.num("knee")) : kneeGain(x, p.num("threshold"), p.num("ratio"), knee)) + p.num("makeup")
+            let reduction: Double = (node.version ?? 1) >= 2
+                ? currentKneeGain(x, p.num("threshold"), p.num("ratio"), p.num("knee"))
+                : kneeGain(x, p.num("threshold"), p.num("ratio"), knee)
+            return x + reduction + p.num("makeup")
         case "limiter":
             return min(x, p.num("limit")) + p.num("level_out")
         case "gate":
