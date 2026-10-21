@@ -75,9 +75,26 @@ class Inputs(unittest.TestCase):
         for s in checkouts:
             self.assertEqual(s["with"]["repository"], "${{ inputs.source_repository || github.repository }}")
             self.assertEqual(s["with"]["ref"], "${{ inputs.source_ref }}")
+            self.assertIs(s["with"]["persist-credentials"], False)   # no token is left for the source's scripts
         steps = [s for j in wf["jobs"].values() for s in j.get("steps", [])]
         package = next(s for s in steps if s.get("name", "").startswith("Package"))
         self.assertEqual(package["env"]["MPVFX_BUILD"], "${{ inputs.source_ref || github.sha }}")
+
+    def test_a_call_naming_a_source_gets_no_signing_secret(self):
+        envs = [s.get("env") or {} for j in workflow("mpvfx-macos.yml")["jobs"].values() for s in j.get("steps", [])]
+        secret = [v for env in envs for v in env.values() if isinstance(v, str) and "secrets." in v]
+        self.assertEqual(len(secret), 5)
+        for value in secret:
+            self.assertIn("inputs.source_ref == '' && secrets.", value)
+
+    def test_cache_keys_follow_the_source_commit(self):
+        steps = [s for j in workflow("mpvfx-macos.yml")["jobs"].values() for s in j.get("steps", [])]
+        # The build caches (macos27-*); the test-pass records are keyed by their inputs' hash instead.
+        keys = [s["with"]["key"] for s in steps
+                if "actions/cache" in s.get("uses", "") and s["with"]["key"].startswith("macos27-")]
+        self.assertEqual(len(keys), 4)
+        for key in keys:
+            self.assertTrue(key.endswith("${{ inputs.source_ref || github.sha }}"), key)
 
 
 class Gate(unittest.TestCase):
