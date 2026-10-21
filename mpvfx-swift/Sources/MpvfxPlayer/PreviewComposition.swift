@@ -92,8 +92,11 @@ public struct PreviewComposition {
         public var path: String
         /// Compositing order key: layout.zIndex, else the track's display row (the top row draws on top).
         public var layer: Double
-        /// The clip's active grade, built once per document.
+        /// The clip's active grade, built once per document (its static grade when `gradeAnimation` is set).
         public var grade: ColorGradeRenderer? = nil
+        /// Set when grade parameters are keyframed (issue #179): the grade is then built per frame from the values
+        /// at that frame, through this memo of the last few frames' renderers.
+        public var gradeAnimation: PreviewGradeAnimation? = nil
     }
 
     public let canvas: CanvasSize
@@ -140,7 +143,9 @@ public struct PreviewComposition {
                 let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
                 let clip = nativeClipWithNaturalLayout(clip, natural: naturalSize(asset),
                                                        canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
-                ordered.append((Entry(clip: clip, kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade), n))
+                var entry = Entry(clip: clip, kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade)
+                entry.gradeAnimation = PreviewGradeAnimation.forClip(clip, projectDir: projectDir?.path)
+                ordered.append((entry, n))
             }
         }
         entries = ordered.sorted { a, b in
@@ -223,7 +228,8 @@ public struct PreviewComposition {
                             box: box, scaleX: sx, scaleY: sy,
                             rotation: (num("transform.rotation") ?? 0) + autoRotate, opacity: opacity, crop: crop)
         out.motionRotation = autoRotate
-        out.grade = e.grade
+        // An animated grade decides on its own (nil there means no active grade at this frame, not "use the static one").
+        out.grade = e.gradeAnimation.map { $0.renderer(e.clip, values: values) } ?? e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.text = e.kind == .text ? c.text : nil
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,

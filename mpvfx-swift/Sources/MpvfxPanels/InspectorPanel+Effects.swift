@@ -31,8 +31,8 @@ public struct EffectsUIState: Equatable {
 /// of the family's looks and effects. Every value is an amount in the clip's grade (undoable).
 extension InspectorPanel {
     func stylizeGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
-        let g = editor.colorGrading(clipId: s.id) ?? ColorGrading()
-        let commit: (ColorGrading) -> Void = { [weak self] n in self?.edited(editor.setColorGrading(clipId: s.id, n)) }
+        let t = time, g = editor.gradeShown(clipId: s.id, time: t)
+        let commit: (ColorGrading) -> Void = { [weak self] n in self?.edited(editor.commitGrade(clipId: s.id, time: t, shown: g, next: n)) }
         if effectsUI.clipId != s.id { effectsUI = EffectsUIState(clipId: s.id) }
         let active = EffectSpecs.all.filter { EffectSpecs.isActive(g, $0.key) }
         let catalogOpen = effectsUI.catalogOpen ?? active.isEmpty
@@ -66,7 +66,9 @@ extension InspectorPanel {
                 rows.append(.init(.slider(.init(key: "fx:\(sel.key)", label: sel.masterLabel, position: v, min: 0, max: sel.max,
                                                 display: fmt(v), format: fmt, tier: .explicitCustom,
                                                 commit: { x in var n = g; n.effects[sel.key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
-                                                reset: { var n = g; n.effects[sel.key] = EffectSpecs.resetValue(effect: sel.key, sel.key); commit(n) })),
+                                                reset: { var n = g; n.effects[sel.key] = EffectSpecs.resetValue(effect: sel.key, sel.key); commit(n) },
+                                                keyframe: NativeGradeParameter.effectKeys.contains(sel.key)
+                                                    ? gradeKeyframe(editor, s, [NativeGradeParameter.effectId(sel.key)], shown: g) : nil)),
                                   rail: true))
             }
             for control in sel.settings {

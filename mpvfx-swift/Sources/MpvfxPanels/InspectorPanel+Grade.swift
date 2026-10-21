@@ -64,8 +64,9 @@ extension InspectorPanel {
     ]
 
     func gradeGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
-        let g = editor.colorGrading(clipId: s.id) ?? ColorGrading()
-        let commit: (ColorGrading) -> Void = { [weak self] next in self?.edited(editor.setColorGrading(clipId: s.id, next)) }
+        // Animated values (issue #179) show their value at the playhead, and an edit of one keys it there.
+        let t = time, g = editor.gradeShown(clipId: s.id, time: t)
+        let commit: (ColorGrading) -> Void = { [weak self] next in self?.edited(editor.commitGrade(clipId: s.id, time: t, shown: g, next: next)) }
         // Sections `space-y-1.5` apart; slider lists `space-y-0.5`.
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
@@ -88,7 +89,8 @@ extension InspectorPanel {
                                         display: "\(Int((g.intensity * 100).rounded()))%", format: { "\(Int($0.rounded()))%" },
                                         tier: g.intensity == 1 ? .default : .explicitCustom,
                                         commit: { v in var n = g; n.intensity = max(0, min(1, v / 100)); commit(n) },
-                                        reset: { var n = g; n.intensity = 1; commit(n) }))))
+                                        reset: { var n = g; n.intensity = 1; commit(n) },
+                                        keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.intensityId], shown: g)))))
         gap(6)
         rows.append(.init(.section("Primary")))
         gap(4)
@@ -99,12 +101,14 @@ extension InspectorPanel {
             rows.append(.init(.slider(.init(key: "grade:adj:\(a.key)", label: a.label, position: v, min: a.min, max: a.max, display: fmt(v), format: fmt,
                                             tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
                                             commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
-                                            reset: { var n = g; n.adjust[a.key] = nil; commit(n) }))))
+                                            reset: { var n = g; n.adjust[a.key] = nil; commit(n) },
+                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g)))))
         }
         gap(6)
         rows.append(.init(.section("Color wheels")))
         gap(6)
         rows.append(.init(.custom(colorWheels(g, commit: commit))))
+        rows.append(wheelKeyframesRow(editor, s, shown: g))
         gap(6)
         rows.append(.init(.section("Curves")))
         gap(6)
@@ -122,7 +126,8 @@ extension InspectorPanel {
         gap(6)
         for (i, key) in ["vignette", "grain"].enumerated() {
             if i > 0 { gap(6) }
-            rows.append(detailSlider(g, key, commit: commit, gear: true))
+            rows.append(detailSlider(g, key, commit: commit, gear: true,
+                                     keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.detailId(key)], shown: g)))
             if grade.finishSettings == key {
                 let tune = key == "vignette" ? ["vignetteMidpoint", "vignetteRoundness", "vignetteFeather"] : ["grainSize", "grainRoughness"]
                 for t in tune { gap(2); rows.append(detailSlider(g, t, commit: commit, gear: false)) }
@@ -172,7 +177,8 @@ extension InspectorPanel {
         })
     }
 
-    func detailSlider(_ g: ColorGrading, _ key: String, commit: @escaping (ColorGrading) -> Void, gear: Bool) -> InspectorRow {
+    func detailSlider(_ g: ColorGrading, _ key: String, commit: @escaping (ColorGrading) -> Void, gear: Bool,
+                      keyframe: InspectorRow.Keyframe? = nil) -> InspectorRow {
         let spec = ColorGrading.detailSliders.first { $0.key == key }!
         let v = g.detail(key) * 100, def = (ColorGrading.detailDefaults[key] ?? 0) * 100
         var row = InspectorRow.Slider(key: "grade:det:\(key)", label: spec.label, position: v, min: spec.min, max: spec.max,
@@ -180,6 +186,7 @@ extension InspectorPanel {
                                       tier: abs(v - def) > 1e-6 ? .explicitCustom : .default,
                                       commit: { x in var n = g; n.details[key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
                                       reset: { var n = g; n.details[key] = nil; commit(n) })
+        row.keyframe = keyframe
         if gear {   // Vignette settings / Grain settings
             row.settings = (grade.finishSettings == key, { [weak self] in
                 guard let self else { return }

@@ -214,6 +214,17 @@ public struct ColorGradeParams: Equatable, Sendable {
         return ColorGradeParams(json: e.parameters ?? NativeJSONObject())
     }
 
+    /// The clip's grade with its animated values at one frame written in (`animated`: grade parameter id -> value,
+    /// issue #179), normalized like any grade, so an animated value is clamped to its contract limit. With no
+    /// animated values this is `clipGrade(_:)`; a switched-off grade stays off; a clip with keys but no grade effect
+    /// animates from the contract defaults.
+    public static func clipGrade(_ clip: NativeProjectClip, animated: [String: Double]) -> ColorGradeParams? {
+        guard !animated.isEmpty else { return clipGrade(clip) }
+        let e = clip.effects.first { $0.effectId == effectId }
+        if let e, !e.enabled { return nil }
+        return ColorGradeParams(json: NativeGradeParameter.writing(animated, into: e?.parameters ?? NativeJSONObject()))
+    }
+
     // MARK: Activity (isHfColorGradingActive)
 
     public var hasWheelGrade: Bool { Self.wheelKeys.contains { k in let w = wheels[k] ?? Wheel(); return abs(w.amount) > 0.0001 || abs(w.level) > 0.0001 } }

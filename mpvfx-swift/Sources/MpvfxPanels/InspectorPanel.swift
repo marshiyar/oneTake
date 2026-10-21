@@ -536,14 +536,14 @@ public final class InspectorPanel {
         var row = r
         if let st = s.settings {
             let gear = CanvasRect(x: r.maxX - 12, y: r.midY - 6, width: 12, height: 12)
-            let hov = hovered == .keyframe(s.key)
+            let hov = hovered == .keyframe(s.key + Self.gearSuffix)
             PanelIcon.phosphor(.gear).draw(c, in: gear, color: hov || st.active ? PanelTheme.text1 : PanelTheme.text4)
-            hits.add(gear.insetBy(-3), .keyframe(s.key))
+            hits.add(gear.insetBy(-3), .keyframe(s.key + Self.gearSuffix))
             row = CanvasRect(x: r.x, y: r.y, width: r.width - 18, height: r.height)
         }
         PanelDraw.text(c, s.label, in: CanvasRect(x: row.x, y: row.midY - 8.25, width: 86, height: 16.5), font: PanelTheme.font(11), color: s.tier.labelColor)
         var right = row.maxX
-        if let kf = s.keyframe, s.settings == nil { right = drawKeyframeNav(c, right: right, midY: row.midY, key: s.key, kf) - 10 }
+        if let kf = s.keyframe { right = drawKeyframeNav(c, right: right, midY: row.midY, key: s.key, kf) - 10 }
         if s.centerTick || s.reset != nil {
             let slot = CanvasRect(x: right - 14, y: row.midY - 5.5, width: 14, height: 11)
             if s.tier == .explicitCustom, s.reset != nil {
@@ -659,6 +659,8 @@ public final class InspectorPanel {
         for r in allRows() { if case .slider(let s) = r.kind, s.key == key { return s } }
         return nil
     }
+    /// Hit key suffix of a slider's settings gear (`.keyframe("<slider key>#gear")`).
+    static let gearSuffix = "#gear"
     func keyframe(_ key: String) -> InspectorRow.Keyframe? { number(key)?.keyframe ?? slider(key)?.keyframe }
     func reset(_ key: String) -> (() -> Void)? { number(key)?.reset ?? slider(key)?.reset }
     func toggle(_ key: String) -> InspectorRow.Toggle? {
@@ -714,7 +716,9 @@ public final class InspectorPanel {
         case .groupReset(let id): buildGroups().first { $0.id == id }?.reset?()
         case .field(let k): if let n = number(k) { field = PanelTextField(key: k, value: n.text) }
         case .scrub(let k): if let s = number(k)?.scrub { scrub = Scrub(key: k, startX: p.x, value: s.value, current: s.value, moved: false) }
-        case .keyframe(let k): if let st = slider(k)?.settings { st.toggle() } else { keyframe(k)?.toggle() }
+        case .keyframe(let k):
+            // A slider's settings gear shares the hit kind under its own key (Vignette and Grain also keyframe).
+            if k.hasSuffix(Self.gearSuffix), let st = slider(String(k.dropLast(Self.gearSuffix.count)))?.settings { st.toggle() } else { keyframe(k)?.toggle() }
         case .kfPrev(let k): keyframe(k)?.prev?()
         case .kfNext(let k): keyframe(k)?.next?()
         case .stopwatch(let k): keyframe(k)?.stopwatch()

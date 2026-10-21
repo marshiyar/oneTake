@@ -20,6 +20,7 @@ import XCTest
 import OneTakeMedia
 @testable import MpvfxShared
 @testable import MpvfxRuntime
+import OneTakeKeyframes
 
 final class ExportPreviewMatchTests: XCTestCase {
     static var root = ""
@@ -41,9 +42,19 @@ final class ExportPreviewMatchTests: XCTestCase {
     }
     var root: String { Self.root }
 
-    /// 96x48 at 10 fps, 2 s.
-    func document() throws -> NativeProjectDocument {
-        try parseNativeProjectDocument(try NativeJSONValue.parse(#"""
+    /// The base clip's grade keyed (issue #179): exposure 0 at its first frame to +1 at its last, linear.
+    static let keyedExposure = #"[{"schemaVersion":1,"id":"param:exposure","parameterId":"grade.adjust.exposure","valueType":"number","frameRate":{"numerator":10,"denominator":1},"keyframes":[{"id":"k0","frame":0,"value":0,"outgoing":{"type":"linear"}},{"id":"k1","frame":19,"value":1,"outgoing":{"type":"linear"}}]}]"#
+
+    /// 96x48 at 10 fps, 2 s; `keyedGrade` animates the base clip's exposure (0 to +1) instead of its static +0.6.
+    func document(keyedGrade: Bool = false) throws -> NativeProjectDocument {
+        let text = Self.documentText.replacingOccurrences(of: "GRAY_EXPOSURE", with: keyedGrade ? "0" : "0.6")
+            .replacingOccurrences(of: "GRAY_TRACKS", with: keyedGrade ? Self.keyedExposure : "[]")
+        let engine = try KeyframeRuntime()
+        installKeyframeEngine(engine)   // export evaluates parameter tracks through the installed engine
+        return try parseNativeProjectDocument(try NativeJSONValue.parse(text), engine: engine)
+    }
+
+    static let documentText = #"""
         {"schemaVersion":1,"mediaEngine":"native","id":"match","revision":0,"frameRate":{"numerator":10,"denominator":1},
          "canvas":{"width":96,"height":48,"background":"#102030"},
          "assets":[{"id":"gray","kind":"video","name":"gray","source":"gray.mov","durationFrames":20},
@@ -61,17 +72,16 @@ final class ExportPreviewMatchTests: XCTestCase {
               "effects":[],"parameterTracks":[]}]},
            {"id":"base","kind":"video","lane":{"authoredTrack":0,"displayTrack":2},"clips":[
              {"id":"gray","assetId":"gray","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,
-              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":{"adjust":{"exposure":0.6}}}],
-              "parameterTracks":[]}]},
+              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":{"adjust":{"exposure":GRAY_EXPOSURE}}}],
+              "parameterTracks":GRAY_TRACKS}]},
            {"id":"music","kind":"audio","lane":{"authoredTrack":3,"displayTrack":3},"clips":[
              {"id":"tone","assetId":"tone","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,"effects":[],"parameterTracks":[]}]}]}}
-        """#))
-    }
+        """#
 
-    func export(_ format: ExportFormat) throws -> (input: NativeTimelineRenderInput, file: Exported) {
-        let output = "\(root)/match.\(format.rawValue)"
+    func export(_ format: ExportFormat, keyedGrade: Bool = false) throws -> (input: NativeTimelineRenderInput, file: Exported) {
+        let output = "\(root)/match\(keyedGrade ? "-keyed" : "").\(format.rawValue)"
         try? FileManager.default.removeItem(atPath: output)
-        let input = NativeTimelineRenderInput(project: try document(), projectDir: root, outputPath: output, format: format, quality: .high)
+        let input = NativeTimelineRenderInput(project: try document(keyedGrade: keyedGrade), projectDir: root, outputPath: output, format: format, quality: .high)
         try renderNativeTimeline(input)
         return (input, Exported(path: output))
     }
@@ -111,6 +121,18 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertEqual(try mp4.file.probe.video?.codec, "h264"); XCTAssertEqual(try mp4.file.probe.audio?.codec, "flac")
         let diffs = try pairs(mp4, [0, 0.5, 1.25, 1.9]).map { meanAbsDiff($0.1, $0.2) }
         XCTAssertEqual(diffs.filter { $0 > 4 }, [], "mean channel difference per frame: \(diffs)")
+    }
+
+    /// Issue #179 A3: a keyframed grade is evaluated per frame in preview and export alike, at the clip's first,
+    /// middle and last frame, and the exposure really ramps (the video's green channel is a constant 128).
+    func testKeyedGradeExportsThePreviewFrameAtTheFirstMiddleAndLastFrame() throws {
+        let mov = try export(.mov, keyedGrade: true)
+        let diffs = try pairs(mov, [0, 1.0, 1.9]).map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let green = try [0.0, 1.0, 1.9].map { t in Int(try mov.file.rgba(t).rgba[(36 * 96 + 40) * 4 + 1]) }
+        XCTAssertLessThan(green[0], green[1], "exposure rises through the clip: \(green)")
+        XCTAssertLessThan(green[1], green[2], "exposure rises through the clip: \(green)")
+        XCTAssertLessThanOrEqual(abs(green[0] - 128), 2, "exposure 0 at the first frame leaves the video as it is: \(green)")
     }
 
     func testCancelledExportLeavesNoFile() throws {
