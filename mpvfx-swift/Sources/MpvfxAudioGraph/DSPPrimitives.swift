@@ -190,7 +190,8 @@ final class GainStage {
     init(_ value: Double, sampleRate: Double) { gain = ParamTimeline(Float(value), sampleRate: sampleRate) }
     func process(_ input: [[Float]], frame: Int) -> [[Float]] {
         let n = input.first?.count ?? 0
-        if !gain.hasEvents {
+        if gain.isConstant {
+            gain.noteConstantRead()
             let g = gain.value
             if g == 1 { return input }
             return input.map { $0.map { $0 * g } }
@@ -200,6 +201,12 @@ final class GainStage {
         for ch in 0..<input.count { for k in 0..<n { out[ch][k] = input[ch][k] * buf[k] } }
         return out
     }
+}
+
+/// `x` with every NaN or infinite sample replaced by 0 (the same planes when all are finite).
+func finiteSamples(_ x: [[Float]]) -> [[Float]] {
+    guard x.contains(where: { $0.contains { !$0.isFinite } }) else { return x }
+    return x.map { $0.map { $0.isFinite ? $0 : 0 } }
 }
 
 @inline(__always) func sum(_ a: [[Float]], _ b: [[Float]]) -> [[Float]] {

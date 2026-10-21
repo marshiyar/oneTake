@@ -18,7 +18,7 @@ import MpvfxTimeline
 import MpvfxPlayer
 import MpvfxPanels
 
-/// Preview features that need the document or the user-data folder: persisted snap/grid/zoom, gesture recording
+/// Preview features that need the document or the user-data folder: persisted snap/grid/zoom, Record motion takes
 /// committed as keyframes (one undo step), assets dropped on the stage, and the z-order "crossed" flash.
 extension EditorSession {
     func installPreview(userData: String) {
@@ -34,7 +34,7 @@ extension EditorSession {
         transport.volume.onChange = { [weak self] v, m in volumeChange?(v, m); self?.player.volumeChosen(v) }
         player.enableGestureRecording(engine: engine, document: { [weak self] in self?.editor.document }) { [weak self] edited, before in
             guard let self, self.editor.document == before else { return false }
-            self.editor.withHistory("Gesture recording") { self.editor.replaceDocument(edited, inverse: .restoreDocument(before)) }
+            self.editor.withHistory(PlayerController.recordMotionUndoLabel) { self.editor.replaceDocument(edited, inverse: .restoreDocument(before)) }
             self.syncStage(); self.redraw()
             return true
         }

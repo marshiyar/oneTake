@@ -15,7 +15,8 @@ import Foundation
 
 /// Platform-neutral key event (GTK/Win32/AppKit hosts translate into this).
 public struct EditorKey: Equatable, Sendable {
-    public enum Code: Equatable, Sendable { case space, left, right, up, down, home, end, delete, backspace, escape, enter, tab, char(Character) }
+    /// `function(n)`: the F-key Fn (F1…F12), which every shell maps from its own key codes.
+    public enum Code: Equatable, Sendable { case space, left, right, up, down, home, end, delete, backspace, escape, enter, tab, char(Character), function(Int) }
     public var code: Code; public var shift = false, ctrl = false, alt = false, meta = false, isRepeat = false
     public init(_ code: Code, shift: Bool = false, ctrl: Bool = false, alt: Bool = false, meta: Bool = false, isRepeat: Bool = false) {
         self.code = code; self.shift = shift; self.ctrl = ctrl; self.alt = alt; self.meta = meta; self.isRepeat = isRepeat

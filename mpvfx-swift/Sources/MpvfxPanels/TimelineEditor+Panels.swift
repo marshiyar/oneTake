@@ -64,6 +64,22 @@ public extension TimelineEditor {
         }
     }
 
+    /// How the clip's picture fills its box as stored (nil: absent, which draws as Fit).
+    func mediaFit(clipId: String) -> NativeMediaFit? { clip(clipId)?.clip.fit }
+
+    /// Sets how the clip's picture fills its box (the inspector's Fit row). Fit, the default, is stored as an absent
+    /// key, as nil is, so a project that never used the option saves unchanged. One undo step; refused on a locked
+    /// track; false when nothing changed.
+    @discardableResult
+    func setMediaFit(clipId: String, _ fit: NativeMediaFit?) -> Bool {
+        let next = fit == .fit ? nil : fit
+        return editClip(clipId) { c in
+            guard c.fit != next else { return false }
+            c.fit = next
+            return true
+        }
+    }
+
     func numberValue(clipId: String, _ parameterId: String, time: Double) -> Double? {
         switch parameterValue(clipId: clipId, parameterId: parameterId, time: time) {
         case .number(let v)?: return v
@@ -216,12 +232,12 @@ public extension TimelineEditor {
         return g
     }
 
-    /// Writes the grade (nil or neutral removes it). One undo step.
+    /// Writes the grade (nil or fully enabled neutral removes it). One undo step.
     @discardableResult
     func setColorGrading(clipId: String, _ grading: ColorGrading?) -> Bool {
         editClip(clipId) { c in
             let i = c.effects.firstIndex { $0.effectId == ColorGrading.effectId }
-            guard let g = grading, g.isAuthored else {
+            guard let g = grading, g.isAuthored || !g.enabled || !g.effectsEnabled else {
                 guard let i else { return false }
                 c.effects.remove(at: i); return true
             }

@@ -5,10 +5,16 @@ name: bench
 # Direct3D 11, Metal), and preview playback and export (MpvfxPreviewBench: 1080p, 4K, stacked, graded, scrub, export).
 # .github/ci/bench.py runs each benchmark as separate processes (default 5), records every sample with p50, p95 and max, the peak memory,
 # the machine and the commit, prints the table into the job summary and saves bench-<os>.json as the artifact
-# bench-<os> (90 days). Runs after every green mpvfx-ci run on main, every Sunday, and by hand with a run count.
+# bench-<os> (90 days). Runs after a green mpvfx-ci run on main (when main has not moved on since), every Sunday,
+# and by hand with a run count.
 # GitHub's hosted runners are shared machines with virtual GPUs (lavapipe, WARP, Apple's paravirtual device): the
 # numbers are for trends between runs of the same class, never for comparing against a developer's machine.
-# Separate from mpvfx-ci on purpose: it never blocks a merge and never publishes anything. The linux and macos
+# Budgets (.github/ci/bench-budgets.json, issue #96): after the benchmarks each job checks its report with bench.py
+# --check. A metric's p50 past its ceiling or floor, a budgeted metric missing from the results, or (on a pull request)
+# a p50 more than 25% worse than main's latest bench run of the same class (.github/ci/bench_base.py) fails the job,
+# with a table of the failed metrics in the job summary. Windows budgets are pending #92 and reported as not checked.
+# Separate from mpvfx-ci on purpose: bench is not a required check (whether it becomes one is the owner's call), so a
+# red bench job marks the pull request without blocking its merge; it never publishes anything. The linux and macos
 # jobs run on OneTake-app/OneTake-actionRunners-1 whenever job runners sends them there, and here only when it does not;
 # windows always runs here.
 
@@ -37,6 +43,9 @@ on:
       - 'mpvfx-swift/Sources/MpvfxColorBench/**'
       - 'mpvfx-swift/tools/MpvfxPreviewBench/**'
       - '.github/ci/bench.py'
+      - '.github/ci/bench_base.py'
+      - '.github/ci/bench-budgets.json'
+      - '.github/ci/test_bench.py'
       - '.github/workflows/bench.yml'
   schedule:
     - cron: '20 4 * * 0'
@@ -73,10 +82,13 @@ jobs:
     # request, asks agentbot (repository_dispatch `runners-bench`) to post the comparison with main. linux and macos
     # below are then skipped; windows always runs here. Without both RUNNERS_APP_* secrets (a fork, or before they are set) nothing is sent and they run
     # here; fork pull requests always run here.
+    # While Windows and macOS are paused (repository variable LINUX_ONLY not false, mpvfx-ci.yml) nothing is sent and
+    # only the Linux benchmark runs, here.
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+      vars.LINUX_ONLY == 'false' && (
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.sha == github.event.workflow_run.head_sha)
       || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-      || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -144,15 +156,20 @@ jobs:
 
   linux:
     # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
+    # Only while main's tip is still the commit that run tested, so a newer, untested commit is never measured and each
+    # green commit is measured once.
     # Runs here only when nothing was sent to OneTake-actionRunners-1 (job runners): every benchmark runs in one place.
     # !cancelled(), not always(): cancelling the run still cancels it.
     needs: runners
     if: >-
       !cancelled() && needs.runners.outputs.sent != 'true'
-      && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository))
+      && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.sha == github.event.workflow_run.head_sha))
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
     timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read   # bench_base.py lists main's bench runs and downloads their artifact
     defaults:
       run:
         shell: bash
@@ -165,12 +182,14 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
             git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
             xvfb xauth dbus-x11 python3 libvulkan-dev mesa-vulkan-drivers
-      # Every event checks out its own commit. After CI on main that is main's head: the commit just tested or a newer
-      # one (bench.py records the commit it measured). No ref comes from the workflow_run event, so nothing it names is
-      # checked out with this workflow's token.
+      # Every event checks out its own commit; after CI on main the job's if: has made sure that is the commit just
+      # tested. No ref comes from the workflow_run event, so nothing it names is checked out with this workflow's token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false   # read-only token, and nothing here uses git against origin
+      - name: Budget check tests
+        working-directory: .
+        run: python3 -I -B .github/ci/test_bench.py
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore the release build cache
@@ -201,24 +220,44 @@ jobs:
             ${{ runner.temp }}/bench.log
           if-no-files-found: ignore
           retention-days: 90
+      - name: Main's latest bench report, the baseline of the regression rule (pull requests)
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -I -B .github/ci/bench_base.py bench-linux "$RUNNER_TEMP/bench/bench-linux.json" "$RUNNER_TEMP/bench-main.json"
+      - name: Budgets (.github/ci/bench-budgets.json)
+        run: |
+          set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
+          python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-linux.json" --budgets ../.github/ci/bench-budgets.json --strict \
+            --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          cat "$RUNNER_TEMP/budgets.log" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
 
   windows:
     # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
+    # Only while main's tip is still the commit that run tested, so a newer, untested commit is never measured and each
+    # green commit is measured once.
     # Always here: compnerd/gha-setup-swift is pinned to an untagged commit (allow list), which a generated copy for
     # the runners repository could not carry without a new allow-list entry.
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+    # Paused with the other Windows and macOS jobs unless the repository variable LINUX_ONLY is false (mpvfx-ci.yml).
+    if: vars.LINUX_ONLY == 'false' && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.sha == github.event.workflow_run.head_sha))
     runs-on: windows-2022
     # The full run took 84-86 min before the export scenarios (about 12 min more: 5 runs each of export and
     # export-serial at about 1 min per run); 90 min cancelled it mid-run.
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read   # bench_base.py lists main's bench runs and downloads their artifact
     defaults:
       run:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      # Every event checks out its own commit. After CI on main that is main's head: the commit just tested or a newer
-      # one (bench.py records the commit it measured). No ref comes from the workflow_run event, so nothing it names is
-      # checked out with this workflow's token.
+      # Every event checks out its own commit; after CI on main the job's if: has made sure that is the commit just
+      # tested. No ref comes from the workflow_run event, so nothing it names is checked out with this workflow's token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false   # read-only token, and nothing here uses git against origin
@@ -255,25 +294,44 @@ jobs:
             ${{ runner.temp }}/bench.log
           if-no-files-found: ignore
           retention-days: 90
+      - name: Main's latest bench report, the baseline of the regression rule (pull requests)
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -I -B .github/ci/bench_base.py bench-windows "$RUNNER_TEMP/bench/bench-windows.json" "$RUNNER_TEMP/bench-main.json"
+      - name: Budgets (.github/ci/bench-budgets.json)
+        run: |
+          set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
+          python -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-windows.json" --budgets ../.github/ci/bench-budgets.json --strict \
+            --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          cat "$RUNNER_TEMP/budgets.log" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
 
   macos:
     # workflow_run: only this repository's own push to main (the branches filter matches a fork's branch named main too).
+    # Only while main's tip is still the commit that run tested, so a newer, untested commit is never measured and each
+    # green commit is measured once.
     # Runs here only when nothing was sent to OneTake-actionRunners-1 (job runners): every benchmark runs in one place.
     # !cancelled(), not always(): cancelling the run still cancels it.
     needs: runners
     if: >-
-      !cancelled() && needs.runners.outputs.sent != 'true'
-      && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository))
+      !cancelled() && vars.LINUX_ONLY == 'false' && needs.runners.outputs.sent != 'true'
+      && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.sha == github.event.workflow_run.head_sha))
     runs-on: xcode-27
     timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read   # bench_base.py lists main's bench runs and downloads their artifact
     defaults:
       run:
         shell: bash
         working-directory: mpvfx-swift
     steps:
-      # Every event checks out its own commit. After CI on main that is main's head: the commit just tested or a newer
-      # one (bench.py records the commit it measured). No ref comes from the workflow_run event, so nothing it names is
-      # checked out with this workflow's token.
+      # Every event checks out its own commit; after CI on main the job's if: has made sure that is the commit just
+      # tested. No ref comes from the workflow_run event, so nothing it names is checked out with this workflow's token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false   # read-only token, and nothing here uses git against origin
@@ -316,3 +374,18 @@ jobs:
             ${{ runner.temp }}/bench.log
           if-no-files-found: ignore
           retention-days: 90
+      - name: Main's latest bench report, the baseline of the regression rule (pull requests)
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -I -B .github/ci/bench_base.py bench-macos "$RUNNER_TEMP/bench/bench-darwin.json" "$RUNNER_TEMP/bench-main.json"
+      - name: Budgets (.github/ci/bench-budgets.json)
+        run: |
+          set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
+          python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-darwin.json" --budgets ../.github/ci/bench-budgets.json --strict \
+            --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          cat "$RUNNER_TEMP/budgets.log" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"

@@ -196,7 +196,7 @@ final class SmokeRunner {
     }
 
     private func pressExport(tries: Int) {
-        guard let right = session.panels?.right, let b = right.hits.rect(where: { $0 == .export }) else {
+        guard let right = session.panels?.rendersPanel, let b = right.hits.rect(where: { $0 == .export }) else {
             if tries > 0 { after(0.5) { [self] in pressExport(tries: tries - 1) } } else { print("[MpVFX] smoke export: no Export button") }
             session.redraw(); return
         }

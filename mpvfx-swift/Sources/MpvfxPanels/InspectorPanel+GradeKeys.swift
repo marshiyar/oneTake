@@ -49,12 +49,12 @@ extension InspectorPanel {
         let keys = ColorGrading.wheelKeys.map { w in
             (key: "grade:wheelkey:\(w)", kf: gradeKeyframe(editor, s, NativeGradeParameter.wheelFields.map { NativeGradeParameter.wheelId(w, $0) }, shown: g))
         }
-        let custom = InspectorCustomRow(id: "grade:wheelkeys", height: 22, draw: { [weak self] c, r, _ in
+        let custom = InspectorCustomRow(id: "grade:wheelkeys", height: Self.keyframeCell, draw: { [weak self] c, r, _ in
             guard let self else { return }
             let gap = 8.0, colW = (r.width - gap * 2) / 3
             for (i, k) in keys.enumerated() {
-                // The nav is 57 wide (stopwatch 16 + 41): its right edge so that it sits centred under the wheel.
-                let right = r.x + Double(i) * (colW + gap) + colW / 2 + 57.0 / 2
+                // Centre the four keyframe cells under each tonal wheel.
+                let right = r.x + Double(i) * (colW + gap) + colW / 2 + Self.keyframeGutter / 2
                 self.drawKeyframeNav(c, right: right, midY: r.midY, key: k.key, k.kf)
             }
         }, pointer: { _, _, _ in })

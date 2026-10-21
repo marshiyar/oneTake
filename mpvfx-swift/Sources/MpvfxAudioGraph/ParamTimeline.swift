@@ -38,6 +38,23 @@ public final class ParamTimeline {
 
     public var hasEvents: Bool { !events.isEmpty }
 
+    /// A live edit's glide toward a new value (never automation: only an un-automated parameter glides).
+    private var liveGlide: LiveGlide?
+    /// Set once a block has read this parameter: an edit before that is a plain assignment.
+    private var rendered = false
+    /// Neither automated nor gliding: every frame reads `value`.
+    public var isConstant: Bool { events.isEmpty && liveGlide == nil }
+    /// Records that a block read `value` without `fill` (a stage's constant fast path), so a later edit glides.
+    public func noteConstantRead() { rendered = true }
+
+    /// Moves the parameter to `target` the way a live edit must: before any block has read it, at once (the unit
+    /// then renders exactly as one built with `target`); afterwards, as a linear glide over `frames` frames from
+    /// the value in effect, so a slider move is not a step in the signal.
+    public func glide(to target: Float, frames: Int) {
+        guard rendered, frames > 0, target != value || liveGlide != nil else { value = target; liveGlide = nil; return }
+        liveGlide = LiveGlide(from: value, to: target, frames: frames)
+    }
+
     public func cancelScheduledValues(_ from: Double) {
         events.removeAll { $0.time >= from }
         resetCursor()
@@ -104,9 +121,35 @@ public final class ParamTimeline {
 
     /// a-rate values for `count` frames starting at context frame `frame`.
     public func fill(frame: Int, count: Int, into out: inout [Float]) {
-        if events.isEmpty { for i in 0..<count { out[i] = value }; return }
+        rendered = true
+        if events.isEmpty {
+            guard var g = liveGlide else { for i in 0..<count { out[i] = value }; return }
+            for i in 0..<count { out[i] = g.next() }
+            value = out[max(0, count - 1)]
+            liveGlide = g.finished ? nil : g
+            return
+        }
         for i in 0..<count { out[i] = valueAt(Double(frame + i) / sampleRate) }
     }
+}
+
+/// A linear glide from one value to another over a fixed number of frames; the last frame is exactly `to`.
+public struct LiveGlide: Sendable {
+    public let from: Float, to: Float, frames: Int
+    private var done = 0
+    public init(from: Float, to: Float, frames: Int) { self.from = from; self.to = to; self.frames = max(1, frames) }
+    public var finished: Bool { done >= frames }
+    public mutating func next() -> Float {
+        done = min(frames, done + 1)
+        return done >= frames ? to : from + (to - from) * Float(done) / Float(frames)
+    }
+}
+
+/// How long a live edit glides: 20 ms, long enough that a jump in gain, frequency or a crossfade between two
+/// graphs is not heard as a click, short enough that the edit is heard at once.
+public enum LiveEdit {
+    public static let glideSeconds = 0.02
+    public static func glideFrames(_ sampleRate: Double) -> Int { max(1, Int((glideSeconds * sampleRate).rounded())) }
 }
 
 /// One AudioParam an automation lane writes, with the knob-to-param unit mapping.
