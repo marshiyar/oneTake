@@ -51,7 +51,16 @@ class Handoff(unittest.TestCase):
         have = step(job, "Runners App configured")
         self.assertEqual(set(have["env"]), {"APP_ID", "APP_KEY"})
         self.assertIn('[ -n "$APP_ID" ] && [ -n "$APP_KEY" ]', have["run"])
-        self.assertEqual(step(job, "Runners App token")["if"], "steps.have.outputs.app == 'true'")
+        self.assertEqual(step(job, "Runners App token")["if"],
+                         "steps.have.outputs.app == 'true' && steps.own.outputs.changed != 'true'")
+
+    def test_a_pull_request_changing_the_swift_job_is_analysed_here(self):
+        job = self.jobs["swift-runners"]
+        own = step(job, "Workflow files this pull request changes")
+        self.assertEqual(own["if"], "github.event_name == 'pull_request'")
+        self.assertEqual(own["env"]["WATCH"], r"^\.github/(workflows/codeql(-swift-source)?\.yml|ci/source_workflows\.py)$")
+        self.assertIn('echo "changed=true"', own["run"])
+        self.assertEqual(job["permissions"]["pull-requests"], "read")
 
     def test_dispatch_names_the_analysed_commit_its_ref_and_the_status_commit(self):
         send = step(self.jobs["swift-runners"], "Hand the Swift analysis")
