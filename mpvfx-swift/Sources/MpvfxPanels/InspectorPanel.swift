@@ -76,12 +76,32 @@ public final class InspectorPanel {
     /// (`toggleOpen` → scroll the open group's header to the top), clamped to the end.
     var scrollOpenGroupToStart = false
     var cropActive: String?
+    /// The host's stage crop tool (one crop session for the inspector and the stage toolbar); nil runs the
+    /// inspector's own session.
+    public var cropLink: InspectorCropLink?
+    /// The open colour picker (InspectorPanel+ColorPicker.swift), nil when closed.
+    public internal(set) var colorPicker: ColorPickerState?
+    /// The colour field whose last typed value was refused; its format hint shows until the next edit.
+    public internal(set) var colorFieldError: String?
+    /// Colours picked in this session, newest first (the picker's recent colours lead with them).
+    public var recentColors: [String] = []
+    /// Host hook: the composited stage frame at about this size, for the colour picker's eyedropper.
+    public var stageFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
     var cropBefore: NativeClipCrop?
     var cropLinkAll = false
     struct Scrub { var key: String; var startX: Double; var value: Double; var current: Double; var moved: Bool }
     var scrub: Scrub?
-    struct SliderDrag { var key: String; var track: CanvasRect; var min: Double; var max: Double; var current: Double; var vertical = false }
+    struct SliderDrag {
+        var key: String; var track: CanvasRect; var min: Double; var max: Double; var current: Double; var vertical = false
+        var detent: Double?
+        /// Where and when the press landed, and whether the pointer has since moved off it (a drag, not a click).
+        var start = CanvasPoint(0, 0), time = 0.0, moved = false
+    }
     var sliderDrag: SliderDrag?
+    /// The last completed, unmoved click on a slider track: a second press on the same slider, within
+    /// `doubleClickInterval` and `doubleClickSlop` of it, resets the slider.
+    var lastSliderClick: (key: String, time: Double, at: CanvasPoint)?
+    public static let doubleClickInterval = 0.4, doubleClickSlop = 4.0
     var lastRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     /// Custom-row drag in flight (row id, part).
     var customDrag: (String, Int)?
@@ -133,6 +153,15 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// Host hook: the composited program frame at the playhead for the Grade scopes' Program mode, at most w x h.
+    public var programScopeFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// What the Grade scopes read (the Scopes row's Clip / Program switch). Every change is saved as
+    /// `PanelPreferences.scopeSource`; `RightPanel.init` restores it.
+    public var scopeSource: ColorScopes.Source = .clip {
+        didSet { if scopeSource != oldValue, let layout { layout.update { $0.scopeSource = scopeSource } } }
+    }
+    /// Analyses scope frames off the draw thread; the host sets its `onReady` to redraw.
+    public let scopeWorker = ScopeWorker()
     public var lutAssets: () -> [String] = { [] }
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,
@@ -232,8 +261,7 @@ public final class InspectorPanel {
         if !selection.isEmpty { audioGroupId = nil }
         if selection.count > 1 { drawMultiSelect(c, r); return nil }
         if let s = selected() {
-            if cropActive != nil && cropActive != s.id { cropActive = nil }
-            if cropActive == s.id && cropBefore == nil { cropBefore = editor.crop(clipId: s.id) ?? NativeClipCrop() }
+            retireStaleEditors(editor, s)
             return drawHeader(c, r, s)
         }
         if let g = selectedBus() { return drawBusHeader(c, r, g) }
@@ -507,7 +535,7 @@ public final class InspectorPanel {
         return true
     }
 
-    public func pointerDown(_ p: CanvasPoint) -> Bool {
+    public func pointerDown(_ p: CanvasPoint, time: Double = Date().timeIntervalSinceReferenceDate) -> Bool {
         focus.pointerPressed()
         // A press ends any audition first, so a pick commits on top of the stored chain, never the auditioned one.
         endAudition()
@@ -516,43 +544,100 @@ public final class InspectorPanel {
         if case .field(let k)? = hit, field?.key == k { return true }
         commitField()
         guard let hit else { return true }
+        if !pressValue(hit, p, time: time) && !pressControl(hit, p) { pressChrome(hit, p) }
+        return true
+    }
+
+    /// A press on a row's value: its field, label scrub or slider track, else its keyframe controls or reset.
+    func pressValue(_ hit: Hit, _ p: CanvasPoint, time: Double) -> Bool {
         switch hit {
-        case .group(let id):
-            toggleGroup(id)
-        case .groupReset(let id): buildGroups().first { $0.id == id }?.reset?()
-        case .groupEnabled(let id): if let g = buildGroups().first(where: { $0.id == id }), let on = g.enabled { g.setEnabled?(!on) }
-        case .field(let k): if let n = number(k) { field = PanelTextField(key: k, value: n.text) }
-        case .scrub(let k): if let s = number(k)?.scrub { scrub = Scrub(key: k, startX: p.x, value: s.value, current: s.value, moved: false) }
+        case .field(let k): openField(k)
+        case .scrub(let k): startScrub(k, at: p)
+        case .slider(let k): pressSlider(k, p, time: time)
+        case .reset(let k): reset(k)?()
+        default: return pressKeyframe(hit)
+        }
+        return true
+    }
+
+    func openField(_ k: String) {
+        guard let n = number(k) else { return }
+        field = PanelTextField(key: k, value: n.text, readOnly: n.readOnly)
+    }
+
+    func startScrub(_ k: String, at p: CanvasPoint) {
+        guard let s = number(k)?.scrub else { return }
+        scrub = Scrub(key: k, startX: p.x, value: s.value, current: s.value, moved: false)
+    }
+
+    /// The keyframe gutter: ◆ (a Finish row's gear sits on its hit), ‹ ›, and the stopwatch.
+    func pressKeyframe(_ hit: Hit) -> Bool {
+        switch hit {
         case .keyframe(let k): keyframeOrGearHit(k)
         case .kfPrev(let k): keyframe(k)?.prev?()
         case .kfNext(let k): keyframe(k)?.next?()
         case .stopwatch(let k): keyframe(k)?.stopwatch()
-        case .reset(let k): reset(k)?()
-        case .slider(let k):
-            if let s = slider(k), let tr = hits.rect(where: { $0 == .slider(k) }) {
-                sliderDrag = SliderDrag(key: k, track: tr, min: s.min, max: s.max, current: s.position, vertical: s.vertical)
-                sliderMove(p)
-            }
-        case .toggle(let k): if let t = toggle(k) { t.set(!t.on) }
+        default: return false
+        }
+        return true
+    }
+
+    /// A press on a control: a toggle, segment, button, effect node or a bespoke row's part.
+    func pressControl(_ hit: Hit, _ p: CanvasPoint) -> Bool {
+        switch hit {
+        case .toggle(let k): toggle(k).map { $0.set(!$0.on) }
         case .segment(let k, let o): segmented(k)?.select(o)
         case .button(let k): button(k)?.action()
         case .fxToggle(let k): fxNode(k)?.toggle()
         case .fxRemove(let k): fxNode(k)?.remove()
-        case .headerClear: audioGroupId = nil; onClearSelection?()
-        case .headerReset: if let editor, let s = selected(), editor.resetDesign(clipId: s.id) { onEdited?() }
-        case .body: break
-        case .scrollbar:
-            if let t = PanelScrollbar.thumb(track: bodyRect, offset: bodyScroll, content: bodyContentHeight) {
-                if !t.contains(p) {   // a press on the track pages the thumb there
-                    bodyScroll = PanelScrollbar.offset(forThumbTop: p.y - t.height / 2, track: bodyRect, content: bodyContentHeight)
-                    scrollbarGrab = t.height / 2
-                } else { scrollbarGrab = p.y - t.y }
-                onEdited?()
-            }
-        case .custom(let id, let part):
-            if let row = customRow(id) { customDrag = (id, part); row.pointer(part, p, 0); onEdited?() }
+        case .custom(let id, let part): pressCustom(id, part, p)
+        default: return false
         }
         return true
+    }
+
+    func pressCustom(_ id: String, _ part: Int, _ p: CanvasPoint) {
+        guard let row = customRow(id) else { return }
+        customDrag = (id, part); row.pointer(part, p, 0); onEdited?()
+    }
+
+    /// A press on the panel itself: a group header, the clip header's buttons, the body or the scrollbar.
+    func pressChrome(_ hit: Hit, _ p: CanvasPoint) {
+        switch hit {
+        case .group(let id): toggleGroup(id)
+        case .groupReset(let id): buildGroups().first { $0.id == id }?.reset?()
+        case .groupEnabled(let id): if let g = buildGroups().first(where: { $0.id == id }), let on = g.enabled { g.setEnabled?(!on) }
+        case .headerClear: audioGroupId = nil; onClearSelection?()
+        case .headerReset: if let editor, let s = selected(), editor.resetDesign(clipId: s.id) { onEdited?() }
+        case .scrollbar: pressScrollbar(p)
+        default: break
+        }
+    }
+
+    func pressScrollbar(_ p: CanvasPoint) {
+        guard let t = PanelScrollbar.thumb(track: bodyRect, offset: bodyScroll, content: bodyContentHeight) else { return }
+        if !t.contains(p) {   // a press on the track pages the thumb there
+            bodyScroll = PanelScrollbar.offset(forThumbTop: p.y - t.height / 2, track: bodyRect, content: bodyContentHeight)
+            scrollbarGrab = t.height / 2
+        } else { scrollbarGrab = p.y - t.y }
+        onEdited?()
+    }
+
+    /// A press on a slider track starts a drag; a second press within `doubleClickInterval` resets it instead.
+    func pressSlider(_ k: String, _ p: CanvasPoint, time: Double) {
+        guard let s = slider(k), let tr = hits.rect(where: { $0 == .slider(k) }) else { return }
+        if let last = lastSliderClick, Self.isDoubleClick(last, key: k, time: time, at: p), let reset = s.reset {
+            lastSliderClick = nil; reset(); return
+        }
+        lastSliderClick = nil
+        sliderDrag = SliderDrag(key: k, track: tr, min: s.min, max: s.max, current: s.position, vertical: s.vertical, detent: s.detent,
+                                start: p, time: time)
+        sliderMove(p)
+    }
+
+    static func isDoubleClick(_ last: (key: String, time: Double, at: CanvasPoint), key: String, time: Double, at p: CanvasPoint) -> Bool {
+        let dt = time - last.time
+        return last.key == key && dt >= 0 && dt <= doubleClickInterval && hypot(p.x - last.at.x, p.y - last.at.y) <= doubleClickSlop
     }
 
     func sliderMove(_ p: CanvasPoint) {
@@ -560,6 +645,8 @@ public final class InspectorPanel {
         let pct = d.vertical ? max(0, min(1, (d.track.maxY - p.y) / max(1, d.track.height)))
             : max(0, min(1, (p.x - d.track.x) / max(1, d.track.width)))
         d.current = d.min + pct * (d.max - d.min)
+        if hypot(p.x - d.start.x, p.y - d.start.y) > Self.doubleClickSlop { d.moved = true }
+        if let detent = d.detent, abs(d.current - detent) <= InspectorRow.Slider.detentReach * (d.max - d.min) { d.current = detent }
         sliderDrag = d
     }
 
@@ -588,11 +675,15 @@ public final class InspectorPanel {
     public func pointerUp(_ p: CanvasPoint) {
         if scrollbarGrab != nil { scrollbarGrab = nil; onEdited?() }
         if let (id, part) = customDrag { customDrag = nil; customRow(id)?.pointer(part, p, 2); onEdited?() }
-        if let d = sliderDrag { sliderDrag = nil; slider(d.key)?.commit(d.current); onEdited?() }
+        if let d = sliderDrag {
+            sliderDrag = nil
+            lastSliderClick = d.moved ? nil : (d.key, d.time, d.start)
+            slider(d.key)?.commit(d.current); onEdited?()
+        }
         if let s = scrub {
             scrub = nil
             if s.moved { number(s.key)?.scrub?.apply(s.current) }
-            else if let n = number(s.key) { field = PanelTextField(key: s.key, value: n.text) }   // click on label focuses
+            else if let n = number(s.key) { field = PanelTextField(key: s.key, value: n.text, readOnly: n.readOnly) }   // click on label focuses
             onEdited?()
         }
     }
@@ -612,16 +703,7 @@ public final class InspectorPanel {
             if moved { revealFocus() }
             onEdited?(); return moved
         }
-        guard var f = field else {
-            if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.keyPress {
-                if handler(part, k) { onEdited?(); return true }
-            }
-            if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
-                if k.code == .escape { focus.visible = false; onEdited?(); return true }
-                return press(cur)
-            }
-            return bodyKey(k)
-        }
+        guard var f = field else { return unfocusedKey(k) }
         switch f.key(k) {
         case .commit: field = f; commitField(); onEdited?(); return true
         case .cancel: field = nil; onEdited?(); return true
@@ -647,6 +729,27 @@ extension InspectorPanel {
         case .body, .scrollbar, .scrub, .slider: false
         default: true
         }
+    }
+
+    /// A crop session or colour picker opened on another clip ends when the selection moves on.
+    func retireStaleEditors(_ editor: TimelineEditor, _ s: Selected) {
+        if cropActive != nil && cropActive != s.id { cropActive = nil }
+        if cropActive == s.id && cropBefore == nil { cropBefore = editor.crop(clipId: s.id) ?? NativeClipCrop() }
+        if let cp = colorPicker, cp.clipId != s.id { colorPicker = nil }
+    }
+
+    /// Keys with no field open: the colour picker's first, then Enter / Space / Esc on the focused control, then the
+    /// Grade's own keys.
+    func unfocusedKey(_ k: EditorKey) -> Bool {
+        if let handled = pickerKey(k) { return handled }
+        if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.keyPress {
+            if handler(part, k) { onEdited?(); return true }
+        }
+        if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
+            if k.code == .escape { focus.visible = false; onEdited?(); return true }
+            return press(cur)
+        }
+        return bodyKey(k)
     }
 
     /// Enter / Space on the focused control: a press at its centre (and release, for drags and bespoke rows).

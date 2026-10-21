@@ -49,9 +49,9 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Ability | Swift status | Visual |
 | --- | --- | --- |
 | Media-first header row: the library ▸ event switcher (one menu of libraries and events), Import (the primary button) and "…" | done (panels UI over `DesktopBackend` libraries; `LeftSidebarPanel+Header.swift`, `MediaPanelTests`) | n/a |
-| "…" menu: New library, Open library, New event, Import into the event (copy into library / link originals), Show library in Finder (Files, File Explorer), the event's projects (switch), New project, Open project…, Open existing standalone project, Recent projects | done (`LeftSidebarPanel+Menus.swift`, `testMoreMenuRunsEveryLibraryAndProjectAction`) | n/a |
-| Library media (files of the event not yet in this project) and Exports as grid sections and filter choices; add to the timeline, relink and Save as… on the tile (hover button, context menu, Enter) | done (`MediaSections.swift`, `testLibraryMediaAndExportsAreSectionsWithoutDuplicates`, `testTileHoverActionAddsAttachesAndSaves`) | n/a |
-| Export records "Save to…" | partial: Save as… on a finished export's tile | n/a |
+| "…" menu: New library, Open library, New event, Import into the event (copy into library / link originals), Show library in Finder (Files, File Explorer), Rename event, the event's projects (switch), Rename project, New project, Open project…, Open existing standalone project, Recent projects | done (`LeftSidebarPanel+Menus.swift`, `testMoreMenuRunsEveryLibraryAndProjectAction`) | n/a |
+| Library media (files of the event not yet in this project) and Exports as grid sections and filter choices; add to the timeline, relink and Save to… on the tile (hover button, context menu, Enter) | done (`MediaSections.swift`, `testLibraryMediaAndExportsAreSectionsWithoutDuplicates`, `testTileHoverActionAddsAttachesAndSaves`) | n/a |
+| Export records "Save to…" | done: a finished export's tile saves with the export extension and reports errors without replacing an unapproved destination (`LibrarySaveToTests`, `LibraryServiceTests`) | n/a |
 | The standalone project status | done: the switcher's tooltip and status-line hint | n/a |
 | Tab bar Media / Scenes / Elements (Scenes only with sub-compositions, Elements only with blocks) | done (Elements never shows: blocks dropped) | exact |
 | Tab persisted, ←/→ and ⌘1/⌘2 tab switching | done | n/a |
@@ -111,7 +111,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
 | Grade: copy grade to current file media / all project media | done | close |
-| Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma histogram, luma waveform, RGB parade and vectorscope work for the selected clip; program scopes, RGB histogram, RGB overlay waveform, CIE diagram, false colour and full-size view are missing | close |
+| Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma waveform, RGB overlay, RGB parade, vectorscope with targets, skin line and zoom, luma + RGB histogram and false colour work for the selected clip or the composited program (Clip / Program switch), up to four at once (`docs/SCOPES.md`); CIE diagram and a full-size view are missing | close |
 | Grade: hold to show original; captured-frame preset preview thumbnails | missing (panels) | n/a |
 | Effects: amount per stylize effect (18), reset effects | done; renders in preview and export (Metal kernels on macOS, incl. blur/bloom/Kuwahara passes) (schema in `docs/EFFECTS.md`) | close |
 | Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | missing (panels; the renderer already reads every setting and the palette) | n/a |

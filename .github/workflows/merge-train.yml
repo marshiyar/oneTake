@@ -29,9 +29,11 @@ permissions: {}
 
 jobs:
   # `queue` was added (by the owner or the App): note the head commit queued (the train takes exactly that commit).
+  # Off unless the repository variable MERGE_TRAIN is true (owner ruling 2026-10-21: PRs are merged directly, never
+  # queued). Nothing is deleted.
   record:
     if: >-
-      github.event_name == 'pull_request_target' && github.event.action == 'labeled' &&
+      vars.MERGE_TRAIN == 'true' && github.event_name == 'pull_request_target' && github.event.action == 'labeled' &&
       github.event.label.name == 'queue'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -67,7 +69,7 @@ jobs:
   train:
     needs: record
     if: >-
-      always() && needs.record.result != 'failure' && (
+      always() && vars.MERGE_TRAIN == 'true' && needs.record.result != 'failure' && (
         (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
         github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'pull_request_target' && github.event.action == 'labeled' &&
