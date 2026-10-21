@@ -48,11 +48,16 @@ final class PanelSnapshotTests: XCTestCase {
     /// Asserts pixel (x, y) in points is within `tol` of `hex` on every channel.
     func assertPixel(_ t: CairoImageTarget, _ x: Double, _ y: Double, scale: Double, _ hex: String, tol: Int = 6,
                      file: StaticString = #filePath, line: UInt = #line) {
+        assertPixel(t, x, y, scale: scale, CanvasColor(hex: hex)!, tol: tol, file: file, line: line)
+    }
+
+    /// Asserts pixel (x, y) in points is within `tol` of `want` (a theme token) on every channel.
+    func assertPixel(_ t: CairoImageTarget, _ x: Double, _ y: Double, scale: Double = 1, _ want: CanvasColor, tol: Int = 6,
+                     file: StaticString = #filePath, line: UInt = #line) {
         let p = t.pixel(Int(x * scale), Int(y * scale))
-        let want = CanvasColor(hex: hex)!
         let w = (Int(want.r * 255 + 0.5), Int(want.g * 255 + 0.5), Int(want.b * 255 + 0.5))
         let ok = abs(Int(p.r) - w.0) <= tol && abs(Int(p.g) - w.1) <= tol && abs(Int(p.b) - w.2) <= tol
-        XCTAssertTrue(ok, "pixel (\(x),\(y))@\(scale)x = rgb(\(p.r),\(p.g),\(p.b)), want \(hex)", file: file, line: line)
+        XCTAssertTrue(ok, "pixel (\(x),\(y))@\(scale)x = rgb(\(p.r),\(p.g),\(p.b)), want rgb\(w)", file: file, line: line)
     }
 
     /// A 320×180 test frame (light slide with a dark rule), standing in for a decoded thumbnail.
@@ -403,15 +408,6 @@ final class PanelSnapshotTests: XCTestCase {
             t = snapshot("inspector-focus", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             assertPixel(t, 200, 118, scale: scale, "#4c8df0", tol: 30)
         }
-    }
-
-    /// Pixel (x, y) at 1x is within `tol` of `want` on every channel.
-    func assertPixel(_ t: CairoImageTarget, _ x: Double, _ y: Double, _ want: CanvasColor, tol: Int,
-                     file: StaticString = #filePath, line: UInt = #line) {
-        let p = t.pixel(Int(x), Int(y))
-        let w = (Int(want.r * 255 + 0.5), Int(want.g * 255 + 0.5), Int(want.b * 255 + 0.5))
-        let ok = abs(Int(p.r) - w.0) <= tol && abs(Int(p.g) - w.1) <= tol && abs(Int(p.b) - w.2) <= tol
-        XCTAssertTrue(ok, "pixel (\(x),\(y)) = rgb(\(p.r),\(p.g),\(p.b)), want rgb\(w)", file: file, line: line)
     }
 
     /// Issue #149: the Transform group with keys on both sides of the playhead (rotation on a key), at the right
