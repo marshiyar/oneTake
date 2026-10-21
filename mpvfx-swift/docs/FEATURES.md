@@ -123,6 +123,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Audio group bus rack (opened from the timeline group header FX / name buttons) | done (de10f47): the inspector shows the bus's FX chain and Group volume; a popover form is not drawn (panels-visual) | close |
 | Audio group volume | done | exact |
 | Renders tab: format / output size / frame rate / quality, custom width, Export | done (settings in `preferences.json`; export through `RenderRun`, 38d06b3). Output size scales the composition with its aspect kept: "Composition" (its own size), 720p … 8K by the short edge (720p of a 9:16 composition is 720×1280), or a custom width with the height following (`CompositionRenderResolution.swift`); a fixed preset saved earlier reads as its short edge. Formats are the media engine's: MP4 and MOV (PNG, alpha); WebM is not offered (a saved WebM setting shows "WebM (not supported yet)" and Export refuses it) | close |
+| Renders tab: named export presets | implemented: save or update a name, apply all settings, and delete; per-user `render-presets.json` uses the durable writer. Unreadable or malformed files are reported with their path and preserved; unsupported formats remain visible with a reason and cannot be applied | close |
 | Render list: progress, stage, cancel, delete, reveal, retry, hide finished, history across launches, thumbnails | done (38d06b3; real-render test) | close |
 | Render list: ETA | missing (panels) | n/a |
 | Caption property panel (style, animation entrance/exit/highlight, transform) | missing (unowned) | n/a |

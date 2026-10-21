@@ -113,6 +113,27 @@ extension SessionPanels {
 
     func wireRenders() {
         rendersPanel.settings = RenderSettingsBridge.model(preferences.renderSettings)
+        let store = RenderPresetStore(userData: userData)
+        do { rendersPanel.renderPresets = try store.load() }
+        catch { rendersPanel.actionError = "\(error)" }
+        rendersPanel.onSavePreset = { [weak self] name, settings in
+            guard let self else { return }
+            do {
+                self.rendersPanel.renderPresets = try store.save(name: name, settings: settings)
+                self.rendersPanel.presetName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                self.rendersPanel.actionError = nil
+            } catch { self.rendersPanel.actionError = "\(error)" }
+            self.redraw()
+        }
+        rendersPanel.onDeletePreset = { [weak self] name in
+            guard let self else { return }
+            do {
+                self.rendersPanel.renderPresets = try store.delete(name: name)
+                self.rendersPanel.presetName = ""
+                self.rendersPanel.actionError = nil
+            } catch { self.rendersPanel.actionError = "\(error)" }
+            self.redraw()
+        }
         rendersPanel.onSettingsChanged = { [weak self] m in self?.preferences.renderSettings = RenderSettingsBridge.json(m) }
         rendersPanel.onRender = { [weak self] action in self?.renderAction(action) }
     }
