@@ -64,6 +64,14 @@ public final class InspectorPanel {
     /// Set by showKeyframeEasing: the next layout scrolls the open group's "Keyframe easing" rows into view.
     var revealEasingRows = false
     var cropActive: String?
+    /// The open colour picker (InspectorPanel+ColorPicker.swift), nil when closed.
+    public internal(set) var colorPicker: ColorPickerState?
+    /// The colour field whose last typed value was refused; its format hint shows until the next edit.
+    public internal(set) var colorFieldError: String?
+    /// Colours picked in this session, newest first (the picker's recent colours lead with them).
+    public var recentColors: [String] = []
+    /// Host hook: the composited stage frame at about this size, for the colour picker's eyedropper.
+    public var stageFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
     var cropBefore: NativeClipCrop?
     var cropLinkAll = false
     struct Scrub { var key: String; var startX: Double; var value: Double; var current: Double; var moved: Bool }
@@ -195,8 +203,7 @@ public final class InspectorPanel {
         if selection.count > 1 { drawMultiSelect(c, r); return }
         let headerH: Double
         if let s = selected() {
-            if cropActive != nil && cropActive != s.id { cropActive = nil }
-            if cropActive == s.id && cropBefore == nil { cropBefore = editor.crop(clipId: s.id) ?? NativeClipCrop() }
+            retireStaleEditors(editor, s)
             headerH = drawHeader(c, r, s)
         } else if let g = selectedBus() {
             headerH = drawBusHeader(c, r, g)
@@ -454,11 +461,12 @@ public final class InspectorPanel {
         if n.scrub != nil && !n.disabled { hits.add(labelHit, .scrub(n.key)) }
         let fieldX = compact ? labelRect.maxX + 4 : max(labelRect.maxX + 12, right - 146)
         let field = CanvasRect(x: fieldX, y: r.midY - 9.25, width: max(0, right - fieldX), height: 18.5)
+        let textX = n.swatch.map { drawSwatchSlot($0, field: field, midY: r.midY, c) } ?? field.x
         let editing = self.field?.key == n.key
         var text = n.text
         if let s = scrub, s.key == n.key, let fmt = n.scrub?.format { text = fmt(s.current) }
         if editing, let f = self.field { text = f.draft }
-        let tr = CanvasRect(x: field.x, y: field.y, width: field.width, height: 16.5)
+        let tr = CanvasRect(x: textX, y: field.y, width: max(0, field.maxX - textX), height: 16.5)
         if editing { c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput) }
         PanelDraw.text(c, text, in: tr, font: font,
                        color: n.tier.valueInk(disabled: n.disabled, typing: editing, adjusting: scrub?.key == n.key), align: .right)
@@ -470,6 +478,7 @@ public final class InspectorPanel {
             : PanelTheme.panelBorderInput.withAlpha(isHover ? 1 : 0.5)
         c.fillRect(CanvasRect(x: field.x, y: field.maxY - 1, width: field.width, height: 1).snapped, editing ? PanelTheme.accent : underline)
         if !n.disabled { hits.add(CanvasRect(x: field.x, y: r.y, width: field.width, height: r.height), .field(n.key)) }
+        if let sw = n.swatch { hits.add(Self.swatchTarget(field: field, midY: r.midY), .button(sw.key)) }   // after the field: it wins
     }
 
     /// Keyframe controls on the property's row (docs/DESIGN.md Rollout 5): the 12px stopwatch (Phosphor Timer, the
@@ -803,13 +812,7 @@ public final class InspectorPanel {
             if moved { revealFocus() }
             onEdited?(); return moved
         }
-        guard var f = field else {
-            if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
-                if k.code == .escape { focus.visible = false; onEdited?(); return true }
-                return press(cur)
-            }
-            return gradeKey(k)
-        }
+        guard var f = field else { return unfocusedKey(k) }
         switch f.key(k) {
         case .commit: field = f; commitField(); onEdited?(); return true
         case .cancel: field = nil; onEdited?(); return true
@@ -835,6 +838,24 @@ extension InspectorPanel {
         case .body, .scrollbar, .scrub, .slider: false
         default: true
         }
+    }
+
+    /// A crop session or colour picker opened on another clip ends when the selection moves on.
+    func retireStaleEditors(_ editor: TimelineEditor, _ s: Selected) {
+        if cropActive != nil && cropActive != s.id { cropActive = nil }
+        if cropActive == s.id && cropBefore == nil { cropBefore = editor.crop(clipId: s.id) ?? NativeClipCrop() }
+        if let cp = colorPicker, cp.clipId != s.id { colorPicker = nil }
+    }
+
+    /// Keys with no field open: the colour picker's first, then Enter / Space / Esc on the focused control, then the
+    /// Grade's own keys.
+    func unfocusedKey(_ k: EditorKey) -> Bool {
+        if let handled = pickerKey(k) { return handled }
+        if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
+            if k.code == .escape { focus.visible = false; onEdited?(); return true }
+            return press(cur)
+        }
+        return gradeKey(k)
     }
 
     /// Enter / Space on the focused control: a press at its centre (and release, for drags and bespoke rows).

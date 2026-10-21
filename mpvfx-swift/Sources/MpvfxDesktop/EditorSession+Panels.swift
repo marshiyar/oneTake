@@ -458,6 +458,14 @@ final class SessionPanels {
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { renderer.reset() }
+        inspector.stageFrame = { [weak inspector] w, h in
+            guard let inspector else { return .unavailable }
+            switch renderer.programFrame(time: inspector.time, pixelWidth: w, pixelHeight: h) {
+            case .ready(let img): return .ready(img)
+            case .rendering: return .rendering
+            case .unavailable: return .unavailable
+            }
+        }
         inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
             guard let self, let inspector else { return .unavailable }
             let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time

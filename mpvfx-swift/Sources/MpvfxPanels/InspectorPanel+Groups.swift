@@ -68,7 +68,7 @@ extension InspectorPanel {
     func edited(_ op: @autoclosure () -> Bool, label: String? = nil) {
         let title = label ?? buildGroupTitle()
         let ok = editor?.withHistory(title) { op() } ?? op()
-        if ok { onEdited?() }
+        if ok { colorFieldError = nil; onEdited?() }
     }
     private func buildGroupTitle() -> String {
         switch openGroupId {

@@ -52,6 +52,8 @@ public enum PanelTheme {
     public static var panelBorder: CanvasColor { c(T.panelBorderPair) }
     public static var panelBorderInput: CanvasColor { c(T.panelBorderInputPair) }
     public static var panelHairline: CanvasColor { c(T.panelHairlinePair) }
+    public static var checkerLight: CanvasColor { c(T.checkerLightPair) }
+    public static var checkerDark: CanvasColor { c(T.checkerDarkPair) }
     public static var text0: CanvasColor { c(T.textPairs[0]) }
     public static var text1: CanvasColor { c(T.textPairs[1]) }
     public static var text2: CanvasColor { c(T.textPairs[2]) }
