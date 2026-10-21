@@ -15,7 +15,7 @@
 // document; `throws` only for re-parse failures outside a try and engine errors from slicing.
 import Foundation
 
-public struct NativeProjectClipAddress: Codable, Equatable, Hashable {
+public struct NativeProjectClipAddress: Codable, Equatable, Hashable, Sendable {
     public var sequenceId: String, trackId: String, clipId: String
     public init(sequenceId: String, trackId: String, clipId: String) { self.sequenceId = sequenceId; self.trackId = trackId; self.clipId = clipId }
 }
@@ -40,7 +40,7 @@ public indirect enum NativeProjectClipCommand: Equatable {
     case restoreDocument(NativeProjectDocument)
 }
 
-public enum NativeProjectClipFailureCode: String, Codable {
+public enum NativeProjectClipFailureCode: String, Codable, Sendable {
     case missingSequence = "missing-sequence", missingSourceTrack = "missing-source-track", missingDestinationTrack = "missing-destination-track"
     case missingClip = "missing-clip", incompatibleDestination = "incompatible-destination", invalidStartFrame = "invalid-start-frame"
     case duplicateTarget = "duplicate-target", destinationCollision = "destination-collision", invalidTrim = "invalid-trim"

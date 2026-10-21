@@ -28,6 +28,9 @@ public final class ExportFramePainter {
     public let pad: CanvasColor
     private let canvas: RasterCanvas
     private let grader: PreviewGrader
+    /// false paints the pad, then the background over it, even where the background covers the whole output (the
+    /// reference the one-pass background is checked against).
+    var singlePassBackground = true
 
     public init(composition: PreviewComposition, width: Int, height: Int, pad: CanvasColor) throws {
         self.composition = composition; self.width = width; self.height = height; self.pad = pad
@@ -43,6 +46,11 @@ public final class ExportFramePainter {
         return (CanvasRect(x: (Double(width) - w) / 2, y: (Double(height) - h) / 2, width: w, height: h), s)
     }
 
+    /// The project canvas lands on the whole output, edge to edge in whole pixels (no pad shows).
+    func fillsTheOutput(_ rect: CanvasRect) -> Bool {
+        rect.x == 0 && rect.y == 0 && rect.width == Double(width) && rect.height == Double(height)
+    }
+
     /// The layers visible at `time`, with the output pixel size each one is drawn at (what to decode).
     public func layers(at time: Double) -> [(layer: PreviewLayer, width: Int, height: Int)] {
         let s = frame.scale
@@ -55,9 +63,15 @@ public final class ExportFramePainter {
 
     /// One output frame as straight-alpha RGBA8 (`width` × `height` × 4 bytes); throws the first drawing failure.
     public func paint(time: Double, frames: FrameProvider) throws -> CanvasImage {
-        canvas.clear(pad)
         let (rect, s) = frame
-        canvas.fillRect(rect, composition.background)
+        if singlePassBackground && fillsTheOutput(rect) && composition.background.a >= 1 {
+            // The opaque background covers every pixel the pad would: one pass instead of two over the frame (about
+            // 13 of 115 ms per 1080p frame, issue #98), with the same bytes (ExportFramePainterTests).
+            canvas.clear(composition.background)
+        } else {
+            canvas.clear(pad)
+            canvas.fillRect(rect, composition.background)
+        }
         let frameIndex = composition.frameIndex(at: time)
         for (layer, w, h) in layers(at: time) {
             if layer.kind == .text {
