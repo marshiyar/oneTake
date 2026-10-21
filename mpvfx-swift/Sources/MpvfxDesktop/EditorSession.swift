@@ -490,9 +490,10 @@ final class EditorSession {
             if let l = live[e.id] { return l }
             let base = stageBase(e.id, kind: e.kind, time: t)
             let tr = editor.transform(clipId: e.id, time: t)
-            return StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, tr), kind: e.kind,
-                                rotation: tr.rotation ?? 0, crop: savedCrop(e.id), scale: StageGeometry.uniformScale(editor: editor, clipId: e.id, time: t),
-                                locked: editor.clip(e.id)?.track.locked == true)
+            let own = StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, tr), kind: e.kind,
+                                   rotation: tr.rotation ?? 0, crop: savedCrop(e.id), scale: StageGeometry.uniformScale(editor: editor, clipId: e.id, time: t),
+                                   locked: editor.clip(e.id)?.track.locked == true)
+            return StageGeometry.moved(own, by: editor.moveOffsets(clipId: e.id, time: t))   // the outline sits on the moved box
         }
         let sel = timeline.view.selection
         player.view.selectedIds = player.view.elements.filter { sel.contains($0.id) }.map(\.id)
@@ -520,7 +521,11 @@ final class EditorSession {
         let base = stageBase(e.id, kind: e.kind, time: t)
         let before = StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, editor.transform(clipId: e.id, time: t)),
                                   kind: e.kind, rotation: editor.transform(clipId: e.id, time: t).rotation ?? 0)
-        let tr = StageGeometry.transform(base: base, start: before, end: e)
+        // The stage shows the moved box; the clip's own values are what is left once the moves are taken off.
+        // Unchanged geometry (a crop-only commit) stays exactly `before`, so no rounding writes a value.
+        let moves = editor.moveOffsets(clipId: e.id, time: t), shown = StageGeometry.moved(before, by: moves)
+        let unchanged = e.rect == shown.rect && e.rotation == shown.rotation
+        let tr = StageGeometry.transform(base: base, start: before, end: unchanged ? before : StageGeometry.unmoved(e, by: moves))
         if tr != ClipTransform() { editor.applyTransform(clipId: e.id, time: t, tr) }
     }
 

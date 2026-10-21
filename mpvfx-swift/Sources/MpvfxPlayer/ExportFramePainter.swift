@@ -62,8 +62,11 @@ public final class ExportFramePainter {
                               scale s: Double) -> [(layer: PreviewLayer, width: Int, height: Int)] {
         // Offline layers are never exported: startExport refuses missing media before it renders.
         composition.layers(at: time).filter { $0.isVisible && $0.kind != .offline }.map { layer in
-            let px = PreviewPainter.screenPixels(layer, viewScale: s, backingScale: 1)
-            return (layer, max(1, Int(px.width.rounded(.up))), max(1, Int(px.height.rounded(.up))))
+            // The stage's decode size rule (whole even pixels, rounded up): a scaled layer decodes to the same
+            // picture as in preview, so its letterbox bars, if any, are the same too. No cap: exports above 4K keep
+            // full resolution.
+            let size = PreviewDecodeSize.fitting(PreviewPainter.screenPixels(layer, viewScale: s, backingScale: 1), maxSide: Int.max)
+            return (layer, size.width, size.height)
         }
     }
 
