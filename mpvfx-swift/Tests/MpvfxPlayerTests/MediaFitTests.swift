@@ -24,18 +24,19 @@ final class MediaFitTests: XCTestCase {
     static let background: [UInt8] = [0x10, 0x20, 0x30, 255]
 
     /// A 1080×1920 project at 10 fps holding one 1920×1080 still `W` (frames 0…9); `extra` adds keys to the clip.
-    static func document(_ extra: String = "") throws -> NativeProjectDocument {
+    static func document(_ extra: String = "", canvas: (Int, Int) = (1080, 1920)) throws -> NativeProjectDocument {
         try parseNativeProjectDocument(try NativeJSONValue.parse(#"""
         {"schemaVersion":1,"id":"project:fit","revision":1,"frameRate":{"numerator":10,"denominator":1},
-         "canvas":{"width":1080,"height":1920,"background":"#102030"},
+         "canvas":{"width":\#(canvas.0),"height":\#(canvas.1),"background":"#102030"},
          "assets":[{"id":"w","kind":"image","name":"w.png","source":"w.png","durationFrames":100,"width":1920,"height":1080}],
          "sequence":{"id":"s","name":"Main","tracks":[{"id":"t1","kind":"video","clips":[
            {"id":"W","assetId":"w","startFrame":0,"durationFrames":10,"sourceInFrame":0,"muted":false,"effects":[],"parameterTracks":[]\#(extra)}]}]}}
         """#), engine: nil)
     }
 
-    static func composition(_ extra: String = "") throws -> PreviewComposition {
-        PreviewComposition(document: try document(extra), projectDir: URL(fileURLWithPath: "/proj"), engine: nil, fileExists: { _ in true })
+    static func composition(_ extra: String = "", canvas: (Int, Int) = (1080, 1920)) throws -> PreviewComposition {
+        PreviewComposition(document: try document(extra, canvas: canvas), projectDir: URL(fileURLWithPath: "/proj"),
+                           engine: nil, fileExists: { _ in true })
     }
 
     /// A 16:9 solid picture, as the decoder returns the still.
@@ -135,6 +136,45 @@ final class MediaFitTests: XCTestCase {
             XCTAssertEqual(cx.lastShown.map(\.clipId), ["W"], extra)
             let export = try exported(extra, image: image)
             XCTAssertEqual(stage.image().rgba, export.frame.rgba, "preview and export frames differ for \(extra)")
+        }
+    }
+
+    /// Codex review on #133: a 16:9 picture stretched or filled onto the largest square canvas (16384 x 16384) is
+    /// decoded within the engine's 16384 px picture bound, aspect kept, so export does not ask its reader for about
+    /// 29128 x 16384 and fail.
+    func testAWidePictureOnTheLargestSquareCanvasIsDecodedWithinTheEngineBound() throws {
+        for fit in ["stretch", "fill"] {
+            let comp = try Self.composition(#","fit":"\#(fit)""#, canvas: (16384, 16384))
+            let layer = try XCTUnwrap(comp.layers(at: 0).first)
+            XCTAssertEqual(layer.box, CanvasRect(x: 0, y: 0, width: 16384, height: 16384))
+            let px = PreviewPainter.screenPixels(layer, viewScale: 1, backingScale: 1)
+            XCTAssertEqual(px.width, 16384, accuracy: 1e-9, fit); XCTAssertEqual(px.height, 9216, accuracy: 1e-9, fit)
+            XCTAssertLessThanOrEqual(Int(px.width.rounded(.up)), 16384, "export's reader size, \(fit)")
+            // At a box below the bound the cover is not capped.
+            let half = PreviewPainter.screenPixels(layer, viewScale: 0.25, backingScale: 1)
+            XCTAssertEqual(half.width, 4096 * 16 / 9, accuracy: 1e-6, fit); XCTAssertEqual(half.height, 4096, accuracy: 1e-9, fit)
+        }
+    }
+
+    func testAStretchedWidePictureOnALargeSquareCanvasExportsAsThePreviewDrawsIt() throws {
+        for fit in ["stretch", "fill"] {
+            let extra = #","fit":"\#(fit)""#
+            let comp = try Self.composition(extra, canvas: (16384, 16384))
+            let layer = try XCTUnwrap(comp.layers(at: 0).first)
+            let view = CanvasRect(x: 0, y: 0, width: 128, height: 128)
+            let image = Self.picture(200, 40, 90)
+            let cx = PreviewCompositor(decodesMedia: false)
+            cx.composition = comp
+            cx.cache.store(image, lane: layer.laneKey, frame: PreviewDecodeLane.stillFrame)
+            let stage = try RasterCanvas(width: 128, height: 128)
+            cx.draw(stage, in: view, time: 0, elements: [], context: FrameDrawContext())
+            let p = try ExportFramePainter(composition: comp, width: 128, height: 128, pad: .transparent)
+            var asked: [(Int, Int)] = []
+            let frame = try p.paint(time: 0) { _, _, w, h in asked.append((w, h)); return image }
+            XCTAssertEqual(stage.image().rgba, frame.rgba, "preview and export frames differ for \(fit)")
+            XCTAssertEqual(asked.first?.0, 228, fit); XCTAssertEqual(asked.first?.1, 128, fit)
+            XCTAssertEqual(PreviewPainter.mediaRect(imageWidth: 16, imageHeight: 9, in: layer.box, fit: layer.fit).width,
+                           fit == "stretch" ? 16384 : 16384 * 16 / 9.0, accuracy: 1e-6)
         }
     }
 }

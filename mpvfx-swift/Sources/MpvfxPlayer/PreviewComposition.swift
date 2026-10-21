@@ -277,11 +277,17 @@ public enum PreviewPainter {
     }
 
     /// `w` x `h` grown to the smallest size of the media's aspect that covers it, when the layer fills its box.
+    /// The decoder fits the picture inside the size it is asked for keeping its aspect, so a Stretch picture is
+    /// decoded at its cover too (a box-shaped target would come back letterboxed). The cover is scaled down, aspect
+    /// kept, to the engine's picture bound (NATIVE_CANVAS_MAX_SIDE): a 16:9 picture stretched onto a 16384 square
+    /// would otherwise ask the export's reader for about 29128 x 16384.
     static func coverPixels(_ w: Double, _ h: Double, _ layer: PreviewLayer) -> (width: Double, height: Double) {
         guard layer.fit?.fillsTheBox == true, let a = layer.mediaAspect, a.isFinite, a > 0, w > 0, h > 0 else {
             return (w, h)
         }
-        return (max(w, h * a), max(h, w / a))
+        let cw = max(w, h * a), ch = max(h, w / a)
+        let k = min(1, NATIVE_CANVAS_MAX_SIDE / max(cw, ch))
+        return (min(NATIVE_CANVAS_MAX_SIDE, cw * k), min(NATIVE_CANVAS_MAX_SIDE, ch * k))
     }
 
     /// Draws one layer: scale then rotate about the box centre, clip to the cropped box, contain-fit the image.
