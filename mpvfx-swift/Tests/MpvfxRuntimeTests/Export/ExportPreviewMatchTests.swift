@@ -41,8 +41,18 @@ final class ExportPreviewMatchTests: XCTestCase {
     }
     var root: String { Self.root }
 
-    /// 96x48 at 10 fps, 2 s.
-    func document() throws -> NativeProjectDocument {
+    /// The video clip's grade parameters in `document()`.
+    static let exposureGrade = #"{"adjust":{"exposure":0.6}}"#
+    /// Curves on all seven tabs: a steep RGB rise, a master curve with its end points inside the range, and hue
+    /// curves with a local bump, so export runs every curve table the preview does.
+    static let curvesGrade = #"""
+    {"curves":{"master":[[0.1,0.05],[0.5,0.6],[0.9,0.95]],"red":[[0,0],[0.4,0.1],[0.45,0.7],[1,1]],"green":[[0,0.1],[1,0.9]],
+     "blue":[[0,0],[0.3,0.45],[1,1]]},
+     "hueCurves":{"hueVsHue":[[0,0],[200,30],[260,0]],"hueVsSaturation":[[180,0],[220,0.6],[280,0]],"hueVsLuma":[[20,-0.1],[140,0.1],[300,0]]}}
+    """#
+
+    /// 96x48 at 10 fps, 2 s; the video clip graded with `grade`.
+    func document(grade: String = exposureGrade) throws -> NativeProjectDocument {
         try parseNativeProjectDocument(try NativeJSONValue.parse(#"""
         {"schemaVersion":1,"mediaEngine":"native","id":"match","revision":0,"frameRate":{"numerator":10,"denominator":1},
          "canvas":{"width":96,"height":48,"background":"#102030"},
@@ -61,17 +71,17 @@ final class ExportPreviewMatchTests: XCTestCase {
               "effects":[],"parameterTracks":[]}]},
            {"id":"base","kind":"video","lane":{"authoredTrack":0,"displayTrack":2},"clips":[
              {"id":"gray","assetId":"gray","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,
-              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":{"adjust":{"exposure":0.6}}}],
+              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":\#(grade)}],
               "parameterTracks":[]}]},
            {"id":"music","kind":"audio","lane":{"authoredTrack":3,"displayTrack":3},"clips":[
              {"id":"tone","assetId":"tone","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,"effects":[],"parameterTracks":[]}]}]}}
         """#))
     }
 
-    func export(_ format: ExportFormat) throws -> (input: NativeTimelineRenderInput, file: Exported) {
-        let output = "\(root)/match.\(format.rawValue)"
+    func export(_ format: ExportFormat, grade: String = exposureGrade, name: String = "match") throws -> (input: NativeTimelineRenderInput, file: Exported) {
+        let output = "\(root)/\(name).\(format.rawValue)"
         try? FileManager.default.removeItem(atPath: output)
-        let input = NativeTimelineRenderInput(project: try document(), projectDir: root, outputPath: output, format: format, quality: .high)
+        let input = NativeTimelineRenderInput(project: try document(grade: grade), projectDir: root, outputPath: output, format: format, quality: .high)
         try renderNativeTimeline(input)
         return (input, Exported(path: output))
     }
@@ -103,6 +113,18 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertGreaterThan(Int(still[2]) - Int(still[0]), 40, "blue over the video: \(still)")
         XCTAssertGreaterThan(Int(video[1]), 150, "the +0.6 exposure grade lifts the video: \(video)")
         XCTAssertTrue(stride(from: 24, to: 44, by: 1).contains { y in (4..<64).contains { x in f.rgba[(y * 96 + x) * 4] > 240 } }, "white text ink")
+    }
+
+    /// Curves on every tab: the exported frames are the preview's, first and last frame included, and the curves
+    /// really change the picture (the same project with the exposure grade gives other pixels).
+    func testCurvesGradeExportIsThePreviewFrameForFrame() throws {
+        let mov = try export(.mov, grade: Self.curvesGrade, name: "curves")
+        try assertTimeline(mov.file)
+        let frames = try pairs(mov, [0, 0.7, 1.3, 1.9])
+        let diffs = frames.map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let plain = try previewExportFrame(try export(.mov).input, at: 0.7)
+        XCTAssertGreaterThan(maxAbsDiff(frames[1].2, plain), 20, "the curves grade differs from the exposure grade")
     }
 
     func testMp4ExportMatchesThePreviewWithinTheEncoderLoss() throws {

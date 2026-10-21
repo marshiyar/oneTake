@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxTimeline
 
 /// Row descriptors of the flat inspector. Rows are rebuilt from the document
 /// on every draw and event; they carry closures that edit through TimelineEditor, never state of their own.
@@ -198,8 +199,12 @@ public struct InspectorCustomRow {
     public var draw: (CanvasContext, CanvasRect, InspectorPanel) -> Void
     /// (part, point, phase) — phase: 0 down, 1 drag, 2 up.
     public var pointer: (Int, CanvasPoint, Int) -> Void
+    /// Keys for a focused part (part, key), returning whether the row used the key. A row with a handler is asked
+    /// before Enter / Space replays a pointer press at the part's centre, so a drag control (a wheel, the curve
+    /// graph) can refuse that press: at the centre it would set a value the user never chose.
+    public var key: ((Int, EditorKey) -> Bool)?
     public init(id: String, height: Double, draw: @escaping (CanvasContext, CanvasRect, InspectorPanel) -> Void,
-                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }) {
-        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer
+                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }, key: ((Int, EditorKey) -> Bool)? = nil) {
+        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer; self.key = key
     }
 }

@@ -804,10 +804,11 @@ public final class InspectorPanel {
             onEdited?(); return moved
         }
         guard var f = field else {
-            if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
-                if k.code == .escape { focus.visible = false; onEdited?(); return true }
-                return press(cur)
+            if focus.visible, focus.current != nil, k.code == .escape { focus.visible = false; onEdited?(); return true }
+            if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.key, handler(part, k) {
+                onEdited?(); return true
             }
+            if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space { return press(cur) }
             return gradeKey(k)
         }
         switch f.key(k) {
