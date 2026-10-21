@@ -30,7 +30,7 @@ public func keyframeComponentCount(_ type: NativeValueType) -> Int {
 }
 
 /// A baked track. `angles` entries are nil where the angle is undefined (JSON null).
-public struct BakedKeyframeTrack: Equatable {
+public struct BakedKeyframeTrack: Equatable, Sendable {
     public var valueType: NativeValueType
     public var samples: [Double]
     public var angles: [Double?]?
@@ -93,7 +93,7 @@ public func bakeTrackSamples(_ engine: KeyframeEngine, _ track: KeyframeTrack, f
 
 /// Errors createBakedEngine raises itself, with their messages (`Error` or `TypeError` kinds).
 public struct BakedKeyframeEngineError: Error, Equatable, CustomStringConvertible {
-    public enum Kind: String { case error = "Error", typeError = "TypeError" }
+    public enum Kind: String, Sendable { case error = "Error", typeError = "TypeError" }
     public let kind: Kind
     public let message: String
     public var description: String { message }
@@ -126,10 +126,10 @@ func bakedKeyframeValueAt(_ baked: BakedKeyframeTrack, _ frame: Double) -> Nativ
 /// does not know go to `fallback`, and with no fallback they are an error.
 public final class BakedKeyframeEngine: KeyframeEngine {
     public let version: String
-    private let lookup: (KeyframeTrack) -> BakedKeyframeTrack?
+    private let lookup: @Sendable (KeyframeTrack) -> BakedKeyframeTrack?
     private let fallback: KeyframeEngine?
 
-    public init(version: String, lookup: @escaping (KeyframeTrack) -> BakedKeyframeTrack?, fallback: KeyframeEngine? = nil) {
+    public init(version: String, lookup: @escaping @Sendable (KeyframeTrack) -> BakedKeyframeTrack?, fallback: KeyframeEngine? = nil) {
         self.version = version; self.lookup = lookup; self.fallback = fallback
     }
 

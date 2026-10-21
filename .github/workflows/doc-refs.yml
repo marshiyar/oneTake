@@ -1,0 +1,45 @@
+name: doc-refs
+
+# What the documentation points at exists (.github/ci/doc_refs.py): every repository path named in a code span of a
+# tracked Markdown file (docs/STATUS.md's evidence column, ROADMAP.md, PACKAGING.md, the READMEs), every relative link,
+# and every #n issue or pull request reference to this repository. A pull request that renames or deletes a source file
+# named as evidence in STATUS.md fails here instead of leaving a dead reference behind, so every pull request into main
+# runs it (no paths filter), and main is checked weekly for issues deleted or transferred since. Python only, no build;
+# separate from mpvfx-ci and never a required check.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doc-refs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read          # list issue numbers (the issues endpoint lists pull requests too)
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The checker's own tests
+        run: python3 -I -B .github/ci/test_doc_refs.py
+      - name: Paths, links and issue references in every tracked Markdown file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/doc_refs.py | tee -a "$GITHUB_STEP_SUMMARY"

@@ -139,6 +139,10 @@ public enum ThemeTokens {
     /// The accent (docs/DESIGN.md): active tool, selection, focus, changed values.
     public static let studioAccentPair = ThemePair(0x4C8DF0, 0x1A5FCC)
     public static var studioAccent: ThemeColor { studioAccentPair.now }
+    /// A primary button's fill under `onAccent` text (the Media panel's Import): the accent a step darker in dark
+    /// mode so white 12 pt text keeps 4.5:1 (the accent itself gives 3.3:1); the hover is darker again.
+    public static let primaryFillPair = ThemePair(0x2F6FD6, 0x1A5FCC)
+    public static let primaryFillHoverPair = ThemePair(0x2763C4, 0x164FAD)
     /// The accent's line form (playhead, drop slots, timeline highlights): the accent blue a step lighter so a 1 px
     /// line stays visible. Named `mint` for the colour it used to be.
     public static let mintPair = ThemePair(0x5A98F0, 0x1A5FCC)
