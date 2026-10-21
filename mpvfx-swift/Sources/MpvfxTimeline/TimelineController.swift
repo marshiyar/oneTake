@@ -102,6 +102,10 @@ public final class TimelineController {
     public var importForPaste: ((_ paths: [String], _ done: @escaping ([String: String]?) -> Void) -> Void)?
     /// T: put a text layer at the playhead (the host adds it and opens its Text section). Unset: T does nothing.
     public var onAddText: ((_ time: Double) -> Void)?
+    /// ⇧H / ⌥⇧H: how long a new hold lasts, in seconds (the host sets it from Settings).
+    public var holdSeconds = TimelineEditor.defaultHoldSeconds
+    /// An edit key was refused, with the reason to show (a locked track, no clip under the playhead). Unset: silent.
+    public var onEditRefused: ((_ message: String) -> Void)?
     /// Keyframe menu "Edit Easing…": show the inspector's easing editor on these keys of the clip. Unset: the item is
     /// disabled.
     public var onEditKeyframeEasing: ((_ clipId: String, _ refs: Set<TimelineKeyframeRef>) -> Void)?
@@ -425,6 +429,7 @@ public final class TimelineController {
             default: return false
             }
         }
+        if let held = holdKey(k) { return held }
         if !k.command && !k.alt {
             switch k.code {
             case .delete where !view.selectedKeyframes.isEmpty, .backspace where !view.selectedKeyframes.isEmpty:

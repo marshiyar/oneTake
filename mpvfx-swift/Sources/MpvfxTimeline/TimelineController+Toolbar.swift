@@ -51,6 +51,30 @@ public extension TimelineController {
         return editor.split([id], atFrame: frame)
     }
 
+    /// ⇧H / ⌥⇧H pressed: whether the hold was made; nil for any other key.
+    func holdKey(_ k: EditorKey) -> Bool? {
+        guard !k.command, k.shift, case .char(let ch) = k.code, ch.lowercased() == "h" else { return nil }
+        return holdFrameAtPlayhead(overwrite: k.alt)
+    }
+
+    /// ⇧H (insert) / ⌥⇧H (overwrite): hold the frame under the playhead of the selected video clip there (else the
+    /// video clip on top there) for `holdSeconds`, and select the hold. A refusal is reported through `onEditRefused`.
+    @discardableResult func holdFrameAtPlayhead(overwrite: Bool) -> Bool {
+        guard let editor else { return false }
+        // The frame on screen at the playhead (PreviewComposition.frameIndex), not the nearest frame boundary.
+        let frame = (playback.currentTime * editor.fps + 1e-6).rounded(.down)
+        guard let target = editor.holdTarget(atFrame: frame, selection: view.selection) else {
+            onEditRefused?("Move the playhead onto a video clip to hold its frame"); return false
+        }
+        guard let length = editor.holdFrames(seconds: holdSeconds),
+              let id = editor.holdFrame(clipId: target.clipId, atFrame: frame, lengthFrames: length, overwrite: overwrite) else {
+            onEditRefused?(editor.lastFailure?.message ?? "The frame could not be held"); return false
+        }
+        view.selection = [id]
+        needsDisplay?()
+        return true
+    }
+
     /// Add a beat to the grid at `time` unless one is already there (within a millisecond).
     @discardableResult func addBeat(at time: Double) -> Bool {
         guard time.isFinite, time >= 0, !view.beats.contains(where: { abs($0.time - time) < 0.001 }) else { return false }

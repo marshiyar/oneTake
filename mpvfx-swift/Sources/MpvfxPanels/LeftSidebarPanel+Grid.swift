@@ -73,6 +73,7 @@ extension LeftSidebarPanel {
         binRect = r
         hits.add(r, .binArea)
         tileFrames = []
+        auditionBars = [:]
         let list = sections
         c.withState {
             c.clip(r)
@@ -116,7 +117,7 @@ extension LeftSidebarPanel {
     }
 
     func isLit(_ ref: MediaTileRef) -> Bool {
-        hovered == .tile(ref) || hovered == .tileAction(ref) || menu?.target == ref
+        hovered == .tile(ref) || hovered == .tileAction(ref) || hovered == .tileAudition(ref) || hovered == .auditionBar(ref) || menu?.target == ref
     }
 
     func drawTile(_ c: CanvasContext, _ ref: MediaTileRef, _ r: CanvasRect, clip: CanvasRect) {
@@ -135,6 +136,7 @@ extension LeftSidebarPanel {
             drawTileAction(c, a, icon: icon, hot: hovered == .tileAction(ref))
             addClipped(a, .tileAction(ref), to: clip)
         }
+        drawGridAudition(c, ref, thumb, lit: lit || sel, clip: clip)
     }
 
     /// The hover button's icon: add for media and library files, save for a finished export; none otherwise.
@@ -222,6 +224,7 @@ extension LeftSidebarPanel {
             drawTileAction(c, a, icon: action, hot: hovered == .tileAction(ref))
             addClipped(a, .tileAction(ref), to: clip)
         }
+        drawRowAudition(c, ref, r, lit: lit, hasAction: action != nil, clip: clip)
         return r.maxY
     }
 

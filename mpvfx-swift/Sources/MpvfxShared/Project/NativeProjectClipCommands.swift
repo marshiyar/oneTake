@@ -170,13 +170,13 @@ private func applyTrimIn(_ d: NativeProjectDocument, _ a: NativeProjectClipAddre
     do {
         // Overflow mapping: a 64-bit overflow is a NativeSourceTimeRangeError and lands in this catch like the other
         // range errors; both become an invalid-trim rejection.
-        if let ramp = clip.speedRamp, ramp.isSupported, delta != 0, kind.map({ nativeAssetConsumesSourceFrames($0) }) == true {
+        if let ramp = clip.speedRamp, ramp.isSupported, delta != 0, kind.map({ nativeClipConsumesSourceFrames(clip, $0) }) == true {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
                                                  playbackRate: rationalFromNumber(delta > 0 ? ramp.sourcePosition(atClipFrame: delta) / delta : ramp.speed(atClipFrame: 0)),
                                                  timelineFrames: delta)
         } else {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-                playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeAssetConsumesSourceFrames($0) } == true ? 0 : delta)
+                playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeClipConsumesSourceFrames(clip, $0) } == true ? 0 : delta)
         }
     } catch { return reject(d, .invalidTrim, errorMessage(error) ?? "Invalid source boundary") }
     let tracks = try rebasedTracks(clip, delta, clip.durationFrames, engine) { $0.id }
@@ -197,7 +197,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     if !isSafeInteger(end) || nextDuration <= 0 { return reject(d, .invalidTrim, "Trim-out end must be an integer after the clip start") }
     let clip = loc.clip
     let asset = d.assets.first { $0.id == clip.assetId }!
-    if nativeAssetConsumesSourceFrames(asset.kind) {
+    if nativeClipConsumesSourceFrames(clip, asset.kind) {
         let fits: Bool
         do {
             if let ramp = clip.speedRamp, ramp.isSupported {
@@ -240,12 +240,12 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     do {
         let asset = d.assets.first { $0.id == clip.assetId }!
         // Overflow mapping: as in trim-in, a 64-bit overflow is rejected like the other range errors (invalid-split).
-        if let ramp = clip.speedRamp, ramp.isSupported, nativeAssetConsumesSourceFrames(asset.kind) {
+        if let ramp = clip.speedRamp, ramp.isSupported, nativeClipConsumesSourceFrames(clip, asset.kind) {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
                                                  playbackRate: rationalFromNumber(ramp.sourcePosition(atClipFrame: local) / local), timelineFrames: local)
         } else {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-                playbackRate: clip.playbackRate, timelineFrames: nativeAssetConsumesSourceFrames(asset.kind) ? local : 0)
+                playbackRate: clip.playbackRate, timelineFrames: nativeClipConsumesSourceFrames(clip, asset.kind) ? local : 0)
         }
     } catch { return reject(d, .invalidSplit, errorMessage(error) ?? "Invalid source boundary") }
     if clip.binding != nil && rightBinding == nil {
