@@ -66,6 +66,15 @@ notes() {
   fi
 }
 
+# asset_label <file>: "#<display label>" for gh release upload, naming the macOS disk image's developer verification
+# (owner ruling 2026-10-21: an unverified build still ships, labelled as such); empty for every other file.
+asset_label() {
+  case "$1" in
+    *-developer-verified.dmg) echo "#oneTake for macOS (Developer Verified)" ;;
+    *-developer-stamp-unverified.dmg) echo "#oneTake for macOS (Developer Stamp Unverified)" ;;
+  esac
+}
+
 # prune_nightlies: delete every nightly-* release but the newest $nightly_keep (never touches any other release).
 prune_nightlies() {
   gh release list --limit 200 --json tagName,createdAt \
@@ -79,7 +88,7 @@ main() {
   decide
   [ "$mode" != none ] || return 0
   local files=() f
-  for f in "$@"; do [ -f "$f" ] && files+=("$f"); done
+  for f in "$@"; do [ -f "$f" ] && files+=("$f$(asset_label "$f")"); done
   [ ${#files[@]} -gt 0 ] || { echo "::error::nothing to publish"; return 1; }
   echo "publishing $mode release $tag: $title"
   # A rerun on the same commit or tag finds the release already there and uploads into it.

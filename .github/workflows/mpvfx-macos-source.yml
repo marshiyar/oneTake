@@ -163,7 +163,7 @@ jobs:
     - name: Package (disk image with the engine libraries in Contents/Frameworks)
       id: package
       env:
-        NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && '1' || '0' }}
+        NOTARIZE_REQUIRED: '0'
         MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
         APPLE_ID: ''
         APPLE_APP_PASSWORD: ''
@@ -175,8 +175,11 @@ jobs:
         if [ -n "$MACOS_SIGN_IDENTITY" ]; then mode=developer-id; else mode=adhoc; fi
         sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" "$mode" | tee "$RUNNER_TEMP/package.log"
         if [ "$mode" = developer-id ] && [ ! -e "$GITHUB_WORKSPACE/dist/.not-notarized" ]; then notarized=true; else notarized=false; fi
-        echo "notarized=$notarized" >> "$GITHUB_OUTPUT"
         rm -f "$GITHUB_WORKSPACE/dist/.not-notarized"
+        # The disk image's name says which it is; the release labels it the same way (publish.sh).
+        if [ "$notarized" = true ]; then verification=developer-verified; else verification=developer-stamp-unverified; fi
+        for f in "$GITHUB_WORKSPACE"/dist/MpVFX-*.dmg; do mv "$f" "${f%.dmg}-$verification.dmg"; done
+        { echo "notarized=$notarized"; echo "verification=$verification"; } >> "$GITHUB_OUTPUT"
         ls -l "$GITHUB_WORKSPACE/dist"
     - name: Launch smoke from the installed disk image
       timeout-minutes: 8
