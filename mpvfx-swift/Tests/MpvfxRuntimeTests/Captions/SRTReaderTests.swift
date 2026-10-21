@@ -91,6 +91,10 @@ final class SRTReaderTests: XCTestCase {
         assertRefuses(Data([0xFF, 0xFE, 0x31]), .invalidEncoding, line: 0, "odd number of bytes")
         assertRefuses(Data([0xFF, 0xFE, 0x00, 0xD8, 0x31, 0x00]), .invalidEncoding, line: 1, "not UTF-16")
         assertRefuses("1\n00:00:01,000 --> 00:00:02,000\nbad \u{FFFD}\n", .invalidCue, line: 3, "U+FFFD")
+        // CR-only and CRLF files count lines the same way when decoding fails (Codex review on PR #139).
+        let cr = Data("1\r00:00:01,000 --> 00:00:02,000\rcaf".utf8) + Data([0xE9])
+        assertRefuses(cr, .invalidEncoding, line: 3, "not UTF-8")
+        assertRefuses(Data("1\r\n00:00:01,000 --> 00:00:02,000\r\n\u{0}".utf8), .invalidEncoding, line: 3, "NUL")
     }
 
     func testRefusesMalformedBlocksNamingTheLine() {

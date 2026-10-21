@@ -64,12 +64,20 @@ func readCaptionFile(_ path: String) throws -> Data {
     }
     do {
         let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
-        let data: Data?
-        do { data = try handle.read(upToCount: SRTReader.maxBytes + 1) } catch { try handle.close(); throw error }
+        let data: Data
+        do { data = try readUpTo(handle, SRTReader.maxBytes + 1) } catch { try handle.close(); throw error }
         try handle.close()
-        guard let data else { return Data() }   // nil: the file is empty
         return data
     } catch {
         throw CaptionFileError("\(name) could not be read: \(error.localizedDescription)")
     }
+}
+
+/// Reads until `limit` bytes or the end of the file, whichever comes first: one read may return fewer bytes than asked.
+private func readUpTo(_ handle: FileHandle, _ limit: Int) throws -> Data {
+    var data = Data()
+    while data.count < limit, let chunk = try handle.read(upToCount: limit - data.count), !chunk.isEmpty {
+        data.append(chunk)
+    }
+    return data
 }

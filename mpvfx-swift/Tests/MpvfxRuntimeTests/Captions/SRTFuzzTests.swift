@@ -16,8 +16,9 @@ import XCTest
 import MpvfxShared
 @testable import MpvfxRuntime
 
-/// SplitMix64: a seeded generator, so a failing input can be reproduced from its iteration number.
-private struct SplitMix64: RandomNumberGenerator {
+/// SplitMix64: a seeded, deterministic generator for test inputs (not for anything secret), so a failing input can be
+/// reproduced from its iteration number. The modulo in `below` is slightly uneven, which does not matter here.
+private struct SplitMix64 {
     var state: UInt64
     mutating func next() -> UInt64 {
         state &+= 0x9E37_79B9_7F4A_7C15
@@ -26,6 +27,11 @@ private struct SplitMix64: RandomNumberGenerator {
         z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
         return z ^ (z >> 31)
     }
+    /// 0..<n for n > 0.
+    mutating func below(_ n: Int) -> Int { Int(next() % UInt64(n)) }
+    mutating func within(_ range: ClosedRange<Int>) -> Int { range.lowerBound + below(range.count) }
+    mutating func byte() -> UInt8 { UInt8(truncatingIfNeeded: next()) }
+    mutating func pick<T>(_ items: [T]) -> T { items[below(items.count)] }
 }
 
 /// Acceptance 5: 10,000 random or garbled SRT inputs never crash the reader and never take it beyond 100 ms each.
@@ -39,29 +45,29 @@ final class SRTFuzzTests: XCTestCase {
 
     private func garble(_ seed: [UInt8], _ rng: inout SplitMix64) -> [UInt8] {
         var bytes = seed
-        for _ in 0..<Int.random(in: 1...8, using: &rng) {
-            let at = bytes.isEmpty ? 0 : Int.random(in: 0..<bytes.count, using: &rng)
-            switch Int.random(in: 0..<6, using: &rng) {
-            case 0: if !bytes.isEmpty { bytes[at] = UInt8.random(in: 0...255, using: &rng) }
-            case 1: bytes.insert(contentsOf: Self.tokens.randomElement(using: &rng) ?? [], at: at)
-            case 2: if !bytes.isEmpty { bytes.removeSubrange(at..<min(bytes.count, at + Int.random(in: 1...16, using: &rng))) }
+        for _ in 0..<rng.within(1...8) {
+            let at = bytes.isEmpty ? 0 : rng.below(bytes.count)
+            switch rng.below(6) {
+            case 0: if !bytes.isEmpty { bytes[at] = rng.byte() }
+            case 1: bytes.insert(contentsOf: rng.pick(Self.tokens), at: at)
+            case 2: if !bytes.isEmpty { bytes.removeSubrange(at..<min(bytes.count, at + rng.within(1...16))) }
             case 3: bytes = Array(bytes.prefix(at))
             case 4: let chunk = Array(bytes[at..<min(bytes.count, at + 40)]); bytes.insert(contentsOf: chunk, at: at)
-            default: bytes.insert(contentsOf: (0..<Int.random(in: 1...32, using: &rng)).map { _ in UInt8.random(in: 0...255, using: &rng) }, at: at)
+            default: bytes.insert(contentsOf: (0..<rng.within(1...32)).map { _ in rng.byte() }, at: at)
             }
         }
         return bytes
     }
 
     private func randomBytes(_ rng: inout SplitMix64) -> [UInt8] {
-        (0..<Int.random(in: 0...2048, using: &rng)).map { _ in UInt8.random(in: 0...255, using: &rng) }
+        (0..<rng.within(0...2048)).map { _ in rng.byte() }
     }
 
     /// Long lines and many cues of one shape, the inputs most likely to expose quadratic work.
     private func large(_ rng: inout SplitMix64) -> [UInt8] {
         let cue = Array(Self.seedText.utf8.prefix(60))
-        let line = [UInt8](repeating: UInt8(ascii: "a"), count: Int.random(in: 1...20_000, using: &rng))
-        return Array((0..<Int.random(in: 1...200, using: &rng)).map { _ in cue }.joined()) + line
+        let line = [UInt8](repeating: UInt8(ascii: "a"), count: rng.within(1...20_000))
+        return Array((0..<rng.within(1...200)).map { _ in cue }.joined()) + line
     }
 
     /// What reading `count` generated inputs found: the slowest read and its iteration, how many read, and every
@@ -102,12 +108,12 @@ final class SRTFuzzTests: XCTestCase {
 
     /// Random cues that pass the caption rules: in order, apart or touching, one to three lines of text each.
     private func randomCues(_ rng: inout SplitMix64) -> [NativeCaptionCue] {
-        var cues: [NativeCaptionCue] = [], at = Int.random(in: 0...5000, using: &rng)
-        for n in 1...Int.random(in: 1...20, using: &rng) {
-            let end = at + Int.random(in: 1...10_000, using: &rng)
-            let lines = (0..<Int.random(in: 1...3, using: &rng)).map { _ in Self.words.randomElement(using: &rng) ?? "a" }
+        var cues: [NativeCaptionCue] = [], at = rng.within(0...5000)
+        for n in 1...rng.within(1...20) {
+            let end = at + rng.within(1...10_000)
+            let lines = (0..<rng.within(1...3)).map { _ in rng.pick(Self.words) }
             cues.append(NativeCaptionCue(id: "cue-\(n)", startMs: at, endMs: end, text: lines.joined(separator: "\n")))
-            at = end + Int.random(in: 0...2000, using: &rng)
+            at = end + rng.within(0...2000)
         }
         return cues
     }

@@ -67,7 +67,7 @@ public enum SRTReader {
         let lines = splitLines(try decodeText(data))
         var cues: [NativeCaptionCue] = []
         var index = 0
-        while let start = lines[index...].firstIndex(where: { !isBlank($0) }) {
+        while index < lines.count, let start = lines[index...].firstIndex(where: { !isBlank($0) }) {
             let (cue, next) = try readCue(lines, at: start, previous: cues.last, number: cues.count + 1)
             cues.append(cue)
             index = next
@@ -98,16 +98,17 @@ public enum SRTReader {
     }
 
     /// Decodes every scalar, refusing an invalid sequence and NUL (a UTF-16 file without its byte order mark reads as
-    /// UTF-8 full of NULs) with the line they are on.
+    /// UTF-8 full of NULs) with the line they are on, counting lines as `splitLines` does (CRLF, LF or CR).
     private static func decodeStrict<I: IteratorProtocol, C: UnicodeCodec>(_ input: I, _ codec: C, what: String) throws -> String
     where I.Element == C.CodeUnit {
-        var iterator = input, decoder = codec, scalars = String.UnicodeScalarView(), line = 1
+        var iterator = input, decoder = codec, scalars = String.UnicodeScalarView(), line = 1, afterCR = false
         while true {
             switch decoder.decode(&iterator) {
             case .scalarValue(let s) where s.value == 0:
                 throw SRTReadError(.invalidEncoding, line: line, "The file holds a NUL character; save it as UTF-8 text and import it again")
             case .scalarValue(let s):
-                if s == "\n" { line += 1 }
+                if s == "\r" || (s == "\n" && !afterCR) { line += 1 }
+                afterCR = s == "\r"
                 scalars.append(s)
             case .emptyInput:
                 return String(scalars)
