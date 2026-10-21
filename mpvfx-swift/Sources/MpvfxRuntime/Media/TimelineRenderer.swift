@@ -42,8 +42,9 @@ public struct NativeTimelineRenderInput {
     /// Collects the seconds spent painting and encoding (the export benchmark); nil collects nothing.
     public var stageTimes: NativeExportStageTimes?
     /// Encodes each frame on its own thread while the next one paints (the default). false paints and encodes in
-    /// turn on the calling thread, the loop the overlapped output is checked against (ExportOverlapTests).
-    var encodeAhead = true
+    /// turn on the calling thread: the reference the overlapped output is checked against (ExportOverlapTests) and
+    /// the export benchmark's same-machine baseline (MpvfxPreviewBench export-serial).
+    public var encodeAhead = true
     public init(project: NativeProjectDocument, projectDir: String, outputPath: String, format: ExportFormat,
                 outputDimensions: ExportDimensions? = nil, outputFps: Double? = nil, quality: ExportQuality? = nil,
                 cancellation: MediaCancellation? = nil, onProgress: ((Double) -> Void)? = nil,

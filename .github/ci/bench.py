@@ -27,7 +27,8 @@ Benchmarks (each a separate process per run, so one run's state never reaches th
             4K for three looks, ms per frame.
   preview   MpvfxPreviewBench, every scenario (1080p, 4k, stacked, graded, scrub) on clips the bench makes with
             the media engine's own encoder: fps, ms per frame per stage, peak memory; and export (10 s of 1080p30
-            exported to MP4 through renderNativeTimeline): export_fps, paint_ms, encode_ms, peak_rss_mib.
+            exported to MP4 through renderNativeTimeline): export_fps, paint_ms, encode_ms, peak_rss_mib, and
+            export-serial, the same export painted and encoded in turn on one thread (the same-machine baseline).
 Every number is recorded with its unit, the samples, n, p50, p95 and max (nearest rank), the machine (OS, CPU,
 cores, memory, GPU as the grade bench names it, class), the commit and the date; the result is <out>/bench-<os>.json
 plus a Markdown table on stdout. A GitHub-hosted runner is a shared machine: compare runs of the same class only,
@@ -180,7 +181,7 @@ def bench_preview(bin_dir, runs, out_dir, r):
     results = os.path.join(out_dir, "preview.jsonl")
     open(results, "w").close()  # the bench appends: start from an empty file so a reused --out holds only this run
     for i in range(runs):
-        for scenario in ("1080p", "4k", "stacked", "graded", "scrub", "export"):
+        for scenario in ("1080p", "4k", "stacked", "graded", "scrub", "export", "export-serial"):
             wall, peak, out, code = run([exe, scenario, clips, results])
             if code != 0:
                 raise SystemExit(f"preview {scenario} run {i + 1}: exit {code}\n{out[-3000:]}")
