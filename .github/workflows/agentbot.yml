@@ -12,11 +12,12 @@ on:
     workflows: [mpvfx-ci, bench]
     types: [completed]
 
-permissions:
-  contents: read
-  actions: read
-  pull-requests: write
-  issues: write
+# Nothing at the top level: each job names what agentbot.py's endpoints need ("Permissions required for GitHub Apps",
+# https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps, read 2026-10-21). Every job
+# checks out .github (contents: read) and reads runs, logs and artifacts (actions: read); creating or editing a pull
+# request comment and listing a commit's pull requests take pull-requests, the "Flaky tests" issue takes issues.
+# The token is handed only to the step that runs the bot.
+permissions: {}
 
 concurrency:
   group: agentbot-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
@@ -24,19 +25,24 @@ concurrency:
 
 env:
   RUN_ID: ${{ github.event.workflow_run.id }}
-  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   digest:
     if: github.event.workflow_run.name == 'mpvfx-ci' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write   # one comment on the run's pull request, edited in place
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
       - run: python3 -I -B .github/ci/agentbot.py digest "$RUN_ID"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   flakes:
     if: github.event.workflow_run.name == 'mpvfx-ci' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.run_attempt > 1
@@ -46,23 +52,35 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write          # find, create or edit the "Flaky tests" issue
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
       - run: python3 -I -B .github/ci/agentbot.py flakes "$RUN_ID"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   shots:
     if: github.event.workflow_run.name == 'mpvfx-ci' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write   # one comment on the run's pull request, edited in place
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
       - run: python3 -I -B .github/ci/agentbot.py shots "$RUN_ID" "$RUNNER_TEMP/snapshots"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: snapshots
@@ -74,9 +92,15 @@ jobs:
     if: github.event.workflow_run.name == 'bench' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write   # one comment on the run's pull request, edited in place
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
       - run: python3 -I -B .github/ci/agentbot.py bench "$RUN_ID"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
