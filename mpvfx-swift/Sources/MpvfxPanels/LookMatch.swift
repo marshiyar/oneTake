@@ -57,9 +57,10 @@ public enum LookMatch {
         next.adjust["contrast"] = AutoBalance.limited("contrast", oldContrast * correction - 1)
         let contrastGain = max(0, 1 + next.adjustValue("contrast")) / oldContrast
         let pivot = SIMD3<Double>(repeating: grade.pivotValue)
-        let predicted = (a.mean * gain - pivot) * contrastGain + pivot
-        let residual = b.mean - predicted
         let old = grade.balanceWheel("offset")
+        let offset = vector(old)
+        let predicted = ((a.mean - offset) * gain - pivot) * contrastGain + pivot + offset
+        let residual = b.mean - predicted
         next.balance["offset"] = wheel(vector(old) + residual)
         return next
     }

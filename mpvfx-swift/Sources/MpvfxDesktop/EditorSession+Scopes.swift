@@ -29,7 +29,7 @@ extension SessionPanels {
         let matchRenderer = PresetPreviewRenderer(compositor: session.compositor)
         matchRenderer.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
         inspector.matchLookFrame = { clipId, time, w, h in
-            Self.panelState(matchRenderer.gradedFrame(clipId: clipId, time: time, pixelWidth: w, pixelHeight: h))
+            Self.panelState(matchRenderer.gradedFrame(clipId: clipId, time: time, pixelWidth: w, pixelHeight: h, exactOnly: true))
         }
         inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
             guard let self, let inspector else { return .unavailable }

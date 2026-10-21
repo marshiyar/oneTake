@@ -158,6 +158,41 @@ final class LookMatchInspectorTests: XCTestCase {
         }
     }
 
+    func testPendingCancellationSurvivesSelectionOrSeekAwayAndBackWithoutGradeRows() throws {
+        for change in 0..<3 {
+            let (p, e, c) = try setup()
+            p.matchLookFrame = { _, _, _, _ in .rendering }; p.startLookMatch("clip:a")
+            if change == 0 { p.selection = []; redraw(p, c); p.selection = ["clip:a"] }
+            else if change == 1 { p.time = 4; p.time = 0 }
+            else { p.editor = nil; p.editor = e }
+            p.matchLookFrame = { _, _, _, _ in XCTFail("cancelled work cannot resume"); return .unavailable }
+            redraw(p, c)
+            XCTAssertNil(p.lookMatch.pending); XCTAssertFalse(e.canUndo)
+        }
+    }
+
+    func testDocumentMutationWhileGradeClosedCancelsBeforeUndoRestoresDocument() throws {
+        let (p, e, c) = try setup()
+        p.matchLookFrame = { _, _, _, _ in .rendering }; p.startLookMatch("clip:a")
+        p.openGroupId = "layout"
+        var g = ColorGrading(); g.adjust["exposure"] = 0.2
+        XCTAssertTrue(e.setColorGrading(clipId: "clip:b", g)); redraw(p, c)
+        XCTAssertNil(p.lookMatch.pending)
+        XCTAssertTrue(e.undo()); p.openGroupId = "grade"
+        p.matchLookFrame = { _, _, _, _ in XCTFail("cancelled work cannot resume after undo"); return .unavailable }
+        redraw(p, c); XCTAssertFalse(e.canUndo)
+    }
+
+    func testAsynchronousIdenticalFramesCompleteWithRefreshAndNoUndo() throws {
+        let (p, e, c) = try setup(); var waiting = true, refreshes = 0
+        p.onEdited = { refreshes += 1 }
+        p.matchLookFrame = { _, _, _, _ in waiting ? .rendering : .ready(LookMatchTests.flat(100, 100, 100)) }
+        p.startLookMatch("clip:a"); let before = refreshes
+        waiting = false; redraw(p, c)
+        XCTAssertNil(p.lookMatch.pending); XCTAssertFalse(e.canUndo)
+        XCTAssertGreaterThan(refreshes, before)
+    }
+
     func testUnavailableReferenceShowsAUsefulMessageAndMakesNoEdit() throws {
         let (p, e, c) = try setup()
         p.matchLookFrame = { id, _, _, _ in id == "clip:a" ? .ready(LookMatchTests.flat(70, 70, 70)) : .unavailable }

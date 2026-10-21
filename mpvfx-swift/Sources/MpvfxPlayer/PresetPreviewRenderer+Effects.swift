@@ -55,8 +55,7 @@ extension PresetPreviewRenderer {
     /// Whether the lane that would decode `lane`'s frames (the preview's own, else this renderer's) gave up before
     /// producing any picture: missing, unreadable or undecodable media. Such a tile waits for nothing.
     func decodeGaveUp(lane: String) -> Bool {
-        if let l = compositor.lanes[lane] { return l.gaveUp }
-        return ownLane?.key == lane && ownLane?.gaveUp == true
+        return compositor.lanes[lane]?.gaveUp == true || (ownLane?.key == lane && ownLane?.gaveUp == true)
     }
 
     /// Whether `clipId`'s picture can never arrive because its media gave up decoding (the Grade preset tiles' host

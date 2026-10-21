@@ -35,6 +35,53 @@ final class LookMatchPainterTests: XCTestCase {
         """#, engine: KeyframeRuntime())
     }
 
+    func testExactMatchingRejectsNearestStandInsAndAcceptsOnlyRequestedFrame() throws {
+        let e = try editor(), c = PreviewCompositor(decodesMedia: false)
+        c.composition = PreviewComposition(document: e.document, projectDir: URL(fileURLWithPath: "/project"), engine: e.engine, fileExists: { _ in true })
+        defer { c.stopAll() }
+        let layer = try XCTUnwrap(c.composition?.layers(at: 0.5).first)
+        c.cache.store(flat(30, 30, 30), lane: layer.laneKey, frame: 0)
+        let r = PresetPreviewRenderer(compositor: c)
+        if case .unavailable = r.gradedFrame(clipId: "take", time: 0.5, pixelWidth: 16, pixelHeight: 16, exactOnly: true) {} else { XCTFail("nearest frame must never be matched") }
+        c.cache.store(flat(180, 180, 180), lane: layer.laneKey, frame: 15)
+        _ = r.gradedFrame(clipId: "take", time: 0.5, pixelWidth: 16, pixelHeight: 16, exactOnly: true); r.wait()
+        if case .ready(let image) = r.gradedFrame(clipId: "take", time: 0.5, pixelWidth: 16, pixelHeight: 16, exactOnly: true) {
+            XCTAssertEqual(image.rgba[0], 180)
+        } else { XCTFail("exact frame must become ready") }
+    }
+
+    func testExactMatchingStopsWaitingForTerminalDecodeFailure() throws {
+        let e = try editor(), c = PreviewCompositor()
+        c.composition = PreviewComposition(document: e.document, projectDir: URL(fileURLWithPath: "/project"), engine: e.engine, fileExists: { _ in true })
+        defer { c.stopAll() }
+        let layer = try XCTUnwrap(c.composition?.layers(at: 0).first)
+        let lane = PreviewDecodeLane(layer: layer, fps: 30, cache: c.cache)
+        var notifications = 0; lane.onFrame = { notifications += 1 }
+        lane.giveUpIfNothingDecoded(); lane.giveUpIfNothingDecoded()
+        XCTAssertEqual(notifications, 1, "terminal failure wakes the pending UI exactly once")
+        let r = PresetPreviewRenderer(compositor: c)
+        r.ownLane = lane
+        if case .unavailable = r.gradedFrame(clipId: "take", time: 0, pixelWidth: 16, pixelHeight: 16, exactOnly: true) {} else { XCTFail("terminal failure must not remain rendering") }
+    }
+
+    func testMatchingReductionCannotMixInvisibleBlueIntoOpaqueRed() throws {
+        let source = CanvasImage(width: 32, height: 16, rgba: (0..<512).flatMap { i in i % 2 == 0 ? [UInt8(255), 0, 0, 255] : [0, 0, 255, 0] })
+        let reduced = PresetPreviewRenderer.downscale(source, fitting: 16, 16, alphaCorrect: true)
+        let stats = try XCTUnwrap(LookMatch.statistics(reduced))
+        XCTAssertEqual(stats.mean.x, 1, accuracy: 1e-9); XCTAssertEqual(stats.mean.z, 0, accuracy: 1e-9)
+    }
+
+    func testExistingOffsetIsNotMultipliedByNewExposure() throws {
+        let e = try editor(); var grade = ColorGrading()
+        grade.balance["offset"] = .init(hue: 0, amount: 0, level: 0.4)
+        let matched = try XCTUnwrap(LookMatch.matched(grade, source: flat(77, 77, 77), reference: flat(115, 115, 115)))
+        XCTAssertTrue(e.setColorGrading(clipId: "take", matched))
+        let comp = PreviewComposition(document: e.document, projectDir: URL(fileURLWithPath: "/project"), engine: e.engine, fileExists: { _ in true })
+        let preview = PreviewCompositor(); defer { preview.stopAll() }
+        let shown = preview.graded(try XCTUnwrap(comp.layers(at: 0).first), flat(51, 51, 51), frame: 0, time: 0, fps: 30)
+        XCTAssertEqual(Double(shown.rgba[0]), 115, accuracy: 2)
+    }
+
     func testMatchedStatisticsImproveTheRenderedColourAndPreviewEqualsExport() throws {
         for (source, reference) in [(flat(60, 60, 60), flat(120, 120, 120)), (flat(110, 90, 70), flat(90, 100, 110))] {
             let e = try editor(), matched = try XCTUnwrap(LookMatch.matched(ColorGrading(), source: source, reference: reference))

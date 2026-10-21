@@ -74,6 +74,16 @@ extension InspectorPanel {
         return rows
     }
 
+    func cancelLookMatch() { lookMatch.pending = nil; lookMatch.message = nil }
+
+    func validateLookMatchContext() {
+        guard let request = lookMatch.pending else { return }
+        guard let editor, request.editor === editor, editor.document == request.document,
+              selection == [request.target], time == request.time, lookMatch.reference == request.reference else {
+            cancelLookMatch(); return
+        }
+    }
+
     func startLookMatch(_ target: String) {
         guard let editor, selection == [target], !editor.isClipLocked(target),
               let reference = lookMatch.reference, matchLookCandidates(target).contains(where: { $0.id == reference }),
@@ -114,8 +124,9 @@ extension InspectorPanel {
             }
             lookMatch.pending = nil; lookMatch.message = "Matched; Exposure, Contrast and Offset remain editable"
             if next != shown { edited(editor.commitGrade(clipId: request.target, time: request.time, shown: shown, next: next)) }
+            else { onEdited?() }
         }
     }
 
-    private func failLookMatch(_ message: String) { lookMatch.pending = nil; lookMatch.message = message }
+    private func failLookMatch(_ message: String) { lookMatch.pending = nil; lookMatch.message = message; onEdited?() }
 }
