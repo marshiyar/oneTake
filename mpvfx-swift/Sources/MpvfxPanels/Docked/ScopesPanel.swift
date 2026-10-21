@@ -68,6 +68,7 @@ public final class ScopesPanel: DockedPanelView {
         if !settings.kinds.contains(scopeKind) { settings.toggle(scopeKind) }
         for kind in settings.kinds where kind != scopeKind { settings.toggle(kind) }
         var result: ScopeResult?
+        status = "enlarge panel"
         if tile.width >= 48, tile.height >= 40 {
             switch programFrame?(InspectorPanel.scopeFrameSide, InspectorPanel.scopeFrameSide) ?? .unavailable {
             case .ready(let frame):

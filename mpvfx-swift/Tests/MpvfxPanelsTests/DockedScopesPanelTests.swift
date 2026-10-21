@@ -97,6 +97,17 @@ final class DockedScopesPanelTests: XCTestCase {
     }
 
     #if os(Linux)
+    func testShrinkingAReadyPanelDoesNotKeepItsPreviousFrameStatus() {
+        let panel = ScopesPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore()))
+        panel.programFrame = { _, _ in .ready(CanvasImage(width: 1, height: 1, rgba: [255, 0, 0, 255])) }
+        panel.draw(PanelMeasureCanvas(), size: CanvasSize(400, 300))
+        panel.worker.wait()
+        panel.draw(PanelMeasureCanvas(), size: CanvasSize(400, 300))
+        XCTAssertEqual(panel.status, "ready")
+        panel.draw(PanelMeasureCanvas(), size: CanvasSize(60, 70))
+        XCTAssertEqual(panel.status, "enlarge panel")
+    }
+
     func testKnownFrameChangesThePaintedScopePixels() {
         let panel = ScopesPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore()))
         let size = CanvasSize(400, 300)
