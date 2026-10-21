@@ -541,6 +541,7 @@ final class SessionPanels {
         let inspector = right.inspector
         let sel = session.timeline.view.selection.sorted()
         if inspector.selection != sel { inspector.selection = sel }
+        inspector.gradeClipboardAvailable = session.timeline.gradeClipboard != nil
         let keys = session.timeline.view.selectedKeyframes
         if inspector.selectedKeyframes != keys { inspector.selectedKeyframes = keys }
         inspector.time = session.playback.currentTime

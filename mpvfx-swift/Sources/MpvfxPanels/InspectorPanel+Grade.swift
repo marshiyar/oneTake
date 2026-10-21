@@ -54,6 +54,15 @@ public struct GradeUIState: Equatable {
 /// Grade group: presets, Amount, Primary, Color wheels, Curves (7 modes),
 /// Secondary color, Custom LUT, Finish, Copy grade to. Edits write the clip's color-grading effect (undoable).
 extension InspectorPanel {
+    var isGradePasteEnabled: Bool {
+        guard onPasteGrade != nil, gradeClipboardAvailable, let editor else { return false }
+        let kinds = Dictionary(editor.document.assets.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first })
+        return selection.contains { id in
+            guard let clip = editor.clip(id)?.clip else { return false }
+            return kinds[clip.assetId] == .video || kinds[clip.assetId] == .image
+        }
+    }
+
     /// Curve tabs; `color` is the tab's line/point token (ThemeTokens.curve*Pair), so light mode draws dark ink.
     static let curveTabs: [(key: String, label: String, color: ThemePair, hue: Bool, min: Double, max: Double)] = [
         ("master", "Master", ThemeTokens.curveMasterPair, false, 0, 1), ("red", "R", ThemeTokens.curveRedPair, false, 0, 1),
@@ -148,6 +157,7 @@ extension InspectorPanel {
     func gradeClipboardRow() -> InspectorCustomRow {
         InspectorCustomRow(id: "grade:clipboard", height: 28, draw: { [weak self] c, r, panel in
             guard let self else { return }
+            let pasteEnabled = self.isGradePasteEnabled
             let gap = 6.0, width = (r.width - gap) / 2
             let copy = CanvasRect(x: r.x, y: r.y + 2, width: width, height: 24)
             let paste = CanvasRect(x: copy.maxX + gap, y: copy.y, width: width, height: 24)
@@ -156,9 +166,9 @@ extension InspectorPanel {
                                   color: PanelTheme.text1)
             PanelDraw.smallButton(c, paste, label: "Paste grade",
                                   fill: panel.hovered == .custom("grade:clipboard", 1) ? PanelTheme.panelHover : PanelTheme.panelSurface,
-                                  color: onPasteGrade == nil ? PanelTheme.text4 : PanelTheme.text1)
+                                  color: pasteEnabled ? PanelTheme.text1 : PanelTheme.text4)
             panel.addHit(copy, .custom("grade:clipboard", 0))
-            if onPasteGrade != nil { panel.addHit(paste, .custom("grade:clipboard", 1)) }
+            if pasteEnabled { panel.addHit(paste, .custom("grade:clipboard", 1)) }
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
             _ = part == 0 ? onCopyGrade?() : onPasteGrade?()
