@@ -301,7 +301,9 @@ class MainBaseline(unittest.TestCase):
     def test_the_newest_full_main_run_of_the_same_class_is_chosen_from_every_event(self):
         full = list(bench_base.ALL_BENCHMARKS)
 
-        def art(commit, klass=HOSTED, benchmarks=full):
+        def art(commit, klass=HOSTED, benchmarks=None):
+            if benchmarks is None:
+                benchmarks = full
             return {"bench-linux.json": json.dumps({"commit": commit, "benchmarks": benchmarks,
                                                     "machine": {"class": klass}}).encode()}
 
