@@ -39,6 +39,8 @@ public struct NativeTimelineRenderInput {
     public var range: ExportFrameRange?
     /// Paints the frames (nil: NativeExportFrames.defaultRenderer, which the app installs at startup).
     public var frameRenderer: NativeExportFrameRendererFactory?
+    /// Collects the seconds spent painting and encoding (the export benchmark); nil collects nothing.
+    public var stageTimes: NativeExportStageTimes?
     public init(project: NativeProjectDocument, projectDir: String, outputPath: String, format: ExportFormat,
                 outputDimensions: ExportDimensions? = nil, outputFps: Double? = nil, quality: ExportQuality? = nil,
                 cancellation: MediaCancellation? = nil, onProgress: ((Double) -> Void)? = nil,
@@ -342,13 +344,19 @@ private func encodeNativeTimeline(_ encode: NativeTimelineEncode, _ input: Nativ
     for i in 0..<count {
         try input.cancellation?.throwIfCancelled()
         try withAutoreleasePool {
+            let t0 = NativeExportStageTimes.now()
             let rgba = try encode.frames.frame(at: plan.start + Double(i) / plan.outputFps)
-            try encode.writer.addVideo(rgba)
+            var sound: [Float]?
             if let mix = encode.mix {
                 let target = Swift.min(totalSamples, Int((Double(i + 1) / plan.outputFps * samples).rounded()))
-                try encode.writer.addAudio(mix.next(target - written))
+                sound = try mix.next(target - written)
                 written = target
             }
+            let t1 = NativeExportStageTimes.now()
+            input.stageTimes?.addPaint(t1 - t0)
+            try encode.writer.addVideo(rgba)
+            if let sound { try encode.writer.addAudio(sound) }
+            input.stageTimes?.addEncode(NativeExportStageTimes.now() - t1)
         }
         input.onProgress?(progressRange.lowerBound + span * Swift.min(0.999, Double(i + 1) / Double(count)))
     }

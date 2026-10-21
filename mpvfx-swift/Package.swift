@@ -173,7 +173,7 @@ let package = Package(
         // Release-build preview playback benchmark through the compositor, engine decode and canvas paint
         // (`sh scripts/preview-bench.sh`; tools/MpvfxPreviewBench/main.swift lists the scenarios). Its input clips are
         // written by the media engine's own H.264 encoder (`MpvfxPreviewBench --make-clips`, OneTakeMedia).
-        .executableTarget(name: "MpvfxPreviewBench", dependencies: ["MpvfxPlayer", "MpvfxCanvas", "MpvfxShared", mediaEngine],
+        .executableTarget(name: "MpvfxPreviewBench", dependencies: ["MpvfxPlayer", "MpvfxRuntime", "MpvfxCanvas", "MpvfxShared", mediaEngine],
                           path: "tools/MpvfxPreviewBench"),
         .executableTarget(name: "MpvfxDesktop", dependencies: [
             "MpvfxShared", keyframeEngine, "MpvfxRuntime", "MpvfxDesktopCore", "MpvfxBackend", "MpvfxCanvas", "MpvfxTimeline", "MpvfxPlayer", "MpvfxAudio", "MpvfxAudioGraph", "MpvfxPanels", "MpvfxTheme",

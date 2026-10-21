@@ -13,8 +13,8 @@
 #
 #===----------------------------------------------------------------------===#
 # Preview playback benchmark (tools/MpvfxPreviewBench): one 1080p30 H.264 clip, one 4K30 clip, two 1080p clips
-# stacked, a graded clip, and random seeks, each through the compositor, engine decode and canvas paint in its own
-# process. Results: one JSON line per scenario appended to the results file (fps, ms per frame per stage, peak RSS).
+# stacked, a graded clip, and random seeks, each through the compositor, engine decode and canvas paint, and 10 s of
+# 1080p30 exported to MP4 (export: export_fps, paint_ms, encode_ms), each in its own process. Results: one JSON line per scenario appended to the results file (fps, ms per frame per stage, peak RSS).
 #
 # Usage: scripts/preview-bench.sh <work dir> [results file]
 #   The clips are made once in <work dir> by the bench itself (MpvfxPreviewBench --make-clips), through the media
@@ -28,5 +28,5 @@ mkdir -p "$dir"
 swift build -c release --product MpvfxPreviewBench
 bench="$(swift build -c release --show-bin-path)/MpvfxPreviewBench"
 "$bench" --make-clips "$dir"
-for s in 1080p 4k stacked graded scrub; do "$bench" "$s" "$dir" "$out"; done
+for s in 1080p 4k stacked graded scrub export; do "$bench" "$s" "$dir" "$out"; done
 echo "results appended to $out"

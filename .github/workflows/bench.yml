@@ -2,8 +2,8 @@ name: bench
 
 # The app's benchmarks from a release build, on every OS, each in its own job: startup (launch to the first painted
 # frame), the audio graph (MpvfxAudioBench), the colour grade on the CPU and the GPU (MpvfxColorBench: Vulkan,
-# Direct3D 11, Metal) and preview playback (MpvfxPreviewBench: 1080p, 4K, stacked, graded, scrub). .github/ci/bench.py
-# runs each benchmark as separate processes (default 5), records every sample with p50, p95 and max, the peak memory,
+# Direct3D 11, Metal), and preview playback and export (MpvfxPreviewBench: 1080p, 4K, stacked, graded, scrub, export).
+# .github/ci/bench.py runs each benchmark as separate processes (default 5), records every sample with p50, p95 and max, the peak memory,
 # the machine and the commit, prints the table into the job summary and saves bench-<os>.json as the artifact
 # bench-<os> (90 days). Runs after every green mpvfx-ci run on main, every Sunday, and by hand with a run count.
 # GitHub's hosted runners are shared machines with virtual GPUs (lavapipe, WARP, Apple's paravirtual device): the
@@ -26,6 +26,8 @@ on:
       - 'mpvfx-swift/Sources/CMpvfxWin32/d3d11_grade.cpp'
       - 'mpvfx-swift/Sources/MpvfxAudio/**'
       - 'mpvfx-swift/Sources/MpvfxAudioGraph/**'
+      - 'mpvfx-swift/Sources/MpvfxRuntime/Media/**'
+      - 'mpvfx-swift/Sources/MpvfxRuntime/Export/**'
       - 'mpvfx-swift/Sources/OneTakeMedia/**'
       - 'mpvfx-swift/Sources/MpvfxDesktop/main.swift'
       - 'mpvfx-swift/binaries.lock'
