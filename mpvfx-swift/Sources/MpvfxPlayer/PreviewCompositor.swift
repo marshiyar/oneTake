@@ -151,7 +151,8 @@ public final class PreviewCompositor: FrameSource {
             }
             let look = shownImage(layer, pick.image, frame: pick.frame, time: time, fps: comp.fps, target: size,
                                   lane: pick.lane)
-            PreviewPainter.draw(layer, image: look.image, on: c, frame: rect, scale: s)
+            draw(layer, raw: pick.image, shown: look.image, shownIsCurrent: look.current, on: c, frame: rect, scale: s,
+                 context: context)
             shown.append(Shown(clipId: layer.clipId, frame: pick.frame, exact: pick.exact,
                                grade: look.grade, gradeCurrent: look.current))
             drew(pick, for: layer)
@@ -219,6 +220,27 @@ public final class PreviewCompositor: FrameSource {
         guard var last = standIns.picture(layer.clipId) else { return nil }
         last.exact = false
         return last
+    }
+
+    /// Compare is a presentation-only wipe. Both halves use the same cached decoded image; only the right half
+    /// asks `PreviewGrader` for the current look, so moving the divider cannot create or restart a decode lane.
+    func draw(_ layer: PreviewLayer, raw: CanvasImage, shown: CanvasImage, shownIsCurrent: Bool = true,
+              on c: CanvasContext, frame: CanvasRect, scale: Double, context: FrameDrawContext) {
+        guard context.compareClipId == layer.clipId else {
+            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+        }
+        let split = frame.x + frame.width * max(0, min(1, context.comparePosition))
+        // A completed grade from a previous request is useful during normal playback, but must never be paired
+        // with a different raw source frame in Compare. Until this frame's grade completes, show it raw on both sides.
+        let after = shownIsCurrent ? shown : raw
+        c.withState {
+            c.clip(CanvasRect(x: frame.x, y: frame.y, width: max(0, split - frame.x), height: frame.height))
+            PreviewPainter.draw(layer, image: raw, on: c, frame: frame, scale: scale)
+        }
+        c.withState {
+            c.clip(CanvasRect(x: split, y: frame.y, width: max(0, frame.maxX - split), height: frame.height))
+            PreviewPainter.draw(layer, image: after, on: c, frame: frame, scale: scale)
+        }
     }
 
     func decodeSize(_ layer: PreviewLayer, scale s: Double, backing: Double) -> PreviewDecodeSize {

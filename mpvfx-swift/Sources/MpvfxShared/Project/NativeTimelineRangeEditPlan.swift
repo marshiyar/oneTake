@@ -20,7 +20,7 @@ public struct NativeTimelineCompatibilityRange: Equatable {
     /// Exact native-frame-derived decimals used only by the transitional HTML mirror.
     public var start: String; public var duration: String; public var sourceOffset: String
 }
-public enum NativeTimelineRangeEditPlanFailureCode: String {
+public enum NativeTimelineRangeEditPlanFailureCode: String, Sendable {
     case invalidRange = "invalid-range", noChange = "no-change", unsupportedRangeChange = "unsupported-range-change"
     case missingSelectionId = "missing-selection-id", clipNotFound = "clip-not-found", ambiguousClip = "ambiguous-clip"
     case bindingSourceMismatch = "binding-source-mismatch", nativeCommandRejected = "native-command-rejected"

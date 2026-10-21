@@ -14,8 +14,8 @@
 // Gesture recording: turns a recorded pointer gesture into keyframes on the clip's parameter tracks.
 import Foundation
 
-public struct NativeRecordedKeyframe: Equatable {
-    public enum Property: Equatable { case number(Double), string(String) }
+public struct NativeRecordedKeyframe: Equatable, Sendable {
+    public enum Property: Equatable, Sendable { case number(Double), string(String) }
     public var percentage: Double
     public var properties: NativeOrderedMap<Property>
     /// Easing of the segment arriving at this sample (velocity-fitter convention).
@@ -54,7 +54,7 @@ public func nativeRecordedInterpolation(_ ease: String?) throws -> NativeInterpo
 }
 
 /// The property edit plan request without `properties` and `intent`.
-public struct NativeGestureRecordingRequest {
+public struct NativeGestureRecordingRequest: Sendable {
     public var selectedElement: NativeSelectedElementReference; public var playheadSeconds: Double
     public var selectionBounds: NativeSelectionBounds?; public var propertyBaselines: [String: Double]?; public var autoKeyframeEnabled: Bool?
     public init(selectedElement: NativeSelectedElementReference, playheadSeconds: Double, selectionBounds: NativeSelectionBounds? = nil,
