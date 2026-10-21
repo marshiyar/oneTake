@@ -50,9 +50,28 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read   # the files a pull request changes
     outputs:
       sent: ${{ steps.send.outputs.sent }}
     steps:
+      - name: Workflow files this pull request changes
+        # OneTake-actionRunners-1 runs linux-optional-headers-source.yml from main, so a pull request that changes the build job (or the
+        # generator) builds here, with its own definition.
+        id: own
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          WATCH: '^\.github/(workflows/linux-optional-headers(-source)?\.yml|ci/source_workflows\.py)$'
+        run: |
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
+          if grep -qE "$WATCH" "$RUNNER_TEMP/files.txt"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::this pull request changes linux-optional-headers.yml, linux-optional-headers-source.yml or source_workflows.py: it builds here"
+          fi
       - name: Runners App configured
         id: have
         env:
@@ -62,7 +81,7 @@ jobs:
         run: echo "app=$([ -n "$APP_ID" ] && [ -n "$APP_KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Runners App token
         id: token
-        if: steps.have.outputs.app == 'true'
+        if: steps.have.outputs.app == 'true' && steps.own.outputs.changed != 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.RUNNERS_APP_ID }}

@@ -45,11 +45,20 @@ class Handoff(unittest.TestCase):
             job = yaml.safe_load(text(f"{wf}.yml"))["jobs"]["runners"]
             have = step(job, "Runners App configured")
             self.assertIn('[ -n "$APP_ID" ] && [ -n "$APP_KEY" ]', have["run"], wf)
-            self.assertEqual(step(job, "Runners App token")["if"], "steps.have.outputs.app == 'true'", wf)
+            self.assertEqual(step(job, "Runners App token")["if"],
+                             "steps.have.outputs.app == 'true' && steps.own.outputs.changed != 'true'", wf)
             send = step(job, "Hand the build")
             self.assertIn(f'"{event}"', send["run"], wf)
             self.assertEqual(send["env"]["SHA"], "${{ github.sha }}", wf)
             self.assertIn('echo "sent=false"', send["run"], wf)
+
+    def test_a_pull_request_changing_the_build_builds_here(self):
+        for wf in VARIANTS:
+            job = yaml.safe_load(text(f"{wf}.yml"))["jobs"]["runners"]
+            own = step(job, "Workflow files this pull request changes")
+            self.assertEqual(own["if"], "github.event_name == 'pull_request'", wf)
+            self.assertEqual(own["env"]["WATCH"], rf"^\.github/(workflows/{wf}(-source)?\.yml|ci/source_workflows\.py)$", wf)
+            self.assertEqual(job["permissions"]["pull-requests"], "read", wf)
 
     def test_the_local_build_is_skipped_when_it_was_sent(self):
         for wf in VARIANTS:
