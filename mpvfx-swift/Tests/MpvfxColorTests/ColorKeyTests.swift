@@ -79,4 +79,20 @@ final class ColorKeyTests: XCTestCase {
         ColorGradeRenderer(params: params).apply(&pixel, width: 1, height: 1, time: 0)
         XCTAssertEqual(pixel[3], 0, "desaturating the output must not change the source-derived matte")
     }
+
+    func testSpillFollowsTheKeyHue() {
+        // A blue backdrop: the blue excess goes, green and neutral pixels stay.
+        var blue = ColorGradeParams()
+        blue.colorKey = .init(color: SIMD3(0, 0, 1), similarity: 0.02, smoothness: 0.5, spill: 1)
+        var px: [UInt8] = [64, 64, 192, 255, 128, 128, 128, 255, 64, 192, 64, 255]
+        ColorGradeRenderer(params: blue).apply(&px, width: 3, height: 1, time: 0)
+        XCTAssertLessThanOrEqual(px[2], max(px[0], px[1]) + 2, "blue cast removed")
+        XCTAssertEqual(Array(px[4..<7]), [128, 128, 128], "neutral grey untouched")
+        XCTAssertEqual(Array(px[8..<11]), [64, 192, 64], "green is not the key's hue")
+        var red = ColorGradeParams()
+        red.colorKey = .init(color: SIMD3(1, 0, 0), similarity: 0.02, smoothness: 0.5, spill: 1)
+        var r: [UInt8] = [192, 64, 64, 255]
+        ColorGradeRenderer(params: red).apply(&r, width: 1, height: 1, time: 0)
+        XCTAssertLessThanOrEqual(r[0], max(r[1], r[2]) + 2, "red cast removed")
+    }
 }

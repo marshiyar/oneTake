@@ -65,6 +65,9 @@ final class SessionPanels {
         right.dockedTab = .design
         rendersPanel = RightPanel(layout: layout)
         rendersPanel.dockedTab = .renders
+        let filterStore = MediaFilterStore(url: URL(fileURLWithPath: userData).appendingPathComponent("media-bin.json"))
+        left.filter = filterStore.load()
+        left.onFilterChange = { filterStore.save($0) }
         wireLeft()
         wireRight()
     }
