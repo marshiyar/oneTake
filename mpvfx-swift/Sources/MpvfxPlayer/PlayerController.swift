@@ -423,6 +423,28 @@ public final class PlayerController {
         needsDisplay?()
     }
 
+    /// The clip the crop tool is cropping, nil when it is closed.
+    public var cropClipId: String? { view.cropActive ? cropOriginal?.id : nil }
+
+    /// The crop tool's draft insets, nil when the tool is closed.
+    public var cropDraft: CropInsets? {
+        guard let id = cropClipId else { return nil }
+        return view.elements.first { $0.id == id }?.crop
+    }
+
+    /// Sets the crop tool's draft (the inspector's edge fields): nothing is committed before Apply.
+    public func setCropDraft(_ crop: CropInsets) {
+        guard let id = cropClipId else { return }
+        update(id) { $0.crop = crop }
+    }
+
+    /// The host set `view.selectedIds` itself (the timeline's selection): a crop open on a clip that is no longer
+    /// the one selected is cancelled, as a click away from it on the stage does.
+    public func selectionSynced() {
+        guard let id = cropClipId, view.selection != id else { return }
+        cancelCrop()
+    }
+
     func cancelCrop() {
         guard view.cropActive else { return }
         if let o = cropOriginal, let i = view.elements.firstIndex(where: { $0.id == o.id }) { view.elements[i].crop = o.crop }

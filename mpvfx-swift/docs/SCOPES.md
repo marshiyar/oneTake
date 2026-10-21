@@ -55,6 +55,16 @@ No standard defines false-colour bands. MpvfxScopes uses these, on Y' (`FalseCol
 
 Levels between bands show the pixel's own luma as grey, so the picture stays readable.
 
+## In the editor
+
+The Grade group's Scopes row (`Sources/MpvfxPanels/InspectorPanel+Scopes.swift`, `Sources/MpvfxPanels/Scopes/`):
+
+- A chip per scope: Waveform (luma), RGB (overlay), Parade, Vector, Histogram (luma line over R, G, B areas), False color. Up to four show at once; a fifth replaces the oldest, the last one cannot be turned off. One scope fills the width; more go two to a row, and a lone last tile spans the row. The default is the waveform beside the vectorscope.
+- Controls: `%` or `10-bit` scale, `75%` or `100%` targets, zoom (1x, 2x, 4x, cycles), trace gain (0.25x to 4x).
+- Every tile is black in both appearances. Traces are bitmaps at the analysis resolution; the graticule (level lines and labels, the vectorscope's cross, 0.5 ring, targets and skin line) is drawn as vectors over them. Red marks above and below a waveform column show samples at level 255 and level 0; the histogram writes the crushed and clipped luma shares; the vectorscope writes the share of samples off a zoomed scale.
+- Trace brightness: a bin with `count` samples is drawn at `1 - exp(-gain x count / ref)`, where `ref` is a column's samples spread over 100 levels (the frame's samples over 2000 bins for the vectorscope). Brightness does not depend on the frame's own peak, so it does not flicker from frame to frame (a product convention).
+- The frame: the host's graded frame of the selected clip at the playhead, at most 960 px on its long side (the old scopes used 320 px, too coarse for single-pixel highlights). It follows the playhead while playing. `ScopeWorker` analyses it on a background queue, keeps only the newest request, and shows the last result until the next is ready.
+
 ## Speed
 
 `MpvfxScopes` is compiled with `-O` in debug builds too (`Package.swift`): its per-pixel loop is about 9 times slower unoptimised. Rows are split across up to 8 threads (one per 131 072 samples), each with its own counters, merged at the end; the result does not depend on the thread count (`ScopeEngineAccuracyTests.testTheNumberOfWorkersDoesNotChangeTheResult`).

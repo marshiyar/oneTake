@@ -57,16 +57,18 @@ final class TimelineChunk6Tests: XCTestCase {
     func testVariableRowHeightsAndHitTests() throws {
         let (c, _) = try make()
         let v = c.view
-        XCTAssertEqual(v.trackRowHeight(0), 48 + 18 + 28)
+        // Media row H, then one 18 px effect strip and one 28 px lane; the group header is G tall.
+        let H = L.defaultTrackHeight, G = L.groupHeaderHeight, row0 = H + 18 + 28
+        XCTAssertEqual(v.trackRowHeight(0), row0)
         XCTAssertEqual(v.rowTop(0), 40)
-        XCTAssertEqual(v.groupHeaderTop("dialogue"), 40 + 94)
-        XCTAssertEqual(v.rowTop(1), 40 + 94 + 48)
+        XCTAssertEqual(v.groupHeaderTop("dialogue"), 40 + row0)
+        XCTAssertEqual(v.rowTop(1), 40 + row0 + G)
         let x = v.x(for: 1)
-        XCTAssertEqual(c.hitTest(x: x, y: 60), .clip(id: "clip:a", row: 0, edge: nil))
-        XCTAssertEqual(c.hitTest(x: x, y: 40 + 48 + 5), .clipExtra(id: "clip:a", row: 0))       // effect strip
-        XCTAssertEqual(c.hitTest(x: x, y: 40 + 66 + 10), .clipExtra(id: "clip:a", row: 0))      // lane
-        XCTAssertEqual(c.hitTest(x: v.x(for: 10), y: 40 + 66 + 10), .empty(row: 0))
-        XCTAssertEqual(c.hitTest(x: 18, y: 40 + 94 + 24), .groupHeader(id: "dialogue", caret: true))
+        XCTAssertEqual(c.hitTest(x: x, y: 40 + H / 2), .clip(id: "clip:a", row: 0, edge: nil))
+        XCTAssertEqual(c.hitTest(x: x, y: 40 + H + 5), .clipExtra(id: "clip:a", row: 0))            // effect strip
+        XCTAssertEqual(c.hitTest(x: x, y: 40 + H + 18 + 10), .clipExtra(id: "clip:a", row: 0))      // lane
+        XCTAssertEqual(c.hitTest(x: v.x(for: 10), y: 40 + H + 18 + 10), .empty(row: 0))
+        XCTAssertEqual(c.hitTest(x: 18, y: 40 + row0 + G / 2), .groupHeader(id: "dialogue", caret: true))
         XCTAssertEqual(c.hitTest(x: x, y: v.rowTop(1) + 20), .clip(id: "clip:m1", row: 1, edge: nil))
         XCTAssertEqual(c.hitTest(x: v.x(for: 2), y: v.rowTop(2) + 20), .clip(id: "clip:m2", row: 2, edge: nil))
         XCTAssertEqual(v.trackIndex(nearY: v.rowTop(2) + 10), 2)
@@ -78,9 +80,9 @@ final class TimelineChunk6Tests: XCTestCase {
         c.view.selection = ["clip:a"]
         XCTAssertTrue(c.keyDown(EditorKey(.char("u"))))
         XCTAssertFalse(c.view.expandedClips.contains("clip:a"))
-        XCTAssertEqual(c.view.trackRowHeight(0), 66)
+        XCTAssertEqual(c.view.trackRowHeight(0), L.defaultTrackHeight + 18)
         XCTAssertTrue(c.keyDown(EditorKey(.char("u"))))
-        XCTAssertEqual(c.view.trackRowHeight(0), 94)
+        XCTAssertEqual(c.view.trackRowHeight(0), L.defaultTrackHeight + 18 + 28)
         c.view.selection = ["clip:m1"]
         XCTAssertFalse(c.keyDown(EditorKey(.char("u"))), "no lanes, nothing to toggle")
     }

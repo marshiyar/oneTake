@@ -127,9 +127,11 @@ public extension TimelineController {
         editor?.createAudioGroup(clipIds: view.selection.sorted(), label: label)
     }
 
-    /// Insert an asset at the playhead (useTimelineAddAtPlayhead) and select it.
+    /// Insert an asset at the playhead (useTimelineAddAtPlayhead) and select it: onto `trackId`, else the targeted
+    /// track when it is free (targetedInsertTrack), else the first free lane.
     @discardableResult func insertAtPlayhead(assetId: String, trackId: String? = nil) -> String? {
-        guard let editor, let id = editor.insertClip(assetId: assetId, at: playback.currentTime, trackId: trackId) else { return nil }
+        let time = playback.currentTime, onto = trackId ?? targetedInsertTrack(assetId: assetId, at: time)
+        guard let editor, let id = editor.insertClip(assetId: assetId, at: time, trackId: onto) else { return nil }
         view.selection = [id]; needsDisplay?(); return id
     }
 
