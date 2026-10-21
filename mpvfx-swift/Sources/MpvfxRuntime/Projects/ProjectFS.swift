@@ -44,9 +44,16 @@ private func systemErrorMessage(_ error: Int32) -> String {
     #endif
 }
 
-let errnoNames: [Int32: String] = [ENOENT: "ENOENT", EEXIST: "EEXIST", EISDIR: "EISDIR", EINVAL: "EINVAL", EPERM: "EPERM",
+let errnoNames: [Int32: String] = {
+    let names: [Int32: String] = [ENOENT: "ENOENT", EEXIST: "EEXIST", EISDIR: "EISDIR", EINVAL: "EINVAL", EPERM: "EPERM",
     EACCES: "EACCES", ENOTSUP: "ENOTSUP", EXDEV: "EXDEV", ENOSYS: "ENOSYS", ENOTDIR: "ENOTDIR", ELOOP: "ELOOP",
-    ENOTEMPTY: "ENOTEMPTY", EBUSY: "EBUSY", EMLINK: "EMLINK"]
+    ENOTEMPTY: "ENOTEMPTY", EBUSY: "EBUSY", EMLINK: "EMLINK", ENOSPC: "ENOSPC", EROFS: "EROFS"]
+    #if os(Windows)
+    return names
+    #else
+    return names.merging([EDQUOT: "EDQUOT"]) { _, name in name }   // no EDQUOT in the Windows C runtime
+    #endif
+}()
 
 func fsError(_ syscall: String, _ path: String, _ e: Int32 = errno) -> ProjectFSError {
     ProjectFSError(code: errnoNames[e] ?? "E\(e)", syscall: syscall, path: path, errno: e)

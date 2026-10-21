@@ -64,6 +64,22 @@ final class NativeProjectAudioCommandsTests: XCTestCase {
         XCTAssertEqual(attached.sequence.tracks.count, 1)
     }
 
+    /// Clip fades (issue #85) are sound: detach moves them onto the audio clip, reattach brings the audio clip's back.
+    func testFadesFollowTheSoundThroughDetachAndReattach() throws {
+        var original = try project()
+        original.sequence.tracks[0].clips[0].fadeInFrames = 10
+        original.sequence.tracks[0].clips[0].fadeOutFrames = 20
+        var detached = try detachNativeVideoAudio(original, videoClipId: "video-clip", hasAudioStream: true, ids: ids)
+        XCTAssertEqual(detached.sequence.tracks[1].clips[0].fadeInFrames, 10)
+        XCTAssertEqual(detached.sequence.tracks[1].clips[0].fadeOutFrames, 20)
+        XCTAssertEqual(try reattachNativeVideoAudio(detached, audioClipId: "audio-clip"), original, "an unedited round trip is a no-op")
+        detached.sequence.tracks[1].clips[0].fadeInFrames = 5
+        detached.sequence.tracks[1].clips[0].fadeOutFrames = nil
+        let clip = try reattachNativeVideoAudio(detached, audioClipId: "audio-clip").sequence.tracks[0].clips[0]
+        XCTAssertEqual(clip.fadeInFrames, 5, "fades edited on the detached audio transfer back")
+        XCTAssertNil(clip.fadeOutFrames)
+    }
+
     func testRefusesSilentVideoAndChangedTiming() throws {
         let original = try project()
         XCTAssertThrowsError(try detachNativeVideoAudio(original, videoClipId: "video-clip", hasAudioStream: false, ids: ids)) {

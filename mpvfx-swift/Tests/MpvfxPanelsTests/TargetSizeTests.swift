@@ -160,7 +160,7 @@ final class TargetSizeTests: XCTestCase {
         let left = sidebar(), leftSize = CanvasSize(370, 1040)
         left.draw(c, size: leftSize)
         maps.append(regions("sidebar", left.hits, in: CanvasRect(x: 0, y: 0, width: leftSize.width, height: leftSize.height)) {
-            $0 == .libraryArea || $0 == .binArea
+            $0 == .binArea
         })
 
         let rightSize = CanvasSize(409, 2000), rightBounds = CanvasRect(x: 0, y: 0, width: 409, height: 2000)

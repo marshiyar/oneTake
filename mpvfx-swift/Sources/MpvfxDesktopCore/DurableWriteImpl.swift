@@ -29,6 +29,28 @@ import WinSDK
 public struct DurableWriteError: Error, Equatable, CustomStringConvertible {
     public var step: String, path: String, code: Int32
     public var description: String { "\(step) failed for \(path) (error \(code))" }
+    /// Save failures use errno names across hosts; `code` itself is a Win32 error on Windows.
+    public var filesystemCode: String? {
+        #if os(Windows)
+        switch code {
+        case ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL: return "ENOSPC"
+        case ERROR_DISK_QUOTA_EXCEEDED: return "EDQUOT"
+        case ERROR_WRITE_PROTECT: return "EROFS"
+        case ERROR_ACCESS_DENIED: return "EACCES"
+        case ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_INVALID_DRIVE, ERROR_BAD_NETPATH, ERROR_BAD_NET_NAME: return "ENOENT"
+        default: return nil
+        }
+        #else
+        switch code {
+        case ENOSPC: return "ENOSPC"
+        case EDQUOT: return "EDQUOT"
+        case EROFS: return "EROFS"
+        case EACCES, EPERM: return "EACCES"
+        case ENOENT: return "ENOENT"
+        default: return nil
+        }
+        #endif
+    }
 }
 
 public struct NativeDurableWrite: Sendable {

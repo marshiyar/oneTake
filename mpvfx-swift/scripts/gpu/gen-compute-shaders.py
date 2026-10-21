@@ -165,8 +165,8 @@ def body():
     b = b[:tex.start()] + "@TEXTURES@\n" + b[tex.end():]
     b = strip_comments(apply_overrides(b))
     b = rewrite(b, r"\bTex[123]\b", "int", 15)
-    b = rewrite(b, r"constant float\* u\b", "int uArg_", 17)
-    b = rewrite(b, r"\bu\b(?!\s*\[)", "uArg_", 31)
+    b = rewrite(b, r"constant float\* u\b", "int uArg_", 18)
+    b = rewrite(b, r"\bu\b(?!\s*\[)", "uArg_", 32)
     b = rewrite(b, r"rows\.read\(uint\(int\((lower|upper)\)\)\)", r"tex1Read(rows, int(\1))", 2)
     b = rewrite(b, r"secT\.read\(uint\((base(?: \+ \d)?)\)\)", r"tex1Read(secT, \1)", 5)
     b = rewrite(b, r"t\.read\(U3\(r, g, b\)\)", "lutRead3(t, r, g, b)", 1)
@@ -181,7 +181,7 @@ def body():
                 "    }\n"
                 "    return r;\n"
                 "}", 1)
-    b = rewrite(b, r"\binput\b", "inColor", 6)
+    b = rewrite(b, r"\binput\b", "inColor", 10)
     b = rewrite(b, r"\bpoint\b", "pt", 3)
     b = rewrite(b, r"\bline\b", "lineMask", 2)
     b = rewrite(b, r"\btriangle\b", "tri", 4)

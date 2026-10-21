@@ -17,7 +17,7 @@
 // weren't in the input, then extras added later. Equality compares `extra` only (order-insensitive, like toEqual).
 import Foundation
 
-public struct NativeSpreadKeys: Hashable {
+public struct NativeSpreadKeys: Hashable, Sendable {
     public var order: [String] = []
     public var extra = NativeJSONObject()
     public init(order: [String] = [], extra: NativeJSONObject = [:]) { self.order = order; self.extra = extra }

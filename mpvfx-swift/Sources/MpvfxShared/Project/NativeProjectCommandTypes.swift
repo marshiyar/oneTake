@@ -15,7 +15,7 @@
 // plus the small exported helpers other files import from them (ids, routedPosition).
 import Foundation
 
-public struct NativeProjectParameterAddress: Codable, Equatable, Hashable {
+public struct NativeProjectParameterAddress: Codable, Equatable, Hashable, Sendable {
     public var sequenceId: String, trackId: String, clipId: String, parameterId: String
     public init(sequenceId: String, trackId: String, clipId: String, parameterId: String) {
         self.sequenceId = sequenceId; self.trackId = trackId; self.clipId = clipId; self.parameterId = parameterId
@@ -59,7 +59,7 @@ public indirect enum NativeProjectKeyframeCommand: Equatable {
     case restoreDocument(NativeProjectDocument)
 }
 
-public enum NativeProjectKeyframeFailureCode: String, Codable {
+public enum NativeProjectKeyframeFailureCode: String, Codable, Sendable {
     case missingSequence = "missing-sequence", missingTrack = "missing-track", missingClip = "missing-clip"
     case missingParameter = "missing-parameter", missingKeyframe = "missing-keyframe", invalidFrame = "invalid-frame"
     case invalidGroup = "invalid-group", frameCollision = "frame-collision", valueTypeMismatch = "value-type-mismatch"

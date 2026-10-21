@@ -103,11 +103,15 @@ func engineLinkerSettings(_ component: String) -> [LinkerSetting] {
     #endif
 }
 
+// Swift 6 language mode, target by target (issue #50): the package default stays Swift 5 until every target is listed.
+let swift6: [SwiftSetting] = [.swiftLanguageMode(.v6)]
+
 let engineTargets: [Target] = [
     .systemLibrary(name: "CMediaEngine", path: "Sources/CMediaEngine"),
-    .target(name: "OneTakeMedia", dependencies: ["CMediaEngine"], linkerSettings: engineLinkerSettings("media")),
+    .target(name: "OneTakeMedia", dependencies: ["CMediaEngine"], swiftSettings: swift6, linkerSettings: engineLinkerSettings("media")),
     .systemLibrary(name: "CKeyframeEngine", path: "Sources/CKeyframeEngine"),
-    .target(name: "OneTakeKeyframes", dependencies: ["CKeyframeEngine"], linkerSettings: engineLinkerSettings("keyframes")),
+    .target(name: "OneTakeKeyframes", dependencies: ["CKeyframeEngine"], swiftSettings: swift6,
+            linkerSettings: engineLinkerSettings("keyframes")),
 ]
 
 let package = Package(
@@ -124,7 +128,7 @@ let package = Package(
             pkgConfig: "gtk+-3.0",
             providers: [.apt(["libgtk-3-dev"])]
         ),
-        .target(name: "MpvfxShared", dependencies: [keyframeEngine]),
+        .target(name: "MpvfxShared", dependencies: [keyframeEngine], swiftSettings: swift6),
         // Color grading and stylize effects: the grading shader on the CPU, shared by preview and export; on macOS
         // frames are graded on the GPU through MpvfxMetal (CPU port as fallback and test reference).
         // Uniform/parameter layout shared with the Metal kernels (the header lives beside the shader).
@@ -156,54 +160,63 @@ let package = Package(
         ]),
         // Custom-drawn editor timeline on MpvfxCanvas.
         // Dependency-free colour tokens, shared across UI modules.
-        .target(name: "MpvfxTheme"),
+        .target(name: "MpvfxTheme", swiftSettings: [.swiftLanguageMode(.v6)]),
         .target(name: "MpvfxTimeline", dependencies: ["MpvfxCanvas", "MpvfxShared", "MpvfxTheme"]),
         // Custom-drawn player/canvas stage + transport chrome.
         .target(name: "MpvfxPlayer", dependencies: ["MpvfxCanvas", "MpvfxTimeline", "MpvfxShared", "MpvfxPanels", "MpvfxColor", "MpvfxTheme", mediaEngine]),
         // Audio output (PulseAudio / Core Audio / WASAPI) + stem decode through the media engine (OneTakeMedia) + mixer + audio master clock.
         .target(name: "MpvfxAudio", dependencies: audioTargetDependencies),
         // Pure-Swift audio bus/FX graph (Float32, deterministic) shared by playback and export.
-        .target(name: "MpvfxAudioGraph"),
+        .target(name: "MpvfxAudioGraph", swiftSettings: swift6),
+        // Video scopes on RGBA8 frames (waveform, parade, vectorscope, histogram, false colour); Foundation only.
+        // Optimised in debug builds too: its per-pixel loop is 9x slower at -Onone (118 ms vs 13 ms for a 1080p
+        // frame, measured 2026-10-21), too slow for live scopes in a debug app and for its frame-budget test.
+        .target(name: "MpvfxScopes", swiftSettings: swift6 + [.unsafeFlags(["-O"], .when(configuration: .debug))]),
         // Player popovers (speed, shortcuts, volume) + crop persistence, drawn on MpvfxCanvas.
         .target(name: "MpvfxPanels", dependencies: ["MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", "MpvfxTheme"]),
         // Release-build render-speed benchmark for the bus/FX graph (`swift run -c release MpvfxAudioBench`).
         .executableTarget(name: "MpvfxAudioBench", dependencies: ["MpvfxAudio", "MpvfxAudioGraph"]),
         // Release-build grade benchmark, CPU port vs the Vulkan / Direct3D 11 compute renderer (`swift run -c release MpvfxColorBench`).
-        .executableTarget(name: "MpvfxColorBench", dependencies: ["MpvfxColor", "MpvfxShared"]),
+        .executableTarget(name: "MpvfxColorBench", dependencies: ["MpvfxColor", "MpvfxShared"],
+                          swiftSettings: [.swiftLanguageMode(.v6)]),
         // Release-build preview playback benchmark through the compositor, engine decode and canvas paint
         // (`sh scripts/preview-bench.sh`; tools/MpvfxPreviewBench/main.swift lists the scenarios). Its input clips are
         // written by the media engine's own H.264 encoder (`MpvfxPreviewBench --make-clips`, OneTakeMedia).
-        .executableTarget(name: "MpvfxPreviewBench", dependencies: ["MpvfxPlayer", "MpvfxCanvas", "MpvfxShared", mediaEngine],
+        .executableTarget(name: "MpvfxPreviewBench", dependencies: ["MpvfxPlayer", "MpvfxRuntime", "MpvfxCanvas", "MpvfxShared", mediaEngine],
                           path: "tools/MpvfxPreviewBench"),
         .executableTarget(name: "MpvfxDesktop", dependencies: [
             "MpvfxShared", keyframeEngine, "MpvfxRuntime", "MpvfxDesktopCore", "MpvfxBackend", "MpvfxCanvas", "MpvfxTimeline", "MpvfxPlayer", "MpvfxAudio", "MpvfxAudioGraph", "MpvfxPanels", "MpvfxTheme",
             .target(name: "CGtk3", condition: .when(platforms: [.linux])), win32,
         ]),
         .testTarget(name: "MpvfxSharedTests", dependencies: ["MpvfxShared"],
-                    exclude: ["Engine/Fixtures", "Export/Fixtures", "Library/Fixtures", "Media/Fixtures", "Project/Fixtures"]),
-        .testTarget(name: "OneTakeMediaTests", dependencies: [mediaEngine]),
+                    exclude: ["Engine/Fixtures", "Export/Fixtures", "Library/Fixtures", "Media/Fixtures", "Project/Fixtures"],
+                    swiftSettings: swift6),
+        .testTarget(name: "OneTakeMediaTests", dependencies: [mediaEngine], swiftSettings: swift6),
         .testTarget(name: "MpvfxThemeTests", dependencies: ["MpvfxTheme"]),
         // Launches the built MpVFX binary (Linux, under Xvfb) and compares window snapshots; OneTakeMedia decodes the PNGs.
-        .testTarget(name: "MpvfxAppSmokeTests", dependencies: [mediaEngine]),
+        .testTarget(name: "MpvfxAppSmokeTests", dependencies: [mediaEngine], swiftSettings: swift6),
         .testTarget(name: "MpvfxColorTests", dependencies: colorTestDependencies),
-        .testTarget(name: "MpvfxSharedEngineTests", dependencies: ["MpvfxShared", keyframeEngine]),
+        .testTarget(name: "MpvfxSharedEngineTests", dependencies: ["MpvfxShared", keyframeEngine], swiftSettings: swift6),
         .testTarget(name: "MpvfxDesktopCoreTests", dependencies: ["MpvfxDesktopCore", "MpvfxTheme"]),
         // The whole editor (EditorSession, shell router, panels) rendered through a canvas: live appearance switching.
         // MpvfxBackend + MpvfxTimeline: the quit test saves through RuntimeDesktopBackend and reads the editor's undo stack.
+        // MpvfxPlayer, MpvfxRuntime, MpvfxShared + OneTakeMedia: the sample project test draws the sample's media, exports
+        // it with the app's frame renderer and reads the file back.
         .testTarget(name: "MpvfxDesktopTests", dependencies: ["MpvfxDesktop", "MpvfxDesktopCore", "MpvfxCanvas", "MpvfxPanels", "MpvfxTheme",
-                                                             "MpvfxBackend", "MpvfxTimeline"]),
+                                                             "MpvfxBackend", "MpvfxTimeline", "MpvfxPlayer", "MpvfxRuntime", "MpvfxShared", mediaEngine]),
         // MpvfxPlayer + OneTakeMedia: the end-to-end export installs the app's frame renderer and decodes what it wrote.
         .testTarget(name: "MpvfxBackendTests", dependencies: ["MpvfxBackend", "MpvfxDesktopCore", "MpvfxRuntime", "MpvfxShared", "MpvfxPlayer", mediaEngine]),
-        .testTarget(name: "CSQLiteTests", dependencies: ["CSQLite", "MpvfxRuntime"]),
+        .testTarget(name: "CSQLiteTests", dependencies: ["CSQLite", "MpvfxRuntime"], swiftSettings: swift6),
         // MpvfxPlayer + OneTakeMedia: export tests paint with the app's frame renderer, build inputs and decode outputs
         // with the media engine (no FFmpeg).
         .testTarget(name: "MpvfxRuntimeTests", dependencies: ["MpvfxRuntime", "MpvfxShared", keyframeEngine, "MpvfxColor", "MpvfxPlayer", mediaEngine, "MpvfxCanvas"],
                     exclude: ["Library/Fixtures", "Media/Fixtures", "Projects/Fixtures"]),
-        .testTarget(name: "MpvfxCanvasTests", dependencies: ["MpvfxCanvas"]),
-        .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", keyframeEngine]),
+        .testTarget(name: "MpvfxCanvasTests", dependencies: ["MpvfxCanvas", .target(name: "CGtk3", condition: .when(platforms: [.linux]))]),
+        .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", "MpvfxTheme", keyframeEngine]),
         .testTarget(name: "MpvfxStartupTests", dependencies: [keyframeEngine, "MpvfxShared", "MpvfxRuntime"]),
         .testTarget(name: "MpvfxAudioTests", dependencies: ["MpvfxAudio", "MpvfxAudioGraph", "MpvfxShared"]),
-        .testTarget(name: "MpvfxAudioGraphTests", dependencies: ["MpvfxAudioGraph"], exclude: ["Fixtures"]),
+        .testTarget(name: "MpvfxAudioGraphTests", dependencies: ["MpvfxAudioGraph"], exclude: ["Fixtures"], swiftSettings: swift6),
+        .testTarget(name: "MpvfxScopesTests", dependencies: ["MpvfxScopes"], swiftSettings: swift6),
         .testTarget(name: "MpvfxPanelsTests", dependencies: ["MpvfxPanels", "MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", keyframeEngine, "MpvfxTheme"]),
         // Inspector controls end to end: row edit -> preview composite / live audio graph inputs / export frame and mix.
         .testTarget(name: "MpvfxInspectorAuditTests", dependencies: ["MpvfxPanels", "MpvfxPlayer", "MpvfxTimeline", "MpvfxCanvas", "MpvfxShared",
