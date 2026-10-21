@@ -170,13 +170,8 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         let frames = layer.holdSourceTime.map { MediaFrameStream.Frames(from: max(0, $0), fps: fps, width: sz.width, height: sz.height) }
             ?? .still(width: sz.width, height: sz.height)
         guard let reader = openReader(),
-<<<<<<< HEAD
               let img = MediaFrameStream(reader: reader, frames: frames).next()
-        else { return false }
-=======
-              let img = MediaFrameStream(reader: reader, frames: .still(width: sz.width, height: sz.height)).next()
         else { giveUpIfNothingDecoded(); return false }
->>>>>>> origin/main
         framesDecoded += 1
         cache.store(img, lane: key, frame: Self.stillFrame)
         delivered(Self.stillFrame)
