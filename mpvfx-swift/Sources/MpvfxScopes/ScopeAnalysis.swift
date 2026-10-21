@@ -58,9 +58,22 @@ public struct ScopeAnalysis: Sendable, Equatable {
         (waveform(channel, column: column, level: 0) > 0, waveform(channel, column: column, level: Self.levels - 1) > 0)
     }
 
-    /// The vectorscope bin a colour difference lands in, by the same rounding the analysis uses; nil outside the grid.
+    /// The vectorscope bin a colour difference lands in (graticule targets); nil outside the grid. It equals the bin
+    /// of the codes that make that colour except within 2^-31 bins of a rounding tie.
     public func vectorBin(cb: Double, cr: Double) -> (row: Int, col: Int)? {
         ScopeGeometry.vectorBin(cb: cb, cr: cr, radius: options.vectorRadius, zoom: options.vectorZoom)
+    }
+
+    /// The bin the analysis puts the 8-bit codes (r, g, b) in, by the analysis's own arithmetic; nil outside the grid.
+    public func vectorBin(red: UInt8, green: UInt8, blue: UInt8) -> (row: Int, col: Int)? {
+        let radius = options.vectorRadius, side = vectorSide
+        let tables = ScopeChroma.tables(options.matrix, binsPerUnit: 2 * Double(radius) * options.vectorZoom)
+        let d = tables.withUnsafeBufferPointer { t in
+            t.baseAddress.map { ScopeChroma.offsets($0, Int(red), Int(green), Int(blue)) } ?? (cb: 0, cr: 0)
+        }
+        let col = radius + d.cb, row = radius - d.cr
+        guard (0..<side).contains(col), (0..<side).contains(row) else { return nil }
+        return (row, col)
     }
 }
 

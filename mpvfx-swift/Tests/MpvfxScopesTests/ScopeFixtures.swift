@@ -62,9 +62,21 @@ enum ScopeFixtures {
         }
     }
 
-    /// The luma level the spec defines: the published coefficients in Double, rounded to the nearest code.
+    /// The luma level the spec defines: the published coefficients (four decimals) in exact integer arithmetic,
+    /// rounded half up. Written out here rather than read from `ScopeMatrix`, so a wrong weight there fails.
     static func lumaLevel(_ m: ScopeMatrix, _ r: UInt8, _ g: UInt8, _ b: UInt8) -> Int {
-        Int(m.luma(Double(r), Double(g), Double(b)).rounded())
+        let w: (Int, Int, Int)
+        switch m { case .rec709: w = (2126, 7152, 722); case .rec601: w = (2990, 5870, 1140); case .rec2020: w = (2627, 6780, 593) }
+        return (w.0 * Int(r) + w.1 * Int(g) + w.2 * Int(b) + 5000) / 10000
+    }
+
+    /// Deterministic pseudo-random codes (a 64-bit LCG), the same on every run.
+    static func codes(_ count: Int) -> [(UInt8, UInt8, UInt8)] {
+        var x: UInt64 = 0x9E37_79B9_7F4A_7C15
+        return (0..<count).map { _ in
+            x = x &* 6364136223846793005 &+ 1442695040888963407
+            return (UInt8(truncatingIfNeeded: x >> 56), UInt8(truncatingIfNeeded: x >> 48), UInt8(truncatingIfNeeded: x >> 40))
+        }
     }
 
     /// The vectorscope bin the spec defines for these code values.

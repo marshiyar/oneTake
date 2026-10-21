@@ -25,8 +25,8 @@ final class ScopeStandardTests: XCTestCase {
             XCTAssertEqual(m.kg, p.0, accuracy: 1e-12, "\(m)")
             XCTAssertEqual(m.cbDivisor, p.1, accuracy: 1e-12, "\(m)")
             XCTAssertEqual(m.crDivisor, p.2, accuracy: 1e-12, "\(m)")
-            let w = m.fixedPoint
-            XCTAssertEqual(w.r + w.g + w.b, 65536, "\(m): greys stay exact")
+            let w = m.decimalWeights
+            XCTAssertEqual(w.r + w.g + w.b, 10000, "\(m): the published weights, exactly; greys stay exact")
         }
     }
 
