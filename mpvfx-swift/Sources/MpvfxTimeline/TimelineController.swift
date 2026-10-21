@@ -407,6 +407,7 @@ public final class TimelineController {
             case "c": return copySelection()
             case "x": guard copySelection() else { return false }; return deleteSelection()
             case "v": return pasteClipboard()
+            case "k" where !k.alt: return keySelectedProperties(animatedOnly: k.shift)
             default: return false
             }
         }

@@ -134,7 +134,12 @@ public enum TimelineRuler {
 /// One expanded property lane (a property group, e.g. Position), keyframe times clip-local seconds.
 public struct TimelineLaneModel: Sendable, Equatable {
     public var group: String; public var label: String; public var keyframes: [Double]
-    public init(group: String, label: String, keyframes: [Double]) { self.group = group; self.label = label; self.keyframes = keyframes }
+    /// The kind whose mark the lane's keys draw with (TimelineKeyframeCatalog).
+    public var kind: TimelineKeyframeKind
+    public init(group: String, label: String, keyframes: [Double], kind: TimelineKeyframeKind? = nil) {
+        self.group = group; self.label = label; self.keyframes = keyframes
+        self.kind = kind ?? TimelineKeyframeCatalog.kind(ofGroup: group)
+    }
 }
 /// A permanently visible effect strip under the media bar (timelineAttachedEffects).
 public struct TimelineEffectModel: Sendable, Equatable {
