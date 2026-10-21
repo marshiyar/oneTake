@@ -13,8 +13,15 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for workflow_lint.py: each rule fires on the pattern it names and stays quiet on the compliant form; the allow
-list accepts findings with reasons, rejects stale and new entries; the repository's own workflows pass."""
-import contextlib, importlib.util, io, os, tempfile, textwrap, unittest
+list accepts findings with reasons up to each entry's count, rejects stale and new entries; the repository's own
+workflows pass."""
+import contextlib
+import importlib.util
+import io
+import os
+import tempfile
+import textwrap
+import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("workflow_lint", os.path.join(HERE, "workflow_lint.py"))
@@ -149,6 +156,41 @@ class Rules(unittest.TestCase):
         self.assertEqual(rules(swap("    timeout-minutes: 5\n", "    timeout-minutes: 5\n    continue-on-error: false\n")),
                          [])
 
+    def test_uses_in_any_yaml_style_is_checked_on_its_own_line(self):
+        flow = swap("      - uses: ./.github/actions/local\n", "      - {uses: owner/action@main}\n")
+        found = lint(flow)
+        self.assertEqual([(f.rule, f.job, f.line) for f in found],
+                         [("unpinned-action", "build", flow.split("\n").index("      - {uses: owner/action@main}") + 1)])
+        later = swap("      - uses: ./.github/actions/local\n", "      - name: later\n        uses: owner/action@main\n")
+        self.assertEqual([(f.rule, f.line) for f in lint(later)],
+                         [("unpinned-action", later.split("\n").index("        uses: owner/action@main") + 1)])
+        pinned = swap(f"      - uses: {CHECKOUT}\n        with:\n          persist-credentials: false\n",
+                      f"      - {{uses: 'actions/checkout@{SHA}', with: {{persist-credentials: false}}}} # v7.0.1\n")
+        self.assertEqual(rules(pinned), [])
+        self.assertEqual(rules(pinned.replace(" # v7.0.1", "")), ["no-version-comment"])
+        call = swap("  call:\n    uses: ./.github/workflows/other.yml\n    secrets:\n      TOKEN: ${{ secrets.TOKEN }}\n",
+                    "  call: {uses: o/r/.github/workflows/x.yml@main}\n")
+        self.assertEqual([(f.rule, f.job) for f in lint(call)], [("unpinned-action", "call")])
+
+    def test_bracket_access_to_secrets_and_the_token(self):
+        for value in ("${{ secrets['TOKEN'] }}", '${{ secrets["TOKEN"] }}', "${{ github['token'] }}",
+                      "${{ secrets [ 'TOKEN' ] }}"):
+            with self.subTest(value=value):
+                self.assertEqual(rules(swap("jobs:", f"env:\n  TOKEN: {value}\njobs:")), ["workflow-env-secret"])
+        self.assertEqual(rules(swap("jobs:", "env:\n  REF: ${{ github['ref'] }}\njobs:")), [])
+
+    def test_python_options_that_take_an_argument(self):
+        for cmd, found in (("python3 -X dev .github/ci/tool.py", ["python-isolation"]),
+                           ("python3 -Xdev .github/ci/tool.py", ["python-isolation"]),
+                           ("python3 -W ignore -I .github/ci/tool.py", ["python-isolation"]),
+                           ("python3 -I -X dev -B -W error .github/ci/tool.py", []),
+                           ("python3 --check-hash-based-pycs never -IB .github/ci/tool.py", []),
+                           ("python3 -c 'import sys' .github/ci/tool.py", []),
+                           ("python3 -m json.tool .github/ci/data.py", []),
+                           ("python3 -Im json.tool .github/ci/data.py", [])):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(rules(swap("python3 -I -B .github/ci/thing.py --flag", cmd)), found)
+
 
 GATED = """\
 name: mpvfx-ci
@@ -194,6 +236,17 @@ class RequiredWorkflow(unittest.TestCase):
         self.assertEqual(self.gate(extra), [("gate-coverage", "`ci-ok` does not wait for job `lint`")])
         self.assertEqual(self.gate(GATED.replace("    if: always()\n", "")), [("gate-coverage", "`ci-ok` has no `if: always()`")])
         self.assertEqual(lint(extra, "other.yml"), [])
+
+    def test_the_gate_condition_is_exactly_always(self):
+        for cond in ("always()", "${{ always() }}", "'  ${{   always()   }}  '"):
+            with self.subTest(cond=cond):
+                self.assertEqual(self.gate(GATED.replace("    if: always()\n", f"    if: {cond}\n")), [])
+        for cond in ("always() && needs.build.result == 'success'", "always() && false", "${{ always() || false }}",
+                     "success()", "!cancelled()", "true"):
+            with self.subTest(cond=cond):
+                found = self.gate(GATED.replace("    if: always()\n", f"    if: \"{cond}\"\n"))
+                self.assertEqual([r for r, _ in found], ["gate-coverage"])
+                self.assertIn("exactly `if: always()`", found[0][1])
 
     def test_no_paths_filter_on_pull_requests_or_the_merge_queue(self):
         pr = GATED.replace("    branches: [main]\n  merge_group:", "    branches: [main]\n    paths: ['src/**']\n  merge_group:")
@@ -241,6 +294,14 @@ class UntrustedCheckout(unittest.TestCase):
         repo = PRIVILEGED.replace("ref: main", "repository: ${{ github.event.pull_request.head.repo.full_name }}")
         self.assertEqual(rules(repo), ["untrusted-checkout"])
 
+    def test_a_merge_ref_of_the_pull_request_is_refused(self):
+        for ref in ("${{ github.event.pull_request.merge_commit_sha }}",
+                    "refs/pull/${{ github.event.pull_request.number }}/merge"):
+            with self.subTest(ref=ref):
+                self.assertEqual(rules(PRIVILEGED.replace("ref: main", f"ref: {ref}")), ["untrusted-checkout"])
+        merge = PRIVILEGED.replace('echo "$HEAD_SHA"', 'git fetch origin ${{ github.event.pull_request.merge_commit_sha }}')
+        self.assertEqual(rules(merge), ["untrusted-checkout"])
+
     def test_a_ref_computed_at_run_time_is_refused(self):
         self.assertEqual(rules(PRIVILEGED.replace("ref: main", "ref: ${{ steps.pr.outputs.sha }}")),
                          ["untrusted-checkout"])
@@ -274,10 +335,14 @@ class AllowList(unittest.TestCase):
         self.dir.cleanup()
 
     def write(self, name, entries):
+        """Write an allow list: each entry is (rule, workflow, job, reason) or (rule, workflow, job, reason, count)."""
         path = os.path.join(self.root, name)
+        blocks = []
+        for rule, wf, job, reason, *count in entries:
+            extra = f"count = {count[0]}\n" if count else ""
+            blocks.append(f'[[allow]]\nrule = "{rule}"\nworkflow = "{wf}"\njob = "{job}"\n{extra}reason = "{reason}"\n\n')
         with open(path, "w") as f:
-            for rule, wf, job, reason in entries:
-                f.write(f'[[allow]]\nrule = "{rule}"\nworkflow = "{wf}"\njob = "{job}"\nreason = "{reason}"\n\n')
+            f.write("".join(blocks))
         return path
 
     def main(self, *args):
@@ -324,6 +389,35 @@ class AllowList(unittest.TestCase):
         same = self.write("same.toml", [("no-timeout", "w.yml", "build", "another reason, long enough"),
                                         ("persist-credentials", "x.yml", "", "an entry the head has removed")])
         self.assertEqual(self.main("--allow", allow, "--base-allow", same)[0], 0)
+
+    def test_an_entry_accepts_only_its_count(self):
+        two = swap("      - uses: ./.github/actions/local\n", f"      - uses: {CHECKOUT}\n",
+                   swap("persist-credentials: false", "fetch-depth: 0"))
+        with open(os.path.join(self.root, ".github", "workflows", "w.yml"), "w") as f:
+            f.write(swap("    timeout-minutes: 5\n", "", two))
+        timeout = ("no-timeout", "w.yml", "build", "a reason that is long enough")
+        reason = "two checkouts keep the token for now"
+        code, out = self.main("--allow", self.write("a.toml", [timeout, ("persist-credentials", "w.yml", "build", reason)]))
+        self.assertEqual(code, 1, out)
+        self.assertIn("1 new, 2 allowed", out)
+        self.assertIn("accepts 1 of 2", out)
+        allow = self.write("b.toml", [timeout, ("persist-credentials", "w.yml", "build", reason, 2)])
+        code, out = self.main("--allow", allow)
+        self.assertEqual(code, 0, out)
+        self.assertIn("0 new, 3 allowed", out)
+        code, out = self.main("--allow", self.write("c.toml", [timeout, ("persist-credentials", "w.yml", "build", reason, 3)]))
+        self.assertEqual(code, 1, out)
+        self.assertIn("has count 3 but 2 findings remain", out)
+        base = self.write("base.toml", [timeout, ("persist-credentials", "w.yml", "build", reason, 1)])
+        code, out = self.main("--allow", allow, "--base-allow", base)
+        self.assertEqual(code, 1, out)
+        self.assertIn("raises count from 1 to 2", out)
+        for bad in (0, '"2"', "true"):
+            with self.subTest(count=bad):
+                code, out = self.main("--allow", self.write("d.toml", [timeout, ("persist-credentials", "w.yml", "build",
+                                                                                   reason, bad)]))
+                self.assertEqual(code, 1, out)
+                self.assertIn("`count` must be", out)
 
     def test_a_broken_workflow_stops_the_run(self):
         with open(os.path.join(self.root, ".github", "workflows", "bad.yml"), "w") as f:

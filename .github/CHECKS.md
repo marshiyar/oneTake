@@ -91,15 +91,16 @@ by workflow-lint) that fails when the rule is broken. Findings that exist today 
    request links the run list as evidence. A check is never made required by a branch-protection setting alone:
    `ci-ok` stays the only required check.
    *Enforced in part:* `gate-coverage` fails when a job in the required workflow is not one `ci-ok` waits for, or
-   when `ci-ok` lacks `if: always()`.
+   when `ci-ok`'s condition is anything but exactly `if: always()`.
 9. **Baselines and allow lists only shrink.** A count-based baseline (such as the crash-construct ratchet in review)
    may go down in any pull request and never goes up. `.github/ci/workflow-lint-allow.toml` and `.github/sentinel.toml`
    entries carry a reason each. The pull request that fixes a finding removes its entry. A new exception is a design
    decision: argue it in the pull request, and never add one just to turn a check green. Sentinel's import baselines
    are records of what ships, not budgets: they change only in a pull request that says why each new import is
    wanted.
-   *Enforced:* workflow-lint fails on an allow entry that matches nothing, and, on a pull request, on an entry that
-   the base branch's list does not have.
+   *Enforced:* workflow-lint fails on an allow entry that matches nothing or fewer findings than its `count`, on
+   more findings than the count, and, on a pull request, on an entry that the base branch's list does not have or
+   has with a lower count.
 10. **Flake policy: one re-run, then it is real.** A failed job may be re-run once. If it fails again, treat it as a
     real failure and fix it, or open an issue and fix the test. When a re-run passes, agentbot's `flakes` job records
     what failed before in the issue **Flaky tests**, with counts. A test that shows up there twice gets an issue of

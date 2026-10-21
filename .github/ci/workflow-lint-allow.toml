@@ -3,7 +3,8 @@
 # This list only shrinks. An entry that no longer matches a finding fails the lint (remove it in the PR that fixes the
 # workflow), and on a pull request an entry that main's copy does not have fails it too: a new workflow, or a new job
 # in an old one, follows every rule from its first commit. One entry covers one rule in one job of one workflow
-# (job = "" for the workflow itself). Recorded 2026-10-21 against main 959c44d.
+# (job = "" for the workflow itself), and `count` is how many such findings it accepts: one more fails as new, one
+# fewer fails until the count is lowered. Recorded 2026-10-21 against main 959c44d.
 
 # --- persist-credentials: the checkout leaves the job's token in .git/config -------------------------------------------
 # None of these jobs runs git against origin after the checkout (checked 2026-10-21: no `git push`, `git fetch` or
@@ -15,120 +16,140 @@
 rule = "persist-credentials"
 workflow = "mpvfx-ci.yml"
 job = "plan"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Follow-up PR adds the flag (in ci-ok, so not mixed into this PR)."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-ci.yml"
 job = "checks"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Follow-up PR adds the flag (in ci-ok, so not mixed into this PR)."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-ci.yml"
 job = "linux"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Follow-up PR adds the flag (in ci-ok, so not mixed into this PR)."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-ci.yml"
 job = "linux-test"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Follow-up PR adds the flag (in ci-ok, so not mixed into this PR)."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-ci.yml"
 job = "windows"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Follow-up PR adds the flag (in ci-ok, so not mixed into this PR)."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-ci.yml"
 job = "windows-test"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Follow-up PR adds the flag (in ci-ok, so not mixed into this PR)."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-ci.yml"
 job = "publish"
+count = 1
 reason = "contents: write token stays in .git/config, but publish.sh releases with gh only, never git. Highest-priority follow-up of this list."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-macos.yml"
 job = "plan"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Called from mpvfx-ci (ci-ok); follow-up PR after #56, which edits this file."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-macos.yml"
 job = "test"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Called from mpvfx-ci (ci-ok); follow-up PR after #56, which edits this file."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "mpvfx-macos.yml"
 job = "package"
+count = 1
 reason = "Read-only token; nothing uses git after the checkout. Called from mpvfx-ci (ci-ok); follow-up PR after #56, which edits this file."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "codeql.yml"
 job = "scripts-and-workflows"
+count = 1
 reason = "Token is contents: read + security-events: write; nothing uses git after the checkout. Follow-up PR adds the flag."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "codeql.yml"
 job = "swift"
+count = 1
 reason = "Token is contents: read + security-events: write; nothing uses git after the checkout. Follow-up PR adds the flag."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "sentinel.yml"
 job = "repo"
+count = 1
 reason = "Read-only token (contents, actions); nothing uses git after the checkout. Follow-up PR adds the flag."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "sentinel.yml"
 job = "linux"
+count = 1
 reason = "Read-only token (contents, actions); sparse checkout of .github only, no git afterwards. Follow-up PR adds the flag."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "sentinel.yml"
 job = "windows"
+count = 1
 reason = "Read-only token (contents, actions); sparse checkout of .github only, no git afterwards. Follow-up PR adds the flag."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "sentinel.yml"
 job = "macos"
+count = 1
 reason = "Read-only token (contents, actions); sparse checkout of .github only, no git afterwards. Follow-up PR adds the flag."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "strip-check.yml"
 job = "linux"
+count = 1
 reason = "Read-only token (contents, actions); sparse checkout of .github only, no git afterwards. Follow-up after #56, which edits this file."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "strip-check.yml"
 job = "windows"
+count = 1
 reason = "Read-only token (contents, actions); sparse checkout of .github only, no git afterwards. Follow-up after #56, which edits this file."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "strip-check.yml"
 job = "macos"
+count = 1
 reason = "Read-only token (contents, actions); sparse checkout of .github only, no git afterwards. Follow-up after #56, which edits this file."
 
 [[allow]]
 rule = "persist-credentials"
 workflow = "codex-apply.yml"
 job = "apply"
+count = 1
 reason = "The job pushes Codex's commit with the checkout's stored token today. PR #73 sets the flag and authenticates only the push command; remove this entry when #73 lands."
 
 # --- untrusted-checkout ---------------------------------------------------------------------------------------------
@@ -137,6 +158,7 @@ reason = "The job pushes Codex's commit with the checkout's stored token today. 
 rule = "untrusted-checkout"
 workflow = "codex-apply.yml"
 job = "apply"
+count = 1
 reason = "issue_comment checks out the PR head (steps.pr.outputs.sha) on purpose, to apply Codex's diff to it. The step before refuses PRs from forks and closed PRs; nothing from the tree runs (the checker comes from main, then git apply/commit/push)."
 
 # --- no-version-comment ---------------------------------------------------------------------------------------------
@@ -148,18 +170,21 @@ reason = "issue_comment checks out the PR head (steps.pr.outputs.sha) on purpose
 rule = "no-version-comment"
 workflow = "mpvfx-ci.yml"
 job = "windows"
+count = 1
 reason = "Pinned to an untagged commit of compnerd/gha-setup-swift main; no version exists to name (see the comment above)."
 
 [[allow]]
 rule = "no-version-comment"
 workflow = "mpvfx-ci.yml"
 job = "windows-test"
+count = 1
 reason = "Pinned to an untagged commit of compnerd/gha-setup-swift main; no version exists to name (see the comment above)."
 
 [[allow]]
 rule = "no-version-comment"
 workflow = "bench.yml"
 job = "windows"
+count = 1
 reason = "Pinned to an untagged commit of compnerd/gha-setup-swift main; no version exists to name (see the comment above)."
 
 # --- python-isolation -----------------------------------------------------------------------------------------------
@@ -168,6 +193,7 @@ reason = "Pinned to an untagged commit of compnerd/gha-setup-swift main; no vers
 rule = "python-isolation"
 workflow = "mpvfx-ci.yml"
 job = "linux"
+count = 1
 reason = "gen-compute-shaders.py --check runs with -I but not -B; it writes nothing but .pyc files. One-flag follow-up in the required linux job, kept out of this PR."
 
 # --- concurrency ----------------------------------------------------------------------------------------------------
@@ -176,18 +202,21 @@ reason = "gen-compute-shaders.py --check runs with -I but not -B; it writes noth
 rule = "no-concurrency"
 workflow = "mpvfx-macos.yml"
 job = ""
+count = 1
 reason = "Runs almost only as mpvfx-ci's macos job, under mpvfx-ci's ref group; a group of its own matters only for hand dispatches. Follow-up after #56."
 
 [[allow]]
 rule = "no-concurrency"
 workflow = "merge-train.yml"
 job = ""
+count = 1
 reason = "The train job has its own merge-train group; record runs once per `queue` label event and only comments on that PR (merge_train.py record). Follow-up gives record a group per PR."
 
 [[allow]]
 rule = "no-concurrency"
 workflow = "scorecard.yml"
 job = ""
+count = 1
 reason = "Weekly and on push to main only; two overlapping runs publish the same score. Follow-up adds a ref group."
 
 # --- token and secrets scope ----------------------------------------------------------------------------------------
@@ -196,16 +225,19 @@ reason = "Weekly and on push to main only; two overlapping runs publish the same
 rule = "top-level-write"
 workflow = "agentbot.yml"
 job = ""
+count = 1
 reason = "All four jobs post comments or edit the Flaky tests issue, and none checks out or runs PR code. Follow-up moves the write scopes into each job."
 
 [[allow]]
 rule = "workflow-env-secret"
 workflow = "agentbot.yml"
 job = ""
+count = 1
 reason = "GITHUB_TOKEN (github.token) in the top-level env: every job of agentbot calls the API with it, so every job needs it today. Follow-up moves it to job level."
 
 [[allow]]
 rule = "secrets-inherit"
 workflow = "mpvfx-ci.yml"
 job = "macos"
+count = 1
 reason = "The callee reads only the five optional Apple signing secrets, and never on pull requests. Naming them in workflow_call.secrets edits the required path; follow-up after #56."
