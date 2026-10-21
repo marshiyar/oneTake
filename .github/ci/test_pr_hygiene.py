@@ -18,7 +18,7 @@ import io
 import os
 import subprocess
 import unittest
-from unittest import mock
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("pr_hygiene", os.path.join(HERE, "pr_hygiene.py"))
@@ -107,8 +107,8 @@ class NeverFails(unittest.TestCase):
     def test_api_failure_is_a_warning_and_exit_zero(self):
         err = subprocess.CalledProcessError(1, ["gh"], stderr="HTTP 403")
         out = io.StringIO()
-        with mock.patch.object(ph, "fetch", side_effect=err), contextlib.redirect_stdout(out), \
-                mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
+        with unittest.mock.patch.object(ph, "fetch", side_effect=err), contextlib.redirect_stdout(out), \
+                unittest.mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
             self.assertEqual(ph.main(["--repo", REPO, "--pr", "1"]), 0)
         self.assertIn("::warning title=PR hygiene::could not read the pull request from the API: HTTP 403", out.getvalue())
 
@@ -116,8 +116,8 @@ class NeverFails(unittest.TestCase):
         err = subprocess.CalledProcessError(1, ["gh"], stderr="API rate limit exceeded")
         responses = [[f("mpvfx-swift/Sources/MpvfxTimeline/A.swift", 1)], [{"body": "Fixes #5"}]]
         out = io.StringIO()
-        with mock.patch.object(ph, "gh_json_lines", side_effect=[*responses, err]), contextlib.redirect_stdout(out), \
-                mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
+        with unittest.mock.patch.object(ph, "gh_json_lines", side_effect=[*responses, err]), contextlib.redirect_stdout(out), \
+                unittest.mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
             self.assertEqual(ph.main(["--repo", REPO, "--pr", "1"]), 0)
         text = out.getvalue()
         self.assertIn("::warning title=PR hygiene::could not read the pull request from the API: API rate limit", text)
@@ -126,8 +126,8 @@ class NeverFails(unittest.TestCase):
     def test_warnings_become_annotations(self):
         files = [f("mpvfx-swift/Sources/MpvfxTimeline/A.swift", 500)]
         out = io.StringIO()
-        with mock.patch.object(ph, "fetch", return_value=(files, "", lambda n: None)), \
-                contextlib.redirect_stdout(out), mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
+        with unittest.mock.patch.object(ph, "fetch", return_value=(files, "", lambda n: None)), \
+                contextlib.redirect_stdout(out), unittest.mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
             self.assertEqual(ph.main(["--repo", REPO, "--pr", "1"]), 0)
         self.assertIn("::warning title=PR hygiene::500 changed lines", out.getvalue())
         self.assertIn("| Changed lines (no tests, fixtures, generated) | 500 | 400 |", out.getvalue())

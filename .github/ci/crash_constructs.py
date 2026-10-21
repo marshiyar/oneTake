@@ -27,20 +27,22 @@ occurrence per Swift file under mpvfx-swift/Sources/ and per kind, and fails whe
 or split moves its entry in the baseline by hand in the same pull request, where review sees it.
 
 Kinds:
-  force-unwrap   postfix `!` on an expression (`x!`, `f()!`, `a[i]!`)
+  force-unwrap   postfix `!` on an expression (`x!`, `f()!`, `a[i]!`, `xs.first { $0 > 1 }!`)
   try!           `try!`
   as!            `as!`
   fatalError     a call of `fatalError(` (also `Swift.fatalError(`)
   precondition   a call of `precondition(` or `preconditionFailure(`
-Not counted: `!=` and `!==`, prefix `!` (`!flag`), implicitly unwrapped optional types (`var v: View!`, `-> T!`,
-`: [T]!`, `: (() -> Void)!`, `: G<T>!`), and anything inside a comment (line, nested block) or a string literal
-(plain, multi-line, raw `#"..."#`); code inside a string interpolation `\\( )` is scanned as code.
+Not counted: `!=` and `!==`, prefix `!` (`!flag`), implicitly unwrapped optional types in a declaration's type
+annotation (`var v: View!`, `-> T!`, `let a: [any P]!`, `var h: (() -> Void)!`, `: G<T>!`, a parameter `x: T!`), and
+anything inside a comment (line, nested block) or a string literal (plain, multi-line, raw `#"..."#`); code inside a
+string interpolation `\\( )` is scanned as code.
 
 With --base REV (CI passes the parent commit), the working baseline is also compared with the baseline at REV, allowing
-equal-or-lower entries to follow source-file renames. If REV has no baseline, that comparison is skipped. Each source
-file that rose prints the occurrences that REV does not have (matched by kind and line text); without it, or when REV
-cannot be read, every occurrence of that kind in the file. Exit 0 within the baseline, 1 on a rise, 2 bad input or a
-refused --update/--init.
+equal-or-lower entries to follow source-file renames, and a split: the files git sees as renamed or copied from a file
+the change removes may together hold up to that file's base count. If REV has no baseline, that comparison is skipped.
+Each source file that rose prints the occurrences that REV does not have at that path (or the path it was renamed or
+split from), matched by kind and line text; without it, or when REV cannot be read, every occurrence of that kind in
+the file. Exit 0 within the baseline, 1 on a rise, 2 bad input or a refused --update/--init.
 """
 import argparse
 import bisect
@@ -59,55 +61,37 @@ CALLS = {"fatalError": "fatalError", "precondition": "precondition", "preconditi
 IDENT_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$")  # $0 too
 # Keywords that can sit right before a prefix `!` with no space (`return!x` is legal Swift); `self` stays out, since
 # `self!` unwraps a weak capture.
-KEYWORDS = frozenset(["if", "guard", "while", "return", "in", "case", "else", "where", "throw", "repeat", "is", "await", "switch", "let", "var"])
+KEYWORDS = frozenset(["if", "guard", "while", "return", "in", "case", "else", "where", "throw", "repeat", "is", "await",
+                      "switch", "let", "var"])
+# Characters that can end an expression right before a postfix `!` (an identifier character aside).
+EXPR_ENDS = frozenset(")]>}")
 
 
 # ---- lexer: blank comments and string contents, keep code (interpolations included) ----
 
-def mask(src):
-    """Return src with every comment and every string literal's contents replaced by spaces (newlines kept), so each
-    remaining character is code at its original offset. String delimiters stay, interpolated code stays."""
-    out = list(src)
-    n = len(src)
+class _Masker:
+    """One pass over a Swift source that blanks comments and literal contents in a copy of it."""
 
-    def blank(a, b):
+    def __init__(self, src):
+        self.src = src
+        self.n = len(src)
+        self.out = list(src)
+        self.handlers = {"/": self._slash, "#": self._literal, '"': self._literal}
+
+    def blank(self, a, b):
         for k in range(a, b):
-            if out[k] != "\n":
-                out[k] = " "
+            if self.out[k] != "\n":
+                self.out[k] = " "
 
-    def code(i, in_interp):
+    def code(self, i, in_interp):
+        """Scan code from i; inside an interpolation, return just past its closing `)`."""
         depth = 0
-        while i < n:
-            c = src[i]
-            if c == "/" and i + 1 < n and src[i + 1] == "/":
-                j = src.find("\n", i)
-                j = n if j < 0 else j
-                blank(i, j)
+        while i < self.n:
+            c = self.src[i]
+            handler = self.handlers.get(c)
+            j = handler(i) if handler else None
+            if j is not None:
                 i = j
-                continue
-            if c == "/" and i + 1 < n and src[i + 1] == "*":
-                j, level = i + 2, 1
-                while j < n and level:
-                    if src.startswith("/*", j):
-                        level, j = level + 1, j + 2
-                    elif src.startswith("*/", j):
-                        level, j = level - 1, j + 2
-                    else:
-                        j += 1
-                blank(i, j)
-                i = j
-                continue
-            if c == "#" or c == '"':
-                h = 0
-                while i + h < n and src[i + h] == "#":
-                    h += 1
-                if i + h < n and src[i + h] == '"':
-                    i = string(i, h)
-                    continue
-                if h and i + h < n and src[i + h] == "/":   # extended regex literal #/.../#
-                    i = regex(i, h)
-                    continue
-                i += max(h, 1)
                 continue
             if c == "(":
                 depth += 1
@@ -118,60 +102,102 @@ def mask(src):
             i += 1
         return i
 
-    def string(i, h):
+    def _slash(self, i):
+        nxt = self.src[i + 1:i + 2]
+        if nxt == "/":
+            j = self.src.find("\n", i)
+            j = self.n if j < 0 else j
+            self.blank(i, j)
+            return j
+        if nxt == "*":
+            return self._block_comment(i)
+        return None
+
+    def _block_comment(self, i):
+        j, level = i + 2, 1
+        while j < self.n and level:
+            if self.src.startswith("/*", j):
+                level, j = level + 1, j + 2
+            elif self.src.startswith("*/", j):
+                level, j = level - 1, j + 2
+            else:
+                j += 1
+        self.blank(i, j)
+        return j
+
+    def _literal(self, i):
+        """A `"` or `#` opens a string, an extended regex `#/.../#`, or is a lone `#` (`#if`, `#selector`)."""
+        h = 0
+        while i + h < self.n and self.src[i + h] == "#":
+            h += 1
+        nxt = self.src[i + h:i + h + 1]
+        if nxt == '"':
+            return self._string(i, h)
+        if h and nxt == "/":
+            return self._regex(i, h)
+        return i + max(h, 1)
+
+    def _interpolation(self, seg, at, length):
+        """Blank the literal text seg..at, keep the interpolation's `(`, scan its code; return where the text resumes."""
+        self.blank(seg, at + length - 1)
+        return self.code(at + length, True)
+
+    def _string(self, i, h):
         i += h
-        multi = src.startswith('"""', i)
+        multi = self.src.startswith('"""', i)
         i += 3 if multi else 1
         close = ('"""' if multi else '"') + "#" * h
         esc = "\\" + "#" * h
         seg = i
-        while i < n:
-            if src.startswith(esc, i):
-                k = i + len(esc)
-                if k < n and src[k] == "(":
-                    blank(seg, k + 1)
-                    i = code(k + 1, True)
-                    seg = i
-                    continue
-                i = k + 1
+        while i < self.n:
+            if self.src.startswith(esc + "(", i):
+                i = seg = self._interpolation(seg, i, len(esc) + 1)
                 continue
-            if src.startswith(close, i):
-                blank(seg, i)
+            if self.src.startswith(esc, i):
+                i += len(esc) + 1
+                continue
+            if self.src.startswith(close, i):
+                self.blank(seg, i)
                 return i + len(close)
-            if not multi and src[i] == "\n":   # unterminated: the compiler rejects it, stop at the line end
-                blank(seg, i)
+            if not multi and self.src[i] == "\n":   # unterminated: the compiler rejects it, stop at the line end
+                self.blank(seg, i)
                 return i
             i += 1
-        blank(seg, n)
-        return n
+        self.blank(seg, self.n)
+        return self.n
 
-    def regex(i, h):
+    def _escaped(self, i):
+        """True when an odd number of backslashes sits right before src[i]."""
+        k = i
+        while k > 0 and self.src[k - 1] == "\\":
+            k -= 1
+        return (i - k) % 2 == 1
+
+    def _regex(self, i, h):
         """Blank an extended regex, retaining code inside raw-style interpolations."""
         i += h + 1
         close = "/" + "#" * h
         interp = "\\" + "#" * h + "("
         seg = i
-        while i < n:
-            if src.startswith(interp, i):
-                blank(seg, i + len(interp))
-                i = code(i + len(interp), True)
-                seg = i
+        while i < self.n:
+            if self.src.startswith(interp, i):
+                i = seg = self._interpolation(seg, i, len(interp))
                 continue
-            if src.startswith(close, i):
-                backslashes = 0
-                k = i - 1
-                while k >= 0 and src[k] == "\\":
-                    backslashes += 1
-                    k -= 1
-                if backslashes % 2 == 0:
-                    blank(seg, i)
-                    return i + len(close)
+            if self.src.startswith(close, i) and not self._escaped(i):
+                self.blank(seg, i)
+                return i + len(close)
             i += 1
-        blank(seg, n)
-        return n
+        self.blank(seg, self.n)
+        return self.n
 
-    code(0, False)
-    return "".join(out)
+
+def mask(src):
+    """Return src with every comment and every string literal's contents replaced by spaces (newlines kept), so each
+    remaining character is code at its original offset. String delimiters and an interpolation's parentheses stay,
+    interpolated code stays."""
+    m = _Masker(src)
+    m.code(0, False)
+    return "".join(m.out)
 
 
 # ---- scanner ----
@@ -205,12 +231,73 @@ def _match_open(text, close_at, open_ch, close_ch):
     return -1
 
 
+def _enclosing_open(text, i):
+    """The index of the unmatched `(`, `[` or `{` that encloses text[i], or -1 at the top level."""
+    depth = 0
+    for k in range(i - 1, -1, -1):
+        c = text[k]
+        if c in ")]}":
+            depth += 1
+        elif c in "([{":
+            if depth == 0:
+                return k
+            depth -= 1
+    return -1
+
+
+def _is_parameter_list(text, open_at):
+    """True when the `(` at open_at opens a declaration's parameter list (`func f(`, `func f<T>(`, `init?(`,
+    `subscript(`) or a tuple type that is itself a declaration's type annotation."""
+    if _in_type_position(text, open_at):
+        return True
+    j = _skip_space_back(text, open_at)
+    if j >= 2 and text[j - 1] == ">" and text[j - 2] != "-":
+        j = _skip_space_back(text, max(_match_open(text, j - 1, "<", ">"), 0))
+    if j > 0 and text[j - 1] in "?!":
+        j -= 1
+    name, start = _ident_before(text, j)
+    if name in ("init", "subscript"):
+        return text[start - 1:start] != "."       # `self.init(` and `super.init(` are calls
+    return _ident_before(text, _skip_space_back(text, start))[0] == "func"
+
+
+def _declaration_colon(text, colon):
+    """True when the `:` at text[colon] follows the name in `let/var name:` or a parameter in a parameter list."""
+    name, start = _ident_before(text, _skip_space_back(text, colon))
+    if not name:
+        return False         # `["k": v]`, `(a) : b`
+    if _ident_before(text, _skip_space_back(text, start))[0] in ("let", "var"):
+        return True
+    k = _enclosing_open(text, start)
+    return k >= 0 and text[k] == "(" and _is_parameter_list(text, k)
+
+
 def _in_type_position(text, start):
-    """True when the type that starts at `start` follows a `:` or `->` (a declaration's type annotation)."""
+    """True when the type that starts at `start` is a declaration's type annotation (after `->`, or after the `:` of a
+    declaration; a ternary's `:`, a dictionary literal's or an argument label's is an expression)."""
     j = _skip_space_back(text, start)
     if j >= 2 and text[j - 2:j] == "->":
         return True
-    return j >= 1 and text[j - 1] == ":"
+    return j >= 1 and text[j - 1] == ":" and _declaration_colon(text, j - 1)
+
+
+def _bracket_type(text, close):
+    """`[T]!`, `[K: V]!`, `(T)!`, `(label: T)!`: a type only where a declaration annotates one."""
+    open_ch = "[" if text[close] == "]" else "("
+    k = _match_open(text, close, open_ch, text[close])
+    return k >= 0 and _in_type_position(text, k)
+
+
+def _named_type(text, bang):
+    """`T!`, `Outer.Inner!`: a capitalised name (project style) in a declaration's type annotation."""
+    name, start = _ident_before(text, bang)
+    if not name or not name[0].isupper():
+        return False         # types are capitalised; values are not (project style)
+    while start > 0 and text[start - 1] == ".":
+        q, start = _ident_before(text, start - 1)
+        if not q:
+            return False     # `.Case!` on an implicit member is an expression
+    return _in_type_position(text, start)
 
 
 def _is_iuo(text, bang):
@@ -218,71 +305,55 @@ def _is_iuo(text, bang):
     prev = text[bang - 1]
     if prev == ">":          # G<T>!: a generic type
         return True
-    if prev == "]" or prev == ")":
-        open_ch = "[" if prev == "]" else "("
-        k = _match_open(text, bang - 1, open_ch, prev)
-        if k < 0:
-            return False
-        inner = text[k + 1:bang - 1].lstrip()
-        if prev == "]" and not inner[:1].isupper():
-            return False     # a subscript or an array literal
-        return _in_type_position(text, k)
+    if prev in ")]":
+        return _bracket_type(text, bang - 1)
+    if prev == "}":
+        return False         # `xs.first { $0 > 1 }!`: a call with a trailing closure
+    return _named_type(text, bang)
+
+
+def _after_word(text, bang):
+    """The kind of a `!` right after an identifier character: `try!`, `as!`, a force unwrap, or None (a prefix `!`)."""
     name, start = _ident_before(text, bang)
-    if not name or not name[0].isupper():
-        return False         # types are capitalised; values are not (project style)
-    # Walk a qualified name back (Outer.Inner) to its first segment.
-    while start > 0 and text[start - 1] == ".":
-        q, qs = _ident_before(text, start - 1)
-        if not q:
-            return False     # `.Case!` on an implicit member is an expression
-        start = qs
-    return _in_type_position(text, start)
+    if name in ("try", "as"):
+        return name + "!"
+    if (name in KEYWORDS and text[start:start + 1] != "`") or name[:1].isdigit():
+        return None          # prefix `!` after a keyword; a number cannot be unwrapped
+    return "force-unwrap"
+
+
+def _bang_kind(text, i):
+    """The kind of the `!` at text[i], or None when it crashes nothing."""
+    if i == 0 or text[i + 1:i + 2] == "=":
+        return None          # != and !==
+    prev = text[i - 1]
+    if prev in IDENT_CHARS or prev == "`":
+        kind = _after_word(text, i)
+        if kind != "force-unwrap":
+            return kind
+    elif prev not in EXPR_ENDS:
+        return None          # prefix `!`, or `!` after whitespace or an operator
+    return None if _is_iuo(text, i) else "force-unwrap"
+
+
+def _is_crash_call(text, m):
+    """True when the matched name is the standard library's function, not a method or a definition of that name."""
+    before = _skip_space_back(text, m.start())
+    if before > 0 and text[before - 1] == ".":
+        return _ident_before(text, before - 1)[0] == "Swift"
+    return _ident_before(text, _skip_space_back(text, before))[0] != "func"
+
+
+CALL_RE = re.compile(r"(?<![A-Za-z0-9_$`])(fatalError|preconditionFailure|precondition)\s*\(")
 
 
 def scan(src):
     """Every crash construct in a Swift source: a list of (kind, line number)."""
     text = mask(src)
-    lines = [0]
-    for m in re.finditer("\n", text):
-        lines.append(m.end())
-    found = []
-
-    def at(off, kind):
-        found.append((kind, bisect.bisect_right(lines, off)))
-
-    for m in re.finditer("!", text):
-        i = m.start()
-        if i == 0:
-            continue
-        nxt = text[i + 1] if i + 1 < len(text) else ""
-        if nxt == "=":
-            continue         # != and !==
-        prev = text[i - 1]
-        if prev in IDENT_CHARS or prev == "`":
-            name, start = _ident_before(text, i)
-            if name == "try":
-                at(i, "try!")
-                continue
-            if name == "as":
-                at(i, "as!")
-                continue
-            if (name in KEYWORDS and text[start:start + 1] != "`") or name[:1].isdigit():
-                continue     # prefix `!` after a keyword; a number cannot be unwrapped
-        elif prev not in ")]>":
-            continue         # prefix `!`, or `!` after whitespace or an operator
-        if _is_iuo(text, i):
-            continue
-        at(i, "force-unwrap")
-    for m in re.finditer(r"(?<![A-Za-z0-9_$`])(fatalError|preconditionFailure|precondition)\s*\(", text):
-        before = _skip_space_back(text, m.start())
-        if before > 0 and text[before - 1] == ".":
-            q, _ = _ident_before(text, before - 1)
-            if q != "Swift":
-                continue     # someone's own method of that name
-        word, _ = _ident_before(text, _skip_space_back(text, before))
-        if word == "func":
-            continue
-        at(m.start(), CALLS[m.group(1)])
+    starts = [0] + [m.end() for m in re.finditer("\n", text)]
+    hits = [(_bang_kind(text, m.start()), m.start()) for m in re.finditer("!", text)]
+    hits += [(CALLS[m.group(1)], m.start()) for m in CALL_RE.finditer(text) if _is_crash_call(text, m)]
+    found = [(kind, bisect.bisect_right(starts, off)) for kind, off in hits if kind]
     found.sort(key=lambda t: (t[1], KINDS.index(t[0])))
     return found
 
@@ -352,32 +423,57 @@ def baseline_at_revision(root, rev):
     return baseline_counts(json.loads(out.stdout))
 
 
-def renamed_files(root, rev):
-    """Map new paths to old paths for renames between rev and the working tree."""
+def parse_name_status(text):
+    """{new path: old path} from `git diff --name-status` output: every rename, and every copy whose source the same
+    diff removes (a split)."""
+    moved, copied, removed = {}, {}, set()
+    for fields in (line.split("\t") for line in text.splitlines()):
+        status = fields[0][:1]
+        if status in ("R", "C") and len(fields) == 3:
+            (moved if status == "R" else copied)[fields[2]] = fields[1]
+        if status in ("R", "D"):
+            removed.add(fields[1])
+    moved.update({new: old for new, old in copied.items() if old in removed})
+    return moved
+
+
+def file_moves(root, rev):
+    """{new path: old path} for files renamed, or split off a removed file, between rev and the working tree."""
     try:
-        out = subprocess.run(["git", "-C", root, "diff", "--find-renames", "--name-status", rev, "--"],
+        out = subprocess.run(["git", "-C", root, "diff", "--find-renames", "--find-copies", "--name-status", rev, "--"],
                              capture_output=True, text=True, check=True)
     except (OSError, subprocess.CalledProcessError):
         return {}
-    renames = {}
-    for line in out.stdout.splitlines():
-        fields = line.split("\t")
-        if len(fields) == 3 and fields[0].startswith("R"):
-            renames[fields[2]] = fields[1]
-    return renames
+    return parse_name_status(out.stdout)
 
 
-def baseline_increases(base, working, renames):
-    """Return working baseline entries that exceed their same-path or renamed base entry."""
-    moved_from = {old for new, old in renames.items() if new in working}
+def _sum_counts(entries):
+    total = {}
+    for c in entries:
+        for kind, v in c.items():
+            total[kind] = total.get(kind, 0) + v
+    return total
+
+
+def _excess(label, counts, allowed):
+    return [(label, kind, allowed.get(kind, 0), v) for kind, v in counts.items() if v > allowed.get(kind, 0)]
+
+
+def baseline_increases(base, working, moves):
+    """Return working baseline entries that exceed their base entry: the same path's, or for the files moved from one
+    old path (a rename, or the parts of a split), that path's, which they share."""
+    groups = {}
+    for new, old in sorted(moves.items()):
+        if new in working:
+            groups.setdefault(old, []).append(new)
+    grouped = {new for dests in groups.values() for new in dests}
     violations = []
     for rel, counts in working.items():
-        old_rel = renames.get(rel, rel)
-        allowed = {} if rel in moved_from else base.get(old_rel, {})
-        for kind, count in counts.items():
-            old_count = allowed.get(kind, 0)
-            if count > old_count:
-                violations.append((rel, kind, old_count, count))
+        if rel not in grouped:
+            violations += _excess(rel, counts, {} if rel in groups else base.get(rel, {}))
+    for old, dests in groups.items():
+        combined = _sum_counts(working[new] for new in dests)
+        violations += _excess(" + ".join(dests), combined, base.get(old, {}))
     return sorted(violations)
 
 
@@ -439,7 +535,9 @@ def new_occurrences(src, found, kind, old_src):
     return new
 
 
-def main(argv=None):
+# ---- command line ----
+
+def parse_args(argv):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=DEFAULT_ROOT)
     ap.add_argument("--baseline")
@@ -448,91 +546,127 @@ def main(argv=None):
     mode.add_argument("--update", action="store_true")
     mode.add_argument("--init", action="store_true")
     mode.add_argument("--list", nargs="*", metavar="PATH")
-    a = ap.parse_args(argv)
+    return ap.parse_args(argv)
+
+
+def list_occurrences(root, paths):
+    for rel, found in tree_occurrences(root, paths or swift_files(root)).items():
+        src_lines = read(root, rel).split("\n")
+        for kind, line in found:
+            print(f"{rel}:{line}: {kind}: {src_lines[line - 1].strip()[:160]}")
+    return 0
+
+
+def init_baseline(path, current, total_line):
+    if os.path.exists(path):
+        print(f"refused: {path} exists; counts only go down (--update)", file=sys.stderr)
+        return 2
+    write_baseline(path, current)
+    print(f"wrote {path}: {total_line}")
+    return 0
+
+
+def update_baseline(path, baseline, current, total_line):
+    rises, falls = compare(baseline, current)
+    if rises:
+        print("refused: --update only lowers counts, and these are above the baseline:", file=sys.stderr)
+        for rel, kind, b, c in rises:
+            print(f"  {rel}: {kind} {b} -> {c}", file=sys.stderr)
+        return 2
+    lowered = {rel: {k: min(v, current.get(rel, {}).get(k, 0)) for k, v in c.items()} for rel, c in baseline.items()}
+    write_baseline(path, lowered)
+    print(f"lowered {len(falls)} count(s); baseline now: {total_line}")
+    return 0
+
+
+def baseline_rise_lines(baseline_rises):
+    if not baseline_rises:
+        return []
+    lines = ["**The committed baseline rose relative to the base revision:**", ""]
+    lines += [f"- `{rel}`: {kind}; base {b}, new {c}" for rel, kind, b, c in baseline_rises]
+    return lines + ["", ("Baseline counts may only stay level or decrease (including across detected renames and "
+                         "splits)."), ""]
+
+
+def rise_lines(root, rev, moves, occ, rises):
+    """The report lines and annotations for the files above the baseline, each naming its new occurrences."""
+    report, notes = ["**Above the baseline** (mpvfx-swift/AGENTS.md: return a typed error instead):", ""], []
+    for rel, kind, b, c in rises:
+        src = read(root, rel)
+        old = base_text(root, rev, moves.get(rel, rel)) if rev else None
+        report.append(f"- `{rel}`: {kind} {b} -> {c}; {'new' if old is not None else 'every'} occurrence(s):")
+        src_lines = src.split("\n")
+        for line in new_occurrences(src, occ.get(rel, []), kind, old):
+            report.append(f"  - `{rel}:{line}`: `{src_lines[line - 1].strip()[:160]}`")
+            notes.append(f"::error file={rel},line={line},title=crash construct ({kind})::{kind} above the "
+                         f"baseline ({b} -> {c}); return a typed error instead")
+    report += ["", ("Remove the new construct (handle the nil, `try` with a typed error, `as?`). The script never "
+                    "raises the baseline; a file that only moved carries its entry over by hand in the same pull "
+                    "request, where review sees it.")]
+    return report, notes
+
+
+def falls_lines(falls):
+    if not falls:
+        return ["Within the baseline."], []
+    return ([(f"Within the baseline; {len(falls)} count(s) went down. Lock the gain in this pull request: "
+              "`python3 -I -B .github/ci/crash_constructs.py --update`.")],
+            [(f"::notice title=crash constructs went down::{len(falls)} count(s) below the baseline; run "
+              ".github/ci/crash_constructs.py --update to lock them in")])
+
+
+def emit(report, notes):
+    print("\n".join(report))
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    for note in notes:
+        print(note)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as f:
+            f.write("\n".join(report) + "\n")
+
+
+def check(a, root, baseline_path, occ, total_line):
+    """Judge the tree against the baseline (and the baseline against the one at --base); print the report."""
+    try:
+        baseline = load_baseline(baseline_path)
+        base_baseline = baseline_at_revision(root, a.base) if a.base else None
+    except (OSError, ValueError, TypeError) as e:
+        print(f"cannot read the baseline {baseline_path}: {e}", file=sys.stderr)
+        return 2
+    rises, falls = compare(baseline, counts_of(occ))
+    moves = file_moves(root, a.base) if a.base else {}
+    baseline_rises = baseline_increases(base_baseline, baseline, moves) if base_baseline is not None else []
+    report = ["## Crash constructs (force unwrap, try!, as!, fatalError, precondition)", "",
+              f"Current: {total_line}. Baseline: `{BASELINE_REL}`.", ""]
+    report += baseline_rise_lines(baseline_rises)
+    extra, notes = rise_lines(root, a.base, moves, occ, rises) if rises else falls_lines(falls)
+    emit(report + extra, notes)
+    return 1 if rises or baseline_rises else 0
+
+
+def main(argv=None):
+    a = parse_args(argv)
     root = os.path.abspath(a.root)
     baseline_path = a.baseline or os.path.join(root, BASELINE_REL)
-
     if a.list is not None:
-        files = a.list or swift_files(root)
-        for rel, found in tree_occurrences(root, files).items():
-            src_lines = read(root, rel).split("\n")
-            for kind, line in found:
-                print(f"{rel}:{line}: {kind}: {src_lines[line - 1].strip()[:160]}")
-        return 0
-
+        return list_occurrences(root, a.list)
     occ = tree_occurrences(root)
     current = counts_of(occ)
     totals = {k: sum(c.get(k, 0) for c in current.values()) for k in KINDS}
     total_line = ", ".join(f"{k} {totals[k]}" for k in KINDS) + f" (in {len(current)} files)"
-
     if a.init:
-        if os.path.exists(baseline_path):
-            print(f"refused: {baseline_path} exists; counts only go down (--update)", file=sys.stderr)
-            return 2
-        write_baseline(baseline_path, current)
-        print(f"wrote {baseline_path}: {total_line}")
-        return 0
-
-    try:
-        baseline = load_baseline(baseline_path)
-        base_baseline = baseline_at_revision(root, a.base) if a.base and not a.update else None
-    except (OSError, ValueError, TypeError) as e:
-        print(f"cannot read the baseline {baseline_path}: {e}", file=sys.stderr)
-        return 2
-    rises, falls = compare(baseline, current)
-    baseline_rises = (baseline_increases(base_baseline, baseline, renamed_files(root, a.base))
-                      if base_baseline is not None else [])
-
+        return init_baseline(baseline_path, current, total_line)
     if a.update:
-        if rises:
-            print("refused: --update only lowers counts, and these are above the baseline:", file=sys.stderr)
-            for rel, kind, b, c in rises:
-                print(f"  {rel}: {kind} {b} -> {c}", file=sys.stderr)
+        try:
+            baseline = load_baseline(baseline_path)
+        except (OSError, ValueError, TypeError) as e:
+            print(f"cannot read the baseline {baseline_path}: {e}", file=sys.stderr)
             return 2
-        lowered = {rel: {k: min(v, current.get(rel, {}).get(k, 0)) for k, v in c.items()} for rel, c in baseline.items()}
-        write_baseline(baseline_path, lowered)
-        print(f"lowered {len(falls)} count(s); baseline now: {total_line}")
-        return 0
+        return update_baseline(baseline_path, baseline, current, total_line)
+    return check(a, root, baseline_path, occ, total_line)
 
-    report = ["## Crash constructs (force unwrap, try!, as!, fatalError, precondition)", "",
-              f"Current: {total_line}. Baseline: `{BASELINE_REL}`.", ""]
-    notes = []
-    if baseline_rises:
-        report += ["**The committed baseline rose relative to the base revision:**", ""]
-        for rel, kind, b, c in baseline_rises:
-            report.append(f"- `{rel}`: {kind}; base {b}, new {c}")
-        report += ["", "Baseline counts may only stay level or decrease (including across detected renames).", ""]
-    if rises:
-        report += ["**Above the baseline** (mpvfx-swift/AGENTS.md: return a typed error instead):", ""]
-        for rel, kind, b, c in rises:
-            src = read(root, rel)
-            old = base_text(root, a.base, rel) if a.base else None
-            where = "new" if old is not None else "every"
-            report.append(f"- `{rel}`: {kind} {b} -> {c}; {where} occurrence(s):")
-            src_lines = src.split("\n")
-            for line in new_occurrences(src, occ.get(rel, []), kind, old):
-                report.append(f"  - `{rel}:{line}`: `{src_lines[line - 1].strip()[:160]}`")
-                notes.append(f"::error file={rel},line={line},title=crash construct ({kind})::{kind} above the "
-                             f"baseline ({b} -> {c}); return a typed error instead")
-        report += ["", ("Remove the new construct (handle the nil, `try` with a typed error, `as?`). The script never "
-                        "raises the baseline; a file that only moved carries its entry over by hand in the same pull "
-                        "request, where review sees it.")]
-    elif falls:
-        report.append(f"Within the baseline; {len(falls)} count(s) went down. Lock the gain in this pull request: "
-                      "`python3 -I -B .github/ci/crash_constructs.py --update`.")
-        notes.append(f"::notice title=crash constructs went down::{len(falls)} count(s) below the baseline; run "
-                     ".github/ci/crash_constructs.py --update to lock them in")
-    else:
-        report.append("Within the baseline.")
-    print("\n".join(report))
-    if os.environ.get("GITHUB_ACTIONS") == "true":
-        for note in notes:
-            print(note)
-        summary = os.environ.get("GITHUB_STEP_SUMMARY")
-        if summary:
-            with open(summary, "a", encoding="utf-8") as f:
-                f.write("\n".join(report) + "\n")
-    return 1 if rises or baseline_rises else 0
 
 if __name__ == "__main__":
     sys.exit(main())

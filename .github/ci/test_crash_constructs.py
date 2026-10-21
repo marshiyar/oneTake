@@ -20,7 +20,7 @@ import os
 import subprocess
 import tempfile
 import unittest
-from unittest import mock
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("crash_constructs", os.path.join(HERE, "crash_constructs.py"))
@@ -40,6 +40,17 @@ class Constructs(unittest.TestCase):
                 self.assertTrue(set(kinds(src)) == {"force-unwrap"}, kinds(src))
         self.assertEqual(kinds("let p = q!, r = s!"), ["force-unwrap", "force-unwrap"])
         self.assertEqual(kinds("x!.y!.z"), ["force-unwrap", "force-unwrap"])
+
+    def test_force_unwrap_after_trailing_closure(self):
+        self.assertEqual(kinds("let t = items.first { $0 > 1 }!"), ["force-unwrap"])
+        self.assertEqual(kinds("xs.first { $0.key == k }!.value"), ["force-unwrap"])
+        self.assertEqual(kinds("xs.first { $0.key == k }!= nil"), [])
+
+    def test_parenthesised_unwrap_after_an_expression_colon(self):
+        for src in ("use((maybe)!)", "let v = flag ? a : (maybe)!", 'let d = ["k": (maybe)!]', "f(label: (maybe)!)",
+                    "self.init(p: (maybe)!)", "let v = (label: maybe)!", "[k: (maybe)!]", "case .a: (maybe)!"):
+            with self.subTest(src=src):
+                self.assertEqual(kinds(src), ["force-unwrap"])
 
     def test_backtick_escaped_keyword_is_an_expression(self):
         self.assertEqual(kinds("let `return`: Int? = 1\n`return`!"), ["force-unwrap"])
@@ -80,8 +91,21 @@ class LookAlikes(unittest.TestCase):
                 self.assertEqual(kinds(src), [])
 
     def test_labeled_tuple_iuo_uses_annotation_context(self):
-        self.assertEqual(kinds("var pair: (label: Int, other: String)!"), [])
+        for src in ("var pair: (label: Int, other: String)!", "func f(pair: (a: Int, b: Int)!) {}",
+                    "func g<T>(_ p: (a: T)!) {}", "init?(p: (x: Int)!) {}", "subscript(p: (x: Int)!) -> Int { 0 }",
+                    "func h(a: Int, b: (x: Int)!) {}"):
+            with self.subTest(src=src):
+                self.assertEqual(kinds(src), [])
         self.assertEqual(kinds("let value = (label: maybe)!"), ["force-unwrap"])
+
+    def test_array_iuo_by_declaration_context(self):
+        for src in ("var a: [any P]!", "var b: [() -> Void]!", "var c: [(Int, Int)]!", "let d: [some P]!",
+                    "func f(xs: [any P]!) {}"):
+            with self.subTest(src=src):
+                self.assertEqual(kinds(src), [])
+        for src in ("let v = xs[i]!", "use(xs: [a]!)", "let v = flag ? a : [b]!"):
+            with self.subTest(src=src):
+                self.assertEqual(kinds(src), ["force-unwrap"])
 
     def test_strings(self):
         for src in ('let s = "Hello!"', 'let s = "a\\"b!"', 'let s = #"no "quote"! \\(v!) here"#',
@@ -133,7 +157,7 @@ class Ratchet(unittest.TestCase):
         self.out = io.StringIO()
         # Under Actions the script also appends to the job summary; a test run must not.
         with contextlib.redirect_stdout(self.out), contextlib.redirect_stderr(self.out), \
-                mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
+                unittest.mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
             return cc.main(["--root", self.root, *args])
 
     def counts(self):
@@ -226,6 +250,55 @@ class Ratchet(unittest.TestCase):
         output = self.out.getvalue()
         self.assertIn("Renamed.swift`: force-unwrap; base 1, new 2", output)
         self.assertIn("New.swift`: fatalError; base 0, new 1", output)
+
+    def git(self, *a):
+        subprocess.run(["git", "-C", self.root, *a], check=True, capture_output=True)
+
+    def commit_base(self, text):
+        self.write("A.swift", text)
+        self.git("init", "-q")
+        self.git("add", "mpvfx-swift/Sources/M/A.swift")
+        self.assertEqual(self.run_main("--init"), 0)
+        self.git("add", "-A")
+        self.git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+
+    def set_baseline(self, counts):
+        with open(self.baseline, "w") as f:
+            json.dump({"counts": {f"mpvfx-swift/Sources/M/{k}": v for k, v in counts.items()}}, f)
+
+    def test_renamed_file_reports_only_occurrences_new_since_the_old_path(self):
+        body = "".join(f"let v{i} = value{i} + {i}\n" for i in range(12))
+        self.commit_base("let a = b!\n" + body)
+        os.remove(os.path.join(self.root, "mpvfx-swift/Sources/M/A.swift"))
+        self.write("Renamed.swift", "let a = b!\n" + body + "let z = y!\n")
+        self.set_baseline({"Renamed.swift": {"force-unwrap": 1}})
+        self.git("add", "-A")
+        self.assertEqual(self.run_main("--base", "HEAD"), 1)
+        output = self.out.getvalue()
+        self.assertIn("force-unwrap 1 -> 2; new occurrence(s):", output)
+        self.assertIn("Renamed.swift:14`", output)
+        self.assertNotIn("Renamed.swift:1`", output, "an occurrence the old path had is not new")
+
+    def test_split_file_shares_its_base_count(self):
+        first = "".join(f"let a{i} = first{i}!\nlet p{i} = alpha + {i}\n" for i in range(4))
+        second = "".join(f"let b{i} = second{i}!\nlet q{i} = beta * {i}\n" for i in range(4))
+        self.commit_base(first + second)
+        os.remove(os.path.join(self.root, "mpvfx-swift/Sources/M/A.swift"))
+        self.write("First.swift", first)
+        self.write("Second.swift", second)
+        self.set_baseline({"First.swift": {"force-unwrap": 4}, "Second.swift": {"force-unwrap": 4}})
+        self.git("add", "-A")
+        self.assertEqual(self.run_main("--base", "HEAD"), 0, self.out.getvalue())
+        self.set_baseline({"First.swift": {"force-unwrap": 5}, "Second.swift": {"force-unwrap": 4}})
+        self.assertEqual(self.run_main("--base", "HEAD"), 1)
+        self.assertIn("First.swift + mpvfx-swift/Sources/M/Second.swift`: force-unwrap; base 8, new 9",
+                      self.out.getvalue())
+
+    def test_copy_of_a_kept_file_gets_no_allowance(self):
+        self.assertEqual(cc.parse_name_status("C080\ta.swift\tb.swift\nM\ta.swift\n"), {})
+        self.assertEqual(cc.parse_name_status("C080\ta.swift\tb.swift\nR090\ta.swift\tc.swift\n"),
+                         {"b.swift": "a.swift", "c.swift": "a.swift"})
+        self.assertEqual(cc.parse_name_status("C080\ta.swift\tb.swift\nD\ta.swift\n"), {"b.swift": "a.swift"})
 
 
 if __name__ == "__main__":

@@ -73,31 +73,31 @@ def closed_issues(body, repo):
     return out
 
 
-def assess(files, body, repo, labels_of):
-    """files: the API's file list (filename, additions, deletions, previous_filename). labels_of(n): the label names of
-    issue n, or None when n is not an issue of this repository. Returns (warnings, summary lines)."""
-    warnings, rows = [], []
+def _file_facts(f):
+    """(name, every path it had, changed lines) of one entry of the API's file list."""
+    name = f.get("filename", "")
+    paths = [name] + ([f["previous_filename"]] if f.get("previous_filename") else [])
+    return name, paths, int(f.get("additions", 0)) + int(f.get("deletions", 0))
+
+
+def tally(files):
+    """(changed lines, counted files, {owner area: files}, touches tests) over the API's file list."""
     lines = counted_files = 0
     areas = {}
     touches_tests = False
     for f in files:
-        name = f.get("filename", "")
-        paths = [name] + ([f["previous_filename"]] if f.get("previous_filename") else [])
-        changed = int(f.get("additions", 0)) + int(f.get("deletions", 0))
-        if any(p.startswith(TESTS) for p in paths):
-            touches_tests = True
-        skipped = matches(name, FIXTURE_GLOBS) or matches(name, GENERATED_GLOBS)
-        if not skipped:
+        name, paths, changed = _file_facts(f)
+        touches_tests = touches_tests or any(p.startswith(TESTS) for p in paths)
+        if not (matches(name, FIXTURE_GLOBS) or matches(name, GENERATED_GLOBS)):
             counted_files += 1
-            if not matches(name, TEST_GLOBS):
-                lines += changed
-        for p in paths:
-            a = area_of(p)
-            if a:
-                areas[a] = areas.get(a, 0) + 1
-    rows.append(("Changed lines (no tests, fixtures, generated)", lines, MAX_LINES))
-    rows.append(("Changed files (no fixtures, generated)", counted_files, MAX_FILES))
-    rows.append(("Owner areas under mpvfx-swift/Sources", len(areas), 1))
+            lines += 0 if matches(name, TEST_GLOBS) else changed
+        for a in filter(None, map(area_of, paths)):
+            areas[a] = areas.get(a, 0) + 1
+    return lines, counted_files, areas, touches_tests
+
+
+def limit_warnings(lines, counted_files, areas):
+    warnings = []
     if lines > MAX_LINES:
         warnings.append(f"{lines} changed lines outside tests, fixtures and generated files (slice limit {MAX_LINES}): "
                         "split it, or say in the description why it cannot be")
@@ -107,23 +107,38 @@ def assess(files, body, repo, labels_of):
         listed = ", ".join(f"{a} ({n})" for a, n in sorted(areas.items()))
         warnings.append(f"changes {len(areas)} owner areas ({listed}); a slice stays in one module unless the "
                         "description says why")
+    return warnings
+
+
+def bug_issues(issues, labels_of):
+    """The closed issues labelled as bugs (labels_of(n) is None for a pull request or a missing issue)."""
+    return [n for n in issues if BUG_LABEL in (labels_of(n) or [])]
+
+
+def summary_lines(rows, issues, bugs, touches_tests, warnings):
+    closes = ", ".join(f"#{n}" for n in issues) or "no issue"
+    labelled = f"; labelled `{BUG_LABEL}`: {', '.join(f'#{n}' for n in bugs)}" if bugs else ""
+    summary = ["## Pull request hygiene (advisory)", "", "| Measure | This PR | Limit |", "|---|---:|---:|"]
+    summary += [f"| {what} | {value} | {limit} |" for what, value, limit in rows]
+    summary += ["", f"Closes: {closes}{labelled}. Tests changed: {'yes' if touches_tests else 'no'}.", ""]
+    return summary + ([f"- {w}" for w in warnings] or ["Within the slice limits."])
+
+
+def assess(files, body, repo, labels_of):
+    """files: the API's file list (filename, additions, deletions, previous_filename). labels_of(n): the label names of
+    issue n, or None when n is not an issue of this repository. Returns (warnings, summary lines)."""
+    lines, counted_files, areas, touches_tests = tally(files)
+    rows = [("Changed lines (no tests, fixtures, generated)", lines, MAX_LINES),
+            ("Changed files (no fixtures, generated)", counted_files, MAX_FILES),
+            ("Owner areas under mpvfx-swift/Sources", len(areas), 1)]
+    warnings = limit_warnings(lines, counted_files, areas)
     issues = closed_issues(body, repo)
-    bugs = []
-    for n in issues:
-        labels = labels_of(n)
-        if labels and BUG_LABEL in labels:
-            bugs.append(n)
+    bugs = bug_issues(issues, labels_of)
     if bugs and not touches_tests:
         refs = ", ".join(f"#{n}" for n in bugs)
         warnings.append(f"closes bug {refs} but changes no file under {TESTS}: every bug fix lands with a test that "
                         "fails before the fix (mpvfx-swift/AGENTS.md)")
-    summary = ["## Pull request hygiene (advisory)", "", "| Measure | This PR | Limit |", "|---|---:|---:|"]
-    summary += [f"| {what} | {value} | {limit} |" for what, value, limit in rows]
-    summary += ["", f"Closes: {', '.join(f'#{n}' for n in issues) or 'no issue'}"
-                + (f"; labelled `{BUG_LABEL}`: {', '.join(f'#{n}' for n in bugs)}" if bugs else "")
-                + f". Tests changed: {'yes' if touches_tests else 'no'}.", ""]
-    summary += [f"- {w}" for w in warnings] or ["Within the slice limits."]
-    return warnings, summary
+    return warnings, summary_lines(rows, issues, bugs, touches_tests, warnings)
 
 
 def gh_json_lines(path, jq):

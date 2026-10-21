@@ -1,7 +1,7 @@
 {
   "about": "Crash constructs per Swift file under mpvfx-swift/Sources (.github/ci/crash_constructs.py). Counts only go down: run `python3 -I -B .github/ci/crash_constructs.py --update` after removing some.",
   "totals": {
-    "force-unwrap": 279,
+    "force-unwrap": 292,
     "try!": 12,
     "as!": 7,
     "fatalError": 16,
@@ -101,6 +101,9 @@
     "mpvfx-swift/Sources/MpvfxPanels/InspectorPanel+AudioFx.swift": {
       "force-unwrap": 4
     },
+    "mpvfx-swift/Sources/MpvfxPanels/InspectorPanel+Grade.swift": {
+      "force-unwrap": 7
+    },
     "mpvfx-swift/Sources/MpvfxPanels/InspectorPanel.swift": {
       "force-unwrap": 1
     },
@@ -161,9 +164,15 @@
     "mpvfx-swift/Sources/MpvfxShared/Export/ExportPolicy.swift": {
       "force-unwrap": 1
     },
+    "mpvfx-swift/Sources/MpvfxShared/Library/Library.swift": {
+      "force-unwrap": 2
+    },
     "mpvfx-swift/Sources/MpvfxShared/Media/JSStringParity.swift": {
       "force-unwrap": 1,
       "try!": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Media/MediaImportPolicy.swift": {
+      "force-unwrap": 1
     },
     "mpvfx-swift/Sources/MpvfxShared/Media/MediaUrl.swift": {
       "try!": 1
@@ -190,6 +199,9 @@
     },
     "mpvfx-swift/Sources/MpvfxShared/Project/NativeOrderedMap.swift": {
       "force-unwrap": 6
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectClipCommands.swift": {
+      "force-unwrap": 2
     },
     "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectDocument.swift": {
       "force-unwrap": 6
@@ -239,7 +251,7 @@
       "force-unwrap": 1
     },
     "mpvfx-swift/Sources/MpvfxTimeline/TimelineEditor+Clipboard.swift": {
-      "force-unwrap": 4
+      "force-unwrap": 5
     },
     "mpvfx-swift/Sources/MpvfxTimeline/TimelineKeyframeNavigation.swift": {
       "force-unwrap": 1
