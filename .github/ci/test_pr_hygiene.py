@@ -107,6 +107,17 @@ class NeverFails(unittest.TestCase):
             self.assertEqual(ph.main(["--repo", REPO, "--pr", "1"]), 0)
         self.assertIn("::warning title=PR hygiene::could not read the pull request from the API: HTTP 403", out.getvalue())
 
+    def test_issue_lookup_failure_is_an_api_warning(self):
+        err = subprocess.CalledProcessError(1, ["gh"], stderr="API rate limit exceeded")
+        responses = [[f("mpvfx-swift/Sources/MpvfxTimeline/A.swift", 1)], [{"body": "Fixes #5"}]]
+        out = io.StringIO()
+        with mock.patch.object(ph, "gh_json_lines", side_effect=[*responses, err]), contextlib.redirect_stdout(out), \
+                mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
+            self.assertEqual(ph.main(["--repo", REPO, "--pr", "1"]), 0)
+        text = out.getvalue()
+        self.assertIn("::warning title=PR hygiene::could not read the pull request from the API: API rate limit", text)
+        self.assertIn("Not assessed: the API could not be read.", text)
+
     def test_warnings_become_annotations(self):
         files = [f("mpvfx-swift/Sources/MpvfxTimeline/A.swift", 500)]
         out = io.StringIO()

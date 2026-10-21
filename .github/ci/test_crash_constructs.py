@@ -34,6 +34,9 @@ class Constructs(unittest.TestCase):
         self.assertEqual(kinds("let p = q!, r = s!"), ["force-unwrap", "force-unwrap"])
         self.assertEqual(kinds("x!.y!.z"), ["force-unwrap", "force-unwrap"])
 
+    def test_backtick_escaped_keyword_is_an_expression(self):
+        self.assertEqual(kinds("let `return`: Int? = 1\n`return`!"), ["force-unwrap"])
+
     def test_try_and_as_bang(self):
         self.assertEqual(kinds("let d = try! Data(contentsOf: u)"), ["try!"])
         self.assertEqual(kinds("let v = x as! View"), ["as!"])
@@ -69,6 +72,10 @@ class LookAlikes(unittest.TestCase):
             with self.subTest(src=src):
                 self.assertEqual(kinds(src), [])
 
+    def test_labeled_tuple_iuo_uses_annotation_context(self):
+        self.assertEqual(kinds("var pair: (label: Int, other: String)!"), [])
+        self.assertEqual(kinds("let value = (label: maybe)!"), ["force-unwrap"])
+
     def test_strings(self):
         for src in ('let s = "Hello!"', 'let s = "a\\"b!"', 'let s = #"no "quote"! \\(v!) here"#',
                     'let s = ##"x"# y!"##', 'let s = """\n  wow! try! x as! y fatalError(\n  """',
@@ -85,6 +92,11 @@ class LookAlikes(unittest.TestCase):
 
     def test_regex_literal(self):
         self.assertEqual(kinds('let r = #/a!b/#'), [])
+
+    def test_regex_escaped_delimiter_and_interpolation(self):
+        self.assertEqual(kinds(r'let r = #/a\/#b!c/#'), [])
+        self.assertEqual(kinds(r'let r = #/a\#(value!)b/#'), ["force-unwrap"])
+        self.assertEqual(kinds(r'let r = ##/a\##(other!)b/##'), ["force-unwrap"])
 
     def test_own_methods_and_definitions(self):
         self.assertEqual(kinds("func fatalError(_ m: String) -> Never { exit(1) }\nlog.precondition(x)\nmyfatalError(1)"),
@@ -181,6 +193,32 @@ class Ratchet(unittest.TestCase):
         self.assertEqual(self.run_main("--base", "HEAD"), 1)
         self.assertIn("A.swift:1`", self.out.getvalue())
         self.assertNotIn("A.swift:2`", self.out.getvalue(), "an occurrence the base has is not new")
+
+    def test_base_revision_rejects_baseline_increases_and_allows_rename(self):
+        def git(*a):
+            subprocess.run(["git", "-C", self.root, *a], check=True, capture_output=True)
+        git("init", "-q")
+        git("add", "mpvfx-swift/Sources/M/A.swift")
+        self.assertEqual(self.run_main("--init"), 0)
+        git("add", "-A")
+        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+
+        old = os.path.join(self.root, "mpvfx-swift/Sources/M/A.swift")
+        new = os.path.join(self.root, "mpvfx-swift/Sources/M/Renamed.swift")
+        os.rename(old, new)
+        with open(self.baseline, "w") as f:
+            json.dump({"counts": {"mpvfx-swift/Sources/M/Renamed.swift": {"force-unwrap": 1, "try!": 1}}}, f)
+        git("add", "-A")
+        self.assertEqual(self.run_main("--base", "HEAD"), 0, self.out.getvalue())
+
+        self.write("New.swift", "fatalError()\n")
+        with open(self.baseline, "w") as f:
+            json.dump({"counts": {"mpvfx-swift/Sources/M/Renamed.swift": {"force-unwrap": 2, "try!": 1},
+                                  "mpvfx-swift/Sources/M/New.swift": {"fatalError": 1}}}, f)
+        self.assertEqual(self.run_main("--base", "HEAD"), 1)
+        output = self.out.getvalue()
+        self.assertIn("Renamed.swift`: force-unwrap; base 1, new 2", output)
+        self.assertIn("New.swift`: fatalError; base 0, new 1", output)
 
 
 if __name__ == "__main__":

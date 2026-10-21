@@ -131,10 +131,7 @@ def fetch(repo, pr):
     body = gh_json_lines(f"repos/{repo}/pulls/{pr}", "{body}")[0].get("body") or ""
 
     def labels_of(n):
-        try:
-            issue = gh_json_lines(f"repos/{repo}/issues/{n}", "{labels: [.labels[].name], pr: (.pull_request != null)}")[0]
-        except (subprocess.CalledProcessError, IndexError, ValueError):
-            return None
+        issue = gh_json_lines(f"repos/{repo}/issues/{n}", "{labels: [.labels[].name], pr: (.pull_request != null)}")[0]
         return None if issue.get("pr") else issue.get("labels", [])
 
     return files, body, labels_of

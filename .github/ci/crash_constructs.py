@@ -36,9 +36,11 @@ Not counted: `!=` and `!==`, prefix `!` (`!flag`), implicitly unwrapped optional
 `: [T]!`, `: (() -> Void)!`, `: G<T>!`), and anything inside a comment (line, nested block) or a string literal
 (plain, multi-line, raw `#"..."#`); code inside a string interpolation `\\( )` is scanned as code.
 
-With --base REV (CI passes the parent commit), each file that rose prints the occurrences that REV does not have
-(matched by kind and line text); without it, or when REV cannot be read, every occurrence of that kind in the file.
-Exit 0 within the baseline, 1 on a rise, 2 bad input or a refused --update/--init.
+With --base REV (CI passes the parent commit), the working baseline is also compared with the baseline at REV, allowing
+equal-or-lower entries to follow source-file renames. If REV has no baseline, that comparison is skipped. Each source
+file that rose prints the occurrences that REV does not have (matched by kind and line text); without it, or when REV
+cannot be read, every occurrence of that kind in the file. Exit 0 within the baseline, 1 on a rise, 2 bad input or a
+refused --update/--init.
 """
 import argparse, bisect, json, os, re, subprocess, sys
 
@@ -97,10 +99,7 @@ def mask(src):
                     i = string(i, h)
                     continue
                 if h and i + h < n and src[i + h] == "/":   # extended regex literal #/.../#
-                    end = src.find("/" + "#" * h, i + h + 1)
-                    end = n if end < 0 else end + 1 + h
-                    blank(i + h + 1, max(i + h + 1, end - 1 - h))
-                    i = end
+                    i = regex(i, h)
                     continue
                 i += max(h, 1)
                 continue
@@ -136,6 +135,31 @@ def mask(src):
             if not multi and src[i] == "\n":   # unterminated: the compiler rejects it, stop at the line end
                 blank(seg, i)
                 return i
+            i += 1
+        blank(seg, n)
+        return n
+
+    def regex(i, h):
+        """Blank an extended regex, retaining code inside raw-style interpolations."""
+        i += h + 1
+        close = "/" + "#" * h
+        interp = "\\" + "#" * h + "("
+        seg = i
+        while i < n:
+            if src.startswith(interp, i):
+                blank(seg, i + len(interp))
+                i = code(i + len(interp), True)
+                seg = i
+                continue
+            if src.startswith(close, i):
+                backslashes = 0
+                k = i - 1
+                while k >= 0 and src[k] == "\\":
+                    backslashes += 1
+                    k -= 1
+                if backslashes % 2 == 0:
+                    blank(seg, i)
+                    return i + len(close)
             i += 1
         blank(seg, n)
         return n
@@ -198,8 +222,6 @@ def _is_iuo(text, bang):
         inner = text[k + 1:bang - 1].lstrip()
         if prev == "]" and not inner[:1].isupper():
             return False     # a subscript or an array literal
-        if prev == ")" and not (inner[:1].isupper() or inner[:1] == "(" or "->" in inner):
-            return False     # a parenthesised expression: (a ?? b)!
         return _in_type_position(text, k)
     name, start = _ident_before(text, bang)
     if not name or not name[0].isupper():
@@ -233,14 +255,14 @@ def scan(src):
             continue         # != and !==
         prev = text[i - 1]
         if prev in IDENT_CHARS or prev == "`":
-            name, _ = _ident_before(text, i)
+            name, start = _ident_before(text, i)
             if name == "try":
                 at(i, "try!")
                 continue
             if name == "as":
                 at(i, "as!")
                 continue
-            if name in KEYWORDS or name[:1].isdigit():
+            if (name in KEYWORDS and text[start:start + 1] != "`") or name[:1].isdigit():
                 continue     # prefix `!` after a keyword; a number cannot be unwrapped
         elif prev not in ")]>":
             continue         # prefix `!`, or `!` after whitespace or an operator
@@ -299,9 +321,10 @@ def counts_of(occ):
     return out
 
 
-def load_baseline(path):
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+def baseline_counts(data):
+    """Validate a decoded baseline and return its counts."""
+    if not isinstance(data, dict):
+        raise ValueError("baseline is not an object")
     counts = data.get("counts")
     if not isinstance(counts, dict):
         raise ValueError("no \"counts\" object")
@@ -309,6 +332,49 @@ def load_baseline(path):
         if not isinstance(c, dict) or any(k not in KINDS or not isinstance(v, int) or v < 0 for k, v in c.items()):
             raise ValueError(f"bad entry for {rel}: {c!r}")
     return counts
+
+
+def load_baseline(path):
+    with open(path, encoding="utf-8") as f:
+        return baseline_counts(json.load(f))
+
+
+def baseline_at_revision(root, rev):
+    """Return the baseline committed at rev, or None when that revision has no baseline."""
+    try:
+        out = subprocess.run(["git", "-C", root, "show", f"{rev}:{BASELINE_REL}"], capture_output=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return baseline_counts(json.loads(out.stdout))
+
+
+def renamed_files(root, rev):
+    """Map new paths to old paths for renames between rev and the working tree."""
+    try:
+        out = subprocess.run(["git", "-C", root, "diff", "--find-renames", "--name-status", rev, "--"],
+                             capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return {}
+    renames = {}
+    for line in out.stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) == 3 and fields[0].startswith("R"):
+            renames[fields[2]] = fields[1]
+    return renames
+
+
+def baseline_increases(base, working, renames):
+    """Return working baseline entries that exceed their same-path or renamed base entry."""
+    moved_from = {old for new, old in renames.items() if new in working}
+    violations = []
+    for rel, counts in working.items():
+        old_rel = renames.get(rel, rel)
+        allowed = {} if rel in moved_from else base.get(old_rel, {})
+        for kind, count in counts.items():
+            old_count = allowed.get(kind, 0)
+            if count > old_count:
+                violations.append((rel, kind, old_count, count))
+    return sorted(violations)
 
 
 def write_baseline(path, counts):
@@ -405,10 +471,13 @@ def main(argv=None):
 
     try:
         baseline = load_baseline(baseline_path)
+        base_baseline = baseline_at_revision(root, a.base) if a.base and not a.update else None
     except (OSError, ValueError) as e:
         print(f"cannot read the baseline {baseline_path}: {e}", file=sys.stderr)
         return 2
     rises, falls = compare(baseline, current)
+    baseline_rises = (baseline_increases(base_baseline, baseline, renamed_files(root, a.base))
+                      if base_baseline is not None else [])
 
     if a.update:
         if rises:
@@ -424,6 +493,11 @@ def main(argv=None):
     report = ["## Crash constructs (force unwrap, try!, as!, fatalError, precondition)", "",
               f"Current: {total_line}. Baseline: `{BASELINE_REL}`.", ""]
     notes = []
+    if baseline_rises:
+        report += ["**The committed baseline rose relative to the base revision:**", ""]
+        for rel, kind, b, c in baseline_rises:
+            report.append(f"- `{rel}`: {kind}; base {b}, new {c}")
+        report += ["", "Baseline counts may only stay level or decrease (including across detected renames).", ""]
     if rises:
         report += ["**Above the baseline** (mpvfx-swift/AGENTS.md: return a typed error instead):", ""]
         for rel, kind, b, c in rises:
@@ -454,7 +528,7 @@ def main(argv=None):
         if summary:
             with open(summary, "a", encoding="utf-8") as f:
                 f.write("\n".join(report) + "\n")
-    return 1 if rises else 0
+    return 1 if rises or baseline_rises else 0
 
 if __name__ == "__main__":
     sys.exit(main())
