@@ -99,8 +99,19 @@ mpvfx_hresult mpvfx_d2d_draw_text(MpvfxD2DTarget *t, const MpvfxText *text, Mpvf
 /// Layout size of the text (advance width including trailing spaces, line height). Needs no target.
 mpvfx_hresult mpvfx_d2d_measure_text(const MpvfxText *text, float *width, float *height);
 
-/// Draws the pixels into the destination rectangle at `opacity`, linearly filtered.
-mpvfx_hresult mpvfx_d2d_draw_rgba(MpvfxD2DTarget *t, const MpvfxPixels *pixels, MpvfxRect destination, float opacity);
+/// The pixels as a premultiplied BGRA Direct2D bitmap of the render target that made it (a bitmap draws only on
+/// that target). It keeps a reference to that target, so the target's address is never reused while it lives.
+typedef struct MpvfxD2DBitmap MpvfxD2DBitmap;
+/// Converts straight RGBA8 `pixels` to a bitmap of `t` once; draw it any number of times with mpvfx_d2d_draw_bitmap.
+mpvfx_hresult mpvfx_d2d_bitmap_create(MpvfxD2DTarget *t, const MpvfxPixels *pixels, MpvfxD2DBitmap **out);
+/// 1 when `b` was made by `t`'s current render target (so it can draw there), else 0.
+int32_t mpvfx_d2d_bitmap_belongs_to(const MpvfxD2DBitmap *b, const MpvfxD2DTarget *t);
+/// Bytes the bitmap's pixels take (width * height * 4).
+uint64_t mpvfx_d2d_bitmap_bytes(const MpvfxD2DBitmap *b);
+void mpvfx_d2d_bitmap_release(MpvfxD2DBitmap *b);
+/// Draws the bitmap into the destination rectangle at `opacity`, linearly filtered. E_INVALIDARG when `b` belongs
+/// to another target.
+mpvfx_hresult mpvfx_d2d_draw_bitmap(MpvfxD2DTarget *t, const MpvfxD2DBitmap *b, MpvfxRect destination, float opacity);
 
 /// Offscreen targets only: the bitmap as straight-alpha RGBA8 into `out` (width * height * 4 bytes).
 mpvfx_hresult mpvfx_d2d_read_rgba(MpvfxD2DTarget *t, uint8_t *out, uint32_t size);
