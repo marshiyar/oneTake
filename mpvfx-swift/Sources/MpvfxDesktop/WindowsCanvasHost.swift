@@ -222,12 +222,17 @@ final class WindowsCanvasHost {
 
     // MARK: Keys
 
-    /// Virtual keys with their own EditorKey code.
-    private static let namedKeys: [Int32: EditorKey.Code] = [
-        Int32(VK_SPACE): .space, Int32(VK_LEFT): .left, Int32(VK_RIGHT): .right, Int32(VK_UP): .up, Int32(VK_DOWN): .down,
-        Int32(VK_HOME): .home, Int32(VK_END): .end, Int32(VK_DELETE): .delete, Int32(VK_BACK): .backspace,
-        Int32(VK_ESCAPE): .escape, Int32(VK_RETURN): .enter, Int32(VK_TAB): .tab,
-    ]
+    /// Virtual keys with their own EditorKey code, F1…F12 included (EditorKey.Code.function).
+    private static let namedKeys: [Int32: EditorKey.Code] = {
+        var keys: [Int32: EditorKey.Code] = [
+            Int32(VK_SPACE): .space, Int32(VK_LEFT): .left, Int32(VK_RIGHT): .right, Int32(VK_UP): .up, Int32(VK_DOWN): .down,
+            Int32(VK_HOME): .home, Int32(VK_END): .end, Int32(VK_DELETE): .delete, Int32(VK_BACK): .backspace,
+            Int32(VK_ESCAPE): .escape, Int32(VK_RETURN): .enter, Int32(VK_TAB): .tab,
+        ]
+        let fkeys = [VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12]
+        for (i, vk) in fkeys.enumerated() { keys[Int32(vk)] = .function(i + 1) }
+        return keys
+    }()
 
     /// The character a key types with Shift (and Caps Lock) applied but not Ctrl or Alt, so Ctrl+Z reads as "z" as
     /// GTK's keyval does.

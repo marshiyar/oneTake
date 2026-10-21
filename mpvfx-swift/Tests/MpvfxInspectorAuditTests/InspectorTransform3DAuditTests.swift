@@ -132,8 +132,8 @@ extension InspectorRenderAuditTests {
         let mid = previewFrame(at: 1)
         XCTAssertEqual(mid.images.count, Self.meshImages, "halfway the clip is tilted")
         XCTAssertNotEqual(exportRender(at: 1).frame, exportRender(at: 0).frame, "export animates the tilt")
-        guard case .segmented? = find("easing") else { return XCTFail("a keyed tilt gets the easing rows") }
-        assertVisualEdit("Tilt easing", at: 1, { pick("easing", "hold") }) { c in
+        guard case .button? = find("openEasing") else { return XCTFail("a keyed tilt gets the Easing… button") }
+        assertVisualEdit("Tilt easing", at: 1, { ease("hold") }) { c in
             XCTAssertEqual(c.images.count, 1, "held at the flat first key until 2 s")
         }
     }

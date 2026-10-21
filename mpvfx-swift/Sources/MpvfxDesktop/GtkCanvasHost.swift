@@ -135,6 +135,10 @@ final class GtkCanvasHost {
         return out
     }
 
+    /// F1…F12 in order (EditorKey.Code.function).
+    static let functionKeys: [Int32] = [GDK_KEY_F1, GDK_KEY_F2, GDK_KEY_F3, GDK_KEY_F4, GDK_KEY_F5, GDK_KEY_F6,
+                                        GDK_KEY_F7, GDK_KEY_F8, GDK_KEY_F9, GDK_KEY_F10, GDK_KEY_F11, GDK_KEY_F12]
+
     static func key(_ ev: GdkEventKey, isRepeat: Bool) -> EditorKey? {
         let s = ev.state
         let code: EditorKey.Code
@@ -151,6 +155,7 @@ final class GtkCanvasHost {
         case GDK_KEY_Escape: code = .escape
         case GDK_KEY_Return: code = .enter
         case GDK_KEY_Tab, GDK_KEY_ISO_Left_Tab: code = .tab   // ⇧Tab arrives as ISO_Left_Tab
+        case let v where functionKeys.contains(v): code = .function((functionKeys.firstIndex(of: v) ?? 0) + 1)
         default:
             let u = gdk_keyval_to_unicode(ev.keyval)
             guard u > 32, let scalar = Unicode.Scalar(u) else { return nil }

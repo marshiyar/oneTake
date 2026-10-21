@@ -427,6 +427,8 @@ final class SessionPanels {
         inspector.onCopyGrade = { [weak self] in self?.session.timeline.copyGradeSelection() ?? false }
         inspector.onPasteGrade = { [weak self] in self?.session.timeline.pasteGradeSelection() ?? false }
         inspector.onOpenGroupChanged = { [weak self] _ in self?.redraw() }
+        right.easing.editor = session.editor
+        right.easing.onEdited = inspector.onEdited   // the same save, duration and stage refresh as an inspector edit
         inspector.onAudition = { [weak self] request in self?.session.audition(request) }
         right.onAnimate = { [weak self] in self?.animatePanels() }
         rendersPanel.onChange = { [weak self] in self?.redraw() }
@@ -553,6 +555,10 @@ final class SessionPanels {
         let keys = session.timeline.view.selectedKeyframes
         if inspector.selectedKeyframes != keys { inspector.selectedKeyframes = keys }
         inspector.time = session.playback.currentTime
+        let easing = right.easing   // the Keyframe Easing panel follows the same clip, keys and playhead
+        if easing.clipId != sel.first { easing.clipId = sel.first }
+        if easing.selectedKeyframes != keys { easing.selectedKeyframes = keys }
+        easing.time = session.playback.currentTime
         right.canvasSize = CanvasSize(session.editor.document.canvas.width, session.editor.document.canvas.height)
         rendersPanel.canvasSize = right.canvasSize
     }
@@ -589,7 +595,8 @@ final class RightPanelInput: CanvasInput {
     func secondaryClick(x: Double, y: Double) {}
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false) }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {
-        if panel.scroll(.init(x, last.y), dy: dy, precise: precise) { panels.redraw() }
+        // ctrl: the host's zoom modifier (as the timeline reads it) zooms the Easing tab's graph.
+        if panel.scroll(.init(x, last.y), dy: dy, precise: precise, zoom: ctrl) { panels.redraw() }
     }
     func keyDown(_ k: EditorKey) -> Bool {
         // Typing into a field stays in the panel; everything else falls through to the timeline/playback shortcuts.
