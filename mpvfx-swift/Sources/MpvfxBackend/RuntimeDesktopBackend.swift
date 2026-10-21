@@ -434,11 +434,16 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     private func mapErrorsAsync<T>(_ body: () async throws -> T) async throws -> T {
         do { return try await body() } catch { throw Self.desktopError(error) }
     }
+    /// Recognizes only supported filesystem failures during a save; other errors keep their usual translation.
+    private static func saveFailureError(_ error: Error, folder: String?) -> DesktopError? {
+        guard let folder,
+              let code = (error as? ProjectFSError)?.code ?? (error as? DurableWriteError)?.filesystemCode,
+              let failure = DesktopError.SaveFailure(rawValue: code == "EPERM" ? "EACCES" : code) else { return nil }
+        return DesktopError(saveFailure: failure, folder: folder)
+    }
+
     static func desktopError(_ error: Error, savingTo folder: String? = nil) -> DesktopError {
-        if let folder, let code = (error as? ProjectFSError)?.code ?? (error as? DurableWriteError)?.filesystemCode,
-           let failure = DesktopError.SaveFailure(rawValue: code == "EPERM" ? "EACCES" : code) {
-            return DesktopError(saveFailure: failure, folder: folder)
-        }
+        if let failure = saveFailureError(error, folder: folder) { return failure }
         switch error {
         case let e as DesktopError: return e
         case let e as ProjectDocumentError: return DesktopError(e.message, name: e.kind == .conflict ? "ConflictError" : "Error")

@@ -26,6 +26,29 @@ import Darwin
 #endif
 
 final class SaveFailureMessageTests: XCTestCase {
+    func testFilesystemErrorsOutsideSavingKeepTheirOriginalMessage() {
+        let error = ProjectFSError(code: "ENOSPC", syscall: "write", path: "/Film/clip", errno: ENOSPC)
+        let mapped = RuntimeDesktopBackend.desktopError(error)
+        XCTAssertEqual(mapped, DesktopError(error.description))
+        XCTAssertNil(mapped.saveFailure, "opening or importing must not claim that unsaved edits are kept")
+    }
+
+    func testUnsupportedFilesystemSaveErrorsKeepTheirOriginalMessage() {
+        let error = ProjectFSError(code: "EIO", syscall: "write", path: "/Film/.studio/project.json", errno: EIO)
+        let mapped = RuntimeDesktopBackend.desktopError(error, savingTo: "/Film")
+        XCTAssertEqual(mapped, DesktopError(error.description))
+        XCTAssertNil(mapped.saveFailure, "an unrecognized I/O failure must not be diagnosed as disk full")
+    }
+
+    func testSaveConflictsAndAlreadyTypedErrorsKeepTheirIdentity() {
+        let conflict = ProjectDocumentError(.conflict, "Changed on disk")
+        let mapped = RuntimeDesktopBackend.desktopError(conflict, savingTo: "/Film")
+        XCTAssertEqual(mapped, DesktopError("Changed on disk", name: "ConflictError"))
+        XCTAssertNil(mapped.saveFailure)
+        let typed = DesktopError(saveFailure: .readOnly, folder: "/Original")
+        XCTAssertEqual(RuntimeDesktopBackend.desktopError(typed, savingTo: "/Film"), typed)
+    }
+
     /// Setup writes succeed; an armed save fails at the actual durable-write boundary.
     private final class FailingWrite: DurableWrite, @unchecked Sendable {
         let base = NativeDurableWrite()
