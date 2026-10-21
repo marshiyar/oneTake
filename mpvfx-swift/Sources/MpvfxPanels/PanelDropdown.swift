@@ -18,8 +18,12 @@ import MpvfxTimeline
 /// A native select popover (the panels' select fields): opens under its field, lists options with
 /// optional group headings, scrolls, hover-highlights, closes on pick / outside click / Escape.
 public final class PanelDropdown {
+    /// `checked` marks a current choice besides `selected` (a menu with one choice per group); a `disabled` row
+    /// draws dimmed and cannot be hovered or picked.
     public struct Option: Equatable { public var value: String; public var label: String; public var group: String?
-        public init(value: String, label: String, group: String? = nil) { self.value = value; self.label = label; self.group = group } }
+        public var checked = false, disabled = false
+        public init(value: String, label: String, group: String? = nil, checked: Bool = false, disabled: Bool = false) {
+            self.value = value; self.label = label; self.group = group; self.checked = checked; self.disabled = disabled } }
 
     public private(set) var key: String?
     public private(set) var options: [Option] = []
@@ -59,7 +63,7 @@ public final class PanelDropdown {
     }
     /// Picks `value` as a click on its item would: closes, then reports it.
     public func pick(_ value: String) {
-        guard isOpen, options.contains(where: { $0.value == value }) else { return }
+        guard isOpen, options.contains(where: { $0.value == value && !$0.disabled }) else { return }
         let p = onPick; close(); p?(value)
     }
 
@@ -96,16 +100,21 @@ public final class PanelDropdown {
                     PanelDraw.text(c, h.uppercased(), in: CanvasRect(x: rr.x + 8, y: rr.y, width: rr.width - 8, height: rr.height),
                                    font: PanelTheme.font(9, .semibold), color: PanelTheme.text5)
                 } else if let i = row.index {
-                    let o = options[i]
-                    if hovered == i { c.fillRoundedRect(rr, radius: PanelTheme.radius, PanelTheme.panelHover) }
-                    else if o.value == selected { c.fillRoundedRect(rr, radius: PanelTheme.radius, PanelStyle.menuItemCurrent) }
-                    PanelDraw.text(c, o.label, in: CanvasRect(x: rr.x + 8, y: rr.y, width: rr.width - 26, height: rr.height),
-                                   font: PanelTheme.font(11), color: o.value == selected ? PanelTheme.text0 : PanelTheme.text1)
-                    if o.value == selected || checked.contains(o.value) {
-                        PanelIcon.check.draw(c, in: CanvasRect(x: rr.maxX - 16, y: rr.y + 6, width: 12, height: 12), color: PanelTheme.accent, lineWidth: 2)
-                    }
+                    drawOption(c, i, rr)
                 }
             }
+        }
+    }
+
+    /// One option: the hover or current wash, the label (dimmed when disabled) and a check on every current choice.
+    func drawOption(_ c: CanvasContext, _ i: Int, _ rr: CanvasRect) {
+        let o = options[i], current = o.value == selected || o.checked || checked.contains(o.value)
+        if hovered == i { c.fillRoundedRect(rr, radius: PanelTheme.radius, PanelTheme.panelHover) }
+        else if o.value == selected { c.fillRoundedRect(rr, radius: PanelTheme.radius, PanelStyle.menuItemCurrent) }
+        let color = o.disabled ? PanelTheme.text5 : (current ? PanelTheme.text0 : PanelTheme.text1)
+        PanelDraw.text(c, o.label, in: CanvasRect(x: rr.x + 8, y: rr.y, width: rr.width - 26, height: rr.height), font: PanelTheme.font(11), color: color)
+        if current {
+            PanelIcon.check.draw(c, in: CanvasRect(x: rr.maxX - 16, y: rr.y + 6, width: 12, height: 12), color: PanelTheme.accent, lineWidth: 2)
         }
     }
 
@@ -113,7 +122,8 @@ public final class PanelDropdown {
         let r = rect
         guard r.contains(p) else { return nil }
         let y = p.y - r.y - 4 + scroll
-        return rows().first { y >= $0.y && y < $0.y + $0.h }?.index
+        guard let i = rows().first(where: { y >= $0.y && y < $0.y + $0.h })?.index, !options[i].disabled else { return nil }
+        return i
     }
 
     /// Returns true when consumed (always while open).
@@ -140,7 +150,7 @@ public final class PanelDropdown {
         case .escape: close(); return true
         case .down: hovered = min(options.count - 1, (hovered ?? -1) + 1); revealHovered(); return true
         case .up: hovered = max(0, (hovered ?? options.count) - 1); revealHovered(); return true
-        case .enter: if let h = hovered { let v = options[h].value; let pick = onPick; close(); pick?(v) }; return true
+        case .enter: if let h = hovered, !options[h].disabled { let v = options[h].value; let pick = onPick; close(); pick?(v) }; return true
         default: return true
         }
     }
