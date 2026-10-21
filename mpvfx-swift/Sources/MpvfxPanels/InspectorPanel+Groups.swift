@@ -324,7 +324,7 @@ extension InspectorPanel {
     /// the value reads "1.00×".
     func rateRow(_ editor: TimelineEditor, _ s: Selected) -> InspectorRow {
         let rate = editor.playbackRate(clipId: s.id)
-        return .init(.slider(.init(
+        return InspectorRow(.slider(InspectorRow.Slider(
             key: "rate", label: "Rate", position: rate * 100, min: 25, max: 300, display: Self.rateText(rate),
             format: { Self.rateText($0 / 100) }, tier: rate == 1 ? .default : .explicitCustom,
             commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, p.rounded() / 100)) },
@@ -334,10 +334,11 @@ extension InspectorPanel {
     static func rateText(_ rate: Double) -> String { String(format: "%.2f×", rate) }
 
     /// The source in-point as timecode at the project rate, from the integer frame count (docs/DESIGN.md
-    /// principle 5). A count or rate that is not a whole positive number reads as the zero timecode.
+    /// principle 5). A count or rate that is not a whole number (fractional, NaN, too big for `Int`) reads as the
+    /// zero timecode rather than a rounded guess.
     static func mediaStartTimecode(_ clip: NativeProjectClip, _ rate: RationalFrameRate) -> String {
-        let frame = Int(exactly: clip.sourceInFrame.rounded()) ?? 0
-        let num = Int(exactly: rate.numerator.rounded()) ?? 0, den = Int(exactly: rate.denominator.rounded()) ?? 0
+        let frame = Int(exactly: clip.sourceInFrame) ?? 0
+        let num = Int(exactly: rate.numerator) ?? 0, den = Int(exactly: rate.denominator) ?? 0
         return TimelineRuler.timecode(frame: frame, numerator: num, denominator: den)
     }
 }

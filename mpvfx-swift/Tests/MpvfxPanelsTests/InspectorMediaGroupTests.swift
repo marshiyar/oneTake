@@ -157,6 +157,38 @@ final class InspectorMediaGroupTests: XCTestCase {
         XCTAssertEqual(editor.playbackRate(clipId: "clip:v"), 2.5, accuracy: 0.011, "two slow clicks are two clicks")
     }
 
+    /// Codex review: only a completed, unmoved click arms the double-click; a drag, or a click far along the
+    /// track, does not.
+    func testA3OnlyAnUnmovedClickNearTheFirstMakesADoubleClick() throws {
+        let (p, editor) = try make()
+        XCTAssertTrue(editor.setPlaybackRate(clipId: "clip:v", 2.5)); redraw(p)
+        let t = try rateTrack(p)
+        let from = CanvasPoint(x(t, rate: 2.5), t.midY), to = CanvasPoint(x(t, rate: 2), t.midY)
+        XCTAssertTrue(p.pointerDown(from, time: 100)); _ = p.pointerMove(to); p.pointerUp(to); redraw(p)
+        XCTAssertTrue(p.pointerDown(to, time: 100.2)); p.pointerUp(to); redraw(p)
+        XCTAssertEqual(editor.playbackRate(clipId: "clip:v"), 2, accuracy: 0.011, "a press right after a drag is a new adjustment")
+        let a = CanvasPoint(x(t, rate: 1.5), t.midY), b = CanvasPoint(x(t, rate: 2.8), t.midY)
+        XCTAssertTrue(p.pointerDown(a, time: 200)); p.pointerUp(a); redraw(p)
+        XCTAssertTrue(p.pointerDown(b, time: 200.2)); p.pointerUp(b); redraw(p)
+        XCTAssertEqual(editor.playbackRate(clipId: "clip:v"), 2.8, accuracy: 0.011, "two quick clicks far apart are two clicks")
+    }
+
+    /// Codex review: any rate the project validator accepts formats without trapping.
+    func testA1TimecodeNeverOverflows() {
+        XCTAssertEqual(TimelineRuler.timecode(frame: 5, numerator: Int.max, denominator: 1), "00:00:05")
+        XCTAssertFalse(TimelineRuler.timecode(frame: Int.max, numerator: 30, denominator: Int.max).isEmpty)
+        XCTAssertFalse(TimelineRuler.timecode(frame: Int.max, numerator: Int.max, denominator: 1).isEmpty)
+        XCTAssertEqual(TimelineRuler.timecode(frame: 95, numerator: 30, denominator: 1), "00:03:05")
+    }
+
+    func testA1FractionalSourceInReadsZeroNotARoundedGuess() throws {
+        var clip = try XCTUnwrap(try make().1.clip("clip:v")?.clip)
+        clip.sourceInFrame = 95.4
+        XCTAssertEqual(InspectorPanel.mediaStartTimecode(clip, .init(numerator: 30, denominator: 1)), "00:00:00")
+        clip.sourceInFrame = .nan
+        XCTAssertEqual(InspectorPanel.mediaStartTimecode(clip, .init(numerator: 30, denominator: 1)), "00:00:00")
+    }
+
     func testA3RateReadsTwoDecimalsAndATimesSign() throws {
         let (p, editor) = try make()
         XCTAssertEqual(p.slider("rate")?.display, "1.00×")

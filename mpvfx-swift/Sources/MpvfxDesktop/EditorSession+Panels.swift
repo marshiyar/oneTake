@@ -425,27 +425,6 @@ final class SessionPanels {
         wireRenders()
     }
 
-    /// One crop session (issue #188): the inspector's "Edit crop" and edge fields drive the stage's crop tool, the
-    /// same session the stage toolbar's Crop and the C key start; Apply commits it as one undo step.
-    private func wireCrop(_ inspector: InspectorPanel) {
-        let player = session.player
-        inspector.cropLink = InspectorCropLink(
-            activeClip: { [weak player] in player?.view.cropActive == true ? player?.view.selection : nil },
-            insets: { [weak player] in player?.cropDraft.map { NativeClipCrop(top: $0.top, right: $0.right, bottom: $0.bottom, left: $0.left) } },
-            run: { [weak self, weak player] cmd in
-                switch cmd {
-                case .start: player?.runCrop(.start)
-                case .reset: player?.runCrop(.reset)
-                case .cancel: player?.runCrop(.cancel)
-                case .apply: player?.runCrop(.apply)
-                }
-                self?.redraw()
-            },
-            setInsets: { [weak self, weak player] c in
-                player?.setCropDraft(CropInsets(top: c.top, right: c.right, bottom: c.bottom, left: c.left)); self?.redraw()
-            })
-    }
-
     /// Drives the side panels' motion (wheel glides, scrollbar fades, the accordion's 120 ms entrance) at ~60 Hz on
     /// the shell's main-loop timer, then stops.
     private func animatePanels() {

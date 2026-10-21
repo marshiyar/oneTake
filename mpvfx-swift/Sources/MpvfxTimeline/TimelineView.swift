@@ -135,13 +135,25 @@ public enum TimelineRuler {
     /// frames at the nominal rate, the hours field from an hour of real time on).
     public static func timecode(frame: Int, numerator: Int, denominator: Int, hours: Bool = false) -> String {
         guard numerator > 0, denominator > 0 else { return hours ? "00:00:00:00" : "00:00:00" }
-        let base = max(1, (numerator + denominator / 2) / denominator)
+        let base = nominalRate(numerator, denominator)
         let frames = max(0, frame), s = frames / base
-        let (realSpan, overflow) = frames.multipliedReportingOverflow(by: denominator)
-        if hours || overflow || realSpan >= 3600 * numerator || s >= 3600 {
+        if hours || s >= 3600 || reachesAnHour(frames, numerator, denominator) {
             return String(format: "%02d:%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60, frames % base)
         }
         return String(format: "%02d:%02d:%02d", s / 60, s % 60, frames % base)
+    }
+
+    /// Frames counted per timecode second: the rate rounded to a whole number, never 0 and never overflowing.
+    static func nominalRate(_ numerator: Int, _ denominator: Int) -> Int {
+        let (sum, overflow) = numerator.addingReportingOverflow(denominator / 2)
+        return max(1, (overflow ? numerator : sum) / denominator)
+    }
+
+    /// Whether `frames` at `numerator/denominator` fps last an hour of real time: frames × den ≥ 3600 × num, both
+    /// products taken at double width so no valid rate overflows.
+    static func reachesAnHour(_ frames: Int, _ numerator: Int, _ denominator: Int) -> Bool {
+        let span = frames.multipliedFullWidth(by: denominator), hour = numerator.multipliedFullWidth(by: 3600)
+        return span.high != hour.high ? span.high > hour.high : span.low >= hour.low
     }
 }
 

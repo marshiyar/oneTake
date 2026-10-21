@@ -400,6 +400,7 @@ final class EditorSession {
         }
         let sel = timeline.view.selection
         player.view.selectedIds = player.view.elements.filter { sel.contains($0.id) }.map(\.id)
+        player.selectionSynced()
     }
 
     /// Capture-phase keyframe keys (K toggles the selected element's position keyframe), before playback JKL.

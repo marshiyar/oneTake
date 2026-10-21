@@ -69,5 +69,18 @@ final class InspectorCropSessionTests: XCTestCase {
         draw(p)
         XCTAssertNotNil(p.button("crop:start"), "back to the one entry point")
     }
+
+    /// Codex review: selecting another clip on the timeline ends the crop, so its edges never land on that clip.
+    func testSelectingAnotherClipEndsTheCropSession() throws {
+        let (s, p) = try makeSession()
+        try XCTUnwrap(p.button("crop:start")).action()
+        XCTAssertEqual(s.player.cropClipId, "clip:a")
+        s.timeline.view.selection = ["clip:logo"]; s.syncStage()
+        XCTAssertFalse(s.player.view.cropActive, "the crop on clip:a is cancelled")
+        XCTAssertNil(s.player.cropClipId)
+        p.selection = ["clip:logo"]; draw(p)
+        XCTAssertNotNil(p.button("crop:start"), "the new clip shows the entry point, not the old session")
+        XCTAssertNil(s.editor.crop(clipId: "clip:a")); XCTAssertNil(s.editor.crop(clipId: "clip:logo"))
+    }
 }
 #endif
