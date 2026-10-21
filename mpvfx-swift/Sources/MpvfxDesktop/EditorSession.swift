@@ -138,6 +138,7 @@ final class EditorSession {
         syncStage()
         let previousOnChange = editor.onChange
         editor.onChange = { [weak self] in previousOnChange?(); self?.documentChanged(); self?.rebuildAudioGraphIfNeeded() }
+        editor.onNotice = { [weak self] in self?.player.view.showToast($0); self?.redraw() }
         watchOpenProject()
     }
 
@@ -338,6 +339,7 @@ final class EditorSession {
         try loadContent(opened.content)
         player.view.canvasSize = CanvasSize(editor.document.canvas.width, editor.document.canvas.height)
         for notice in editor.document.undrawnContentNotices { player.view.showToast(notice) }
+        if let notice = editor.document.unreadNarrationNotice { player.view.showToast(notice) }
     }
 
     /// The open project's folder was found at `moved.directory` (Locate Folder…): media resolves against it from now on.

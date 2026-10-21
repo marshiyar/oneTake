@@ -109,6 +109,21 @@ final class DesktopPreferencesTests: XCTestCase {
         XCTAssertEqual(DesktopPreferences(userData: dir).previewCacheMB, 512)
     }
 
+    /// Issue #292: the default hold length persists durably; values outside the accepted range read as the default.
+    func testHoldLengthSurvivesRelaunchAndHostileValuesReadAsTheDefault() throws {
+        let prefs = DesktopPreferences(userData: dir)
+        XCTAssertNil(prefs.holdSeconds)
+        prefs.holdSeconds = 3
+        XCTAssertEqual(DesktopPreferences(userData: dir).holdSeconds, 3)
+        XCTAssertNil(prefs.lastWriteError)
+        for bad in [0, -1, .nan, .infinity, 1e9] {
+            prefs.holdSeconds = bad
+            XCTAssertNil(DesktopPreferences(userData: dir).value(DesktopPreferences.holdSecondsKey), "\(bad) is not stored")
+        }
+        try #"{"mpvfx-hold-length-seconds":"2"}"#.write(toFile: dir + "/preferences.json", atomically: true, encoding: .utf8)
+        XCTAssertNil(DesktopPreferences(userData: dir).holdSeconds, "a string reads as the default")
+    }
+
     /// Only an absolute export folder is kept; on Windows `C:x` is relative to drive C's current folder.
     func testOnlyAbsoluteExportFoldersAreKept() {
         #if os(Windows)

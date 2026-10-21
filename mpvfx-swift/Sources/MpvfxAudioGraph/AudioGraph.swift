@@ -44,6 +44,8 @@ public struct AudioGraphTrack: Sendable {
     public var fxChain: FxChain?
     public var automation: Automation?
     public var groupId: String?
+    /// Cut transition fades on the clip's sound (nil: none), applied to the stem before its effects.
+    public var transitionGain: AudioTransitionGain? = nil
     /// Fade-in and fade-out lengths in seconds (0: none): a linear gain ramp on the stem before the FX chain,
     /// multiplied with the volume and its automation (`ClipFadeRamp`). Set after `init`.
     public var fadeIn: Double = 0
@@ -166,7 +168,12 @@ final class TrackStage: FrameSource {
         let dur = t.end - t.start
         let stemFrames = t.stem.first?.count ?? 0
         let n = min(stemFrames, filterFrames(dur, sr))
-        let stemL = t.stem[0], stemR = t.stem.count > 1 ? t.stem[1] : t.stem[0]
+        var stemL = t.stem[0], stemR = t.stem.count > 1 ? t.stem[1] : t.stem[0]
+        if let fades = t.transitionGain {
+            // Baked here, on the graph-build thread, so rendering stays a plain read of the stem.
+            let g = fades.samples(count: n, start: t.start, sampleRate: sr)
+            for i in 0..<n { stemL[i] *= g[i]; stemR[i] *= g[i] }
+        }
         let prepared = ClipFadeRamp(t, sampleRate: sr).applied(to: quantize
             ? { i in i < n ? (s16ToF32(f32ToS16(stemL[i])), s16ToF32(f32ToS16(stemR[i]))) : (0, 0) }
             : { i in i < n ? (stemL[i], stemR[i]) : (0, 0) })
@@ -464,6 +471,7 @@ public final class AudioGraphRenderer {
         }
         for (a, b) in zip(old.tracks, next.tracks) {
             guard a.id == b.id, a.start == b.start, a.end == b.end, a.pan == b.pan, a.muted == b.muted, a.groupId == b.groupId,
+                  a.transitionGain == b.transitionGain,
                   a.fadeIn == b.fadeIn, a.fadeOut == b.fadeOut, a.automation == b.automation, sameStem(a.stem, b.stem) else { return false }
             let stage = trackStages[a.id]
             if a.volume != b.volume {
