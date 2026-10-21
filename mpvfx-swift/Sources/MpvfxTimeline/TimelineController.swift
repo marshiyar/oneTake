@@ -135,6 +135,7 @@ public final class TimelineController {
         view.duration = max(e.duration, 0)
         view.frameRate = e.fps
         playback.duration = view.duration; playback.fps = e.fps
+        if playback.currentTime > view.duration { playback.seek(view.duration) }
         let ids = Set(view.tracks.flatMap(\.clips).map(\.id))
         view.selection = view.selection.intersection(ids)
         pruneKeyframeSelection()

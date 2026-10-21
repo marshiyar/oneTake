@@ -101,7 +101,7 @@ public final class MarkersPanel: DockedPanelView {
             guard !rows.isEmpty else { return true }
             let old = rows.firstIndex(where: { $0.id == selectedID }) ?? (k.code == .down ? -1 : rows.count)
             let i = max(0, min(rows.count - 1, old + (k.code == .down ? 1 : -1)))
-            selectedID = rows[i].id; onJump?(rows[i].time); return true
+            selectedID = rows[i].id; list.reveal(i); onJump?(rows[i].time); return true
         case .enter:
             guard let marker = rows.first(where: { $0.id == selectedID }) else { return false }
             onJump?(marker.time); return true

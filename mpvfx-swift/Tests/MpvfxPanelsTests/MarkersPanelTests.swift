@@ -34,7 +34,7 @@ final class MarkersPanelTests: XCTestCase {
     func testUnknownMarkerFieldsSurviveParseEditAndSave() throws {
         let (_, e) = try make(); _ = e.addMarker(at: 1)
         var raw = try NativeJSONValue.from(e.document), seq = try NativeJSONValue.from(e.document.sequence)
-        var marker = seq["markers"]!.arrayValue![0]
+        var marker = try XCTUnwrap(seq["markers"]?.arrayValue?.first)
         marker["future"] = .object(["enabled": .bool(true)])
         seq["markers"] = .array([marker]); raw["sequence"] = seq
         let editor = TimelineEditor(document: try parseNativeProjectDocument(raw))
@@ -49,13 +49,13 @@ final class MarkersPanelTests: XCTestCase {
         let base = try NativeJSONValue.from(e.document)
         for (key, value) in [("time", NativeJSONValue.number(-1)), ("name", .string(" ")), ("color", .string("red")), ("note", .number(4)), ("id", .string(""))] {
             var raw = base
-            var marker = raw["sequence"]!["markers"]!.arrayValue![0]
+            var marker = try XCTUnwrap(raw["sequence"]?["markers"]?.arrayValue?.first)
             marker[key] = value
-            var sequence = raw["sequence"]!; sequence["markers"] = .array([marker]); raw["sequence"] = sequence
+            var sequence = try XCTUnwrap(raw["sequence"]); sequence["markers"] = .array([marker]); raw["sequence"] = sequence
             XCTAssertFalse(validateNativeProjectDocument(raw).isEmpty, key)
         }
-        var raw = base, sequence = base["sequence"]!
-        let marker = sequence["markers"]!.arrayValue![0]
+        var raw = base, sequence = try XCTUnwrap(base["sequence"])
+        let marker = try XCTUnwrap(sequence["markers"]?.arrayValue?.first)
         sequence["markers"] = .array([marker, marker]); raw["sequence"] = sequence
         XCTAssertTrue(validateNativeProjectDocument(raw).contains { $0.code == .duplicateId })
         XCTAssertNil(e.addMarker(at: .infinity))
@@ -102,6 +102,24 @@ final class MarkersPanelTests: XCTestCase {
         _ = p.keyDown(.init(.tab)); for ch in "Note" { _ = p.keyDown(.init(.char(ch))) }
         XCTAssertTrue(p.commitEditing()); XCTAssertEqual(p.rows.first?.time, 2)
         XCTAssertEqual(p.rows.first?.color, "#00FF00"); XCTAssertEqual(p.rows.first?.note, "Note")
+    }
+    func testArrowSelectionRevealsRowsFromEitherEndAndAfterManualScroll() throws {
+        let (panel, editor) = try make()
+        for i in 0..<12 { _ = editor.addMarker(at: Double(i), name: "Marker \(i)") }
+        let size = CanvasSize(300, 88), canvas = PanelMeasureCanvas()
+        panel.draw(canvas, size: size)
+        XCTAssertTrue(panel.scroll(dy: 440))
+        XCTAssertTrue(panel.keyDown(.init(.down)))
+        XCTAssertEqual(panel.selectedID, panel.rows.first?.id)
+        XCTAssertEqual(panel.list.scrollY, 0, "The first selection must be visible even after manual scrolling")
+        for _ in 0..<11 { XCTAssertTrue(panel.keyDown(.init(.down))) }
+        XCTAssertEqual(panel.selectedID, panel.rows.last?.id)
+        let last = panel.list.rect(of: 11)
+        XCTAssertGreaterThanOrEqual(last.y, panel.list.viewport.y)
+        XCTAssertLessThanOrEqual(last.maxY, panel.list.viewport.maxY)
+        for _ in 0..<11 { XCTAssertTrue(panel.keyDown(.init(.up))) }
+        XCTAssertEqual(panel.list.scrollY, 0)
+        XCTAssertEqual(panel.selectedID, panel.rows.first?.id)
     }
     func testRegisteredClosedByDefaultAndMAddsAtPlayheadWithoutMuting() throws {
         XCTAssertEqual(DockRegistry.editor.title("markers"), "Markers")
