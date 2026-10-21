@@ -18,12 +18,13 @@ import MpvfxCanvas
 
 final class TimelineZoomTests: XCTestCase {
     func testFitAndClamp() {
-        XCTAssertEqual(TimelineZoom.fitPixelsPerSecond(viewportWidth: 1266, duration: 10, contentOrigin: 264), 1000.0 / 60)  // min extent 60s
+        // docs/TIMELINE.md "Zoom": fit spans the end plus its margin (10 s + 1 s); half the fit is the zoom-out limit.
+        XCTAssertEqual(TimelineZoom.fitPixelsPerSecond(viewportWidth: 1266, duration: 10, contentOrigin: 264), 1000.0 / 11)
         XCTAssertEqual(TimelineZoom.fitPixelsPerSecond(viewportWidth: 200, duration: 10, contentOrigin: 264), 100)
         XCTAssertEqual(TimelineZoom.maxPercent(fit: 10), 14400)
-        XCTAssertEqual(TimelineZoom.clamp(3, fit: 10), 10)
+        XCTAssertEqual(TimelineZoom.clamp(3, fit: 10), 50)
         XCTAssertEqual(TimelineZoom.next(true, mode: .fit, manual: 500, fit: 10), 200)
-        XCTAssertEqual(TimelineZoom.next(false, mode: .manual, manual: 15, fit: 10), 10)
+        XCTAssertEqual(TimelineZoom.next(false, mode: .manual, manual: 150, fit: 10), 75)
         XCTAssertEqual(TimelineZoom.pinch(deltaY: 0, mode: .manual, manual: 300, fit: 10), 300)
         XCTAssertEqual(TimelineZoom.pinch(deltaY: -50, mode: .manual, manual: 100, fit: 10), (100 * exp(0.7)).rounded())
     }

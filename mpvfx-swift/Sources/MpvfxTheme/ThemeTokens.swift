@@ -244,6 +244,10 @@ public enum ThemeTokens {
     public static let clipNameAlpha = 0.92, clipTimecodeAlpha = 0.72
     /// Height of the kind-coloured strip that keeps the name readable over thumbnails.
     public static let clipHeaderHeight = 18.0
+    /// Timeline sequence end (docs/TIMELINE.md "Ruler and sequence end"): the end marker line and flag (3:1 on the
+    /// lanes and the ruler, a control-weight line), and the shade over the ruler and lanes after the end.
+    public static let timelineEndMarkerPair = ThemePair(0x8C8C8C, 0x6E6E73)
+    public static let timelineOutOfRangePair = ThemePair(ThemeColor(0x000000, alpha: 0.28), ThemeColor(0x000000, alpha: 0.06))
     /// Timeline clip while dragged (opaque so the lanes under it do not show through), audio and visual.
     public static let clipDragAudioPair = ThemePair(ThemeColor(0x3C3454, alpha: 0.96), ThemeColor(0xE4DDFB, alpha: 0.96))
     public static let clipDragPair = ThemePair(ThemeColor(0x262A34, alpha: 0.96), ThemeColor(0xDDE1EA, alpha: 0.96))

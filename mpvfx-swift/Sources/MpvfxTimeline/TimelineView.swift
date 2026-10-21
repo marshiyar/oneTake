@@ -488,6 +488,7 @@ public final class TimelineView {
         }
 
         drawRuler(c, size: size)
+        drawSequenceEnd(c, size: size)
         drawPlayhead(c, size: size)
         drawOverlays(c, size: size); drawKeyframeTooltip(c, size: size)
     }
@@ -679,34 +680,47 @@ public final class TimelineView {
 
     func drawRuler(_ c: CanvasContext, size: CanvasSize) {
         typealias L = TimelineLayout
-        let t = theme, pps = pixelsPerSecond
+        let t = theme
         c.fillRect(CanvasRect(x: 0, y: 0, width: size.width, height: L.rulerHeight), t.shellBackground)
-        // Ticks land on whole frames in both displays, so timecode labels never repeat a frame.
-        let major = TimelineRuler.majorInterval(duration: duration, pps: pps, frameRate: frameRate)
-        let parts = TimelineRuler.minorSubdivisions(major: major, pps: pps, frameRate: frameRate)
-        let firstVisible = max(0, time(forX: L.contentOrigin) - major)
-        let lastVisible = min(duration, time(forX: size.width) + major)
+        let ticks = rulerTicks(width: size.width)
         c.withState {
             c.clip(CanvasRect(x: L.contentOrigin, y: 0, width: max(0, size.width - L.contentOrigin), height: L.rulerHeight))
-            var k = Int((firstVisible / major).rounded(.down))
-            while true {
-                let tm = (Double(k) * major * 1e6).rounded() / 1e6
-                if tm > lastVisible || tm > duration { break }
+            for tm in ticks.major {
                 let mx = Self.snappedLineLeft(centre: x(for: tm))
                 c.fillRect(CanvasRect(x: mx, y: 0, width: 1, height: L.rulerHeight), t.tickMajor)
-                let label = timeDisplay == .frame ? "\(Int((tm * frameRate).rounded()))"
-                    : TimelineRuler.timecode(tm, frameRate: frameRate, hours: duration >= 3600)
-                c.drawText(label, at: .init(mx + 5, 5), font: .mono(10), color: t.tickText)
-                if parts > 1 {
-                    for s in 1..<parts {
-                        let mt = tm + major * Double(s) / Double(parts)
-                        if mt >= duration { break }
-                        c.fillRect(CanvasRect(x: Self.snappedLineLeft(centre: x(for: mt)), y: L.rulerHeight - 8, width: 1, height: 8), t.tickMinor)
-                    }
-                }
-                k += 1
+                c.drawText(rulerLabel(tm), at: .init(mx + 5, 5), font: .mono(10), color: t.tickText)
+            }
+            for mt in ticks.minor {
+                c.fillRect(CanvasRect(x: Self.snappedLineLeft(centre: x(for: mt)), y: L.rulerHeight - 8, width: 1, height: 8), t.tickMinor)
             }
         }
+    }
+
+    /// The end of the laid-out time: the sequence end plus its margin (docs/TIMELINE.md "Ruler and sequence end").
+    public var rulerEnd: Double { TimelineZoom.span(duration: duration) }
+
+    /// Ruler ticks in the visible window, from 0 through `rulerEnd` and no further. Ticks land on whole frames in both
+    /// displays, so timecode labels never repeat a frame.
+    public func rulerTicks(width: Double) -> (major: [Double], minor: [Double]) {
+        let major = TimelineRuler.majorInterval(duration: duration, pps: pixelsPerSecond, frameRate: frameRate)
+        let parts = TimelineRuler.minorSubdivisions(major: major, pps: pixelsPerSecond, frameRate: frameRate)
+        let first = max(0, time(forX: TimelineLayout.contentOrigin) - major)
+        let last = min(rulerEnd, time(forX: width) + major)
+        var majors: [Double] = [], minors: [Double] = []
+        var k = Int((first / major).rounded(.down))
+        var tm = (Double(k) * major * 1e6).rounded() / 1e6
+        while tm <= last {
+            majors.append(tm)
+            minors += (1..<max(parts, 1)).map { tm + major * Double($0) / Double(parts) }.filter { $0 <= rulerEnd }
+            k += 1
+            tm = (Double(k) * major * 1e6).rounded() / 1e6
+        }
+        return (majors, minors)
+    }
+
+    /// A major tick's label: always `HH:MM:SS:FF`, so a minute never reads as an hour (docs/DESIGN.md Principle 5).
+    func rulerLabel(_ tm: Double) -> String {
+        timeDisplay == .frame ? "\(Int((tm * frameRate).rounded()))" : TimelineRuler.timecode(tm, frameRate: frameRate, hours: true)
     }
 
     func drawPlayhead(_ c: CanvasContext, size: CanvasSize) {

@@ -145,18 +145,23 @@ public final class TimelineController {
     public func syncFromPlayback() { view.currentTime = playback.currentTime; needsDisplay?() }
 
     func clampScroll() {
-        let extent = max(view.duration * TimelineZoom.fitHeadroom, TimelineZoom.minExtentSeconds) * view.pixelsPerSecond
+        let extent = TimelineZoom.span(duration: view.duration) * view.pixelsPerSecond
         let maxX = max(0, TimelineLayout.contentOrigin + extent - viewport.width)
         let maxY = max(0, view.contentHeight - viewport.height)
         view.scrollX = max(0, min(maxX, view.scrollX)); view.scrollY = max(0, min(maxY, view.scrollY))
     }
 
-    /// Zoom keeping the time under `anchorX` fixed on screen.
+    /// Where a button, key or slider zoom is anchored: the playhead while it is in view, else the middle of the lanes.
+    public var zoomAnchorX: Double {
+        TimelineZoom.anchorX(playheadX: view.x(for: view.currentTime), contentLeft: TimelineLayout.contentOrigin, viewportWidth: viewport.width)
+    }
+
+    /// Zoom keeping the time under `anchorX` (default `zoomAnchorX`) fixed on screen.
     public func setZoom(percent: Double, anchorX: Double? = nil) {
         applyZoom(TimelineZoom.clamp(percent, fit: fitPixelsPerSecond), anchorX: anchorX)
     }
     func applyZoom(_ clampedPercent: Double, anchorX: Double?) {
-        let ax = anchorX ?? TimelineLayout.contentOrigin
+        let ax = anchorX ?? zoomAnchorX
         let anchorTime = view.time(forX: ax)
         zoomMode = .manual; manualZoomPercent = clampedPercent
         view.pixelsPerSecond = TimelineZoom.pixelsPerSecond(fit: fitPixelsPerSecond, mode: zoomMode, manual: manualZoomPercent)
