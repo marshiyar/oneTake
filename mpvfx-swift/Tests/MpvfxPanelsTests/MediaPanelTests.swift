@@ -40,7 +40,7 @@ enum MediaPanelFixture {
         .init(id: "A3", name: "interview.mov", kind: "video", eventId: "E", available: false, linked: true),
         .init(id: "A4", name: "day2.mov", kind: "video", eventId: "E2"),
     ]
-    /// One finished export (Save as…) and one still running (no action).
+    /// One finished export (Save to…) and one still running (no action).
     static let exports: [LibraryNavModel.Export] = [
         .init(id: "J1", label: "render-546cccc1-d7d8-473d-8eda-5f0c.mp4", status: "complete"), .init(id: "J2", label: "draft.mp4", status: "running"),
     ]
@@ -332,7 +332,7 @@ final class MediaPanelInteractionTests: XCTestCase {
         let s = MediaPanelFixture.panel()
         let cases: [(MediaTileRef, [String])] = [
             (.media("media/b-roll.mov"), ["Add at playhead", "Copy path", "Rename", "Delete"]), (.media("media/Inter.ttf"), ["Copy path", "Rename", "Delete"]),
-            (.library("A2"), ["Add to timeline"]), (.library("A3"), ["Relink…"]), (.export("J1"), ["Save as…"]),
+            (.library("A2"), ["Add to timeline"]), (.library("A3"), ["Relink…"]), (.export("J1"), ["Save to…"]),
         ]
         for (ref, labels) in cases {
             _ = drawn(s)

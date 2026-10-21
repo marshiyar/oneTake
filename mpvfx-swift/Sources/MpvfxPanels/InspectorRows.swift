@@ -41,6 +41,13 @@ public struct InspectorRow {
         public var disabled = false
         /// Shown in the normal ink and focusable, its text selected while focused, but never edited (Media start).
         public var readOnly = false
+        /// A colour value's swatch before its text (issue #189): `color` nil draws the checkerboard; a press on its
+        /// 24 pt target presses the button `key` (the row's controls carry it).
+        public var swatch: Swatch?
+    }
+    public struct Swatch {
+        public var color: String?
+        public var key: String
     }
     public struct Slider {
         public var key: String

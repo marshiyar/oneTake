@@ -79,6 +79,14 @@ public final class InspectorPanel {
     /// The host's stage crop tool (one crop session for the inspector and the stage toolbar); nil runs the
     /// inspector's own session.
     public var cropLink: InspectorCropLink?
+    /// The open colour picker (InspectorPanel+ColorPicker.swift), nil when closed.
+    public internal(set) var colorPicker: ColorPickerState?
+    /// The colour field whose last typed value was refused; its format hint shows until the next edit.
+    public internal(set) var colorFieldError: String?
+    /// Colours picked in this session, newest first (the picker's recent colours lead with them).
+    public var recentColors: [String] = []
+    /// Host hook: the composited stage frame at about this size, for the colour picker's eyedropper.
+    public var stageFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
     var cropBefore: NativeClipCrop?
     var cropLinkAll = false
     struct Scrub { var key: String; var startX: Double; var value: Double; var current: Double; var moved: Bool }
@@ -145,6 +153,15 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// Host hook: the composited program frame at the playhead for the Grade scopes' Program mode, at most w x h.
+    public var programScopeFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// What the Grade scopes read (the Scopes row's Clip / Program switch). Every change is saved as
+    /// `PanelPreferences.scopeSource`; `RightPanel.init` restores it.
+    public var scopeSource: ColorScopes.Source = .clip {
+        didSet { if scopeSource != oldValue, let layout { layout.update { $0.scopeSource = scopeSource } } }
+    }
+    /// Analyses scope frames off the main thread (latest wins); the host sets its `onReady` to redraw.
+    public let scopeAnalyzer = ScopeAnalyzer()
     public var lutAssets: () -> [String] = { [] }
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,
@@ -244,8 +261,7 @@ public final class InspectorPanel {
         if !selection.isEmpty { audioGroupId = nil }
         if selection.count > 1 { drawMultiSelect(c, r); return nil }
         if let s = selected() {
-            if cropActive != nil && cropActive != s.id { cropActive = nil }
-            if cropActive == s.id && cropBefore == nil { cropBefore = editor.crop(clipId: s.id) ?? NativeClipCrop() }
+            retireStaleEditors(editor, s)
             return drawHeader(c, r, s)
         }
         if let g = selectedBus() { return drawBusHeader(c, r, g) }
@@ -687,16 +703,7 @@ public final class InspectorPanel {
             if moved { revealFocus() }
             onEdited?(); return moved
         }
-        guard var f = field else {
-            if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.keyPress {
-                if handler(part, k) { onEdited?(); return true }
-            }
-            if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
-                if k.code == .escape { focus.visible = false; onEdited?(); return true }
-                return press(cur)
-            }
-            return bodyKey(k)
-        }
+        guard var f = field else { return unfocusedKey(k) }
         switch f.key(k) {
         case .commit: field = f; commitField(); onEdited?(); return true
         case .cancel: field = nil; onEdited?(); return true
@@ -722,6 +729,27 @@ extension InspectorPanel {
         case .body, .scrollbar, .scrub, .slider: false
         default: true
         }
+    }
+
+    /// A crop session or colour picker opened on another clip ends when the selection moves on.
+    func retireStaleEditors(_ editor: TimelineEditor, _ s: Selected) {
+        if cropActive != nil && cropActive != s.id { cropActive = nil }
+        if cropActive == s.id && cropBefore == nil { cropBefore = editor.crop(clipId: s.id) ?? NativeClipCrop() }
+        if let cp = colorPicker, cp.clipId != s.id { colorPicker = nil }
+    }
+
+    /// Keys with no field open: the colour picker's first, then Enter / Space / Esc on the focused control, then the
+    /// Grade's own keys.
+    func unfocusedKey(_ k: EditorKey) -> Bool {
+        if let handled = pickerKey(k) { return handled }
+        if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.keyPress {
+            if handler(part, k) { onEdited?(); return true }
+        }
+        if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
+            if k.code == .escape { focus.visible = false; onEdited?(); return true }
+            return press(cur)
+        }
+        return bodyKey(k)
     }
 
     /// Enter / Space on the focused control: a press at its centre (and release, for drags and bespoke rows).
