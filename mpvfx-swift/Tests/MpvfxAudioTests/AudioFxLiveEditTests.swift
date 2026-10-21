@@ -100,7 +100,7 @@ final class AudioFxLiveEditTests: XCTestCase {
         ("compressor", #"{"threshold":-30,"ratio":8}"#), ("limiter", #"{"limit":-6}"#), ("gate", #"{"threshold":-25,"range":-60}"#),
         ("saturate", #"{"type":"hard","threshold":-12}"#), ("bitcrush", #"{"bits":4}"#), ("pitchshift", #"{"semitones":5}"#),
         ("delay", #"{"time":90,"feedback":0.5,"mix":0.5}"#), ("chorus", #"{"depth":5,"mix":0.6}"#), ("phaser", #"{"speed":1.5}"#),
-        ("reverb", #"{"wet":0.6}"#),
+        ("reverb", #"{"wet":0.6}"#), ("denoise", #"{"amount":1,"learn":100}"#),
     ]
     static func chain(_ type: String, _ params: String) -> String {
         #"{"version":1,"nodes":[{"type":""# + type + #"","id":"x","params":"# + params + "}]}"
@@ -162,9 +162,9 @@ final class AudioFxLiveEditTests: XCTestCase {
 
     // MARK: preview (live playback)
 
-    /// Plays from 1 s, applies the FX mid-playback through the updater (as the session does), and checks what the
-    /// feeder renders next: it is the FX project's own render at that position, bit for bit (the rebuilt graph
-    /// is pre-rolled from frame 0), and it is not the dry signal.
+    /// Plays from 0.3 s, applies the FX mid-playback through the updater (as the session does), and checks what the
+    /// feeder renders once the swap's crossfade has passed: it is the FX project's own render at that position, bit
+    /// for bit (the rebuilt graph is pre-rolled from frame 0), and it is not the dry signal.
     func testEveryFxTypeIsHeardInLivePlaybackOnBothRacks() {
         for rack in Rack.allCases {
             for (type, params) in Self.everyType {
@@ -176,8 +176,10 @@ final class AudioFxLiveEditTests: XCTestCase {
                 let fxInputs = Self.inputs(rack, Self.chain(type, params))
                 updater.submit(fxInputs); updater.waitUntilIdle()
                 XCTAssertEqual(source.lastReplace, .rebuilt, "\(rack) \(type)")
+                XCTAssertEqual(source.position, 14400 + 128 * 8)
+                // The rebuilt graph crossfades in over `declickFrames` (LiveDeclickTests), then plays alone.
+                _ = source.render(frames: source.declickFrames)
                 let at = source.position
-                XCTAssertEqual(at, 14400 + 128 * 8)
                 let got = source.render(frames: 128 * 100)
                 let offline = AudioGraphRenderer.renderOffline(Self.project(fxInputs))
                 XCTAssertTrue(got == slice(offline, frame: at, frames: 128 * 100), "\(rack) \(type): live differs from export at the same frame")

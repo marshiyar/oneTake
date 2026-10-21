@@ -114,6 +114,73 @@ final class ProjectDocumentStoreTests: XCTestCase {
         XCTAssertEqual(try documentText(dir), original)
     }
 
+    // MARK: Issue #101: the project folder moved or deleted while open
+
+    /// Acceptance: when the project directory is renamed, `ProjectDocumentWatcher.check()` reports a typed "missing" event
+    /// (once, not on every poll), and nothing more once the folder is back unchanged.
+    func testWatcherReportsATypedMissingEventWhenTheProjectFolderIsRenamed() throws {
+        let store = try ProjectDocumentStore.create(at: root + "/p", name: "P", durableWrite: TestDurableWrite())
+        let seen = EventBox()
+        let watcher = ProjectDocumentWatcher(store: store, interval: 3600) { (event: ProjectDocumentEvent) in seen.append(event) }
+        defer { watcher.stop() }
+        watcher.check()
+        XCTAssertEqual(seen.values, [])
+        try FileManager.default.moveItem(atPath: store.directory, toPath: root + "/p moved")
+        watcher.check(); watcher.check()
+        XCTAssertEqual(seen.values, [.missing])
+        try FileManager.default.moveItem(atPath: root + "/p moved", toPath: store.directory)
+        watcher.check()
+        XCTAssertEqual(seen.values, [.missing], "the same document back in place is not an external edit")
+        try FileManager.default.removeItem(atPath: store.directory)
+        watcher.check()
+        XCTAssertEqual(seen.values, [.missing, .missing], "a deleted folder is reported too")
+    }
+
+    /// The watcher's text-only form, used by callers that only care about external edits, never sees `.missing`.
+    func testTheTextOnlyWatcherIgnoresAMissingFolder() throws {
+        let store = try ProjectDocumentStore.create(at: root + "/p", name: "P", durableWrite: TestDurableWrite())
+        let seen = EventBox()
+        let watcher = ProjectDocumentWatcher(store: store, interval: 3600, onChange: { (text: String) in seen.append(.changed(text)) })
+        defer { watcher.stop() }
+        try FileManager.default.removeItem(atPath: store.directory)
+        watcher.check()
+        XCTAssertEqual(seen.values, [])
+    }
+
+    /// Acceptance: a save into a vanished root throws `ProjectDocumentError(.missing)` ("The project folder <path> was moved
+    /// or deleted"), not `.conflict`; the moved copy is left untouched, and reload says the same instead of a raw ENOENT.
+    func testASaveIntoAVanishedRootThrowsMissingNotConflict() throws {
+        let store = try ProjectDocumentStore.create(at: root + "/p", name: "P", durableWrite: TestDurableWrite())
+        let original = store.savedContent
+        try FileManager.default.moveItem(atPath: store.directory, toPath: root + "/moved")
+        let next = try edited(original, durationFrames: 300)
+        let expected = "The project folder \(store.directory) was moved or deleted"
+        XCTAssertEqual(missingMessage { try store.save(next) }?.hasPrefix(expected), true)
+        XCTAssertEqual(missingMessage { _ = try store.commit(next, moves: [], label: "Edit") }?.hasPrefix(expected), true)
+        XCTAssertEqual(missingMessage { _ = try store.reload() }?.hasPrefix(expected), true, "not a raw ENOENT")
+        XCTAssertEqual(try documentText(root + "/moved"), original, "the moved copy is not written")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.directory), "the old folder is not recreated")
+        XCTAssertEqual(store.savedContent, original)
+    }
+
+    /// The message of the `.missing` error `body` throws; nil (and a failure) for any other outcome.
+    private func missingMessage(_ body: () throws -> Void, line: UInt = #line) -> String? {
+        do { try body() } catch let e as ProjectDocumentError where e.kind == .missing { return e.message } catch {
+            XCTFail("expected .missing, got \(error)", line: line); return nil
+        }
+        XCTFail("expected .missing, nothing was thrown", line: line); return nil
+    }
+
+    /// A folder that is still there but whose document was changed stays a conflict.
+    func testAnExternalEditIsStillAConflict() throws {
+        let store = try ProjectDocumentStore.create(at: root + "/p", name: "P", durableWrite: TestDurableWrite())
+        let external = try edited(store.savedContent, durationFrames: 200)
+        try external.write(toFile: store.directory + "/.studio/project.json", atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try store.save(try edited(store.savedContent, durationFrames: 300))) { error in
+            XCTAssertEqual((error as? ProjectDocumentError)?.kind, .conflict, "\(error)")
+        }
+    }
+
     func testDescribeImportedMediaReadsDurationsAndReportsUnreadableFiles() throws {
         let dir = root + "/p"
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
@@ -132,4 +199,11 @@ final class ProjectDocumentStoreTests: XCTestCase {
         XCTAssertEqual(r.media[2].width, 64); XCTAssertEqual(r.media[2].duration, 0)
         XCTAssertEqual(r.invalid.map(\.name), ["broken.png", "broken.mp3"])
     }
+}
+
+private final class EventBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _values: [ProjectDocumentEvent] = []
+    var values: [ProjectDocumentEvent] { lock.withLock { _values } }
+    func append(_ e: ProjectDocumentEvent) { lock.withLock { _values.append(e) } }
 }

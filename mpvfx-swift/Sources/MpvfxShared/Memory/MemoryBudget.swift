@@ -130,7 +130,7 @@ public final class MemoryPressureMonitor: @unchecked Sendable {
     var lowMemoryWatcher: Thread?
     /// Runs a warning on the UI thread. A Win32 message loop does not drain the main dispatch queue, so the shell
     /// sets this to post onto its loop before observers are added.
-    public var deliverOnUIThread: (@escaping () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) }
+    public var deliverOnUIThread: (@escaping @Sendable () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) }
     #endif
 
     public init() {}
@@ -173,9 +173,11 @@ public final class MemoryPressureMonitor: @unchecked Sendable {
         let s = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
         source = s
         lock.unlock()
-        s.setEventHandler { [weak self, weak s] in
-            guard let self, let s else { return }
-            let event = s.data
+        // The handler reads the source through `self` rather than capturing it (the source existential is not Sendable).
+        s.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.lock.lock(); let event = self.source?.data; self.lock.unlock()
+            guard let event else { return }
             if event.contains(.critical) { self.notify(.critical) } else if event.contains(.warning) { self.notify(.warning) }
         }
         s.resume()
@@ -190,7 +192,7 @@ public final class MemoryPressureMonitor: @unchecked Sendable {
         let watcher = Thread { [weak self] in
             while WaitForSingleObject(handle.value, DWORD.max) == 0 {   // INFINITE, WAIT_OBJECT_0
                 guard self != nil else { break }
-                self?.deliverOnUIThread { self?.notify(.warning) }
+                self?.deliverOnUIThread { [weak self] in self?.notify(.warning) }
                 var low: WindowsBool = true
                 while QueryMemoryResourceNotification(handle.value, &low), low.boolValue { Thread.sleep(forTimeInterval: 1) }
             }

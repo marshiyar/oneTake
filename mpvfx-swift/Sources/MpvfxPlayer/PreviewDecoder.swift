@@ -83,6 +83,14 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     public private(set) var framesSkipped = 0
     /// Seconds spent getting frames from the engine, summed (diagnostics, the preview benchmark).
     public private(set) var decodeSeconds = 0.0
+    /// Set under `lock` when the lane gave up before producing any picture: the media could not be opened, or it
+    /// yielded no frame. Tile previews waiting on this lane then fall back instead of showing "Rendering" forever.
+    var gaveUpFlag = false
+    public var gaveUp: Bool { lock.lock(); defer { lock.unlock() }; return gaveUpFlag }
+    func giveUpIfNothingDecoded() {
+        guard framesDecoded == 0 else { return }
+        lock.lock(); gaveUpFlag = true; lock.unlock()
+    }
 
     init(layer: PreviewLayer, fps: Double, cache: PreviewFrameCache) {
         self.layer = layer; key = layer.laneKey; self.fps = fps; self.cache = cache
@@ -122,6 +130,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     /// The lane's open reader of its source (opened on first use; nil when the file cannot be read).
     func openReader() -> VideoFrameReader? {
         if reader == nil { reader = try? VideoFrameReader(path: layer.source) }
+        if reader == nil { giveUpIfNothingDecoded() }
         return reader
     }
 
@@ -159,7 +168,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         stillSize = sz
         guard let reader = openReader() else { return false }
         let still = MediaFrameStream(reader: reader, frames: .still(width: sz.width, height: sz.height))
-        guard let next = reservedNext(still) else { return false }
+        guard let next = reservedNext(still) else { giveUpIfNothingDecoded(); return false }
         framesDecoded += 1
         cache.store(next.image, lane: key, frame: Self.stillFrame, reserved: next.reserved)
         delivered(Self.stillFrame)
@@ -253,7 +262,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         let idx = streamNext
         guard let next = reservedNext(s) else {
             // Media shorter than the clip: hold the last frame from here on.
-            deadFrom = min(deadFrom, idx); closeStream(); return true
+            deadFrom = min(deadFrom, idx); closeStream(); giveUpIfNothingDecoded(); return true
         }
         streamNext += 1
         if mediaAspect == nil { mediaAspect = Self.opaqueAspect(next.image) }

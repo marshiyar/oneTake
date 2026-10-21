@@ -22,6 +22,7 @@
 import Foundation
 import OneTakeMedia
 import MpvfxShared
+import MpvfxColor
 
 public struct NativeTimelineRenderInput {
     public var project: NativeProjectDocument
@@ -39,6 +40,12 @@ public struct NativeTimelineRenderInput {
     public var range: ExportFrameRange?
     /// Paints the frames (nil: NativeExportFrames.defaultRenderer, which the app installs at startup).
     public var frameRenderer: NativeExportFrameRendererFactory?
+    /// Collects the seconds spent painting and encoding (the export benchmark); nil collects nothing.
+    public var stageTimes: NativeExportStageTimes?
+    /// Encodes each frame on its own thread while the next one paints (the default). false paints and encodes in
+    /// turn on the calling thread: the reference the overlapped output is checked against (ExportOverlapTests) and
+    /// the export benchmark's same-machine baseline (MpvfxPreviewBench export-serial).
+    public var encodeAhead = true
     public init(project: NativeProjectDocument, projectDir: String, outputPath: String, format: ExportFormat,
                 outputDimensions: ExportDimensions? = nil, outputFps: Double? = nil, quality: ExportQuality? = nil,
                 cancellation: MediaCancellation? = nil, onProgress: ((Double) -> Void)? = nil,
@@ -82,17 +89,24 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
         throw MediaToolError("Native canvas background must be an RGB or RGBA hex color")
     }
     for track in project.sequence.tracks { for clip in track.clips where !project.isUndrawnElementClip(clip) {
-        guard let asset = project.assets.first(where: { $0.id == clip.assetId }),
-              nativeIsTextClip(clip, project) || !(asset.source ?? "").isEmpty else {
-            throw MediaToolError("Media path is missing for asset \(clip.assetId)")
-        }
+        try assertClipHasMediaPath(clip, project)
         // The color grade (and its stylize effects) renders through MpvfxColor; other effects are not migrated yet.
-        if clip.effects.contains(where: { $0.enabled && !exportSupportsEffect($0) }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
+        if clip.effects.contains(where: { effect in
+            effect.enabled && !exportSupportsEffect(effect) && effect.effectId != ColorGradeParams.colorKeyEffectId
+        }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
         try assertClipParametersSupported(clip)
         if let crop = clip.crop, ![crop.top, crop.right, crop.bottom, crop.left].allSatisfy({ $0.isFinite }) {
             throw MediaToolError("Invalid crop on clip \(clip.id)")
         }
     } }
+}
+
+/// A clip's asset exists and names its media file (text clips have none). The message names the asset as the user
+/// knows it, never by its internal id.
+private func assertClipHasMediaPath(_ clip: NativeProjectClip, _ project: NativeProjectDocument) throws {
+    let asset = project.assets.first(where: { $0.id == clip.assetId })
+    if let asset, nativeIsTextClip(clip, project) || !(asset.source ?? "").isEmpty { return }
+    throw MediaToolError("Media path is missing for \(asset?.name ?? clip.assetId)")
 }
 
 private func assertClipParametersSupported(_ clip: NativeProjectClip) throws {
@@ -280,7 +294,13 @@ func nativeExportRenderDocument(_ project: NativeProjectDocument, _ media: [Stri
         } }
         out.sequence.audioGroups = out.sequence.audioGroups?.filter { !dropped.contains($0.id) }
     }
-    return nativeDocumentWithNaturalLayouts(out) { $0.naturalSize ?? media[$0.id]?.natural }
+    var rendered = nativeDocumentWithNaturalLayouts(out) { $0.naturalSize ?? media[$0.id]?.natural }
+    // The probed size travels on the asset, as the preview's probed sizes do, so the painter knows a Fill or Stretch
+    // picture's aspect and decodes it at the size it is drawn (PreviewLayer.mediaAspect).
+    for i in rendered.assets.indices where rendered.assets[i].naturalSize == nil {
+        rendered.assets[i].naturalSize = media[rendered.assets[i].id]?.natural
+    }
+    return rendered
 }
 
 /// The document export paints and mixes once its media is probed: visible tracks only, then the render document.
@@ -329,27 +349,80 @@ struct NativeTimelineEncode {
 }
 
 /// Paints and writes every output frame, the mix's samples up to the end of each frame after it, so the muxer
-/// interleaves them; the audio track ends exactly at the video's end. Progress maps the frames onto `progressRange`.
+/// interleaves them; the audio track ends exactly at the video's end. Progress maps the encoded frames onto
+/// `progressRange`. With `encodeAhead` the encoder runs on its own thread one frame behind the painter
+/// (ExportEncodePipeline, 2 frames); otherwise each frame is painted and encoded in turn on this thread.
 private func encodeNativeTimeline(_ encode: NativeTimelineEncode, _ input: NativeTimelineRenderInput,
                                   progressRange: ClosedRange<Double>) throws {
-    let plan = encode.plan
-    let count = exportOutputFrameCount(plan.outputDuration, fps: plan.outputFps)
-    let samples = Double(EXPORT_AUDIO_SAMPLE_RATE)
-    let totalSamples = Int((Double(count) / plan.outputFps * samples).rounded())
-    encode.mix?.skip(to: Int((plan.start * samples).rounded()))
-    var written = 0
-    let span = progressRange.upperBound - progressRange.lowerBound
-    for i in 0..<count {
-        try input.cancellation?.throwIfCancelled()
-        try withAutoreleasePool {
-            let rgba = try encode.frames.frame(at: plan.start + Double(i) / plan.outputFps)
-            try encode.writer.addVideo(rgba)
-            if let mix = encode.mix {
-                let target = Swift.min(totalSamples, Int((Double(i + 1) / plan.outputFps * samples).rounded()))
-                try encode.writer.addAudio(mix.next(target - written))
-                written = target
-            }
+    let count = exportOutputFrameCount(encode.plan.outputDuration, fps: encode.plan.outputFps)
+    let painter = NativeTimelineFramePainter(encode, input, count: count)
+    let write = nativeTimelineFrameWriter(encode, input, count: count, progressRange: progressRange)
+    guard input.encodeAhead else {
+        for i in 0..<count {
+            try input.cancellation?.throwIfCancelled()
+            try withAutoreleasePool { try write(painter.paint(i)) }
         }
-        input.onProgress?(progressRange.lowerBound + span * Swift.min(0.999, Double(i + 1) / Double(count)))
+        return
+    }
+    let pipeline = ExportEncodePipeline(depth: EXPORT_ENCODE_QUEUE_FRAMES, cancellation: input.cancellation, encode: write)
+    do {
+        for i in 0..<count {
+            try input.cancellation?.throwIfCancelled()
+            // Frame 0 encodes before frame 1 paints: the decoder's and the encoder's start-up buffers, the largest
+            // either allocates, are then never live at the same time (they set the export's peak memory otherwise).
+            try withAutoreleasePool { try pipeline.submit(painter.paint(i), drain: i == 0) }
+        }
+        try pipeline.finish()
+    } catch {
+        pipeline.abandon()
+        throw error
+    }
+}
+
+/// Painted frames export holds at once: the one encoding and the one painting.
+let EXPORT_ENCODE_QUEUE_FRAMES = 2
+
+/// Paints output frame `i` and mixes the sound up to its end. Used on one thread, in frame order.
+private final class NativeTimelineFramePainter {
+    let encode: NativeTimelineEncode
+    let stageTimes: NativeExportStageTimes?
+    let totalSamples: Int
+    var written = 0
+
+    init(_ encode: NativeTimelineEncode, _ input: NativeTimelineRenderInput, count: Int) {
+        self.encode = encode
+        stageTimes = input.stageTimes
+        let samples = Double(EXPORT_AUDIO_SAMPLE_RATE)
+        totalSamples = Int((Double(count) / encode.plan.outputFps * samples).rounded())
+        encode.mix?.skip(to: Int((encode.plan.start * samples).rounded()))
+    }
+
+    func paint(_ i: Int) throws -> ExportPaintedFrame {
+        let plan = encode.plan
+        let t0 = NativeExportStageTimes.now()
+        let rgba = try encode.frames.frame(at: plan.start + Double(i) / plan.outputFps)
+        var sound: [Float]?
+        if let mix = encode.mix {
+            let end = Int((Double(i + 1) / plan.outputFps * Double(EXPORT_AUDIO_SAMPLE_RATE)).rounded())
+            let target = Swift.min(totalSamples, end)
+            sound = try mix.next(target - written)
+            written = target
+        }
+        stageTimes?.addPaint(NativeExportStageTimes.now() - t0)
+        return ExportPaintedFrame(index: i, rgba: rgba, sound: sound)
+    }
+}
+
+/// Hands one painted frame to the writer and reports the progress it reached (on the encoder's thread).
+private func nativeTimelineFrameWriter(_ encode: NativeTimelineEncode, _ input: NativeTimelineRenderInput, count: Int,
+                                       progressRange: ClosedRange<Double>) -> (ExportPaintedFrame) throws -> Void {
+    let writer = encode.writer, stageTimes = input.stageTimes, onProgress = input.onProgress
+    let span = progressRange.upperBound - progressRange.lowerBound
+    return { frame in
+        let t0 = NativeExportStageTimes.now()
+        try writer.addVideo(frame.rgba)
+        if let sound = frame.sound { try writer.addAudio(sound) }
+        stageTimes?.addEncode(NativeExportStageTimes.now() - t0)
+        onProgress?(progressRange.lowerBound + span * Swift.min(0.999, Double(frame.index + 1) / Double(count)))
     }
 }
