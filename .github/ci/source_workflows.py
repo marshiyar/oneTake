@@ -57,8 +57,12 @@ def _codeql_swift(job_name, steps):
 
 
 # target file: (source file, workflow name, jobs kept, extra workflow_call inputs, patch(job name, steps) -> steps)
+BENCH_INPUTS = {"runs": {"type": "number", "default": 5}, "only": {"type": "string", "default": ""}}
 SPECS = {
     "codeql-swift-source.yml": ("codeql.yml", "codeql-swift-source", ["swift"], {}, _codeql_swift),
+    # The bench-<os> artifacts stay in the calling run; bench.py records the commit it measured (git rev-parse HEAD).
+    # windows stays in bench.yml: its pinned setup-swift commit has no version to name (workflow-lint allow list).
+    "bench-source.yml": ("bench.yml", "bench-source", ["linux", "macos"], BENCH_INPUTS, None),
 }
 
 

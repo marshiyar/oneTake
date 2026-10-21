@@ -24,6 +24,9 @@
                                              written to <out dir> for upload; one comment
   agentbot.py bench   <run id>               a bench run on a pull request: each metric's p50 and p95 against main's
                                              latest bench run on the same runner class; one comment
+  agentbot.py bench-runners <run id> <pr> <head sha>
+                                             the same for a pull request's bench run on OneTake-actionRunners-1
+                                             (<run id> is that repository's run; read with $RUNNERS_TOKEN)
 
 Talks to the REST API with $GITHUB_TOKEN ($GITHUB_REPOSITORY names the repository); stdlib only. Never fails the
 workflow over a bot problem it can report instead (exit 0 with a ::warning::); exit 2 on bad arguments.
@@ -33,6 +36,13 @@ import io, json, os, re, struct, sys, urllib.error, urllib.request, zipfile, zli
 API = "https://api.github.com"
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
+# bench.yml sends the benchmarks of main and of this repository's pull requests to the organization's runner pool;
+# their artifacts are in that repository's onetake-bench.yml runs, read with a token for it (agentbot.yml mints one).
+RUNNERS_REPO = "OneTake-app/OneTake-actionRunners-1"
+RUNNERS_TOKEN = os.environ.get("RUNNERS_TOKEN", "")
+# onetake-bench.yml's run-name: "onetake-bench <kind> <sha>"; kind main is a baseline, kind pr a pull request's run.
+RUNNERS_BENCH = ("linux", "macos")   # the bench.yml jobs bench-source.yml runs there; windows always runs here
+RUNNERS_TITLE = re.compile(r"^onetake-bench (main|pr|branch) ([0-9a-f]{40})$")
 CI = "mpvfx-ci"
 MAX_COMMENT = 60000
 MAX_PIXELS = 4096 * 4096
@@ -55,12 +65,13 @@ class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoAuthRedirect)
 
 
-def api(method, path, body=None, raw=False, limit=None):
-    """limit: with raw, the most bytes to read; a longer body raises ValueError."""
-    url = path if path.startswith("http") else f"{API}/repos/{REPO}/{path.lstrip('/')}"
+def api(method, path, body=None, raw=False, limit=None, repo=None, token=None):
+    """limit: with raw, the most bytes to read; a longer body raises ValueError. repo and token: another repository
+    than $GITHUB_REPOSITORY, read with its own token."""
+    url = path if path.startswith("http") else f"{API}/repos/{repo or REPO}/{path.lstrip('/')}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={
-        "Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token or TOKEN}", "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "mpvfx-agentbot"})
     if data is not None:
         req.add_header("Content-Type", "application/json")
@@ -373,13 +384,15 @@ def png_compare(a, b, threshold=8):
 MAX_ARTIFACT = 64 * 1024 * 1024  # the most a downloaded artifact ZIP, and each file read out of it, may hold
 
 
-def artifact_files(run_id, name, suffix):
-    """{file name: bytes} of the files ending in `suffix` inside the run's artifact `name` (empty when absent)."""
-    arts = api("GET", f"actions/runs/{run_id}/artifacts?name={name}")["artifacts"]
+def artifact_files(run_id, name, suffix, repo=None):
+    """{file name: bytes} of the files ending in `suffix` inside the run's artifact `name` (empty when absent); repo
+    RUNNERS_REPO reads a run of the runners repository."""
+    other = {"repo": RUNNERS_REPO, "token": RUNNERS_TOKEN} if repo == RUNNERS_REPO else {}
+    arts = api("GET", f"actions/runs/{run_id}/artifacts?name={name}", **other)["artifacts"]
     if not arts or arts[0].get("expired"):
         return {}
     try:
-        data = api("GET", f"actions/artifacts/{arts[0]['id']}/zip", raw=True, limit=MAX_ARTIFACT)
+        data = api("GET", f"actions/artifacts/{arts[0]['id']}/zip", raw=True, limit=MAX_ARTIFACT, **other)
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             return {os.path.basename(i.filename): z.read(i) for i in z.infolist()
                     if i.filename.endswith(suffix) and i.file_size <= MAX_ARTIFACT}
@@ -469,47 +482,107 @@ def bench_compare(mine, theirs, threshold=0.15):
     return rows, flagged
 
 
+def latest_runners_main_run(accept):
+    """The newest green onetake-bench run of a main commit on the runners repository for which accept(run id) is true.
+    Its run-name says what was benchmarked; a run whose payload was refused never ends in success."""
+    got = api("GET", "actions/workflows/onetake-bench.yml/runs?event=repository_dispatch&status=success&per_page=30",
+              repo=RUNNERS_REPO, token=RUNNERS_TOKEN)
+    for r in sorted(got.get("workflow_runs", []), key=lambda r: r.get("created_at", ""), reverse=True):
+        m = RUNNERS_TITLE.match(r.get("display_title") or "")
+        if r.get("conclusion") == "success" and m and m.group(1) == "main" and accept(r["id"]):
+            return r
+    return None
+
+
+def bench_report(files):
+    return json.loads(next(iter(files.values()))) if files else {}
+
+
+def bench_baseline(art, klass):
+    """The report of main's newest bench of machine class `klass`: from this repository's bench.yml runs (run here when
+    nothing was sent) or from the runners repository's onetake-bench.yml runs, whichever is newer; None when neither."""
+    found, loaded = [], {}
+
+    def same_class(where):
+        def accept(rid):
+            loaded[(where, rid)] = bench_report(artifact_files(rid, art, ".json", repo=where))
+            return bool(loaded[(where, rid)]) and loaded[(where, rid)].get("machine", {}).get("class") == klass
+        return accept
+
+    # bench.yml has no push trigger: main is benchmarked by workflow_run (after green CI), on schedule and by hand.
+    here = latest_main_run("bench.yml", art, same_class(None), events=("workflow_run", "schedule", "workflow_dispatch"))
+    if here:
+        found.append((here.get("created_at", ""), loaded[(None, here["id"])]))
+    if RUNNERS_TOKEN:
+        there = latest_runners_main_run(same_class(RUNNERS_REPO))
+        if there:
+            found.append((there.get("created_at", ""), loaded[(RUNNERS_REPO, there["id"])]))
+    return max(found, key=lambda f: f[0])[1] if found else None
+
+
+def bench_body(head_sha, mine_by_os, oses):
+    """The comment: per OS in `oses`, each metric of `mine_by_os[os]` (artifact files) against main's newest
+    same-class run."""
+    parts = [f"### Benchmarks of `{head_sha[:7]}` against main\n",
+             "p50 and p95, main → this PR, per OS; ⚑ marks a p50 change over 15%. Hosted runners are shared machines: "
+             "read a flag as a reason to look, not a verdict.\n"]
+    for os_name in oses:
+        mine = mine_by_os.get(os_name) or {}
+        m = bench_report(mine)
+        t = bench_baseline(f"bench-{os_name}", m.get("machine", {}).get("class")) if mine else None
+        if not mine or not t:
+            parts.append(f"\n**{os_name}**: {'no result on this run' if not mine else 'no main run of the same machine class to compare against yet'}\n")
+            continue
+        rows, flagged = bench_compare(m, t)
+        parts.append(f"\n**{os_name}** (main `{t['commit'][:7]}`, {flagged} flagged)\n\n| metric | unit | p50 | p95 | p50 change |\n"
+                     "|---|---|---:|---:|---:|\n" + "\n".join(rows) + "\n")
+    return "".join(parts)
+
+
 def bench(run_id):
     run = api("GET", f"actions/runs/{run_id}")
     prs = run_prs(run)
     if not prs:
         print("bench: the run belongs to no open pull request")
         return
-    parts = [f"### Benchmarks of `{run['head_sha'][:7]}` against main\n",
-             "p50 and p95, main → this PR, per OS; ⚑ marks a p50 change over 15%. Hosted runners are shared machines: "
-             "read a flag as a reason to look, not a verdict.\n"]
-    for os_name in ("linux", "windows", "macos"):
-        art = f"bench-{os_name}"
-        mine = artifact_files(run_id, art, ".json")
-        mine_report = json.loads(next(iter(mine.values()))) if mine else {}
-        klass = mine_report.get("machine", {}).get("class")
-        loaded = {}
-
-        def same_class(rid):
-            files = artifact_files(rid, art, ".json")
-            if not files:
-                return False
-            loaded[rid] = json.loads(next(iter(files.values())))
-            return loaded[rid].get("machine", {}).get("class") == klass
-
-        # The newest main run measured on the same class of machine, not just the newest one.
-        # bench.yml has no push trigger: main is benchmarked by workflow_run (after green CI), on schedule and by hand.
-        base = (latest_main_run("bench.yml", art, same_class, events=("workflow_run", "schedule", "workflow_dispatch"))
-                if mine else None)
-        if not mine or not base:
-            parts.append(f"\n**{os_name}**: {'no result on this run' if not mine else 'no main run of the same machine class to compare against yet'}\n")
-            continue
-        m, t = mine_report, loaded[base["id"]]
-        rows, flagged = bench_compare(m, t)
-        parts.append(f"\n**{os_name}** (main `{t['commit'][:7]}`, {flagged} flagged)\n\n| metric | unit | p50 | p95 | p50 change |\n"
-                     "|---|---|---:|---:|---:|\n" + "\n".join(rows) + "\n")
+    mine = {o: artifact_files(run_id, f"bench-{o}", ".json") for o in ("linux", "windows", "macos")}
+    if not any(mine.values()):
+        print("bench: no bench results in this run")
+        return
+    # When bench.yml sent linux and macos to the runners repository, this run holds windows only: the comment lists
+    # the systems this run benchmarked, and bench-runners posts the others in a comment of its own.
+    oses = ("linux", "windows", "macos") if mine["linux"] or mine["macos"] else ("windows",)
+    body = bench_body(run["head_sha"], mine, oses)
     for pr in prs:
-        upsert_comment(pr, "agentbot:bench", "".join(parts))
+        upsert_comment(pr, "agentbot:bench", body)
     print("bench: posted")
 
 
+def bench_runners(run_id, pr, head_sha):
+    """A pull request's bench run on the runners repository, reported back by its onetake-bench.yml (payload checked
+    here again: every value comes from a repository_dispatch)."""
+    if not (re.fullmatch(r"[0-9]{1,20}", run_id) and re.fullmatch(r"[0-9]{1,7}", pr) and
+            re.fullmatch(r"[0-9a-f]{40}", head_sha)):
+        raise ValueError("bench-runners: run id, pull request number or head sha is malformed")
+    if not RUNNERS_TOKEN:
+        raise ValueError("bench-runners: RUNNERS_TOKEN is not set")
+    run = api("GET", f"actions/runs/{run_id}", repo=RUNNERS_REPO, token=RUNNERS_TOKEN)
+    m = RUNNERS_TITLE.match(run.get("display_title") or "")
+    if not run.get("path", "").endswith("onetake-bench.yml") or not m or m.group(1) != "pr":
+        print(f"bench-runners: run {run_id} is not a pull request's onetake-bench run")
+        return
+    p = api("GET", f"pulls/{pr}")
+    if p.get("state") != "open" or p.get("head", {}).get("sha") != head_sha:
+        print(f"bench-runners: #{pr} is closed or has moved past {head_sha[:7]}; nothing posted")
+        return
+    mine = {o: artifact_files(run_id, f"bench-{o}", ".json", repo=RUNNERS_REPO) for o in RUNNERS_BENCH}
+    upsert_comment(pr, "agentbot:bench-runners", bench_body(head_sha, mine, RUNNERS_BENCH))
+    print("bench-runners: posted")
+
+
 def main(argv):
-    cmds = {"digest": (digest, 1), "flakes": (flakes, 1), "shots": (shots, 2), "bench": (bench, 1)}
+    cmds = {"digest": (digest, 1), "flakes": (flakes, 1), "shots": (shots, 2), "bench": (bench, 1),
+            "bench-runners": (bench_runners, 3)}
     if len(argv) < 2 or argv[1] not in cmds or len(argv) - 2 != cmds[argv[1]][1]:
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2
