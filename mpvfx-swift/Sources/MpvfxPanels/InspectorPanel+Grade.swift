@@ -260,7 +260,7 @@ extension InspectorPanel {
             if let i = inlineTab("grade:scopes", part: part, select: pick) { pick(i) }
         }
     }
-
+    /// Keyed by label: the scope modes have no other stable string, and the label is what the overflow menu lists.
     /// The scope mode tabs, by label (the mode's label is its tab id).
     static var scopeTabs: [PanelTab] { ColorScopes.Mode.allCases.map { PanelTab(id: $0.label, label: $0.label) } }
     static let scopeTabsHeight = PanelGrid.rowHeight
