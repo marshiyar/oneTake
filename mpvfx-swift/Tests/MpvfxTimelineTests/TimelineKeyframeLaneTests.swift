@@ -93,6 +93,23 @@ final class TimelineKeyframeLaneTests: XCTestCase {
         XCTAssertFalse(c.view.expandedClips.contains("clip:b"), "another clip keeps its own state")
     }
 
+    /// PR #218 review: rows line up across the clips of a track, so a row is one property under every clip.
+    func testRowsAlignAcrossTheClipsOfATrack() throws {
+        let (c, e) = try make()
+        let b = try XCTUnwrap(e.parameterAddress(clipId: "clip:b", TimelineEditor.rotationId))
+        XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.upsert(address: b, valueType: .number, frame: 10, value: .number(4), baselineValue: .number(4))))))
+        c.view.expandedClips = ["clip:a", "clip:b"]
+        let rows = c.view.trackLaneRows(1)
+        XCTAssertEqual(rows, [.summary, .kind(.transform), .property("position"), .property("rotation"), .property("scale"),
+                              .kind(.threeD), .property("tiltX"), .property("tiltY"), .property("opacity")])
+        let clipB = try XCTUnwrap(c.view.tracks[1].clips.first { $0.id == "clip:b" })
+        let rotationRow = try XCTUnwrap(rows.firstIndex(of: .property("rotation")))
+        let hit = try XCTUnwrap(c.view.keyframeHit(x: c.view.x(for: clipB.start + 10.0 / 30), y: rowY(c, rotationRow)))
+        XCTAssertEqual(hit.clipId, "clip:b"); XCTAssertEqual(hit.laneRow, .property("rotation"))
+        XCTAssertNil(c.view.keyframeHit(x: c.view.x(for: 2), y: rowY(c, rotationRow)), "clip:a has no Rotation keys on that row")
+        XCTAssertEqual(c.view.trackRowHeight(1), c.view.trackHeight + Double(rows.count) * TimelineLayout.laneHeight)
+    }
+
     // MARK: Stacking
 
     func testCoincidentKeysStackIntoOneMarkWithACount() throws {

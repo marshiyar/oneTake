@@ -104,7 +104,7 @@ extension TimelineView {
 
     /// The clip whose rows this track's header column shows, and its lane row under `y`.
     func laneHit(track i: Int, y: Double) -> (clip: TimelineClipModel, row: TimelineLaneRow, laneTop: Double)? {
-        guard let clip = headerClip(track: i), let h = laneRow(clip, track: i, y: y) else { return nil }
+        guard let h = trackLaneRow(track: i, y: y), let clip = rowOwner(h.row, track: i) else { return nil }
         return (clip, h.row, h.top)
     }
 
