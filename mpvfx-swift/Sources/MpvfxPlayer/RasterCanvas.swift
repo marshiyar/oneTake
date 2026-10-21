@@ -16,6 +16,8 @@ import Foundation
 import CoreGraphics
 #endif
 import MpvfxCanvas
+import MpvfxColor
+import MpvfxShared
 import OneTakeMedia
 
 /// `CanvasContext` on the media engine's software canvas (`RasterSurface`). Export frames are painted on it by the
@@ -112,6 +114,37 @@ public final class RasterCanvas: CanvasContext {
 
     /// Device pixels per user unit: the square root of the transform's area scale.
     public var deviceScale: Double { max(1e-6, abs(transform.a * transform.d - transform.b * transform.c).squareRoot()) }
+
+    /// A transparent scratch surface of this canvas's size, kept between blended layers.
+    private var blendScratch: RasterCanvas?
+
+    /// Paints one layer with a blend mode: `paint` draws it alone on a transparent scratch surface (identity
+    /// transform, no clip), then each pixel is blended over what this canvas holds (`BlendShader`, the CPU reference
+    /// of the GPU blend functions) and written back. Call it where no clip is active. False when the scratch surface
+    /// or the blend could not be made (the failure is in `drawError`); nothing is drawn then.
+    @discardableResult
+    public func drawBlended(_ mode: NativeBlendMode, paint: (RasterCanvas) -> Void) -> Bool {
+        let w = surface.width, h = surface.height
+        do {
+            let scratch = try blendScratch ?? RasterCanvas(width: w, height: h)
+            blendScratch = scratch
+            scratch.clear(.transparent)
+            paint(scratch)
+            if let e = scratch.drawError { throw e }
+            guard let mixed = BlendShader.blend(scratch.image().rgba, over: surface.rgba(), width: w, height: h, mode: mode) else {
+                throw MediaError(kind: .internalError, message: "blend: the surface could not be read")
+            }
+            surface.save()
+            surface.setTransform(.identity)
+            surface.clear(RasterColor(r: 0, g: 0, b: 0, a: 0))
+            try surface.drawImage(RasterImage(rgba: mixed, width: w, height: h), in: RasterRect(x: 0, y: 0, width: Double(w), height: Double(h)))
+            surface.restore()
+            return true
+        } catch {
+            if drawError == nil { drawError = (error as? MediaError) ?? MediaError(kind: .internalError, message: "\(error)") }
+            return false
+        }
+    }
 
     /// The painted frame as straight-alpha RGBA8.
     public func image() -> CanvasImage {

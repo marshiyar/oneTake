@@ -79,6 +79,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         pushIssue(&issues, .invalidTrack, "sequence.durationFrames", "Sequence duration must be a positive integer")
     }
     validateNativeCaptionTrack(sequence["captions"], "sequence.captions", &issues)
+    validateNativeFill(input["compositionFill"], "compositionFill", allowInherit: false, assets: assetsById, &issues)
     guard let tracks = sequence["tracks"]?.arrayValue else {
         pushIssue(&issues, .invalidTrack, "sequence.tracks", "Tracks must be an array"); return issues
     }
@@ -215,6 +216,18 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             validateNativeClipMoves(clip["moves"], clipDuration: clip["durationFrames"]?.numberValue, "\(clipPath).moves", &issues)
             validateNativeClipPresentation(clip, clipPath, &issues)
             validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
+            if let generator = clip["generator"] {
+                let path = "\(clipPath).generator"
+                validateNativeFill(generator, path, allowInherit: false, assets: assetsById, &issues)
+                if assetKind != "element" || clip["text"] != nil {
+                    pushIssue(&issues, .invalidClip, path, "Generators need an element clip without text")
+                }
+                if generator["v"]?.numberValue == 1, let kind = generator["kind"]?.stringValue,
+                   NativeFill.clipKinds.contains(kind), !["color", "gradient"].contains(kind) {
+                    pushIssue(&issues, .invalidFill, path, "Generators support solid colours and gradients")
+                }
+            }
+            validateNativeFill(clip["fill"], "\(clipPath).fill", allowInherit: true, assets: assetsById, &issues)
             validateNativeClipNarration(clip["narration"], assetKind: asset == nil ? nil : assetKind, "\(clipPath).narration", &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
