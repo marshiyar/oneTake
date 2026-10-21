@@ -45,8 +45,8 @@ a documentation-only pull request skips on purpose count as passed.
 |---|---|---|---|
 | `linux-optional-headers.yml` | #99 | The Linux build without the Vulkan and PulseAudio headers (#78); #111 asks to make it required | advisory |
 | `doc-refs.yml` | #99 | Every path, link and #n reference in tracked Markdown exists | advisory |
-| `quality-ratchets.yml` | in progress; no pull request open on 2026-10-21 | A crash-construct ratchet (count may only go down) and a PR hygiene report | advisory |
-| UI/UX checks (branch `ci/ui-quality-checks`) | in progress; no pull request open on 2026-10-21 | UI quality checks | advisory |
+| `quality-ratchets.yml`, `pr-hygiene.yml` | [#114](https://github.com/marshiyar/oneTake/pull/114) | A crash-construct ratchet (count may only go down) and an advisory PR hygiene report | advisory |
+| UI/UX checks (branch `ci/ui-quality-checks`) | in progress on 2026-10-21 | UI quality checks | advisory |
 
 When one of these lands, its row moves into the table above in the same pull request.
 

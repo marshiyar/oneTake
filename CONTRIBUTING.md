@@ -8,8 +8,8 @@ Thanks for helping. A few rules keep the history readable and the project releas
 2. Before pushing, run `sh mpvfx-swift/scripts/check.sh` (it fetches the engine libraries, builds, runs the tests and
    checks copyright blocks).
 3. `ci-ok` is the required check. Documentation-only pull requests skip the build and tests.
-4. No approving review is required. Pull requests are squash merged into `main`, and auto-merge lands them once
-   `ci-ok` passes.
+4. `main` needs one approving review and a green `ci-ok`. Pull requests are squash merged into `main`, by a
+   reviewer other than the pull request's author.
 5. Keep a pull request to one change. Say what changed and why in the description, in plain words a user of the
    app would understand where possible.
 
