@@ -116,4 +116,21 @@ final class ExportStartOutcomeTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/missing.meta.json"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/.studio-render-tmp"))
     }
+
+    func testTheMissingMediaPreflightChecksTheFilesTheRendererReads() throws {
+        // The render probes every clip of the visible project, so the preflight does too: a hidden clip's file is not
+        // read and may be missing; a muted clip's file (blue) and a file used outside the export range are read.
+        try FileManager.default.removeItem(atPath: "\(root)/red.mov")
+        try FileManager.default.removeItem(atPath: "\(root)/blue.mov")
+        var project = try document(projectJSON)
+        XCTAssertEqual(missingExportMedia(project, projectDir: root), ["red.mov", "blue.mov"], "blue is muted and still read")
+        project.sequence.tracks[0].clips[0].hidden = true
+        XCTAssertEqual(missingExportMedia(project, projectDir: root), ["blue.mov"], "the hidden red clip is not read")
+        let ranged = ExportSettings(format: .mp4, quality: .draft, fps: .fps30, range: ExportFrameRange(startFrame: 0, endFrame: 5))
+        XCTAssertThrowsError(try startExport(project: project, projectDir: root, outputPath: "\(root)/ranged.mp4", settings: ranged)) {
+            XCTAssertEqual(($0 as? ExportStartError)?.issues, ["Missing media: blue.mov"], "blue (frames 10-15) is outside the range")
+        }
+        project.sequence.tracks[0].hidden = true
+        XCTAssertEqual(missingExportMedia(project, projectDir: root), [], "a hidden track is not read")
+    }
 }

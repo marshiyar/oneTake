@@ -114,9 +114,9 @@ public struct PreviewComposition {
     /// `naturalSize`: the media's natural pixel size (default: the size cached on the asset). A clip with no size
     /// of its own takes the default box for it (nativeClipNaturalLayout), as export does.
     public init(document: NativeProjectDocument, projectDir: URL?, engine: KeyframeEngine?,
-                naturalSize: (NativeProjectAsset) -> NativeMediaNaturalSize? = { $0.naturalSize },
-                sizePending: (NativeProjectAsset) -> Bool = { _ in false },
-                fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) {
+                naturalSize: @escaping (NativeProjectAsset) -> NativeMediaNaturalSize? = { $0.naturalSize },
+                sizePending: @escaping (NativeProjectAsset) -> Bool = { _ in false },
+                fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) {
         canvas = CanvasSize(document.canvas.width, document.canvas.height)
         background = CanvasColor(hex: document.canvas.background) ?? CanvasColor(ThemeTokens.stageScrim)
         let rate = document.frameRate.denominator != 0 ? document.frameRate.numerator / document.frameRate.denominator : 30
@@ -125,50 +125,74 @@ public struct PreviewComposition {
         let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var ordered: [(Entry, Int)] = []
         var n = 0
-        var exists: [String: Bool] = [:], offline = Set<String>()
+        var media = MediaEntries(document: document, projectDir: projectDir, naturalSize: naturalSize, sizePending: sizePending,
+                                 fileExists: fileExists)
         let trackLayers = nativeTrackStackingLayers(document.sequence.tracks)
         for (index, track) in document.sequence.tracks.enumerated() {
             for clip in track.clips {
-                guard !Self.isHidden(track: track, clip: clip) else { n += 1; continue }
                 n += 1
-                if let asset = assets[clip.assetId], asset.kind == .element, clip.text != nil {
+                guard !Self.isHidden(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
+                let layer = Self.stackingLayer(clip, track: trackLayers[index])
+                if asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
-                    var layer = trackLayers[index]
-                    if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { layer = z }
                     ordered.append((Entry(clip: clip, kind: .text, path: "text:\(clip.id)", layer: layer), n))
-                    continue
+                } else if let entry = media.entry(clip, asset: asset, layer: layer) {
+                    ordered.append((entry, n))
                 }
-                guard let asset = assets[clip.assetId], asset.kind == .video || asset.kind == .image,
-                      let src = asset.source, !src.isEmpty else { continue }
-                let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
-                let present = exists[path] ?? fileExists(path)
-                exists[path] = present
-                var layer = trackLayers[index]
-                if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { layer = z }
-                guard present else {
-                    // Missing media: a slate in the clip's box (the cached natural size, else the default box).
-                    offline.insert(asset.id)
-                    let clip = nativeClipWithNaturalLayout(clip, natural: naturalSize(asset),
-                                                           canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
-                    ordered.append((Entry(clip: clip, kind: .offline, path: path, layer: layer,
-                                          offlineFileName: URL(fileURLWithPath: src).lastPathComponent), n))
-                    continue
-                }
-                // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
-                guard !sizePending(asset) else { continue }
-                let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
-                let clip = nativeClipWithNaturalLayout(clip, natural: naturalSize(asset),
-                                                       canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
-                ordered.append((Entry(clip: clip, kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade), n))
             }
         }
-        offlineAssetIds = offline
+        offlineAssetIds = media.offline
         entries = ordered.sorted { a, b in
             if a.0.layer != b.0.layer { return a.0.layer < b.0.layer }
             if a.0.clip.startFrame != b.0.clip.startFrame { return a.0.clip.startFrame < b.0.clip.startFrame }
             if a.0.clip.id != b.0.clip.id { return a.0.clip.id < b.0.clip.id }
             return a.1 < b.1
         }.map(\.0)
+    }
+
+    /// Compositing order key: layout.zIndex, else the track's display row.
+    static func stackingLayer(_ clip: NativeProjectClip, track: Double) -> Double {
+        if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { return z }
+        return track
+    }
+
+    /// Builds the entry of a video or image clip, statting each media file once per composition: a clip whose file is
+    /// missing becomes an offline entry and its asset is recorded in `offline`.
+    struct MediaEntries {
+        let document: NativeProjectDocument
+        let projectDir: URL?
+        let naturalSize: (NativeProjectAsset) -> NativeMediaNaturalSize?
+        let sizePending: (NativeProjectAsset) -> Bool
+        let fileExists: (String) -> Bool
+        var exists: [String: Bool] = [:]
+        var offline = Set<String>()
+
+        init(document: NativeProjectDocument, projectDir: URL?, naturalSize: @escaping (NativeProjectAsset) -> NativeMediaNaturalSize?,
+             sizePending: @escaping (NativeProjectAsset) -> Bool, fileExists: @escaping (String) -> Bool) {
+            self.document = document; self.projectDir = projectDir; self.naturalSize = naturalSize
+            self.sizePending = sizePending; self.fileExists = fileExists
+        }
+
+        mutating func entry(_ clip: NativeProjectClip, asset: NativeProjectAsset, layer: Double) -> Entry? {
+            guard asset.kind == .video || asset.kind == .image, let src = asset.source, !src.isEmpty else { return nil }
+            let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
+            let present = exists[path] ?? fileExists(path)
+            exists[path] = present
+            guard present else {
+                // Missing media: a slate in the clip's box (the known natural size, else the default box).
+                offline.insert(asset.id)
+                return Entry(clip: laidOut(clip, asset), kind: .offline, path: path, layer: layer,
+                             offlineFileName: URL(fileURLWithPath: src).lastPathComponent)
+            }
+            // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
+            guard !sizePending(asset) else { return nil }
+            let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
+            return Entry(clip: laidOut(clip, asset), kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade)
+        }
+
+        private func laidOut(_ clip: NativeProjectClip, _ asset: NativeProjectAsset) -> NativeProjectClip {
+            nativeClipWithNaturalLayout(clip, natural: naturalSize(asset), canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
+        }
     }
 
     /// Hidden tracks and hidden clips (the timeline eye toggle) are left out of the picture, as export leaves them out.

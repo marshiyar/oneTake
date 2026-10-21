@@ -67,6 +67,24 @@ final class OfflineMediaTests: XCTestCase {
         XCTAssertTrue(cx.lanes.isEmpty, "an offline clip opens no decoder")
     }
 
+    func testOfflineLayersAreLeftOutOfExportPaintingAndPresetPreviews() throws {
+        let comp = PreviewCompositorTests.composition(try PreviewCompositorTests.document())
+        let painter = try ExportFramePainter(composition: comp, width: 200, height: 100, pad: CanvasColor(r: 0, g: 0, b: 0))
+        XCTAssertEqual(painter.layers(at: 3.2).map(\.layer.clipId), [], "export never paints an offline layer")
+        var asked: [String] = []
+        _ = try painter.paint(time: 3.2) { layer, _, _, _ in asked.append(layer.clipId); return nil }
+        XCTAssertEqual(asked, [], "no frame is asked for the missing file")
+
+        let cx = PreviewCompositor(decodesMedia: true)
+        cx.composition = comp
+        let presets = PresetPreviewRenderer(compositor: cx)
+        XCTAssertFalse(presets.isAvailable(clipId: "G"))
+        guard case .unavailable = presets.gradedFrame(clipId: "G", time: 3.2, pixelWidth: 32, pixelHeight: 16) else {
+            return XCTFail("an offline clip has no graded frame")
+        }
+        XCTAssertTrue(presets.isAvailable(clipId: "A"), "a clip with its file still previews")
+    }
+
     func testMarksClearWhenTheFileReappearsAndTheCompositionIsRebuilt() throws {
         let doc = try PreviewCompositorTests.document()
         var present = false

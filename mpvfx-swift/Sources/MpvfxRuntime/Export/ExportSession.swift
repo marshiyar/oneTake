@@ -239,19 +239,17 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
 }
 
 /// File names of the media the export would read that are not on disk, each once, in timeline order: checked before
-/// the export starts, so a missing file is named up front instead of failing the render partway through. Hidden
-/// clips and muted sound-only clips are not read, so their files may be missing.
+/// the export starts, so a missing file is named up front instead of failing the render partway through. These are
+/// exactly the files renderNativeTimeline probes: every clip of the visible project (hidden clips and tracks left
+/// out, muted clips kept) other than text, whatever the export range, because the render probes them all.
 func missingExportMedia(_ project: NativeProjectDocument, projectDir: String) -> [String] {
-    let assets = Dictionary(project.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    var checked = Set<String>(), names: [String] = []
-    for track in project.sequence.tracks where track.hidden != true {
-        for clip in track.clips where clip.hidden != true && !project.isUndrawnElementClip(clip) {
-            guard let asset = assets[clip.assetId], let source = asset.source, !source.isEmpty,
-                  !(clip.muted && asset.kind == .audio), checked.insert(source).inserted else { continue }
-            if !FileManager.default.fileExists(atPath: PosixPath.resolve(projectDir, source)) { names.append(PosixPath.basename(source)) }
-        }
-    }
-    return names
+    let visible = nativeExportVisibleProject(project)
+    let assets = Dictionary(visible.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let sources = visible.sequence.tracks.flatMap(\.clips).filter { !nativeIsTextClip($0, visible) }
+        .compactMap { assets[$0.assetId]?.source }.filter { !$0.isEmpty }
+    var checked = Set<String>()
+    return sources.filter { checked.insert($0).inserted && !FileManager.default.fileExists(atPath: PosixPath.resolve(projectDir, $0)) }
+        .map { PosixPath.basename($0) }
 }
 
 /// An unmuted audio or video clip: the export may carry sound (whether it does depends on the media's tracks).
