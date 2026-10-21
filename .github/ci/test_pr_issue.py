@@ -99,7 +99,8 @@ class MustNameAnOpenIssue(unittest.TestCase):
 
 
 class Exemptions(unittest.TestCase):
-    def assert_exempt(self, the_pr, files=CODE):
+    def assert_exempt(self, the_pr, files=None):
+        files = CODE if files is None else files
         passed, lines = pr_issue.judge(the_pr, files, lambda n: self.fail("read an issue"))
         self.assertTrue(passed)
         self.assertTrue(lines[0].startswith("Exempt:"), lines)
@@ -170,6 +171,76 @@ class Run(unittest.TestCase):
             pr_issue.run(5, FakeApi({}))
 
 
+class FakeServer:
+    """Stands in for http.client.HTTPSConnection: records where api() connects and what it asks for."""
+
+    def __init__(self, status=200, body=b'{"number": 5}', fail=False):
+        self.status, self.body, self.fail, self.made = status, body, fail, []
+
+    def __call__(self, host, timeout=None):
+        conn = FakeConnection(self, host)
+        self.made.append(conn)
+        return conn
+
+
+class FakeConnection:
+    def __init__(self, server, host):
+        self.server, self.host, self.requests, self.closed = server, host, [], False
+
+    def request(self, method, path, headers=None):
+        if self.server.fail:
+            raise OSError("connection refused")
+        self.requests.append((method, path, headers))
+
+    def getresponse(self):
+        return FakeResponse(self.server.status, self.server.body)
+
+    def close(self):
+        self.closed = True
+
+
+class FakeResponse:
+    def __init__(self, status, body):
+        self.status, self.body = status, body
+
+    def read(self):
+        return self.body
+
+
+class Api(unittest.TestCase):
+    def setUp(self):
+        self.real = pr_issue.http.client.HTTPSConnection
+
+    def tearDown(self):
+        pr_issue.http.client.HTTPSConnection = self.real
+
+    def serve(self, **kw):
+        server = FakeServer(**kw)
+        pr_issue.http.client.HTTPSConnection = server
+        return server
+
+    def test_connects_only_to_the_api_host_over_https(self):
+        server = self.serve()
+        self.assertEqual(pr_issue.api(REPO, "t", "pulls/5"), {"number": 5})
+        (conn,) = server.made
+        self.assertEqual(conn.host, "api.github.com")
+        method, path, headers = conn.requests[0]
+        self.assertEqual((method, path), ("GET", "/repos/marshiyar/oneTake/pulls/5"))
+        self.assertEqual(headers["Authorization"], "Bearer t")
+        self.assertTrue(conn.closed)
+
+    def test_not_found_is_none(self):
+        self.serve(status=404)
+        self.assertIsNone(pr_issue.api(REPO, "t", "issues/9"))
+
+    def test_failures_are_api_errors(self):
+        for kw in ({"status": 500, "body": b""}, {"body": b"not json"}, {"fail": True}):
+            server = self.serve(**kw)
+            with self.subTest(**kw), self.assertRaises(pr_issue.ApiError):
+                pr_issue.api(REPO, "t", "pulls/5")
+            self.assertTrue(server.made[0].closed)
+
+
 class Main(unittest.TestCase):
     def call(self, argv, env):
         out = io.StringIO()
@@ -195,8 +266,8 @@ class Main(unittest.TestCase):
             self.assertIn("FAIL", out)
             self.assertIn("::error::#7 is closed", out)
             pr_issue.run = lambda number, get: (True, ["Exempt: labelled `no-issue`."])
-            self.assertEqual(self.call(["5"], env), (0, "### Pull request names its issue: pass\n\n"
-                                                        "Exempt: labelled `no-issue`.\n"))
+            expected = "### Pull request names its issue: pass\n\n" + "Exempt: labelled `no-issue`.\n"
+            self.assertEqual(self.call(["5"], env), (0, expected))
 
             def boom(number, get):
                 raise pr_issue.ApiError("GET pulls/5: HTTP 500")

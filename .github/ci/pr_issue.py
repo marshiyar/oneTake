@@ -29,15 +29,15 @@ as the `changes` job of mpvfx-ci.yml: Markdown anywhere, mpvfx-swift/docs/, the 
 
 Prints a Markdown verdict; exit 0 pass or exempt, 1 the check fails, 2 bad arguments or the API could not be read.
 """
+import http.client
 import json
 import os
 import re
 import sys
-import urllib.error
 import urllib.parse
-import urllib.request
 
-API = "https://api.github.com"
+# The one host this check talks to, always over HTTPS (http.client.HTTPSConnection, no URL scheme to choose).
+API_HOST = "api.github.com"
 EXEMPT_LABEL = "no-issue"
 EXEMPT_AUTHORS = {"dependabot[bot]", "chatgpt-codex-connector[bot]"}
 TRAIN_BRANCH = re.compile(r"train/\d+")
@@ -53,18 +53,25 @@ class ApiError(Exception):
 
 
 def api(repo, token, path):
-    url = f"{API}/repos/{repo}/{path}"
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "mpvfx-pr-issue"})
+    """GET /repos/<repo>/<path> from api.github.com over HTTPS: the JSON, None on 404, ApiError otherwise."""
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+               "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "mpvfx-pr-issue"}
+    conn = http.client.HTTPSConnection(API_HOST, timeout=60)
     try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return json.loads(r.read() or b"null")
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return None
-        raise ApiError(f"GET {path}: HTTP {e.code}") from e
-    except (urllib.error.URLError, OSError, ValueError) as e:
+        conn.request("GET", f"/repos/{repo}/{path}", headers=headers)
+        r = conn.getresponse()
+        data = r.read()
+    except (http.client.HTTPException, OSError) as e:
+        raise ApiError(f"GET {path}: {e}") from e
+    finally:
+        conn.close()
+    if r.status == 404:
+        return None
+    if r.status != 200:
+        raise ApiError(f"GET {path}: HTTP {r.status}")
+    try:
+        return json.loads(data or b"null")
+    except ValueError as e:
         raise ApiError(f"GET {path}: {e}") from e
 
 
@@ -143,8 +150,8 @@ def judge(pr, files, get_issue):
         return True, [f"Exempt: {why}."]
     numbers = referenced_issues(pr.get("body"))
     if not numbers:
-        return False, ["The body names no issue: add `Closes #<issue>` (or `Fixes`/`Resolves`), "
-                       f"or label the pull request `{EXEMPT_LABEL}` when no issue applies."]
+        return False, [("The body names no issue: add `Closes #<issue>` (or `Fixes`/`Resolves`), "
+                        f"or label the pull request `{EXEMPT_LABEL}` when no issue applies.")]
     if len(numbers) > MAX_REFERENCES:
         return False, [f"The body names {len(numbers)} issues; at most {MAX_REFERENCES} are checked."]
     problems = [p for p in (issue_problem(n, get_issue(n)) for n in numbers) if p]
