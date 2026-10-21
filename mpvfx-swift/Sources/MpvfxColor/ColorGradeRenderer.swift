@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import MpvfxShared
 
 /// Applies one clip's grade and stylize effects to RGBA8 frames (straight alpha, rows top to bottom), exactly as the
 /// grading shader defines them. Preview and export both call this, so they produce the same pixels.
@@ -122,6 +123,15 @@ public final class ColorGradeRenderer: Equatable, Sendable {
         for k in EK.allCases { u.e[k.rawValue] = f(g.effect(k.key)) }
         u.intensity = f(g.intensity)
         u.whiteBalanceGains = g.whiteBalanceGains
+        u.pivot = f(g.pivot)
+        func balance(_ k: String) -> V3 { let w = g.balance[k] ?? .init(); return V3(f(w.hue / 360), f(w.amount), f(w.level)) }
+        u.liftWheel = balance("lift"); u.gammaWheel = balance("gamma"); u.gainWheel = balance("gain"); u.offsetWheel = balance("offset")
+        u.balanceOn = g.hasBalance
+        if let key = g.colorKey {
+            u.keyEnabled = true
+            u.keyColor = V3(f(key.color.x), f(key.color.y), f(key.color.z))
+            u.keySimilarity = f(key.similarity); u.keySmoothness = f(key.smoothness); u.keySpill = f(key.spill)
+        }
         let pal = g.resolvedPalette
         let last = pal.last ?? "#ffffff"
         u.paletteSize = Float(pal.count)
@@ -134,9 +144,11 @@ public final class ColorGradeRenderer: Equatable, Sendable {
         if u.rgbCurvesEnabled || u.hueCurvesEnabled || u.secondaryCount > 0 {
             let n = ColorCurves.lutSize
             let zero = [Double](repeating: 0, count: n)
-            func rgb(_ k: String) -> [Double] { ColorCurves.compile(g.curves[k] ?? ColorGradeParams.curveIdentity) ?? zero }
+            // Normalized again here (`GradeCurve`, as the curve graph draws them): `curves` and `hueCurves` are public,
+            // and a curve set on them directly that the compiler rejects used to grade its channel black.
+            func rgb(_ k: String) -> [Double] { ColorCurves.compile(GradeCurve.normalizedRGB(g.curves[k] ?? ColorGradeParams.curveIdentity)) ?? zero }
             func hue(_ k: String, _ lo: Double, _ hi: Double) -> [Double] {
-                let pts = g.hueCurves[k] ?? []
+                let pts = GradeCurve.normalizedHue(g.hueCurves[k] ?? [], limit: lo...hi)
                 return pts.count >= 3 ? (ColorCurves.compileHue(pts, outputMin: lo, outputMax: hi) ?? zero) : zero
             }
             let r = rgb("red"), gr = rgb("green"), b = rgb("blue"), m = rgb("master")
@@ -200,6 +212,7 @@ extension ColorGradeParams {
         let c = ColorGradeParams.curveKeys.map { "\(curves[$0] ?? [])" }.joined(separator: ";")
         let h = ColorGradeParams.hueCurveKeys.map { "\(hueCurves[$0] ?? [])" }.joined(separator: ";")
         let s = secondaries.map { "\($0)" }.joined(separator: ";")
-        return "v\(version)|\(intensity)|\(d(adjust))|\(d(details))|\(d(effects))|\(w)|\(c)|\(h)|\(s)|\(palette ?? [])|\(lut.map { "\($0.src)@\($0.intensity)" } ?? "")"
+        let b = GradeValues.balanceKeys.map { k in let x = balance[k] ?? .init(); return "\(x.hue),\(x.amount),\(x.level)" }.joined(separator: ";")
+        return "v\(version)|p\(pivot)|\(b)|\(intensity)|\(d(adjust))|\(d(details))|\(d(effects))|\(w)|\(c)|\(h)|\(s)|\(palette ?? [])|\(lut.map { "\($0.src)@\($0.intensity)" } ?? "")|\(String(describing: colorKey))"
     }
 }

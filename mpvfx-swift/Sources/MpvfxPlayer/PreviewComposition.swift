@@ -22,10 +22,12 @@ import MpvfxColor
 ///
 /// Geometry follows the export renderer (TimelineRenderer.swift): the clip's box is `layout.left/top +
 /// transform.position`, sized `layout.width/height` (default: the fit of the media's natural size, else the
-/// whole canvas); the media is fitted inside the box keeping its aspect (contain, nativeMediaRect), then scaled and rotated about the box centre, at `opacity`.
+/// whole canvas); the media is placed in the box by the clip's fit (nativeMediaRect: contain by default, cover clipped
+/// to the box, or stretched onto it), then scaled and rotated about the box centre, at `opacity`.
 /// `crop` insets the untransformed box (canvas px) and travels with the box's scale and rotation.
 public struct PreviewLayer: Equatable, Sendable {
-    public enum Kind: Sendable, Equatable { case video, image, text }
+    /// `offline`: a video or image clip whose media file is missing, drawn as a slate naming the file, never decoded.
+    public enum Kind: Sendable, Equatable { case video, image, text, offline }
     public var clipId: String
     /// Absolute media path.
     public var source: String
@@ -36,6 +38,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var sourceIn: Double
     /// Source seconds per timeline second.
     public var rate: Double
+    /// Optional clip-local nonlinear map; export and preview share this exact layer path.
+    public var speedRamp: NativeSpeedRamp?
     /// Timeline frames the clip covers, [startFrame, endFrame).
     public var startFrame: Int, endFrame: Int
     public var box: CanvasRect
@@ -57,6 +61,17 @@ public struct PreviewLayer: Equatable, Sendable {
     /// A dip transition's colour laid over the picture (nil: none), and how much of it (0…1).
     public var transitionColor: CanvasColor?
     public var transitionColorAmount = 0.0
+    /// Source seconds of the one frame a held clip shows for its whole length (`clip.holdSourceFrame`); nil plays the source.
+    public var holdSourceTime: Double?
+    /// Supported masks evaluated at this timeline time.
+    public var masks: [NativeClipMask] = []
+    /// File name of an offline layer's missing media (kind .offline), shown on its slate.
+    public var offlineFileName: String?
+    /// How the picture fills the box (`clip.fit`; nil: Fit, contain).
+    public var fit: NativeMediaFit?
+    /// The media's natural width over height when known: sizes the decode so a Fill or Stretch picture, larger than
+    /// the box on one axis, is decoded at the size it is drawn rather than scaled up from a contained frame.
+    public var mediaAspect: Double?
 
     public init(clipId: String, source: String, kind: Kind, start: Double, end: Double, sourceIn: Double, rate: Double = 1,
                 startFrame: Int = 0, endFrame: Int = Int.max, box: CanvasRect, scaleX: Double = 1, scaleY: Double = 1,
@@ -67,7 +82,19 @@ public struct PreviewLayer: Equatable, Sendable {
     }
 
     /// Source seconds shown at timeline `time`.
-    public func sourceTime(at time: Double) -> Double { sourceIn + (time - start) * rate }
+    public func sourceTime(at time: Double) -> Double {
+        if let held = holdSourceTime { return held }
+        guard let ramp = speedRamp else { return sourceIn + (time - start) * rate }
+        // A transition can start the layer earlier than its clip (handle media): the ramp is timed from the clip start.
+        let x = (time - (rampStart ?? start)) * timelineFPS
+        return sourceIn + (x >= 0 ? ramp.sourcePosition(atClipFrame: x) : x * ramp.speed(atClipFrame: 0)) / timelineFPS
+    }
+    /// The clip's own start when a transition moved `start` earlier and a speed ramp is timed from the clip start.
+    public var rampStart: Double?
+    public var timelineFPS = 1.0
+
+    /// One picture for the whole clip (an image, or a held frame): decoded once and kept (the still lane).
+    public var isStill: Bool { kind == .image || holdSourceTime != nil }
 
     /// Nothing would reach the screen (zero area, zero scale, fully transparent, or cropped away).
     public var isVisible: Bool {
@@ -84,7 +111,10 @@ public struct PreviewLayer: Equatable, Sendable {
     /// Identity of the decoded picture stream: frames from one lane are interchangeable across draws.
     /// The grade is not part of it: lanes cache raw decoded frames and the grade is applied when drawing, so a grade
     /// edit never restarts a decoder.
-    public var laneKey: String { "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)" }
+    public var laneKey: String {
+        let key = "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)"
+        return holdSourceTime.map { "\(key)|hold:\($0)" } ?? key
+    }
 }
 
 /// The visual clips of a document and their per-time evaluation (static values, then keyframe tracks).
@@ -95,7 +125,7 @@ public struct PreviewComposition {
         public var path: String
         /// Compositing order key: layout.zIndex, else the track's display row (the top row draws on top).
         public var layer: Double
-        /// The clip's active grade, built once per document.
+        /// The clip's active grade, built once per document (its static grade when `gradeAnimation` is set).
         public var grade: ColorGradeRenderer? = nil
         /// The cut transitions the clip takes part in (`nativeCutTransitionSpans`): the frames it is drawn before its
         /// start and after its end from its handles, and how it mixes during each transition.
@@ -103,6 +133,13 @@ public struct PreviewComposition {
         /// Timeline frames the clip is drawn over, transitions included, [drawStart, drawEnd).
         public var drawStart: Double { clip.startFrame - transitions.lead }
         public var drawEnd: Double { clip.startFrame + clip.durationFrames + transitions.tail }
+        /// Set when grade parameters are keyframed (issue #179): the grade is then built per frame from the values
+        /// at that frame, through this memo of the last few frames' renderers.
+        public var gradeAnimation: PreviewGradeAnimation? = nil
+        /// The missing file's name when the clip is offline (kind .offline).
+        public var offlineFileName: String? = nil
+        /// The media's natural width over height (PreviewLayer.mediaAspect), nil when unknown.
+        public var mediaAspect: Double? = nil
     }
 
     /// Pre-roll horizon, in seconds, for a clip that comes on screen through a transition: both of its decoders run
@@ -112,16 +149,19 @@ public struct PreviewComposition {
     public let canvas: CanvasSize
     public let background: CanvasColor
     public let fps: Double
-    /// Visual clips with a readable media file, bottom-most first.
+    /// Visual clips, bottom-most first: those with a media file on disk, and offline ones (kind .offline).
     public let entries: [Entry]
+    /// Assets (video, image and sound) whose media file was missing when the composition was built. Each source is
+    /// statted once per build, never per frame; a rebuild after the file comes back clears its mark.
+    public let offlineAssetIds: Set<String>
     public let engine: KeyframeEngine?
 
     /// `naturalSize`: the media's natural pixel size (default: the size cached on the asset). A clip with no size
     /// of its own takes the default box for it (nativeClipNaturalLayout), as export does.
     public init(document: NativeProjectDocument, projectDir: URL?, engine: KeyframeEngine?,
-                naturalSize: (NativeProjectAsset) -> NativeMediaNaturalSize? = { $0.naturalSize },
-                sizePending: (NativeProjectAsset) -> Bool = { _ in false },
-                fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) {
+                naturalSize: @escaping (NativeProjectAsset) -> NativeMediaNaturalSize? = { $0.naturalSize },
+                sizePending: @escaping (NativeProjectAsset) -> Bool = { _ in false },
+                fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) {
         canvas = CanvasSize(document.canvas.width, document.canvas.height)
         background = CanvasColor(hex: document.canvas.background) ?? CanvasColor(ThemeTokens.stageScrim)
         let rate = document.frameRate.denominator != 0 ? document.frameRate.numerator / document.frameRate.denominator : 30
@@ -130,34 +170,26 @@ public struct PreviewComposition {
         let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var ordered: [(Entry, Int)] = []
         var n = 0
+        var media = MediaEntries(document: document, projectDir: projectDir, naturalSize: naturalSize, sizePending: sizePending,
+                                 fileExists: fileExists)
         let trackLayers = nativeTrackStackingLayers(document.sequence.tracks)
         for (index, track) in document.sequence.tracks.enumerated() {
             for clip in track.clips {
-                guard !Self.isHidden(track: track, clip: clip) else { n += 1; continue }
                 n += 1
-                if let asset = assets[clip.assetId], asset.kind == .element, clip.text != nil {
+                guard !Self.isLeftOut(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
+                let layer = Self.stackingLayer(clip, track: trackLayers[index])
+                if asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
-                    var layer = trackLayers[index]
-                    if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { layer = z }
                     ordered.append((Entry(clip: clip, kind: .text, path: "text:\(clip.id)", layer: layer), n))
-                    continue
+                } else if var entry = media.entry(clip, asset: asset, layer: layer) {
+                    if entry.kind != .offline { entry.gradeAnimation = PreviewGradeAnimation.forClip(entry.clip, projectDir: projectDir?.path) }
+                    ordered.append((entry, n))
                 }
-                guard let asset = assets[clip.assetId], asset.kind == .video || asset.kind == .image,
-                      let src = asset.source, !src.isEmpty else { continue }
-                let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
-                guard fileExists(path) else { continue }
-                // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
-                guard !sizePending(asset) else { continue }
-                var layer = trackLayers[index]
-                if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { layer = z }
-                let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
-                let clip = nativeClipWithNaturalLayout(clip, natural: naturalSize(asset),
-                                                       canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
-                ordered.append((Entry(clip: clip, kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade), n))
             }
         }
         let spans = nativeCutTransitionSpans(document)
         for i in ordered.indices { ordered[i].0.transitions = spans[ordered[i].0.clip.id] ?? NativeClipTransitions() }
+        offlineAssetIds = media.offline
         entries = ordered.sorted { a, b in
             if a.0.layer != b.0.layer { return a.0.layer < b.0.layer }
             if a.0.clip.startFrame != b.0.clip.startFrame { return a.0.clip.startFrame < b.0.clip.startFrame }
@@ -166,8 +198,85 @@ public struct PreviewComposition {
         }.map(\.0)
     }
 
+    /// Compositing order key: layout.zIndex, else the track's display row.
+    static func stackingLayer(_ clip: NativeProjectClip, track: Double) -> Double {
+        if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { return z }
+        return track
+    }
+
+    /// Builds the entry of a video or image clip, statting each media file once per composition: a clip whose file is
+    /// missing becomes an offline entry and its asset (sound-only ones too) is recorded in `offline`.
+    struct MediaEntries {
+        let document: NativeProjectDocument
+        let projectDir: URL?
+        let naturalSize: (NativeProjectAsset) -> NativeMediaNaturalSize?
+        let sizePending: (NativeProjectAsset) -> Bool
+        let fileExists: (String) -> Bool
+        var exists: [String: Bool] = [:]
+        var offline = Set<String>()
+
+        init(document: NativeProjectDocument, projectDir: URL?, naturalSize: @escaping (NativeProjectAsset) -> NativeMediaNaturalSize?,
+             sizePending: @escaping (NativeProjectAsset) -> Bool, fileExists: @escaping (String) -> Bool) {
+            self.document = document; self.projectDir = projectDir; self.naturalSize = naturalSize
+            self.sizePending = sizePending; self.fileExists = fileExists
+        }
+
+        /// Stats `asset`'s media file (once per path) and records the asset when it is missing. Returns the resolved
+        /// path and whether the file is there; nil for assets with no media file (elements, text).
+        mutating func check(_ asset: NativeProjectAsset) -> (path: String, present: Bool)? {
+            guard asset.kind == .video || asset.kind == .image || asset.kind == .audio, let src = asset.source, !src.isEmpty else { return nil }
+            // An absolute source (`/…`, or `C:\…` on Windows) is used as is; anything else is relative to the project.
+            let path = HostPath.isAbsolute(src) ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
+            let present = exists[path] ?? fileExists(path)
+            exists[path] = present
+            if !present { offline.insert(asset.id) }
+            return (path, present)
+        }
+
+        /// The entry of a video or image clip; sound-only clips are checked (so they are marked offline) but not drawn.
+        mutating func entry(_ clip: NativeProjectClip, asset: NativeProjectAsset, layer: Double) -> Entry? {
+            guard let found = check(asset), asset.kind != .audio, let src = asset.source else { return nil }
+            let path = found.path
+            guard found.present else {
+                // Missing media: a slate in the clip's box (the known natural size, else the default box).
+                return Entry(clip: laidOut(clip, asset), kind: .offline, path: path, layer: layer,
+                             offlineFileName: URL(fileURLWithPath: src).lastPathComponent)
+            }
+            // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
+            guard !sizePending(asset) else { return nil }
+            let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
+            return Entry(clip: laidOut(clip, asset), kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade,
+                         mediaAspect: naturalSize(asset).flatMap(\.aspect))
+        }
+
+        private func laidOut(_ clip: NativeProjectClip, _ asset: NativeProjectAsset) -> NativeProjectClip {
+            nativeClipWithNaturalLayout(clip, natural: naturalSize(asset), canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
+        }
+    }
+
+    /// Assets whose media file is missing, as a composition of `document` built now would report them, without building
+    /// one: what a session re-checks while the document is unchanged (a file deleted or restored outside the app).
+    public static func offlineAssetIds(document: NativeProjectDocument, projectDir: URL?,
+                                       fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> Set<String> {
+        let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var media = MediaEntries(document: document, projectDir: projectDir, naturalSize: { _ in nil }, sizePending: { _ in false },
+                                 fileExists: fileExists)
+        for track in document.sequence.tracks {
+            for clip in track.clips where !isLeftOut(track: track, clip: clip) {
+                if let asset = assets[clip.assetId] { _ = media.check(asset) }
+            }
+        }
+        return media.offline
+    }
+
     /// Hidden tracks and hidden clips (the timeline eye toggle) are left out of the picture, as export leaves them out.
     static func isHidden(track: NativeProjectTrack, clip: NativeProjectClip) -> Bool { track.hidden == true || clip.hidden == true }
+
+    /// Clips the composition does not draw: hidden ones, and those whose speed ramp this build cannot play.
+    static func isLeftOut(track: NativeProjectTrack, clip: NativeProjectClip) -> Bool {
+        isHidden(track: track, clip: clip) || clip.speedRamp?.isSupported == false
+            || clip.holdSourceFrame.map { !$0.isCurrentVersion } == true
+    }
 
     /// Timeline frame shown at `time` (a frame is shown from its start time until the next).
     public func frameIndex(at time: Double) -> Int { Int((time * fps + 1e-6).rounded(.down)) }
@@ -202,6 +311,12 @@ public struct PreviewComposition {
         }
     }
 
+    /// Source seconds per timeline second: the clip's playback rate, 1 for a held frame (its rate is not read).
+    static func sourceRate(_ c: NativeProjectClip) -> Double {
+        guard c.holdSourceFrame == nil, let r = c.playbackRate, r.denominator != 0, r.numerator > 0 else { return 1 }
+        return r.numerator / r.denominator
+    }
+
     public func layer(_ e: Entry, at time: Double) -> PreviewLayer {
         let c = e.clip
         let local = max(0, min(c.durationFrames - 1, Double(frameIndex(at: time)) - c.startFrame))
@@ -231,17 +346,41 @@ public struct PreviewComposition {
         let box = CanvasRect(x: (num("layout.left") ?? 0) + px, y: (num("layout.top") ?? 0) + py,
                              width: max(0, num("layout.width") ?? canvas.width), height: max(0, num("layout.height") ?? canvas.height))
         let crop = c.crop.map { CropInsets(top: max(0, $0.top), right: max(0, $0.right), bottom: max(0, $0.bottom), left: max(0, $0.left)) } ?? .zero
-        let rate = c.playbackRate.map { $0.denominator != 0 && $0.numerator > 0 ? $0.numerator / $0.denominator : 1 } ?? 1
+        let held = c.holdSourceFrame?.sourceFrame
+        let rate = Self.sourceRate(c)
         let sourceIn = sourceFrameValue(NativeSourcePosition(sourceInFrame: c.sourceInFrame, sourceInFraction: c.sourceInFraction)) / fps
         var out = PreviewLayer(clipId: c.id, source: e.path, kind: e.kind, start: c.startFrame / fps,
                             end: (c.startFrame + c.durationFrames) / fps, sourceIn: sourceIn, rate: rate,
                             startFrame: Int(c.startFrame.rounded()), endFrame: Int((c.startFrame + c.durationFrames).rounded()),
                             box: box, scaleX: sx, scaleY: sy,
                             rotation: (num("transform.rotation") ?? 0) + autoRotate, opacity: opacity, crop: crop)
+        out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
+        out.timelineFPS = fps
         out.motionRotation = autoRotate
-        out.grade = e.grade
+        out.holdSourceTime = held.map { $0 / fps }
+        // An animated grade decides on its own (nil there means no active grade at this frame, not "use the static one").
+        out.grade = e.gradeAnimation.map { $0.renderer(e.clip, values: values) } ?? e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.text = e.kind == .text ? c.text : nil
+        out.offlineFileName = e.offlineFileName
+        out.fit = c.fit
+        out.mediaAspect = e.mediaAspect
+        out.masks = (c.masks ?? []).filter(\.isSupported).map { mask in
+            var evaluated = mask
+            if let v = num("mask.\(mask.id).x") { evaluated.x = v }
+            if let v = num("mask.\(mask.id).y") { evaluated.y = v }
+            if let v = num("mask.\(mask.id).width") { evaluated.width = v }
+            if let v = num("mask.\(mask.id).height") { evaluated.height = v }
+            if let v = num("mask.\(mask.id).angle") { evaluated.angle = v }
+            if let v = num("mask.\(mask.id).feather") { evaluated.feather = v }
+            if let v = num("mask.\(mask.id).expansion") { evaluated.expansion = v }
+            if let v = num("mask.\(mask.id).opacity") { evaluated.opacity = v }
+            if let v = num("mask.\(mask.id).invert") { evaluated.invert = v >= 0.5 }
+            if let v = num("mask.\(mask.id).mode") {
+                evaluated.mode = ["add", "subtract", "intersect"][min(max(Int(v.rounded()), 0), 2)]
+            }
+            return evaluated
+        }
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
         applyTransitions(e.transitions, to: &out, atFrame: Double(frameIndex(at: time)))
@@ -253,7 +392,8 @@ public struct PreviewComposition {
     /// either clip.
     func applyTransitions(_ t: NativeClipTransitions, to layer: inout PreviewLayer, atFrame frame: Double) {
         if t.lead > 0 {
-            layer.start -= t.lead / fps; layer.sourceIn -= t.lead * layer.rate / fps; layer.startFrame -= Int(t.lead)
+            if layer.speedRamp != nil { layer.rampStart = layer.start } else { layer.sourceIn -= t.lead * layer.rate / fps }
+            layer.start -= t.lead / fps; layer.startFrame -= Int(t.lead)
         }
         if t.tail > 0 { layer.end += t.tail / fps; layer.endFrame += Int(t.tail) }
         let mix: NativeTransitionMix, span: NativeCutTransitionSpan
@@ -275,11 +415,13 @@ public enum PreviewPainter {
         return CanvasRect(x: box.x + (box.width - w) / 2, y: box.y + (box.height - h) / 2, width: w, height: h)
     }
 
-    /// Where a layer's picture lands, in composition px: nativeMediaRect (contain, or the whole box when the box is
-    /// already the picture's aspect to within rounding), so the picture's edges are the selection box's edges.
-    public static func mediaRect(imageWidth: Int, imageHeight: Int, in box: CanvasRect) -> CanvasRect {
-        let r = nativeMediaRect(imageWidth: Double(imageWidth), imageHeight: Double(imageHeight),
-                                box: NativeClipLayoutBox(left: box.x, top: box.y, width: box.width, height: box.height))
+    /// Where a layer's picture lands, in composition px: nativeMediaRect for the clip's `fit` (contain by default, or
+    /// the whole box when the box is already the picture's aspect to within rounding, so the picture's edges are the
+    /// selection box's edges; cover overflows the box; stretch is the box).
+    public static func mediaRect(imageWidth: Int, imageHeight: Int, in box: CanvasRect,
+                                 fit: NativeMediaFit? = nil) -> CanvasRect {
+        let layout = NativeClipLayoutBox(left: box.x, top: box.y, width: box.width, height: box.height)
+        let r = nativeMediaRect(imageWidth: Double(imageWidth), imageHeight: Double(imageHeight), box: layout, fit: fit)
         return CanvasRect(x: r.left, y: r.top, width: r.width, height: r.height)
     }
 
@@ -288,10 +430,25 @@ public enum PreviewPainter {
         CanvasRect(x: frame.x + r.x * s, y: frame.y + r.y * s, width: r.width * s, height: r.height * s)
     }
 
-    /// Device pixels the layer's box covers on screen (the decode target before rounding).
+    /// Device pixels the layer's picture covers on screen (the decode target before rounding): the box, or for a
+    /// Fill or Stretch layer of known aspect the picture's cover of the box, which is larger than it on one axis.
     public static func screenPixels(_ layer: PreviewLayer, viewScale: Double, backingScale: Double) -> (width: Double, height: Double) {
         let k = viewScale * max(backingScale, 1)
-        return (layer.box.width * abs(layer.scaleX) * k, layer.box.height * abs(layer.scaleY) * k)
+        return coverPixels(layer.box.width * abs(layer.scaleX) * k, layer.box.height * abs(layer.scaleY) * k, layer)
+    }
+
+    /// `w` x `h` grown to the smallest size of the media's aspect that covers it, when the layer fills its box.
+    /// The decoder fits the picture inside the size it is asked for keeping its aspect, so a Stretch picture is
+    /// decoded at its cover too (a box-shaped target would come back letterboxed). The cover is scaled down, aspect
+    /// kept, to the engine's picture bound (NATIVE_CANVAS_MAX_SIDE): a 16:9 picture stretched onto a 16384 square
+    /// would otherwise ask the export's reader for about 29128 x 16384.
+    static func coverPixels(_ w: Double, _ h: Double, _ layer: PreviewLayer) -> (width: Double, height: Double) {
+        guard layer.fit?.fillsTheBox == true, let a = layer.mediaAspect, a.isFinite, a > 0, w > 0, h > 0 else {
+            return (w, h)
+        }
+        let cw = max(w, h * a), ch = max(h, w / a)
+        let k = min(1, NATIVE_CANVAS_MAX_SIDE / max(cw, ch))
+        return (min(NATIVE_CANVAS_MAX_SIDE, cw * k), min(NATIVE_CANVAS_MAX_SIDE, ch * k))
     }
 
     /// Draws one layer: scale then rotate about the box centre, clip to the cropped box, contain-fit the image.
@@ -339,11 +496,27 @@ public enum PreviewPainter {
             }
             var covered = box
             if let image {
-                let picture = toView(mediaRect(imageWidth: image.width, imageHeight: image.height, in: layer.box), frame: frame, scale: s)
-                c.drawImage(image, in: picture, opacity: layer.opacity)
+                let placed = mediaRect(imageWidth: image.width, imageHeight: image.height,
+                                       in: layer.box, fit: layer.fit)
+                let picture = toView(placed, frame: frame, scale: s)
+                let layerWidth = max(1, Int(box.width.rounded(.up))), layerHeight = max(1, Int(box.height.rounded(.up)))
+                let localPicture = CanvasRect(x: picture.x - box.x, y: picture.y - box.y,
+                                              width: picture.width, height: picture.height)
+                let visibleImage = layer.masks.isEmpty ? image : MaskCoverageRasterizer.applying(
+                    layer.masks, to: image, layerWidth: layerWidth, layerHeight: layerHeight, picture: localPicture)
+                // Fill overflows the box on one axis: clipped to the box, as object-fit: cover crops it.
+                if layer.fit == .fill {
+                    c.withState { c.clip(box); c.drawImage(visibleImage, in: picture, opacity: layer.opacity) }
+                } else {
+                    c.drawImage(visibleImage, in: picture, opacity: layer.opacity)
+                }
                 covered = picture
             } else if let text = layer.text {
-                TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                if layer.masks.isEmpty {
+                    TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                } else if let image = maskedText(text, masks: layer.masks, box: box, scale: s) {
+                    c.drawImage(image, in: box, opacity: layer.opacity)
+                }
             }
             drawTransitionColor(layer, over: covered, on: c)
             if let style = layer.style, style.visibleStrokeWidth > 0, let color = CanvasColor(hex: style.resolvedStrokeColor) {
@@ -360,6 +533,15 @@ public enum PreviewPainter {
         guard layer.transitionColorAmount > 0, let color = layer.transitionColor else { return }
         var p = CanvasPath(); p.addRect(rect)
         c.fill(p, color.withAlpha(color.a * min(1, layer.transitionColorAmount) * layer.opacity))
+
+    private static func maskedText(_ text: NativeClipText, masks: [NativeClipMask], box: CanvasRect,
+                                   scale: Double) -> CanvasImage? {
+        let width = max(1, Int(box.width.rounded(.up))), height = max(1, Int(box.height.rounded(.up)))
+        guard let canvas = try? RasterCanvas(width: width, height: height) else { return nil }
+        canvas.clear(.transparent)
+        TextLayout.draw(NativeTextRendering.block(text, scale: scale),
+                        in: CanvasRect(x: 0, y: 0, width: box.width, height: box.height), on: canvas, opacity: 1)
+        return MaskCoverageRasterizer.applying(masks, to: canvas.image())
     }
 
     /// Mesh cells per side for a lens-projected layer: each cell is two triangles drawn with their own affine map.

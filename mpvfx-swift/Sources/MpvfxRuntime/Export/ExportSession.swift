@@ -102,7 +102,7 @@ public func planExport(_ project: NativeProjectDocument, settings: ExportSetting
     return ExportPlan(outputDimensions: dims, durationSeconds: duration, frameCount: exportFrameCount(duration, settings.fps),
                       estimatedAudioBytes: estimateExportAudioSizeBytes(duration, settings.format, hasAudio),
                       fileExtension: capability.extension, qualityApplies: capability.video.qualityApplies, issues: issues,
-                      notices: project.openNotices)
+                      notices: project.undrawnContentNotices)
 }
 
 public enum ExportStatus: Equatable, Sendable { case rendering, completed, cancelled, failed }
@@ -167,7 +167,7 @@ public struct ExportStartError: Error, Equatable, CustomStringConvertible {
 }
 
 /// Starts exporting `project` (media resolved against `projectDir`) to `outputPath` on a background thread.
-/// Throws ExportStartError before starting when the plan has issues, the output exists, its extension does not
+/// Throws ExportStartError before starting when the plan has issues, a media file is missing, the output exists, its extension does not
 /// match the format, or no frame renderer is installed. A file created at `outputPath` while the export renders is
 /// never replaced: the export then fails with ExportOutputExistsError's message and leaves that file alone. `progress` and `completion` are called on a background thread.
 @discardableResult
@@ -177,6 +177,8 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
                         completion: @escaping (ExportOutcome) -> Void = { _ in }) throws -> ExportJob {
     let plan = planExport(project, settings: settings)
     var issues = plan.issues
+    let missing = missingExportMedia(project, projectDir: projectDir)
+    if !missing.isEmpty { issues.append("Missing media: \(missing.joined(separator: ", "))") }
     let ext = PosixPath.extname(outputPath).lowercased()
     if ext != plan.fileExtension { issues.append("The output file must end in \(plan.fileExtension) for \(exportFormatCapability(settings.format).name).") }
     if FileManager.default.fileExists(atPath: outputPath) { issues.append("The output file already exists.") }
@@ -234,6 +236,20 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
         }
     }
     return job
+}
+
+/// File names of the media the export would read that are not on disk, each once, in timeline order: checked before
+/// the export starts, so a missing file is named up front instead of failing the render partway through. These are
+/// exactly the files renderNativeTimeline probes: every clip of the visible project (hidden clips and tracks left
+/// out, muted clips kept) other than text, whatever the export range, because the render probes them all.
+func missingExportMedia(_ project: NativeProjectDocument, projectDir: String) -> [String] {
+    let visible = nativeExportVisibleProject(project)
+    let assets = Dictionary(visible.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let sources = visible.sequence.tracks.flatMap(\.clips).filter { !nativeIsTextClip($0, visible) }
+        .compactMap { assets[$0.assetId]?.source }.filter { !$0.isEmpty }
+    var checked = Set<String>()
+    return sources.filter { checked.insert($0).inserted && !FileManager.default.fileExists(atPath: PosixPath.resolve(projectDir, $0)) }
+        .map { PosixPath.basename($0) }
 }
 
 /// An unmuted audio or video clip: the export may carry sound (whether it does depends on the media's tracks).

@@ -110,5 +110,5 @@ public extension NativeProjectDocument {
     }
 
     /// Every notice the document needs on open (layers or transitions kept but not drawn), in a fixed order.
-    var openNotices: [String] { [undrawnElementLayersNotice, undrawnTransitionsNotice].compactMap { $0 } }
+    var openNotices: [String] { undrawnContentNotices }
 }

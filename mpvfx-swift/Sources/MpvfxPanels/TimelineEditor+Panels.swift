@@ -64,6 +64,22 @@ public extension TimelineEditor {
         }
     }
 
+    /// How the clip's picture fills its box as stored (nil: absent, which draws as Fit).
+    func mediaFit(clipId: String) -> NativeMediaFit? { clip(clipId)?.clip.fit }
+
+    /// Sets how the clip's picture fills its box (the inspector's Fit row). Fit, the default, is stored as an absent
+    /// key, as nil is, so a project that never used the option saves unchanged. One undo step; refused on a locked
+    /// track; false when nothing changed.
+    @discardableResult
+    func setMediaFit(clipId: String, _ fit: NativeMediaFit?) -> Bool {
+        let next = fit == .fit ? nil : fit
+        return editClip(clipId) { c in
+            guard c.fit != next else { return false }
+            c.fit = next
+            return true
+        }
+    }
+
     func numberValue(clipId: String, _ parameterId: String, time: Double) -> Double? {
         switch parameterValue(clipId: clipId, parameterId: parameterId, time: time) {
         case .number(let v)?: return v
@@ -216,12 +232,12 @@ public extension TimelineEditor {
         return g
     }
 
-    /// Writes the grade (nil or neutral removes it). One undo step.
+    /// Writes the grade (nil or fully enabled neutral removes it). One undo step.
     @discardableResult
     func setColorGrading(clipId: String, _ grading: ColorGrading?) -> Bool {
         editClip(clipId) { c in
             let i = c.effects.firstIndex { $0.effectId == ColorGrading.effectId }
-            guard let g = grading, g.isAuthored else {
+            guard let g = grading, g.isAuthored || !g.enabled || !g.effectsEnabled else {
                 guard let i else { return false }
                 c.effects.remove(at: i); return true
             }
@@ -239,8 +255,20 @@ public extension TimelineEditor {
 
     /// "Copy grade to": the same grade on every visual clip of the same asset ("source-file") or of the project.
     @discardableResult
+    /// The target's parameter tracks with its grade tracks replaced by the source's (issue #179), renamed for the
+    /// target, so an animated grade copies as animated.
+    static func withGradeTracks(of src: NativeProjectClip, on target: NativeProjectClip) -> [NativeParameterTrack] {
+        var tracks = target.parameterTracks.filter { !NativeGradeParameter.isGradeParameter($0.parameterId) }
+        for var t in src.parameterTracks where NativeGradeParameter.isGradeParameter(t.parameterId) && !t.keyframes.isEmpty {
+            t.id = nativeParameterTrackId(clipId: target.id, parameterId: t.parameterId)
+            tracks.append(t)
+        }
+        return tracks
+    }
+
     func copyColorGrading(from clipId: String, toAllProjectMedia: Bool) -> Int {
-        guard let g = colorGrading(clipId: clipId), let src = clip(clipId)?.clip else { return 0 }
+        guard let src = clip(clipId)?.clip, let g = colorGrading(clipId: clipId) ?? (NativeGradeParameter.animatedIds(src).isEmpty ? nil : ColorGrading())
+        else { return 0 }
         let kinds = Dictionary(document.assets.map { ($0.id, $0.kind) }, uniquingKeysWith: { a, _ in a })
         var d = document; var count = 0
         for t in d.sequence.tracks.indices where t >= 0 && d.sequence.tracks[t].locked != true {
@@ -252,6 +280,7 @@ public extension TimelineEditor {
                                            enabled: g.enabled, parameters: g.json)
                 if let i = e.firstIndex(where: { $0.effectId == ColorGrading.effectId }) { e[i] = eff } else { e.append(eff) }
                 d.sequence.tracks[t].clips[ci].effects = e; count += 1
+                d.sequence.tracks[t].clips[ci].parameterTracks = Self.withGradeTracks(of: src, on: c)
             }
         }
         return count > 0 && commitValidated(d) ? count : 0

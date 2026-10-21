@@ -18,7 +18,7 @@ import MpvfxCanvas
 final class TimelineGeometryTests: XCTestCase {
     func testLayoutParity() {
         XCTAssertEqual(TimelineLayout.contentOrigin, 264)
-        XCTAssertEqual(TimelineLayout.rowTop(0), 40); XCTAssertEqual(TimelineLayout.rowTop(2), 136)
+        XCTAssertEqual(TimelineLayout.rowTop(0), 40); XCTAssertEqual(TimelineLayout.rowTop(2), 96, "28 px rows (docs/DESIGN.md step 4)")
         XCTAssertEqual(TimelineLayout.playheadLeft(time: 2, pps: 100), 264 + 200 - 4.5)
         XCTAssertEqual(TimelineLayout.playheadLeft(time: .nan, pps: 100), 259.5)
         XCTAssertEqual(TimelineLayout.playheadLeft(time: -1, pps: 100), 259.5)
@@ -78,7 +78,7 @@ final class TimelineTimecodeTextTests: XCTestCase {
     }
 
     func testClipDurationAndRulerLabelsAreTimecode() {
-        let t = texts(trackHeight: TimelineLayout.defaultTrackHeight)
+        let t = texts(trackHeight: 48)   // tall enough for the timecode under the header; the 28 px default leaves it out
         XCTAssertTrue(t.contains("a.mp4"))
         XCTAssertTrue(t.contains("00:02:15"), "2.5 s clip at 30 fps: \(t)")
         XCTAssertEqual(t.filter { $0.hasPrefix("00:0") && $0 != "00:02:15" }, ["00:00:00", "00:01:00", "00:02:00", "00:03:00", "00:04:00"],

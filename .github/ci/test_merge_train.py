@@ -16,7 +16,7 @@
 
 Run: python3 -I -B .github/ci/test_merge_train.py
 """
-import hashlib, os, sys, unittest
+import hashlib, os, subprocess, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import merge_train as mt  # noqa: E402
@@ -314,6 +314,141 @@ class Cap(World):
             self.queue(n, f"2026-10-01T10:{n:02d}:00Z")
         self.step()
         self.assertEqual(self.members(self.open_train()), list(range(1, 9)))
+
+
+class IssueReferences(World):
+    def closing_lines(self, train):
+        return [line for line in train.body.splitlines() if line.startswith("Closes #")]
+
+    def test_references_are_deduplicated_in_queue_and_body_order(self):
+        for n, t, body in ((3, "t3", "Closes #42\nFixes #8"),
+                           (7, "t1", "Fixes #42\nResolves #6\nCloses #042"),
+                           (5, "t2", "Closed #6\nCloses #2")):
+            self.queue(n, t)
+            self.gh.prs[n].body = body
+        self.step()
+        train = self.open_train()
+        self.assertEqual(self.members(train), [7, 5, 3])
+        self.assertEqual(self.closing_lines(train), ["Closes #42", "Closes #6", "Closes #2", "Closes #8"])
+        self.assertNotIn("no-issue", train.labels)
+        self.assert_footer_everywhere()
+
+    def test_closing_keyword_grammar(self):
+        self.queue(1)
+        words = ("close", "closes", "closed", "fix", "fixes", "fixed", "resolve", "resolves", "resolved")
+        self.gh.prs[1].body = "\n".join(f"{word.upper()}:\t#{n}" for n, word in enumerate(words, 10))
+        self.gh.prs[1].body += ("\nSee #90\nDiscloses #91\nprefix-fixes #92\nCloses ##93\nCloses#94"
+                               "\nCloses octo/repo#95\nCloses:\n#96\nFixes:\r\n#97\n/foo/fixes #98")
+        self.step()
+        self.assertEqual(self.closing_lines(self.open_train()), [f"Closes #{n}" for n in range(10, 19)])
+
+    def test_unicode_digits_do_not_introduce_closing_references(self):
+        self.queue(1)
+        self.gh.prs[1].body = "Fixes #１２\nCloses #٣٤\nResolved #5６\nCloses #７８9\nFixes #90"
+        self.step()
+        self.assertEqual(self.closing_lines(self.open_train()), ["Closes #90"])
+
+    def test_large_body_under_limit_keeps_every_reference(self):
+        self.queue(1)
+        self.gh.prs[1].body = "\n".join(f"Fixes #{n}" for n in range(1, 4801))
+        self.step()
+        train = self.open_train()
+        self.assertLessEqual(len(train.body), 65536)
+        self.assertEqual(self.closing_lines(train), [f"Closes #{n}" for n in range(1, 4801)])
+
+    def test_oversized_body_is_rejected_before_pushing(self):
+        for n in (1, 2):
+            self.queue(n)
+            self.gh.prs[n].body = "\n".join(f"Fixes #{i}" for i in range((n - 1) * 3000 + 1, n * 3000 + 1))
+            self.assertLess(len(self.gh.prs[n].body), 65536)
+        for _ in range(2):
+            log = self.step()
+            self.assertTrue(self.open_train() is None, "oversized body opened a train")
+            self.assertEqual(self.git.pushed, [])
+            self.assertEqual(self.gh.auto_merge, [])
+            self.assertEqual(set(self.gh.prs), {1, 2})
+            self.assertTrue(all(mt.QUEUE in p.labels for p in self.gh.prs.values()))
+            self.assertTrue(any("65536" in line and "#1, #2" in line for line in log), log)
+
+    def test_all_existing_exemptions_propagate_no_issue(self):
+        self.queue(1, extra_labels={"no-issue"})
+        for n, author in ((2, "dependabot[bot]"), (3, "chatgpt-codex-connector[bot]")):
+            self.queue(n)
+            self.gh.prs[n].author = author
+        s = self.queue(4)
+        self.git.files[s] = ["README.md", "docs/notes.md", "mpvfx-swift/docs/image.png",
+                             "LICENSE", "LICENSE-MIT", "LICENSE-APACHE", "NOTICE"]
+        self.step()
+        self.assertIn("no-issue", self.open_train().labels)
+        self.assertEqual(self.closing_lines(self.open_train()), [])
+
+    def test_exemption_does_not_hide_a_carried_reference(self):
+        self.queue(1, extra_labels={"no-issue"})
+        self.gh.prs[1].body = "Closes #42"
+        self.step()
+        self.assertEqual(self.closing_lines(self.open_train()), ["Closes #42"])
+        self.assertNotIn("no-issue", self.open_train().labels)
+
+    def test_mixed_exempt_and_nonexempt_train_is_not_exempt(self):
+        self.queue(1, extra_labels={"no-issue"})
+        self.queue(2)
+        self.step()
+        self.assertNotIn("no-issue", self.open_train().labels)
+        self.assertEqual(self.closing_lines(self.open_train()), [])
+
+    def test_docs_exemption_requires_nonempty_bounded_all_docs_files(self):
+        for files in ([], ["README.md", "src/code.py"], ["README.md"] * 3000):
+            with self.subTest(files_count=len(files)):
+                self.setUp()
+                s = self.queue(1)
+                self.git.files[s] = files
+                self.step()
+                self.assertNotIn("no-issue", self.open_train().labels)
+
+    def test_skipped_and_over_cap_prs_contribute_no_references(self):
+        for n in range(1, 11):
+            s = self.queue(n, f"t{n:02d}")
+            self.gh.prs[n].body = f"Closes #{n + 40}"
+            if n == 2:
+                self.git.conflicts.add(("main", s))
+        self.step()
+        self.assertEqual(self.members(self.open_train()), [1, 3, 4, 5, 6, 7, 8, 9])
+        self.assertEqual(self.closing_lines(self.open_train()),
+                         [f"Closes #{n + 40}" for n in (1, 3, 4, 5, 6, 7, 8, 9)])
+
+    def test_split_trains_keep_only_their_own_references(self):
+        for n in (1, 2, 3, 4):
+            self.queue(n, f"t{n}")
+            self.gh.prs[n].body = f"Closes #{n + 40}"
+        self.step()
+        self.gh.ci(self.open_train().number, "failure")
+        self.step()
+        first = self.open_train()
+        self.assertEqual(self.members(first), [1, 2])
+        self.assertEqual(self.closing_lines(first), ["Closes #41", "Closes #42"])
+        self.gh.merge_train(first.number)
+        self.step()
+        second = self.open_train()
+        self.assertEqual(self.members(second), [3, 4])
+        self.assertEqual(self.closing_lines(second), ["Closes #43", "Closes #44"])
+
+    def test_split_exemption_depends_only_on_carried_prs(self):
+        self.queue(1, "t1", extra_labels={"no-issue"})
+        self.queue(2, "t2")
+        self.gh.prs[2].body = "Closes #42"
+        self.step()
+        self.gh.ci(self.open_train().number, "failure")
+        self.step()
+        first = self.open_train()
+        self.assertEqual(self.members(first), [1])
+        self.assertEqual(self.closing_lines(first), [])
+        self.assertIn("no-issue", first.labels)
+        self.gh.merge_train(first.number)
+        self.step()
+        second = self.open_train()
+        self.assertEqual(self.members(second), [2])
+        self.assertEqual(self.closing_lines(second), ["Closes #42"])
+        self.assertNotIn("no-issue", second.labels)
 
 
 class Landing(World):
@@ -832,6 +967,39 @@ class Body(unittest.TestCase):
 
 class Commands(unittest.TestCase):
     """The I/O layer builds the expected gh calls."""
+
+    def test_changed_files_counts_both_sides_of_a_rename(self):
+        calls = []
+
+        def run(args, env=None, cwd=None):
+            calls.append(args)
+            sep = "\0" if "-z" in args else "\n"
+            return 0, sep.join(["src/code.py", "README.md", ""]), ""
+        files = mt.Git("/x", run=run).changed_files("base", "head")
+        self.assertEqual(files, ["src/code.py", "README.md"])
+        self.assertIn("--no-renames", calls[0])
+
+    def test_changed_files_preserves_raw_documentation_paths(self):
+        with tempfile.TemporaryDirectory() as path:
+            def git(*args):
+                return subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.quotePath=true",
+                                       "-c", "user.name=Test", "-c", "user.email=test@example.invalid", *args],
+                                      cwd=path, check=True, capture_output=True, text=True).stdout.strip()
+            git("init", "-q")
+            git("commit", "-q", "--allow-empty", "-m", "base")
+            base = git("rev-parse", "HEAD")
+            names = [" leading.md", "é.md", "mpvfx-swift/docs/é.png", "mpvfx-swift/docs/line\nbreak.png"]
+            for name in names:
+                filename = os.path.join(path, name)
+                os.makedirs(os.path.dirname(filename), exist_ok=True)
+                with open(filename, "w") as f:
+                    f.write("doc fixture\n")
+            git("add", ".")
+            git("commit", "-q", "-m", "docs")
+            files = mt.Git(path).changed_files(base, "HEAD")
+            self.assertCountEqual(files, names)
+            self.assertTrue(mt.issue_exempt(mt.PR(number=1), files))
+            self.assertEqual(mt.Git(path).changed_files("HEAD", "HEAD"), [])
 
     def test_mergeable_reads_the_pull(self):
         calls = []

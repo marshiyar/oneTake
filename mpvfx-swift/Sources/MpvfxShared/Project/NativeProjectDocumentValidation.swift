@@ -39,6 +39,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
     } else {
         pushIssue(&issues, .invalidCanvas, "canvas", "Canvas must be an object")
     }
+    validateNativeEasingPresets(input["easingPresets"], &issues)
 
     var assetsById: [String: NativeJSONValue] = [:]
     let kinds = ["video", "audio", "image", "element"]
@@ -77,38 +78,12 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
     if sequence["durationFrames"] != nil && !isPositiveInteger(sequence["durationFrames"]) {
         pushIssue(&issues, .invalidTrack, "sequence.durationFrames", "Sequence duration must be a positive integer")
     }
+    validateNativeCaptionTrack(sequence["captions"], "sequence.captions", &issues)
     guard let tracks = sequence["tracks"]?.arrayValue else {
         pushIssue(&issues, .invalidTrack, "sequence.tracks", "Tracks must be an array"); return issues
     }
 
-    var audioGroupIds = Set<String>()
-    if let rawGroups = sequence["audioGroups"] {
-        if let groups = rawGroups.arrayValue {
-            let maxGain = pow(10.0, 12.0 / 20.0)
-            for (index, group) in groups.enumerated() {
-                let path = "sequence.audioGroups[\(index)]"
-                guard group.isRecord else { pushIssue(&issues, .invalidTrack, path, "Audio group must be an object"); continue }
-                requireId(group["id"], "\(path).id", &issues)
-                collectDuplicateId(&audioGroupIds, group["id"], "\(path).id", &issues)
-                if group["label"] != nil && !isNonEmptyString(group["label"]) {
-                    pushIssue(&issues, .invalidTrack, "\(path).label", "Audio group label must be a non-empty string")
-                }
-                if let v = group["volume"] {
-                    if !(v.numberValue.map { $0.isFinite && $0 >= 0 && $0 <= maxGain } ?? false) {
-                        pushIssue(&issues, .invalidTrack, "\(path).volume", "Audio group gain must be within the supported fader range")
-                    }
-                }
-                if group["muted"] != nil && group["muted"]?.boolValue == nil {
-                    pushIssue(&issues, .invalidTrack, "\(path).muted", "Audio group mute must be a boolean")
-                }
-                for name in ["fxChain", "automation"] where group[name] != nil && (str(group[name]) ?? "").isEmpty {
-                    pushIssue(&issues, .invalidTrack, "\(path).\(name)", "\(name) must be serialized text")
-                }
-            }
-        } else {
-            pushIssue(&issues, .invalidTrack, "sequence.audioGroups", "Audio groups must be an array")
-        }
-    }
+    let audioGroupIds = validateAudioGroups(sequence["audioGroups"], &issues)
 
     var trackIds = Set<String>(), authoredLaneIds = Set<String>(), displayLaneIds = Set<Double>()
     var clipIds = Set<String>(), bindingIdentities = Set<String>(), transitionIds = Set<String>()
@@ -119,7 +94,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         collectDuplicateId(&trackIds, track["id"], "\(trackPath).id", &issues)
         let trackKind = str(track["kind"]).flatMap(NativeProjectTrackKind.init(rawValue:))
         if trackKind == nil { pushIssue(&issues, .invalidTrack, "\(trackPath).kind", "Track kind must be video, audio, or mixed") }
-        for flag in ["hidden", "locked"] where track[flag] != nil && track[flag]?.boolValue == nil {
+        for flag in ["hidden", "locked", "soloed"] where track[flag] != nil && track[flag]?.boolValue == nil {
             pushIssue(&issues, .invalidTrack, "\(trackPath).\(flag)", "Track \(flag) must be a boolean")
         }
         if let lane = validateTrackLane(track["lane"], trackIndex, "\(trackPath).lane", &issues) {
@@ -192,6 +167,8 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["muted"] != nil && clip["muted"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).muted", "Muted must be a boolean")
             }
+            validateSpeedRamp(clip["speedRamp"], duration: clip["durationFrames"]?.numberValue,
+                              path: "\(clipPath).speedRamp", issues: &issues)
             if let rawSegments = clip["cropPivotSegments"] {
                 if let segments = rawSegments.arrayValue {
                     var pairs = Set<[String]>()
@@ -234,19 +211,28 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                     pushIssue(&issues, .invalidClip, "\(clipPath).crop", "Crop needs finite non-negative top, right, bottom and left insets")
                 }
             }
-            validateNativeClipFades(clip, clipPath, &issues); validateNativeClipStyle(clip["style"], "\(clipPath).style", &issues)
-            validateNativeClipText(clip["text"], "\(clipPath).text", &issues)
+            validateNativeClipFades(clip, clipPath, &issues)
+            validateNativeClipPresentation(clip, clipPath, &issues)
+            validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }
             validateStaticParameters(clip["staticParameters"], "\(clipPath).staticParameters", &issues)
-            if let asset, assetKind == "video" || assetKind == "audio", isNonNegativeInteger(clip["sourceInFrame"]),
-               isPositiveInteger(clip["durationFrames"]), isPositiveInteger(asset["durationFrames"]), let playbackRate, validFraction {
+            if validateNativeClipHold(clip, asset, clipPath, &issues), let asset, assetKind == "video" || assetKind == "audio",
+               let sourceInFrame = clip["sourceInFrame"]?.numberValue, isNonNegativeInteger(clip["sourceInFrame"]),
+               let durationFrames = clip["durationFrames"]?.numberValue, isPositiveInteger(clip["durationFrames"]),
+               let assetDurationFrames = asset["durationFrames"]?.numberValue, isPositiveInteger(asset["durationFrames"]),
+               let playbackRate, validFraction {
                 let f = fraction.map { NativePlaybackRate(numerator: $0["numerator"]!.numberValue!, denominator: $0["denominator"]!.numberValue!) }
                 let exceeds: Bool
                 do {
-                    exceeds = try sourceRangeExceedsAsset(clip["sourceInFrame"]!.numberValue!, clip["durationFrames"]!.numberValue!,
-                                                          playbackRate, asset["durationFrames"]!.numberValue!, f)
+                    if let rawRamp = clip["speedRamp"],
+                       let ramp = try? rawRamp.decode(NativeSpeedRamp.self), ramp.isSupported {
+                        let start = sourceInFrame + (f.map { $0.numerator / $0.denominator } ?? 0)
+                        exceeds = start + ramp.sourcePosition(atClipFrame: durationFrames) > assetDurationFrames
+                    } else {
+                        exceeds = try sourceRangeExceedsAsset(sourceInFrame, durationFrames, playbackRate, assetDurationFrames, f)
+                    }
                 } catch {
                     // Overflow mapping: the exact answer needs more than 64 bits. The only way Int64 overflows with safe-integer
                     // inputs is an extreme rate/fraction denominator product; we report the clip as out of bounds, the
@@ -257,6 +243,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             }
             if let effects = clip["effects"]?.arrayValue {
                 var effectIds = Set<String>()
+                var enabledColorKeyCount = 0
                 for (effectIndex, effect) in effects.enumerated() {
                     let effectPath = "\(clipPath).effects[\(effectIndex)]"
                     guard effect.isRecord else { pushIssue(&issues, .invalidEffect, effectPath, "Effect must be an object"); continue }
@@ -267,6 +254,37 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                     if effect["parameters"] != nil && !isRecordValue(effect["parameters"]) {
                         pushIssue(&issues, .invalidEffect, "\(effectPath).parameters", "Effect parameters must be an object")
                     }
+                    if str(effect["effectId"]) == "color-key" {
+                        if effect["enabled"]?.boolValue == true { enabledColorKeyCount += 1 }
+                        guard let parameters = effect["parameters"], parameters.isRecord else {
+                            if effect["parameters"] == nil {
+                                pushIssue(&issues, .invalidEffect, "\(effectPath).parameters", "Colour-key parameters must be an object")
+                            }
+                            continue
+                        }
+                        let base = "\(effectPath).parameters"
+                        if parameters["v"]?.numberValue == nil {
+                            pushIssue(&issues, .invalidEffect, "\(base).v", "Colour-key v must be the number 1")
+                        }
+                        if parameters["kind"]?.stringValue == nil {
+                            pushIssue(&issues, .invalidEffect, "\(base).kind", "Colour-key kind must be a string")
+                        }
+                        guard parameters["v"]?.numberValue == 1, str(parameters["kind"]) == "chroma" else { continue }
+                        if let color = parameters["color"] {
+                            let valid = color.arrayValue.map { channels in
+                                channels.count == 3 && channels.allSatisfy { $0.numberValue.map { $0.isFinite && (0...1).contains($0) } ?? false }
+                            } ?? false
+                            if !valid { pushIssue(&issues, .invalidEffect, "\(base).color", "Colour-key color must contain three finite values from 0 through 1") }
+                        }
+                        for name in ["similarity", "smoothness", "spill"] {
+                            if let value = parameters[name], !(value.numberValue.map { $0.isFinite && (0...1).contains($0) } ?? false) {
+                                pushIssue(&issues, .invalidEffect, "\(base).\(name)", "Colour-key \(name) must be a finite value from 0 through 1")
+                            }
+                        }
+                    }
+                }
+                if enabledColorKeyCount > 1 {
+                    pushIssue(&issues, .invalidEffect, "\(clipPath).effects", "A clip may have at most one enabled colour-key effect")
                 }
             } else {
                 pushIssue(&issues, .invalidEffect, "\(clipPath).effects", "Effects must be an array")
@@ -278,4 +296,78 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         validateNativeTrackTransitions(track, trackPath, &transitionIds, &issues)
     }
     return issues
+}
+
+private func validateSpeedRamp(_ raw: NativeJSONValue?, duration: Double?, path: String, issues: inout Issues) {
+    guard let raw else { return }
+    guard raw.isRecord, let version = raw["v"]?.numberValue, jsIsInteger(version),
+          let kind = raw["kind"]?.stringValue else {
+        pushIssue(&issues, .invalidSpeedRamp, path, "Speed ramp must be a versioned object with v and kind")
+        return
+    }
+    // Forward-compatible objects are retained but intentionally not interpreted.
+    guard version == Double(NativeSpeedRamp.version), kind == NativeSpeedRamp.supportedKind else { return }
+    guard let points = raw["points"]?.arrayValue else {
+        pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp points must be an array")
+        return
+    }
+    if points.isEmpty { pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp needs at least one point") }
+    if points.count > 64 { pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp supports at most 64 points") }
+    var previous = -Double.infinity
+    for (index, point) in points.enumerated() {
+        let p = "\(path).points[\(index)]"
+        guard point.isRecord else { pushIssue(&issues, .invalidSpeedRamp, p, "Speed ramp point must be an object"); continue }
+        if let t = point["t"]?.numberValue, t.isFinite {
+            if t < 0 || (duration.map { t > $0 } ?? false) {
+                pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp point time must be within the clip")
+            }
+            if t <= previous { pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp points must be strictly sorted by t") }
+            previous = t
+        } else { pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp point time must be finite") }
+        if !(point["speed"]?.numberValue.map { $0.isFinite && $0 >= 0.1 && $0 <= 10 } ?? false) {
+            pushIssue(&issues, .invalidSpeedRamp, "\(p).speed", "Speed must be finite and between 0.1 and 10")
+        }
+        if let ease = point["ease"] {
+            do { _ = try ease.decode(NativeInterpolation.self) }
+            catch { pushIssue(&issues, .invalidSpeedRamp, "\(p).ease", "Speed ramp ease must be hold, linear, or cubic-bezier") }
+        }
+    }
+}
+
+/// `sequence.audioGroups`: each bus's id, label, fader gain, mute and serialized FX/automation. Returns the bus ids.
+private func validateAudioGroups(_ rawGroups: NativeJSONValue?, _ issues: inout Issues) -> Set<String> {
+    var audioGroupIds = Set<String>()
+    guard let rawGroups else { return audioGroupIds }
+    guard let groups = rawGroups.arrayValue else {
+        pushIssue(&issues, .invalidTrack, "sequence.audioGroups", "Audio groups must be an array"); return audioGroupIds
+    }
+    for (index, group) in groups.enumerated() {
+        let path = "sequence.audioGroups[\(index)]"
+        guard group.isRecord else { pushIssue(&issues, .invalidTrack, path, "Audio group must be an object"); continue }
+        requireId(group["id"], "\(path).id", &issues)
+        collectDuplicateId(&audioGroupIds, group["id"], "\(path).id", &issues)
+        validateAudioGroupFields(group, path, &issues)
+    }
+    return audioGroupIds
+}
+
+private func validateAudioGroupFields(_ group: NativeJSONValue, _ path: String, _ issues: inout Issues) {
+    if group["label"] != nil && !isNonEmptyString(group["label"]) {
+        pushIssue(&issues, .invalidTrack, "\(path).label", "Audio group label must be a non-empty string")
+    }
+    if let v = group["volume"], !isFaderGain(v) {
+        pushIssue(&issues, .invalidTrack, "\(path).volume", "Audio group gain must be within the supported fader range")
+    }
+    if group["muted"] != nil && group["muted"]?.boolValue == nil {
+        pushIssue(&issues, .invalidTrack, "\(path).muted", "Audio group mute must be a boolean")
+    }
+    for name in ["fxChain", "automation"] where group[name] != nil && (str(group[name]) ?? "").isEmpty {
+        pushIssue(&issues, .invalidTrack, "\(path).\(name)", "\(name) must be serialized text")
+    }
+}
+
+/// A finite gain from 0 to +12 dB (the fader's range).
+private func isFaderGain(_ v: NativeJSONValue) -> Bool {
+    let maxGain = pow(10.0, 12.0 / 20.0)
+    return v.numberValue.map { $0.isFinite && $0 >= 0 && $0 <= maxGain } ?? false
 }

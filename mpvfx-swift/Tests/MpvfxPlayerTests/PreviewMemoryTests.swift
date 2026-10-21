@@ -52,6 +52,116 @@ final class PreviewMemoryTests: XCTestCase {
         XCTAssertEqual(cache.laneKeys, ["b"])
     }
 
+    /// A frame being decoded is counted before it exists: reserving its bytes evicts to make room, storing it moves
+    /// the bytes from in flight to cached without evicting again, and a dropped frame gives its reservation back.
+    func testFramesInFlightCountAgainstTheBudget() {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 10, pressure: nil)
+        for f in 0..<10 { cache.store(Self.image(64, 36, 1), lane: "a", frame: f) }
+        XCTAssertEqual(cache.bytes, cache.budgetBytes, "full")
+        let first = cache.reserve(frameBytes, lane: "b"), second = cache.reserve(frameBytes, lane: "c")
+        XCTAssertEqual(cache.inFlightBytes, 2 * frameBytes)
+        XCTAssertLessThanOrEqual(cache.bytes + cache.inFlightBytes, cache.budgetBytes,
+                                 "room is made before the frames exist")
+        XCTAssertFalse(cache.contains(lane: "a", frame: 0), "the least recently used frames made the room")
+        XCTAssertFalse(cache.contains(lane: "a", frame: 1))
+        XCTAssertTrue(cache.contains(lane: "a", frame: 9), "the newest frame stays")
+        let countBefore = cache.count
+        cache.store(Self.image(64, 36, 2), lane: "b", frame: 0, reserved: first)
+        XCTAssertEqual(cache.count, countBefore + 1, "a reserved frame lands without evicting another")
+        cache.release(second)
+        XCTAssertEqual(cache.inFlightBytes, 0, "a dropped frame gives its reservation back")
+        XCTAssertLessThanOrEqual(cache.peakHeldBytes, cache.budgetBytes, "cached plus in flight never above the budget")
+        XCTAssertEqual(cache.peakInFlightBytes, 2 * frameBytes)
+    }
+
+    /// Many lanes reserving at once (Codex review of #132): a reservation that would take the frames in flight past
+    /// the budget waits for another to settle, so cached plus in flight stays within the budget for any number of
+    /// lanes, down to a budget of one frame.
+    func testConcurrentReservationsKeepCachedPlusInFlightWithinTheBudget() {
+        let frameBytes = 64 * 36 * 4
+        for frames in [1, 3] {
+            let cache = PreviewFrameCache(budgetBytes: frameBytes * frames, pressure: nil)
+            DispatchQueue.concurrentPerform(iterations: 6) { lane in
+                for frame in 0..<20 {
+                    let reserved = cache.reserve(frameBytes, lane: "lane\(lane)")
+                    if frame % 5 == 2 { cache.release(reserved); continue }   // some decodes are dropped
+                    cache.store(Self.image(64, 36, UInt8(lane)), lane: "lane\(lane)", frame: frame, reserved: reserved)
+                }
+            }
+            XCTAssertLessThanOrEqual(cache.peakHeldBytes, cache.budgetBytes, "budget of \(frames) frames")
+            XCTAssertLessThanOrEqual(cache.peakInFlightBytes, cache.budgetBytes)
+            XCTAssertEqual(cache.inFlightBytes, 0, "every reservation settled")
+            XCTAssertGreaterThan(cache.count, 0, "the last decode of every lane is stored")
+        }
+    }
+
+    /// A reservation keeps the reserving lane's most recent frame while it fits beside the frames in flight: it is
+    /// what the layer shows when the decode fails (end of the media). Another lane's frames go first.
+    func testAReservationKeepsItsLanesLastFrameWhenItFits() {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 4, pressure: nil)
+        cache.store(Self.image(64, 36, 1), lane: "a", frame: 0)
+        for f in 0..<3 { cache.store(Self.image(64, 36, 2), lane: "b", frame: f) }
+        let reserved = cache.reserve(frameBytes, lane: "a")
+        XCTAssertTrue(cache.contains(lane: "a", frame: 0), "the lane's fallback frame stays, though the oldest")
+        XCTAssertFalse(cache.contains(lane: "b", frame: 0), "the oldest frame of another lane made the room")
+        cache.release(reserved)
+        // One frame of budget: the fallback cannot fit beside the frame in flight, and the bound wins.
+        let tiny = PreviewFrameCache(budgetBytes: frameBytes, pressure: nil)
+        tiny.store(Self.image(64, 36, 1), lane: "a", frame: 0)
+        tiny.release(tiny.reserve(frameBytes, lane: "a"))
+        XCTAssertLessThanOrEqual(tiny.peakHeldBytes, tiny.budgetBytes)
+    }
+
+    /// A memory warning halves the budget for what is held, frames in flight included.
+    func testAMemoryWarningCountsFramesInFlight() {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 10, pressure: nil)
+        for f in 0..<4 { cache.store(Self.image(64, 36, 1), lane: "a", frame: f) }
+        let reserved = cache.reserve(frameBytes * 4, lane: "b")
+        cache.purge(.warning)
+        XCTAssertLessThanOrEqual(cache.bytes + cache.inFlightBytes, cache.budgetBytes / 2)
+        cache.release(reserved)
+    }
+
+    /// A drawable of `bytes`, as a canvas backend makes on a frame's first draw.
+    final class StandInDrawable: CanvasDrawable { let byteCount: Int; init(_ bytes: Int) { byteCount = bytes } }
+
+    func storeFrames(_ cache: PreviewFrameCache, _ count: Int) { (0..<count).forEach { cache.store(Self.image(64, 36, 1), lane: "a", frame: $0) } }
+
+    /// Issue #95: the frame cache counts the drawable a draw made from a cached frame, and the budget stays the same.
+    func testFrameCacheCountsTheDrawableADrawMadeWithinTheSameBudget() throws {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 10, pressure: nil)
+        storeFrames(cache, 10)
+        XCTAssertEqual(cache.count, 10)
+        let drawn = try XCTUnwrap(cache.frame(lane: "a", frame: 9))
+        _ = drawn.drawable(StandInDrawable.self, make: { StandInDrawable(frameBytes) })
+        XCTAssertEqual(cache.bytes, frameBytes * 11, "the drawable is counted with its frame")
+        cache.fitBudget()
+        XCTAssertEqual(cache.budgetBytes, frameBytes * 10, "the budget is unchanged")
+        XCTAssertEqual(cache.count, 9, "one frame fewer fits beside the drawable")
+        XCTAssertLessThanOrEqual(cache.bytes, cache.budgetBytes)
+        XCTAssertNotNil(cache.frame(lane: "a", frame: 9), "the frame just drawn is kept")
+        XCTAssertNil(cache.frame(lane: "a", frame: 0), "the least recently used one went")
+    }
+
+    /// Codex review on #136: a held frame the draw showed (looked up with `nearest`) is not the fit's first victim,
+    /// though it was stored first.
+    func testTheFitAfterADrawKeepsTheHeldFrameItShowed() throws {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 10, pressure: nil)
+        storeFrames(cache, 10)
+        cache.fitBudget()   // the draw before this one
+        let held = try XCTUnwrap(cache.nearest(lane: "a", to: 0))
+        _ = held.image.drawable(StandInDrawable.self, make: { StandInDrawable(frameBytes) })
+        cache.fitBudget()
+        XCTAssertEqual(held.frame, 0)
+        XCTAssertTrue(cache.contains(lane: "a", frame: 0), "the frame on screen is kept")
+        XCTAssertFalse(cache.contains(lane: "a", frame: 1), "the least recently used other frame went")
+    }
+
     func testMemoryPressureEmptiesTheFrameCacheAndAReleasedCacheStopsObserving() {
         let monitor = MemoryPressureMonitor()
         var cache: PreviewFrameCache? = PreviewFrameCache(budgetBytes: 100 * 64 * 36 * 4, pressure: monitor)
@@ -91,6 +201,34 @@ final class PreviewMemoryTests: XCTestCase {
         XCTAssertEqual(grader.bytes, 0, "critical pressure drops idle pictures")
     }
 
+    func gradeTwoClips(_ grader: PreviewGrader) throws {
+        guard case .object(let o) = try NativeJSONValue.parse(#"{"adjust":{"exposure":0.4}}"#), let params = ColorGradeParams(json: o)
+        else { return XCTFail("grade json") }
+        let grade = ColorGradeRenderer(params: params, seedKey: "clip:x")
+        ["clip0", "clip1"].forEach {
+            grader.request($0, PreviewGrader.Request(key: $0, sourceKey: $0, image: Self.image(64, 36, 100), target: nil, grade: grade, time: 0))
+            grader.waitUntilIdle()
+        }
+    }
+
+    /// Issue #95: the grader counts the drawable a draw made from a graded picture, and the budget stays the same.
+    func testGraderCountsTheDrawableADrawMadeWithinTheSameBudget() throws {
+        let frame = 64 * 36 * 4
+        let grader = PreviewGrader(renderer: CPUColorRenderer(), pressure: nil)
+        grader.budgetBytes = frame * 2
+        try gradeTwoClips(grader)
+        grader.fitBudget()   // the draw before this one
+        XCTAssertEqual(grader.bytes, frame * 2)
+        let shown = try XCTUnwrap(grader.latest("clip1")).image
+        _ = shown.drawable(StandInDrawable.self, make: { StandInDrawable(frame) })
+        XCTAssertEqual(grader.bytes, frame * 3, "the drawable is counted with its picture")
+        grader.fitBudget()
+        XCTAssertEqual(grader.budgetBytes, frame * 2, "the budget is unchanged")
+        XCTAssertNotNil(grader.latest("clip1"), "the picture just shown is kept")
+        XCTAssertNil(grader.latest("clip0"), "the least recently used one went")
+        XCTAssertLessThanOrEqual(grader.bytes, grader.budgetBytes)
+    }
+
     /// Playing a graded clip on the CPU renderer: each new frame is graded once at full size. A draft first is for an
     /// edit of the grade on the same picture; drafting every new frame doubled the grading work of playback.
     func testCPUGraderDraftsEditsButNotNewFrames() throws {
@@ -121,6 +259,8 @@ final class PreviewMemoryTests: XCTestCase {
         XCTAssertEqual(cx.cache.budgetBytes, MemoryBudget.previewFrames())
         XCTAssertLessThanOrEqual(cx.cache.budgetBytes, 2 << 30)
         XCTAssertEqual(cx.gradedMemoBudget, MemoryBudget.gradedFrames())
+        XCTAssertEqual(cx.cache.budgetBytes + cx.gradedMemoBudget, MemoryBudget.previewTotal(),
+                       "what the preview benchmark sums")
     }
 
     // MARK: With decoded media
@@ -134,7 +274,8 @@ final class PreviewMemoryTests: XCTestCase {
     override func tearDown() { if let dir { try? FileManager.default.removeItem(at: dir) } }
 
     /// Two clips on two tracks (b over a), 180 frames each.
-    func editor(clips: [String] = ["clip:a", "clip:b"]) throws -> TimelineEditor {
+    func editor(clips: [String] = ["clip:a", "clip:b"],
+                canvas: (width: Int, height: Int) = (160, 90)) throws -> TimelineEditor {
         let tracks = clips.enumerated().map { i, id in
             """
             {"id":"track:v\(i)","kind":"video","lane":{"authoredTrack":\(i + 1),"displayTrack":\(i)},"clips":[
@@ -144,26 +285,28 @@ final class PreviewMemoryTests: XCTestCase {
         }.joined(separator: ",")
         return try TimelineEditor(json: """
         {"schemaVersion":1,"id":"project:m","revision":1,"frameRate":{"numerator":30,"denominator":1},
-         "canvas":{"width":160,"height":90,"background":"#000000"},
+         "canvas":{"width":\(canvas.width),"height":\(canvas.height),"background":"#000000"},
          "assets":[{"id":"asset:a","kind":"video","name":"media.mov","source":"media.mov","durationFrames":180}],
          "sequence":{"id":"sequence:main","name":"Main","tracks":[\(tracks)]}}
         """)
     }
 
     /// An offscreen target to draw the preview into (kept alive by the second value).
-    func canvas() throws -> (CanvasContext, AnyObject) {
+    func canvas(width: Int = 160, height: Int = 90) throws -> (CanvasContext, AnyObject) {
         #if os(Linux)
-        let t = CairoImageTarget(width: 160, height: 90); return (t.canvas, t)
+        let t = CairoImageTarget(width: width, height: height); return (t.canvas, t)
         #elseif canImport(CoreGraphics) && canImport(CoreText)
-        let c = try XCTUnwrap(CoreGraphicsCanvas.offscreen(width: 160, height: 90)); return (c, c)
+        let c = try XCTUnwrap(CoreGraphicsCanvas.offscreen(width: width, height: height)); return (c, c)
         #else
         throw XCTSkip("no offscreen canvas on this platform")
         #endif
     }
 
     /// Draws at `t`, lets the decoders and the grader catch up, draws again (what the app's redraw after `frameReady` does).
+    /// The view is the project's canvas size, so frames decode at canvas pixels.
     func draw(_ cx: PreviewCompositor, _ c: CanvasContext, _ t: Double, playing: Bool, speed: Double = 1) {
-        let rect = CanvasRect(x: 0, y: 0, width: 160, height: 90)
+        let size = cx.composition?.canvas
+        let rect = CanvasRect(x: 0, y: 0, width: size?.width ?? 160, height: size?.height ?? 90)
         cx.draw(c, in: rect, time: t, elements: [], context: FrameDrawContext(isPlaying: playing, speed: speed))
         for l in cx.lanes.values { l.wait() }
         cx.draw(c, in: rect, time: t, elements: [], context: FrameDrawContext(isPlaying: playing, speed: speed))
@@ -244,6 +387,37 @@ final class PreviewMemoryTests: XCTestCase {
             print("MEMSTRESS unaccounted growth after round 1: \(unaccounted >> 20)MB")
             XCTAssertLessThan(unaccounted, 48 << 20, "the process grows only by what the caches may hold")
         }
+    }
+
+    /// Two stacked clips decoded at 1080p (a 1920x1080 project drawn at 1920x1080, so each lane decodes 1920x1080
+    /// RGBA frames of about 8 MB from the small test clip) played forward with a budget of 8 such frames: decoding
+    /// runs far past the budget, both lanes decode at once, and the cached frames plus the frames the lanes are
+    /// decoding never exceed the budget (issue #97).
+    func testTwoStacked1080pLanesKeepCachedPlusInFlightFramesWithinTheBudget() throws {
+        try makeMedia(seconds: 2)
+        let ed = try editor(canvas: (1920, 1080))
+        let frameBytes = 1920 * 1080 * 4
+        let budget = 8 * frameBytes
+        let cx = PreviewCompositor(cacheBudgetBytes: budget)
+        defer { cx.stopAll() }
+        cx.composition = PreviewComposition(document: ed.document, projectDir: dir, engine: nil)
+        let (c, keep) = try canvas(width: 1920, height: 1080); _ = keep
+        // The peaks are taken under the cache's lock at every reservation and store; reading bytes and in-flight
+        // bytes here one after the other would race the lanes.
+        for f in 0..<30 { draw(cx, c, Double(f) / 30, playing: true) }
+        XCTAssertEqual(Set(cx.lanes.values.map(\.layer.clipId)), ["clip:a", "clip:b"], "two lanes")
+        let decoded = cx.lanes.values.reduce(0) { $0 + $1.framesDecoded }
+        XCTAssertGreaterThan(decoded, 16, "decoding ran well past what the budget holds, so eviction ran")
+        let sizes = Set(cx.lanes.values.compactMap { lane in
+            cx.cache.nearest(lane: lane.key, to: 29).map { "\($0.image.width)x\($0.image.height)" }
+        })
+        XCTAssertEqual(sizes, ["1920x1080"], "frames are decoded at 1080p")
+        XCTAssertGreaterThanOrEqual(cx.cache.peakInFlightBytes, frameBytes,
+                                    "frames were counted while they were decoded")
+        XCTAssertLessThanOrEqual(cx.cache.peakHeldBytes, budget, "cached plus in flight never above the budget")
+        XCTAssertLessThanOrEqual(cx.cache.peakBytes, budget)
+        for l in cx.lanes.values { l.wait() }
+        XCTAssertEqual(cx.cache.inFlightBytes, 0, "every reservation was stored or given back")
     }
 
     /// The decoder's read path: 600 frames of 640x360 (about 550 MB of pixels across the C boundary) read in one loop

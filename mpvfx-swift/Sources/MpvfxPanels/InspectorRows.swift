@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxTimeline
 
 /// Row descriptors of the flat inspector. Rows are rebuilt from the document
 /// on every draw and event; they carry closures that edit through TimelineEditor, never state of their own.
@@ -38,6 +39,15 @@ public struct InspectorRow {
         /// Label drag scrubs the value: (current value, units per pixel, apply on release).
         public var scrub: (value: Double, step: Double, apply: (Double) -> Void, format: (Double) -> String)?
         public var disabled = false
+        /// Shown in the normal ink and focusable, its text selected while focused, but never edited (Media start).
+        public var readOnly = false
+        /// A colour value's swatch before its text (issue #189): `color` nil draws the checkerboard; a press on its
+        /// 24 pt target presses the button `key` (the row's controls carry it).
+        public var swatch: Swatch?
+    }
+    public struct Swatch {
+        public var color: String?
+        public var key: String
     }
     public struct Slider {
         public var key: String
@@ -56,6 +66,9 @@ public struct InspectorRow {
         public var settings: (active: Bool, toggle: () -> Void)?
         /// Drags along y, bottom = min (the Tone EQ's faders).
         public var vertical = false
+        /// A detent: a drag within `detentReach` of the track's span from it lands on it (Rate's 1x).
+        public var detent: Double?
+        public static let detentReach = 0.03
     }
     public struct Toggle {
         public var key: String
@@ -124,24 +137,29 @@ public struct InspectorRow {
         self.kind = kind; self.padY = padY; self.rail = rail; self.controls = controls
     }
 
-    public var height: Double {
-        if case .pair = kind { return 54 + 2 * padY }   // 20 heading + 4 + 30 fields
-        return baseHeight + 2 * padY
+    /// Set by the inspector's layout pass (`InspectorPanel.laidOut`) when a segmented row's options do not fit in the
+    /// control column: the label takes its own line and the options the row's full width below it (issue #154).
+    public var stacked = false
+
+    public var height: Double { baseHeight + 2 * padY }
+
+    /// The row's slot in the layout: its height rounded up to the 8 pt grid (`PanelGrid`), so the next row starts on
+    /// the grid. A spacer keeps its own height.
+    public var slotHeight: Double {
+        if case .spacer(let h) = kind { return h }
+        return PanelGrid.snapUp(height)
     }
 
     var baseHeight: Double {
+        let row = PanelGrid.rowHeight, compact = PanelGrid.compactRowHeight
         switch kind {
-        case .number, .pair, .toggle, .fxNode: 30
-        case .quad: 30
-        case .slider: 28
-        case .segmented: 32
-        case .heading: 24
-        case .section: 20.5
-        case .subheader: 28
-        case .note(let s): 16 * Double(max(1, (s.count + 47) / 48))
-        case .buttons: 30
-        case .spacer(let h): h
-        case .custom(let c): c.height
+        case .toggle, .fxNode, .quad, .buttons, .subheader: return row
+        case .pair: return compact + row * (stacked ? 2 : 1)   // the heading line over the fields
+        case .number, .slider, .segmented: return stacked ? compact + row : row
+        case .heading, .section: return compact
+        case .note(let s): return PanelGrid.lineHeight * Double(max(1, (s.count + 47) / 48))
+        case .spacer(let h): return h
+        case .custom(let c): return c.height
         }
     }
 }
@@ -152,11 +170,15 @@ public struct InspectorGroup {
     public var title: String
     public var summary: String
     public var rows: [InspectorRow]
-    /// Gap between rows (`space-y-*` of the group's content).
+    /// Gap between rows: 0 or a whole number of `PanelGrid.unit` steps, so every row starts on the grid.
     public var spacing: Double
     /// The open header's reset accessory (12px RotateCcw left of the caret, `gap-2.5`), when the group has one.
     public var reset: (() -> Void)?
-    public init(id: String, title: String, summary: String, rows: [InspectorRow], spacing: Double = 4) {
+    /// Optional bypass in the header. The hit target is at least 24 points and is exposed by `accessibilityLabel`.
+    public var enabled: Bool?
+    public var accessibilityLabel: String?
+    public var setEnabled: ((Bool) -> Void)?
+    public init(id: String, title: String, summary: String, rows: [InspectorRow], spacing: Double = 0) {
         self.id = id; self.title = title; self.summary = summary; self.rows = rows; self.spacing = spacing
     }
     /// Every row with the controls bespoke rows carry, in order: what a key lookup searches.
@@ -198,8 +220,11 @@ public struct InspectorCustomRow {
     public var draw: (CanvasContext, CanvasRect, InspectorPanel) -> Void
     /// (part, point, phase) — phase: 0 down, 1 drag, 2 up.
     public var pointer: (Int, CanvasPoint, Int) -> Void
+    /// Keys for a focused part (part, key) -> handled. A row with a handler is never "pressed" by Enter or Space:
+    /// a press replays a pointer at the part's centre, which on a wheel or graph is an edit (issue #171).
+    public var keyPress: ((Int, EditorKey) -> Bool)?
     public init(id: String, height: Double, draw: @escaping (CanvasContext, CanvasRect, InspectorPanel) -> Void,
-                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }) {
-        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer
+                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }, key: ((Int, EditorKey) -> Bool)? = nil) {
+        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer; self.keyPress = key
     }
 }

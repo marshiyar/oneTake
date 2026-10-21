@@ -99,8 +99,19 @@ mpvfx_hresult mpvfx_d2d_draw_text(MpvfxD2DTarget *t, const MpvfxText *text, Mpvf
 /// Layout size of the text (advance width including trailing spaces, line height). Needs no target.
 mpvfx_hresult mpvfx_d2d_measure_text(const MpvfxText *text, float *width, float *height);
 
-/// Draws the pixels into the destination rectangle at `opacity`, linearly filtered.
-mpvfx_hresult mpvfx_d2d_draw_rgba(MpvfxD2DTarget *t, const MpvfxPixels *pixels, MpvfxRect destination, float opacity);
+/// The pixels as a premultiplied BGRA Direct2D bitmap of the render target that made it (a bitmap draws only on
+/// that target). It keeps a reference to that target, so the target's address is never reused while it lives.
+typedef struct MpvfxD2DBitmap MpvfxD2DBitmap;
+/// Converts straight RGBA8 `pixels` to a bitmap of `t` once; draw it any number of times with mpvfx_d2d_draw_bitmap.
+mpvfx_hresult mpvfx_d2d_bitmap_create(MpvfxD2DTarget *t, const MpvfxPixels *pixels, MpvfxD2DBitmap **out);
+/// 1 when `b` was made by `t`'s current render target (so it can draw there), else 0.
+int32_t mpvfx_d2d_bitmap_belongs_to(const MpvfxD2DBitmap *b, const MpvfxD2DTarget *t);
+/// Bytes the bitmap's pixels take (width * height * 4).
+uint64_t mpvfx_d2d_bitmap_bytes(const MpvfxD2DBitmap *b);
+void mpvfx_d2d_bitmap_release(MpvfxD2DBitmap *b);
+/// Draws the bitmap into the destination rectangle at `opacity`, linearly filtered. E_INVALIDARG when `b` belongs
+/// to another target.
+mpvfx_hresult mpvfx_d2d_draw_bitmap(MpvfxD2DTarget *t, const MpvfxD2DBitmap *b, MpvfxRect destination, float opacity);
 
 /// Offscreen targets only: the bitmap as straight-alpha RGBA8 into `out` (width * height * 4 bytes).
 mpvfx_hresult mpvfx_d2d_read_rgba(MpvfxD2DTarget *t, uint8_t *out, uint32_t size);
@@ -134,6 +145,28 @@ mpvfx_hresult mpvfx_wasapi_write(MpvfxWasapi *w, const float *samples, uint32_t 
 /// Frames the device has played since open or the last flush (IAudioClock position scaled to the stream rate).
 mpvfx_hresult mpvfx_wasapi_position(MpvfxWasapi *w, uint64_t *frames);
 void mpvfx_wasapi_close(MpvfxWasapi *w);
+
+// MARK: WASAPI shared-mode capture (microphone)
+
+typedef struct MpvfxWasapiCapture MpvfxWasapiCapture;
+
+/// Called once per active capture endpoint with its id and friendly name (UTF-16, valid during the call only) and
+/// whether it is the default capture endpoint.
+typedef void (*mpvfx_capture_device_callback)(void *context, const uint16_t *id, const uint16_t *name, int32_t is_default);
+mpvfx_hresult mpvfx_wasapi_capture_devices(mpvfx_capture_device_callback cb, void *context);
+/// Opens the capture endpoint `device_id` (NULL: the default one) in shared mode for interleaved float32 at
+/// `sample_rate` x `channels` (the engine converts from the device's mix format). Not started. Fails with the HRESULT:
+/// E_ACCESSDENIED when Windows blocks microphone access, E_NOTFOUND when the endpoint is gone or none exists.
+mpvfx_hresult mpvfx_wasapi_capture_open(const uint16_t *device_id, uint32_t sample_rate, uint32_t channels, uint32_t buffer_ms,
+                                        MpvfxWasapiCapture **out);
+mpvfx_hresult mpvfx_wasapi_capture_start(MpvfxWasapiCapture *c);
+mpvfx_hresult mpvfx_wasapi_capture_stop(MpvfxWasapiCapture *c);
+/// Waits up to `timeout_ms` for audio and copies up to `max_frames` interleaved frames into `out`; `*got` is 0 when the
+/// wait timed out. AUDCLNT_E_NOT_INITIALIZED means the capture was stopped.
+mpvfx_hresult mpvfx_wasapi_capture_read(MpvfxWasapiCapture *c, float *out, uint32_t max_frames, uint32_t timeout_ms, uint32_t *got);
+/// Packets the device flagged as a data discontinuity (audio lost between two packets).
+mpvfx_hresult mpvfx_wasapi_capture_discontinuities(MpvfxWasapiCapture *c, uint64_t *count);
+void mpvfx_wasapi_capture_close(MpvfxWasapiCapture *c);
 
 // MARK: Shell dialogs (IFileOpenDialog / IFileSaveDialog)
 

@@ -1,9 +1,9 @@
 name: mpvfx-macos
 
-# macOS build, tests and disk image. Called by mpvfx-ci.yml on every pull request into main, every push to main, every
-# night and every v* tag push, so one publish job there releases all platforms together (this workflow never publishes
-# itself); also run by hand on any branch (Run workflow), where "skip_tests" gives a packaging-only run (artifact
-# only, never published).
+# macOS build, tests and disk image. Called by mpvfx-ci.yml on every pull request into main whose files can affect the
+# macOS build (.github/ci/platforms.py), every push to main, every night and every v* tag push, so one publish job there
+# releases all platforms together (this workflow never publishes itself); also run by hand on any branch (Run
+# workflow), where "skip_tests" gives a packaging-only run (artifact only, never published).
 #
 # The suite runs as 4 test shards beside the package job (.github/ci/test-shards.py, the same shards as Linux and
 # Windows). A shard that passed is recorded under the hash of every file its tests are built from; while none of those
@@ -55,6 +55,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Shards and their input keys
         id: keys
         run: |
@@ -123,6 +125,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           # Pinned, not "newest": the image's newest folder can hold a beta whose Metal Toolchain does not install.
@@ -187,6 +191,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app

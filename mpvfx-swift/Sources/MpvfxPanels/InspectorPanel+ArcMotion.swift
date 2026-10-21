@@ -26,7 +26,7 @@ extension InspectorPanel {
         }
         let id = s.id
         let enabled = path.segments.contains { $0 != nil }
-        var rows: [InspectorRow] = [.init(.spacer(6)),
+        var rows: [InspectorRow] = [.init(.spacer(PanelGrid.unit)),
             .init(.toggle(.init(key: "arcMotion", label: "Arc Motion", on: enabled, tier: enabled ? .explicitCustom : .default,
                                 set: { [weak self] on in self?.edited(editor.setArcMotion(clipId: id, on), label: "Edit arc motion") })))]
         guard enabled else { return rows }

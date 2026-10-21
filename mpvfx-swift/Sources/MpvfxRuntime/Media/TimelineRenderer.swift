@@ -22,6 +22,7 @@
 import Foundation
 import OneTakeMedia
 import MpvfxShared
+import MpvfxColor
 
 public struct NativeTimelineRenderInput {
     public var project: NativeProjectDocument
@@ -87,18 +88,25 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
     guard project.canvas.background.range(of: "^#[0-9a-f]{6}(?:[0-9a-f]{2})?$", options: [.regularExpression, .caseInsensitive]) != nil else {
         throw MediaToolError("Native canvas background must be an RGB or RGBA hex color")
     }
-    for track in project.sequence.tracks { for clip in track.clips where !project.isUndrawnElementClip(clip) {
-        guard let asset = project.assets.first(where: { $0.id == clip.assetId }),
-              nativeIsTextClip(clip, project) || !(asset.source ?? "").isEmpty else {
-            throw MediaToolError("Media path is missing for asset \(clip.assetId)")
-        }
+    for track in project.sequence.tracks { for clip in track.clips where !project.isUndrawnClip(clip) {
+        try assertClipHasMediaPath(clip, project)
         // The color grade (and its stylize effects) renders through MpvfxColor; other effects are not migrated yet.
-        if clip.effects.contains(where: { $0.enabled && !exportSupportsEffect($0) }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
+        if clip.effects.contains(where: { effect in
+            effect.enabled && !exportSupportsEffect(effect) && effect.effectId != ColorGradeParams.colorKeyEffectId
+        }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
         try assertClipParametersSupported(clip)
         if let crop = clip.crop, ![crop.top, crop.right, crop.bottom, crop.left].allSatisfy({ $0.isFinite }) {
             throw MediaToolError("Invalid crop on clip \(clip.id)")
         }
     } }
+}
+
+/// A clip's asset exists and names its media file (text clips have none). The message names the asset as the user
+/// knows it, never by its internal id.
+private func assertClipHasMediaPath(_ clip: NativeProjectClip, _ project: NativeProjectDocument) throws {
+    let asset = project.assets.first(where: { $0.id == clip.assetId })
+    if let asset, nativeIsTextClip(clip, project) || !(asset.source ?? "").isEmpty { return }
+    throw MediaToolError("Media path is missing for \(asset?.name ?? clip.assetId)")
 }
 
 private func assertClipParametersSupported(_ clip: NativeProjectClip) throws {
@@ -171,7 +179,7 @@ func exportNeedsAudioGraph(_ project: NativeProjectDocument) -> Bool {
 /// timeline's track mute sets every clip), which the audio mix already silences.
 public func nativeExportVisibleProject(_ project: NativeProjectDocument) -> NativeProjectDocument {
     let tracks = project.sequence.tracks
-    let skipped = { (clip: NativeProjectClip) in clip.hidden == true || project.isUndrawnElementClip(clip) }
+    let skipped = { (clip: NativeProjectClip) in clip.hidden == true || project.isUndrawnClip(clip) }
     guard tracks.contains(where: { $0.hidden == true || $0.clips.contains(where: skipped) }) else { return project }
     var out = project
     out.sequence.durationFrames = sequenceEndFrame(project)
@@ -266,12 +274,21 @@ private func assertClipsFitTheirMedia(_ project: NativeProjectDocument, _ media:
         if asset.kind != .audio && !info.video { throw MediaToolError("No picture track in \(asset.name)") }
         if asset.kind == .audio && !info.soundTrack { throw MediaToolError("No audio track in \(asset.name)") }
         guard asset.kind != .image else { continue }
+        if try heldFrameFits(clip, info, fps: fps) { continue }
         let rate = (clip.playbackRate?.numerator ?? 1) / (clip.playbackRate?.denominator ?? 1)
         let sourceStart = sourceFrameValue(NativeSourcePosition(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction)) / fps
         if !info.duration.isFinite || sourceStart + clip.durationFrames / fps * rate > info.duration + 1 / fps {
             throw MediaToolError("Clip \(clip.id) extends beyond its media file")
         }
     }
+}
+
+/// A held clip reads one source frame, whatever its length: true when it is held and that frame is in its media
+/// (thrown when it is not); false for a clip that plays its source.
+private func heldFrameFits(_ clip: NativeProjectClip, _ info: NativeMediaInfo, fps: Double) throws -> Bool {
+    guard let held = clip.holdSourceFrame?.sourceFrame else { return false }
+    guard info.duration.isFinite, held / fps < info.duration else { throw MediaToolError("Clip \(clip.id) holds a frame past the end of its media file") }
+    return true
 }
 
 /// The document as the frames and the mix render it: droppable muted groups removed (their clips keep their picture
@@ -288,7 +305,13 @@ func nativeExportRenderDocument(_ project: NativeProjectDocument, _ media: [Stri
         } }
         out.sequence.audioGroups = out.sequence.audioGroups?.filter { !dropped.contains($0.id) }
     }
-    return nativeDocumentWithNaturalLayouts(out) { $0.naturalSize ?? media[$0.id]?.natural }
+    var rendered = nativeDocumentWithNaturalLayouts(out) { $0.naturalSize ?? media[$0.id]?.natural }
+    // The probed size travels on the asset, as the preview's probed sizes do, so the painter knows a Fill or Stretch
+    // picture's aspect and decodes it at the size it is drawn (PreviewLayer.mediaAspect).
+    for i in rendered.assets.indices where rendered.assets[i].naturalSize == nil {
+        rendered.assets[i].naturalSize = media[rendered.assets[i].id]?.natural
+    }
+    return rendered
 }
 
 /// The document export paints and mixes once its media is probed: visible tracks only, then the render document.

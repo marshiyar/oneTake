@@ -120,19 +120,20 @@ extension LeftSidebarPanel {
     /// New event / New project: the name field and Create / Cancel, on the header's grid.
     func drawNameRow(_ c: CanvasContext, _ cr: (kind: String, field: PanelTextField), top: Double) -> Double {
         let x0 = M.inset, x1 = size.width - M.inset, font = PanelTheme.font(PanelTheme.textXs)
-        let cancelW = c.measureText("Cancel", font: font).width + 20, createW = c.measureText("Create", font: font).width + 20
+        let labels = Self.nameRowLabels(cr.kind)
+        let cancelW = c.measureText("Cancel", font: font).width + 20, createW = c.measureText(labels.confirm, font: font).width + 20
         let cancel = CanvasRect(x: x1 - cancelW, y: top, width: cancelW, height: M.control)
         let create = CanvasRect(x: cancel.x - M.controlGap - createW, y: top, width: createW, height: M.control)
         let field = CanvasRect(x: x0, y: top, width: max(0, create.x - M.controlGap - x0), height: M.control)
         c.fillRoundedRect(field, radius: PanelTheme.radiusMd, PanelTheme.panelInput)
         PanelDraw.focusRing(c, field, radius: PanelTheme.radiusMd)
         let empty = cr.field.draft.isEmpty
-        PanelDraw.text(c, empty ? (cr.kind == "event" ? "Event name" : "Project name") : cr.field.draft, in: field.insetBy(8), font: font,
+        PanelDraw.text(c, empty ? labels.placeholder : cr.field.draft, in: field.insetBy(8), font: font,
                        color: empty ? PanelTheme.text2 : PanelTheme.text0)
         hits.add(field, .createField)
-        let canCreate = !cr.field.draft.trimmingCharacters(in: .whitespaces).isEmpty
+        let canCreate = canConfirmName(cr.field)
         c.fillRoundedRect(create, radius: PanelTheme.radiusMd, canCreate ? PanelTheme.panelHover : PanelTheme.panelInput)
-        PanelDraw.text(c, "Create", in: create, font: font, color: canCreate ? PanelTheme.text1 : PanelTheme.text5, align: .center)
+        PanelDraw.text(c, labels.confirm, in: create, font: font, color: canCreate ? PanelTheme.text1 : PanelTheme.text5, align: .center)
         if canCreate { hits.add(create, .createConfirm) }
         PanelDraw.text(c, "Cancel", in: cancel, font: font, color: hovered == .createCancel ? PanelTheme.text0 : PanelTheme.text2, align: .center)
         hits.add(cancel, .createCancel)

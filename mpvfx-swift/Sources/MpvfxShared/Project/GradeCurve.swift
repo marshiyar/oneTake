@@ -52,11 +52,18 @@ public enum GradeCurve {
         var points: [[Double]] = []
         for p in raw {
             guard p.count == 2, p[0].isFinite, p[1].isFinite else { return [] }
-            let h = (p[0].truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
-            points.append([h, clamp(p[1], limit.lowerBound, limit.upperBound)])
+            points.append([wrapHue(p[0]), clamp(p[1], limit.lowerBound, limit.upperBound)])
         }
         points.sort { $0[0] < $1[0] }
         return zip(points, points.dropFirst()).contains(where: { $0[0] == $1[0] }) ? [] : points
+    }
+
+    /// A hue in degrees wrapped into [0, 360) as `normalizedHue` reads it. Adding 360 rounds most values (106.619
+    /// reads back as 106.61900000000003). For a hue already in [0, 360) the result is a fixed point (wrapping it again
+    /// changes nothing: x + 360 − 360 is exact there), so an editor that stores wrapped hues stores exactly what the
+    /// renderer reads; a hue outside it needs two wraps to reach that point.
+    public static func wrapHue(_ h: Double) -> Double {
+        (h.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
     }
 
     /// A sorted hue curve made periodic: the last two points repeated 360° earlier and the first two 360° later, so the

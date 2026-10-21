@@ -40,7 +40,7 @@ enum MediaPanelFixture {
         .init(id: "A3", name: "interview.mov", kind: "video", eventId: "E", available: false, linked: true),
         .init(id: "A4", name: "day2.mov", kind: "video", eventId: "E2"),
     ]
-    /// One finished export (Save as…) and one still running (no action).
+    /// One finished export (Save to…) and one still running (no action).
     static let exports: [LibraryNavModel.Export] = [
         .init(id: "J1", label: "render-546cccc1-d7d8-473d-8eda-5f0c.mp4", status: "complete"), .init(id: "J2", label: "draft.mp4", status: "running"),
     ]
@@ -80,6 +80,8 @@ final class MediaPanelLayoutAuditTests: XCTestCase {
          ("hover", { $0.hovered = .tile(.media("media/b-roll.mov")) }),
          ("filtered", { $0.filter = MediaFilter(kind: .video, usage: .notInTimeline, sort: .name) }),
          ("naming", { $0.runMoreOption("newEvent") }),
+         ("auditioning video", { $0.audition = AuditionTileState(assetId: "media/b-roll.mov", position: 4, duration: 21) }),
+         ("auditioning audio", { $0.audition = AuditionTileState(assetId: "media/drive.wav", position: 4, duration: 92.5) }),
          ("error", { $0.library.error = "Could not open the library: permission denied for /Volumes/Footage/Untitled.mpvfxlibrary" })]
     }
 
@@ -95,6 +97,8 @@ final class MediaPanelLayoutAuditTests: XCTestCase {
     func nests(_ a: Hit, _ b: Hit) -> Bool {
         switch (a, b) {
         case (.tile(let x), .tileAction(let y)), (.tileAction(let y), .tile(let x)): return x == y
+        case (.tile(let x), .tileAudition(let y)), (.tileAudition(let y), .tile(let x)): return x == y
+        case (.tile(let x), .auditionBar(let y)), (.auditionBar(let y), .tile(let x)): return x == y
         case (.search, .clearSearch), (.clearSearch, .search): return true
         default: return false
         }
@@ -332,7 +336,7 @@ final class MediaPanelInteractionTests: XCTestCase {
         let s = MediaPanelFixture.panel()
         let cases: [(MediaTileRef, [String])] = [
             (.media("media/b-roll.mov"), ["Add at playhead", "Copy path", "Rename", "Delete"]), (.media("media/Inter.ttf"), ["Copy path", "Rename", "Delete"]),
-            (.library("A2"), ["Add to timeline"]), (.library("A3"), ["Relink…"]), (.export("J1"), ["Save as…"]),
+            (.library("A2"), ["Add to timeline"]), (.library("A3"), ["Relink…"]), (.export("J1"), ["Save to…"]),
         ]
         for (ref, labels) in cases {
             _ = drawn(s)
@@ -423,14 +427,14 @@ final class MediaPanelInteractionTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(r.y, s.binRect.y - 0.01); XCTAssertLessThanOrEqual(r.maxY, s.binRect.maxY + 0.01)
     }
 
-    /// Tab walks the controls left to right, top to bottom, then enters the grid at one tile; Enter presses the
+    /// Tab walks the controls left to right, top to bottom (the tab bar first, one stop), then enters the grid at one tile; Enter presses the
     /// focused control.
     func testTabWalksTheControlsThenTheGrid() throws {
         let s = MediaPanelFixture.panel()
         _ = drawn(s)
         var order: [LeftSidebarPanel.Hit] = []
-        for _ in 0..<8 { _ = s.keyDown(EditorKey(.tab)); _ = drawn(s); if let f = s.focus.current { order.append(f) } }
-        XCTAssertEqual(order, [.hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .tile(.media("media/\(MediaPanelFixture.long)"))])
+        for _ in 0..<9 { _ = s.keyDown(EditorKey(.tab)); _ = drawn(s); if let f = s.focus.current { order.append(f) } }
+        XCTAssertEqual(order, [.tab(.assets), .hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .tile(.media("media/\(MediaPanelFixture.long)"))])
         XCTAssertEqual(s.selected, .media("media/\(MediaPanelFixture.long)"), "entering the grid selects its tile")
         for _ in 0..<5 { _ = s.keyDown(EditorKey(.tab, shift: true)) }
         XCTAssertEqual(s.focus.current, .switcher)

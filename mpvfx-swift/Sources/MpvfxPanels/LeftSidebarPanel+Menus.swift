@@ -79,6 +79,7 @@ extension LeftSidebarPanel {
         guard library.available, activeLibrary != nil else { return o }
         let busy = library.busy, g = "Library"
         o += [Option(value: "newEvent", label: "New event…", group: g, disabled: busy),
+              Option(value: "renameEvent", label: "Rename event…", group: g, disabled: !canRename("renameEvent")),
               Option(value: "importIntoEvent", label: "Import into \(activeEvent?.name ?? "event")…", group: g, disabled: busy || activeEvent == nil),
               Option(value: "storage:managed", label: "Copy files into the library", group: g, checked: !linkedImport),
               Option(value: "storage:linked", label: "Link to the original files", group: g, checked: linkedImport),
@@ -92,6 +93,7 @@ extension LeftSidebarPanel {
             Option(value: "project:\($0.id)", label: $0.name, group: g, checked: $0.id == library.currentProjectId, disabled: busy)
         }
         if library.available, activeLibrary != nil { o.append(Option(value: "newProject", label: "New project…", group: g, disabled: busy || activeEvent == nil)) }
+        if library.available, activeLibrary != nil { o.append(Option(value: "renameProject", label: "Rename project…", group: g, disabled: !canRename("renameProject"))) }
         o.append(Option(value: "openProject", label: "Open project…", group: g, disabled: busy))
         if !library.isStandalone { o.append(Option(value: "standalone", label: "Open existing standalone project", group: g, disabled: busy)) }
         return o
@@ -111,6 +113,7 @@ extension LeftSidebarPanel {
         switch v {
         case "newLibrary": onLibrary?(.createLibrary)
         case "openLibrary": onLibrary?(.openLibrary)
+        case "renameEvent": startRename(v)
         case "newEvent": creating = ("event", PanelTextField(key: "create", value: ""))
         case "importIntoEvent": if let l, let e = activeEvent { onLibrary?(.importIntoEvent(libraryId: l.id, eventId: e.id, linked: linkedImport)) }
         case "storage:managed", "storage:linked": linkedImport = v == "storage:linked"
@@ -122,6 +125,7 @@ extension LeftSidebarPanel {
 
     func runProjectOption(_ v: String) {
         switch v {
+        case "renameProject": startRename(v)
         case "newProject": creating = ("project", PanelTextField(key: "create", value: ""))
         case "openProject": onLibrary?(.openProject)
         case "standalone": onLibrary?(.openStandalone)
@@ -180,7 +184,7 @@ extension LeftSidebarPanel {
         switch ref {
         case .media(let id): return mediaItem(id).map(mediaEntries) ?? []
         case .library(let id): return libraryAsset(id).map(libraryEntries) ?? []
-        case .export(let id): return export(id)?.status == "complete" ? [MenuEntry(label: "Save as…", shortcut: "Enter", action: .primary)] : []
+        case .export(let id): return export(id)?.status == "complete" ? [MenuEntry(label: "Save to…", shortcut: "Enter", action: .primary)] : []
         }
     }
 
@@ -305,15 +309,6 @@ extension LeftSidebarPanel {
         default: break
         }
         return false
-    }
-
-    func confirmCreate() {
-        guard let cr = creating, let l = activeLibrary else { return }
-        let name = cr.field.draft.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        if cr.kind == "event" { onLibrary?(.createEvent(libraryId: l.id, name: name)) }
-        else if let e = activeEvent { onLibrary?(.createProject(libraryId: l.id, eventId: e.id, name: name)) }
-        creating = nil
     }
 
     func commitRename() {

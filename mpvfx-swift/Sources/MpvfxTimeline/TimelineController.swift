@@ -42,6 +42,10 @@ public final class TimelineController {
     public static let splitEpsilon = 1e-3
     /// The last ⌘C / ⌘X. It outlives a project switch in the window, so clips paste into the other project.
     public internal(set) var clipboard: TimelineClipboard?
+    /// The last grade copied with ⌥⌘C. It is intentionally separate from the ordinary clip clipboard.
+    public internal(set) var gradeClipboard: TimelineGradeClipboard?
+    /// Actionable status for menus, tooltips, and the host status line.
+    public private(set) var gradePasteStatus = "Copy a grade before pasting"
     /// Timeline snapping (clip edges, playhead, beats) for moves and trims; N toggles it.
     public var snapEnabled = true { didSet { if snapEnabled != oldValue { onSnapChange?(snapEnabled) } } }
     /// Magnet toggled (N / toolbar); hosts persist it (studioUiPreferences timelineSnapEnabled).
@@ -98,6 +102,10 @@ public final class TimelineController {
     public var importForPaste: ((_ paths: [String], _ done: @escaping ([String: String]?) -> Void) -> Void)?
     /// T: put a text layer at the playhead (the host adds it and opens its Text section). Unset: T does nothing.
     public var onAddText: ((_ time: Double) -> Void)?
+    /// ⇧H / ⌥⇧H: how long a new hold lasts, in seconds (the host sets it from Settings).
+    public var holdSeconds = TimelineEditor.defaultHoldSeconds
+    /// An edit key was refused, with the reason to show (a locked track, no clip under the playhead). Unset: silent.
+    public var onEditRefused: ((_ message: String) -> Void)?
     /// Keyframe menu "Edit Easing…": show the inspector's easing editor on these keys of the clip. Unset: the item is
     /// disabled.
     public var onEditKeyframeEasing: ((_ clipId: String, _ refs: Set<TimelineKeyframeRef>) -> Void)?
@@ -113,7 +121,7 @@ public final class TimelineController {
             let before = all[..<first].filter { t in visible.contains { $0.id == t.id } }.count
             return (g.id, before)
         }
-        view.tracks = visible
+        view.tracks = visible; view.allTracks = all
         // useAutoExpandKeyframedClips: expand a clip when it first gains property lanes.
         let laned = Set(all.flatMap(\.clips).filter { !$0.lanes.isEmpty }.map(\.id))
         view.expandedClips.formUnion(laned.subtracting(clipsWithLanes))
@@ -148,12 +156,20 @@ public final class TimelineController {
 
     /// Zoom keeping the time under `anchorX` fixed on screen.
     public func setZoom(percent: Double, anchorX: Double? = nil) {
+        applyZoom(TimelineZoom.clamp(percent, fit: fitPixelsPerSecond), anchorX: anchorX)
+    }
+    func applyZoom(_ clampedPercent: Double, anchorX: Double?) {
         let ax = anchorX ?? TimelineLayout.contentOrigin
         let anchorTime = view.time(forX: ax)
-        zoomMode = .manual; manualZoomPercent = TimelineZoom.clamp(percent, fit: fitPixelsPerSecond)
+        zoomMode = .manual; manualZoomPercent = clampedPercent
         view.pixelsPerSecond = TimelineZoom.pixelsPerSecond(fit: fitPixelsPerSecond, mode: zoomMode, manual: manualZoomPercent)
         view.scrollX = TimelineLayout.contentOrigin + anchorTime * view.pixelsPerSecond - ax
         clampScroll(); onZoomChange?(zoomMode, manualZoomPercent); needsDisplay?()
+    }
+    /// Zoom to an exact absolute scale (within the zoom limits), whatever the fit is at this viewport and duration.
+    public func setZoom(pixelsPerSecond pps: Double, anchorX: Double? = nil) {
+        let fit = fitPixelsPerSecond
+        applyZoom(TimelineZoom.clamp(pps / max(fit, 1e-9) * 100, fit: fit, rounded: false), anchorX: anchorX)
     }
     public func zoom(in dirIn: Bool) { setZoom(percent: TimelineZoom.next(dirIn, mode: zoomMode, manual: manualZoomPercent, fit: fitPixelsPerSecond)) }
     public func zoomToFit() { zoomMode = .fit; view.scrollX = 0; relayout(); onZoomChange?(zoomMode, manualZoomPercent) }
@@ -289,7 +305,7 @@ public final class TimelineController {
         if keyframeGesture != nil { keyframePointerMove(x: x); return }
         guard let g = gesture else {
             if tool == .select, keyframeHover(x: x, y: y) { return }
-            let hit = hitTest(x: x, y: y)
+            let hit = hitTest(x: x, y: y); updateHeaderHover(hit, x: x, y: y)
             var hovered: String?; var cur = Cursor.normal
             if case let .clip(id, _, edge) = hit { hovered = id; cur = edge != nil ? .resize : .pointer }
             if hovered != view.hoveredClip || cur != cursor { view.hoveredClip = hovered; cursor = cur; needsDisplay?() }
@@ -379,8 +395,9 @@ public final class TimelineController {
         }
     }
 
-    /// Wheel: Ctrl/⌘ = pinch zoom at the pointer, Shift = horizontal scroll, else vertical scroll
-    /// (horizontal deltas from touchpads scroll horizontally).
+    /// Wheel: `ctrl` (the host's zoom modifier: ⌘, Ctrl or Option / Alt held, or a pinch; `PointerModifiers.zoomsWheel`)
+    /// zooms at the pointer, Shift = horizontal scroll, else vertical scroll (horizontal deltas from touchpads scroll
+    /// horizontally).
     public func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) {
         if ctrl {
             setZoom(percent: TimelineZoom.pinch(deltaY: dy, mode: zoomMode, manual: manualZoomPercent, fit: fitPixelsPerSecond), anchorX: max(x, TimelineLayout.contentOrigin))
@@ -393,23 +410,26 @@ public final class TimelineController {
     // MARK: Keyboard (timeline-owned edit shortcuts; playback keys fall through to PlaybackState)
 
     @discardableResult public func keyDown(_ k: EditorKey) -> Bool {
+        if case .function(9) = k.code { return easyEaseSelectedKeyframes(k) }
         if k.command, case .char(let ch) = k.code {
             switch Character(ch.lowercased()) {
             case "z":
                 view.selectedKeyframes = []   // keyframeHistoryState: undo/redo clear the key selection
                 return k.shift ? (editor?.redo() ?? false) : (editor?.undo() ?? false)
             case "y" where !k.meta: return editor?.redo() ?? false
-            case "=", "+": zoom(in: true); return true
-            case "-": zoom(in: false); return true
-            case "0": zoomToFit(); return true
+            case "=", "+", "-", "0": return zoomKey(Character(ch.lowercased()))
             case "a" where !k.shift && !k.alt: return selectAll()
             case "d" where !k.shift && !k.alt: return duplicateSelection()
+            case "c" where k.alt: return copyGradeSelection()
+            case "v" where k.alt: return pasteGradeSelection()
             case "c": return copySelection()
             case "x": guard copySelection() else { return false }; return deleteSelection()
             case "v": return pasteClipboard()
+            case "k" where !k.alt: return keySelectedProperties(animatedOnly: k.shift)
             default: return false
             }
         }
+        if let held = holdKey(k) { return held }
         if !k.command && !k.alt {
             switch k.code {
             case .delete where !view.selectedKeyframes.isEmpty, .backspace where !view.selectedKeyframes.isEmpty:
@@ -472,6 +492,35 @@ public final class TimelineController {
     @discardableResult public func copySelection() -> Bool {
         guard let editor, !view.selection.isEmpty, let board = editor.copyClips(view.selection) else { return false }
         clipboard = board; return true
+    }
+
+    @discardableResult public func copyGradeSelection() -> Bool {
+        guard let editor, let id = view.selection.first, let board = editor.copyGrade(id) else {
+            gradePasteStatus = "Select a video or image clip with a grade to copy"; return false
+        }
+        gradeClipboard = board; gradePasteStatus = "Grade copied"; needsDisplay?(); return true
+    }
+
+    @discardableResult public func pasteGradeSelection() -> Bool {
+        guard let editor, let board = gradeClipboard else { gradePasteStatus = "Copy a grade before pasting"; return false }
+        guard !view.selection.isEmpty else { gradePasteStatus = "Select at least one video or image clip to paste a grade"; return false }
+        let selection = view.selection
+        let files = editor.filesToImport(board)
+        guard let importForPaste, !files.isEmpty else { return finishGradePaste(board, onto: selection) }
+        let projectId = editor.document.id, dir = editor.projectDirectory
+        importForPaste(files) { [weak self] copies in
+            guard let self, let copies, let editor = self.editor, editor.document.id == projectId, editor.projectDirectory == dir else { return }
+            _ = self.finishGradePaste(board.rebased(copies), onto: selection)
+        }
+        return true
+    }
+
+    @discardableResult private func finishGradePaste(_ board: TimelineGradeClipboard, onto ids: Set<String>) -> Bool {
+        guard let editor else { return false }
+        guard let result = editor.pasteGrade(board, onto: ids) else {
+            gradePasteStatus = editor.lastFailure?.message ?? "The grade could not be pasted"; needsDisplay?(); return false
+        }
+        gradePasteStatus = result.message; needsDisplay?(); return true
     }
 
     /// Pastes at the playhead onto `trackId`; nil = onto the track of the topmost selected clip, or with nothing

@@ -68,26 +68,61 @@ public enum ThemeAppearance: String, Sendable, CaseIterable {
     }
 }
 
-/// The current mode and its change observers. Set it from the main thread; drawing code reads it.
+/// The current mode and its change observers. Mutations and callbacks stay on the main thread;
+/// drawing code may read the mode from any thread.
 public enum Theme {
-    public private(set) static var mode: ThemeMode = .dark
-    private static var observers: [(id: Int, fn: (ThemeMode) -> Void)] = []
-    private static var nextObserver = 0
+    private static let state = State()
+    public static var mode: ThemeMode { state.mode }
 
-    /// Switches the mode and tells the observers (only when it changes).
-    public static func setMode(_ m: ThemeMode) {
-        guard m != mode else { return }
-        mode = m
-        for o in observers { o.fn(m) }
-    }
-    /// Calls `fn` after every mode change. Returns an id for `removeObserver`.
+    /// On the main thread, switches the mode and synchronously tells observers only when it changes.
+    public static func setMode(_ m: ThemeMode) { state.setMode(m) }
+    /// On the main thread, registers `fn` for subsequent changes. Returns an id for `removeObserver`.
     @discardableResult
     public static func addObserver(_ fn: @escaping (ThemeMode) -> Void) -> Int {
-        nextObserver += 1
-        observers.append((nextObserver, fn))
-        return nextObserver
+        state.addObserver(fn)
     }
-    public static func removeObserver(_ id: Int) { observers.removeAll { $0.id == id } }
+    /// Removes an observer on the main thread.
+    public static func removeObserver(_ id: Int) { state.removeObserver(id) }
+
+    // SAFETY: storedMode is accessed only under modeLock. Observers (including their non-Sendable
+    // captures) and nextObserver are accessed only after a main-thread precondition. Native GTK,
+    // AppKit and Win32 callbacks use this synchronous API without requiring actor-isolated callers.
+    private final class State: @unchecked Sendable {
+        private let modeLock = NSLock()
+        private var storedMode: ThemeMode = .dark
+        private var observers: [(id: Int, fn: (ThemeMode) -> Void)] = []
+        private var nextObserver = 0
+
+        var mode: ThemeMode {
+            modeLock.lock()
+            defer { modeLock.unlock() }
+            return storedMode
+        }
+
+        func setMode(_ m: ThemeMode) {
+            precondition(Thread.isMainThread, "Theme mutations must run on the main thread")
+            guard m != mode else { return }
+            modeLock.lock()
+            storedMode = m
+            modeLock.unlock()
+            // Snapshot before delivery: callbacks may read tokens, change subscriptions or switch
+            // mode again. No lock is held while calling user code; the current delivery keeps its order.
+            let delivery = observers
+            for o in delivery { o.fn(m) }
+        }
+
+        func addObserver(_ fn: @escaping (ThemeMode) -> Void) -> Int {
+            precondition(Thread.isMainThread, "Theme observers must be registered on the main thread")
+            nextObserver += 1
+            observers.append((nextObserver, fn))
+            return nextObserver
+        }
+
+        func removeObserver(_ id: Int) {
+            precondition(Thread.isMainThread, "Theme observers must be removed on the main thread")
+            observers.removeAll { $0.id == id }
+        }
+    }
 }
 
 /// A token's two values.
@@ -177,6 +212,9 @@ public enum ThemeTokens {
     public static let panelBorderPair = ThemePair(0x000000, 0xC8C8CE)
     public static let panelBorderInputPair = ThemePair(0x333333, 0xB4B4BC)
     public static let panelHairlinePair = ThemePair(0x141414, 0xDCDCE0)
+    /// The checkerboard behind a transparent colour (colour swatches, the picker's alpha bar): 4 pt cells of the two.
+    public static let checkerLightPair = ThemePair(0x3A3A3A, 0xFFFFFF)
+    public static let checkerDarkPair = ThemePair(0x262626, 0xD4D4D8)
     /// Panel text ramp (text0 strongest). Light values keep each step at or above its dark contrast.
     public static let textPairs: [ThemePair] = [
         ThemePair(0xFAFAFA, 0x09090B), ThemePair(0xE4E4E7, 0x27272A), ThemePair(0xA1A1AA, 0x4A4A52),
@@ -190,6 +228,14 @@ public enum ThemeTokens {
     /// Timeline lanes (rowBackground) and track headers (gutterBackground).
     public static let timelineRowPair = ThemePair(0x1D1D1D, 0xFFFFFF)
     public static let timelineGutterPair = ThemePair(0x212121, 0xEFEFF2)
+    /// Track header controls (docs/DESIGN.md step 4) on `timelineGutterPair`: an idle lock, eye, speaker or solo glyph
+    /// (3:1, a control), and the track tag's text when the track is not targeted (4.5:1). A control that is on, and a
+    /// targeted tag's fill, use `mintPair`; a targeted tag's text uses `onAccentMintPair`.
+    public static let trackControlIdlePair = ThemePair(0x8C8C8C, 0x6E6E73)
+    public static let trackTagTextPair = ThemePair(0xB4B4B4, 0x46464C)
+    /// The 1 px outline of an untargeted track tag, and the wash under a header control in the pointer.
+    public static let trackTagOutlinePair = ThemePair(0x4A4A4A, 0xC4C4CA)
+    public static let trackControlHoverPair = ThemePair(0x2E2E2E, 0xDCDCE1)
     /// Timeline clip fill by media kind (docs/DESIGN.md), at rest and under the pointer. Light fills are mid tones that
     /// stand out from the white lanes and still carry dark ink at 4.5:1.
     public static let clipVideoPair = ThemePair(0x1D4A64, 0x8FBDE2), clipVideoHoverPair = ThemePair(0x245A79, 0x7BB0DA)
@@ -239,6 +285,12 @@ public enum ThemeTokens {
     public static let nativeRangeTrack = ThemeColor(0xEFEFEF), nativeRangeEdge = ThemeColor(0xB2B2B2)
     /// Smart guides and spacing marks (magenta, both modes).
     public static let guide = ThemeColor(0xFF44CC)
+    /// Video scopes draw on black in both modes: the luma trace, the R/G/B traces, the vectorscope trace, the
+    /// graticule ink, the skin-tone line and the clipping marks.
+    public static let scopeLuma = ThemeColor(0xE2E8F0), scopeRed = ThemeColor(0xF87171)
+    public static let scopeGreen = ThemeColor(0x4ADE80), scopeBlue = ThemeColor(0x60A5FA)
+    public static let scopeVector = ThemeColor(0x6EE7B7), scopeInk = ThemeColor(0xFFFFFF)
+    public static let scopeSkin = ThemeColor(0xFBBF24), scopeClip = ThemeColor(0xFF3B30)
     /// Timeline band edge colours (identity, both modes).
     public static let bandEdges: [ThemeColor] = [0x3CE6AC, 0x5BA6FF, 0xBE77FF, 0xFFB04D, 0xFF6799].map { ThemeColor($0) }
     /// Timeline pre-roll stripe (preRollBackground).
