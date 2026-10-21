@@ -205,11 +205,11 @@ public final class TimelineController {
             let t = view.time(forX: x)
             if let c = view.tracks[row].clips.last(where: { t >= $0.start && t <= $0.end }) {
                 let used = Double(c.effects.count) * TimelineLayout.effectStripHeight
-                    + Double(view.laneRows(c).count) * TimelineLayout.laneHeight
+                    + (c.lanes.isEmpty ? 0 : Double(view.trackLaneRows(row).count)) * TimelineLayout.laneHeight
                 let effTop = Double(view.effectLaneCount(track: row)) * TimelineLayout.effectStripHeight
                 let off = localY - view.trackHeight
                 let inEffects = off < Double(c.effects.count) * TimelineLayout.effectStripHeight
-                let inLanes = off >= effTop && off < effTop + Double(view.laneRows(c).count) * TimelineLayout.laneHeight
+                let inLanes = !c.lanes.isEmpty && off >= effTop && off < effTop + Double(view.trackLaneRows(row).count) * TimelineLayout.laneHeight
                 if used > 0 && (inEffects || inLanes) { return .clipExtra(id: c.id, row: row) }
             }
             return .empty(row: row)

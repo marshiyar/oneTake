@@ -73,24 +73,51 @@ extension TimelineView {
         }
     }
 
-    /// The clip whose rows a track's header column labels: the selected clip with keys, else the one with most rows.
-    func headerClip(track i: Int) -> TimelineClipModel? {
-        guard tracks.indices.contains(i) else { return nil }
-        let keyed = tracks[i].clips.filter { !$0.lanes.isEmpty }
-        return keyed.first { selection.contains($0.id) } ?? keyed.max { laneRows($0).count < laneRows($1).count }
-    }
-
     /// Top of the first lane row of track `i` (view coordinates).
     func laneBase(track i: Int) -> Double {
         rowTop(i) + trackHeight + Double(effectLaneCount(track: i)) * TimelineLayout.effectStripHeight
     }
 
-    /// The lane row under a view-space y on track `i`, for `clip`.
-    func laneRow(_ clip: TimelineClipModel, track i: Int, y: Double) -> (row: TimelineLaneRow, top: Double)? {
-        let base = laneBase(track: i), rows = laneRows(clip)
+    /// The rows of track `i`: every row any of its clips shows, in one order (summary, then each kind's row and
+    /// its properties), so a row means the same property under every clip of the track and the header labels
+    /// all of them.
+    public func trackLaneRows(_ i: Int) -> [TimelineLaneRow] {
+        guard tracks.indices.contains(i) else { return [] }
+        return Array(Set(tracks[i].clips.flatMap { laneRows($0) })).sorted { Self.rank($0) < Self.rank($1) }
+    }
+
+    static func rank(_ row: TimelineLaneRow) -> (Int, Int, Int, String) {
+        switch row {
+        case .summary: (-1, 0, 0, "")
+        case .kind(let k): (k.order, 0, 0, "")
+        case .property(let g): (TimelineKeyframeCatalog.kind(ofGroup: g).order, 1, TimelineKeyframeCatalog.order(ofGroup: g), g)
+        }
+    }
+
+    /// The clip a header row of track `i` speaks for: the selected clip showing it, else the first that does.
+    func rowOwner(_ row: TimelineLaneRow, track i: Int) -> TimelineClipModel? {
+        guard tracks.indices.contains(i) else { return nil }
+        let showing = tracks[i].clips.filter { laneRows($0).contains(row) }
+        return showing.first { selection.contains($0.id) } ?? showing.first
+    }
+
+    /// The track row under a view-space y on track `i`, with its top.
+    func trackLaneRow(track i: Int, y: Double) -> (row: TimelineLaneRow, top: Double)? {
+        let base = laneBase(track: i), rows = trackLaneRows(i)
         let j = Int(((y - base) / TimelineLayout.laneHeight).rounded(.down))
         guard y >= base, rows.indices.contains(j) else { return nil }
         return (rows[j], base + Double(j) * TimelineLayout.laneHeight)
+    }
+
+    /// The lane row under a view-space y on track `i`, when `clip` shows it.
+    func laneRow(_ clip: TimelineClipModel, track i: Int, y: Double) -> (row: TimelineLaneRow, top: Double)? {
+        guard let hit = trackLaneRow(track: i, y: y), laneRows(clip).contains(hit.row) else { return nil }
+        return hit
+    }
+
+    /// Top of `row` on track `i` (view coordinates); nil when the track does not show it.
+    func laneTop(_ row: TimelineLaneRow, track i: Int) -> Double? {
+        trackLaneRows(i).firstIndex(of: row).map { laneBase(track: i) + Double($0) * TimelineLayout.laneHeight }
     }
 
     // MARK: Disclosure (the summary row and kind rows in the header column)
@@ -103,7 +130,7 @@ extension TimelineView {
 
     /// The summary or kind row whose disclosure caret is under (x, y) on track `i`.
     func laneDisclosure(atX x: Double, y: Double, track i: Int) -> (clip: TimelineClipModel, row: TimelineLaneRow)? {
-        guard x < TimelineLayout.labelColumnWidth, let clip = headerClip(track: i), let hit = laneRow(clip, track: i, y: y) else { return nil }
+        guard x < TimelineLayout.labelColumnWidth, let hit = trackLaneRow(track: i, y: y), let clip = rowOwner(hit.row, track: i) else { return nil }
         switch hit.row {
         case .property: return nil
         case .summary, .kind:

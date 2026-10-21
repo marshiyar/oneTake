@@ -45,7 +45,7 @@ extension TimelineView {
     }
     public func expandedLaneCount(track i: Int) -> Int {
         guard tracks.indices.contains(i) else { return 0 }
-        return tracks[i].clips.map { laneRows($0).count }.max() ?? 0
+        return trackLaneRows(i).count
     }
     public func trackRowHeight(_ i: Int) -> Double {
         trackHeight + Double(effectLaneCount(track: i)) * BL.effectStripHeight + Double(expandedLaneCount(track: i)) * BL.laneHeight
@@ -107,7 +107,9 @@ extension TimelineView {
             }
         }
         let laneTop = base + Double(effectLaneCount(track: i)) * BL.effectStripHeight
-        for (j, row) in laneRows(clip).enumerated() {
+        let rows = trackLaneRows(i)
+        for row in laneRows(clip) {
+            guard let j = rows.firstIndex(of: row) else { continue }
             let lr = CanvasRect(x: r.x, y: laneTop + Double(j) * BL.laneHeight, width: r.width, height: BL.laneHeight)
             // The summary and kind rows sit on a slightly stronger wash than the property rows under them.
             c.fillRect(lr, CanvasColor(ThemeTokens.white.alpha(row == .summary ? 0.045 : 0.025)))
@@ -116,13 +118,13 @@ extension TimelineView {
         }
     }
 
-    /// The header column of a track's lane rows (for `headerClip`): the summary row's disclosure and "Keyframes",
-    /// each kind row's disclosure, mark and name, each property row's spine, mark and label; then ‹ ◆ ›.
+    /// The header column of a track's lane rows (each row for its `rowOwner`): the summary row's disclosure and
+    /// "Keyframes", each kind row's disclosure, mark and name, each property row's spine, mark and label; then ‹ ◆ ›.
     func drawLaneHeaders(_ c: CanvasContext, track i: Int, top: Double) {
-        guard let clip = headerClip(track: i) else { return }
-        let rows = laneRows(clip)
+        let rows = trackLaneRows(i)
         let base = top + trackHeight + Double(effectLaneCount(track: i)) * BL.effectStripHeight
         for (j, row) in rows.enumerated() {
+            guard let clip = rowOwner(row, track: i) else { continue }
             let y = base + Double(j) * BL.laneHeight
             c.fillRect(CanvasRect(x: 0, y: y, width: BL.labelColumnWidth, height: BL.laneHeight), theme.gutterBackground)
             drawLaneHeaderLabel(c, clip, row, y: y)

@@ -167,9 +167,9 @@ extension TimelineView {
             for clip in track.clips {
                 let r = clipRect(track: i, clip, preview: false)
                 if r.width >= 20 { add(clip, scope: nil, barX: r.x, cy: r.y + r.height / 2) }
-                let base = laneBase(track: i)
-                for (j, row) in laneRows(clip).enumerated() {
-                    add(clip, scope: rowScope(row, clip), barX: r.x, cy: base + Double(j) * TimelineLayout.laneHeight + TimelineLayout.laneHeight / 2)
+                for row in laneRows(clip) {
+                    guard let top = laneTop(row, track: i) else { continue }
+                    add(clip, scope: rowScope(row, clip), barX: r.x, cy: top + TimelineLayout.laneHeight / 2)
                 }
             }
         }
