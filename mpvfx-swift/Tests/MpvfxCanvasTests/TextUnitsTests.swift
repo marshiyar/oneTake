@@ -61,6 +61,10 @@ final class TextUnitsTests: XCTestCase {
             let u = TextLayout.units(b, width: 380, on: c)
             XCTAssertEqual(u.clusters.map(\.range.lowerBound), u.clusters.map(\.range.lowerBound).sorted())
             XCTAssertGreaterThan(try XCTUnwrap(u.clusters.first).rect.x, try XCTUnwrap(u.clusters.last).rect.x)
+            // A one-character directional run has two carets at each boundary; neither may collapse its box.
+            let mixed = c.textUnits("aשb", font: .mono(22))
+            XCTAssertEqual(mixed.count, 3)
+            XCTAssertTrue(mixed.allSatisfy { $0.rect.width > 0 })
         }
     }
     func testSourceOffsetsSurviveRepeatedWordsWrappingBlankLinesAndSpacing() throws {

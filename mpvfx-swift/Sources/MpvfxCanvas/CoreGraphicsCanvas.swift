@@ -125,9 +125,10 @@ public final class CoreGraphicsCanvas: CanvasContext {
             let primaryEnd = CTLineGetOffsetForStringIndex(shaped, range.upperBound, &secondaryEnd)
             // At bidi transitions Core Text returns two caret positions. Use the adjacent pair,
             // rather than a primary caret belonging to the neighbouring directional run.
-            let pair = [(primaryStart, primaryEnd), (primaryStart, secondaryEnd),
-                        (secondaryStart, primaryEnd), (secondaryStart, secondaryEnd)]
-                .min { abs($0.1 - $0.0) < abs($1.1 - $1.0) }!
+            let candidates = [(primaryStart, primaryEnd), (primaryStart, secondaryEnd),
+                              (secondaryStart, primaryEnd), (secondaryStart, secondaryEnd)]
+            let pair = candidates.filter { abs($0.1 - $0.0) > 1e-9 }
+                .min { abs($0.1 - $0.0) < abs($1.1 - $1.0) } ?? (primaryStart, primaryEnd)
             let start = pair.0, end = pair.1
             return TextUnit(range: range, rect: CanvasRect(x: Double(min(start, end)), y: 0,
                                                           width: Double(abs(end - start)), height: font.size))
