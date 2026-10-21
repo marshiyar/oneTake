@@ -1,0 +1,223 @@
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of MpVFX.
+//
+// Copyright (c) 2026 Arshiya Rahgozar.
+//
+// Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0) or the MIT license (LICENSE-MIT
+// or http://opensource.org/licenses/MIT), at your option.
+//
+// SPDX-License-Identifier: MIT OR Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+import Foundation
+
+/// Scope analysis on the CPU: one pass over the frame fills the waveform (Y, R, G, B per column) and the
+/// vectorscope; the histograms are the waveform summed over its columns. Rows are split across worker threads, each
+/// with its own counters, merged at the end, so the result does not depend on the number of workers. Safe to call
+/// from any thread; it never touches the UI.
+public enum ScopeEngine {
+    public static func analyze(_ frame: ScopeFrame, options: ScopeOptions = ScopeOptions()) -> ScopeAnalysis {
+        let plan = ScopePlan(frame: frame, options: options.resolved)
+        let workers = workerCount(plan)
+        let store = ScopeAccumulators(count: workers, plan: plan)
+        defer { store.release() }
+        let chunk = (plan.sampledHeight + workers - 1) / workers
+        frame.rgba.withUnsafeBufferPointer { px in
+            let pixels = ScopePixels(base: px)
+            DispatchQueue.concurrentPerform(iterations: workers) { w in
+                let lo = w * chunk, hi = min(plan.sampledHeight, lo + chunk)
+                guard lo < hi else { return }
+                accumulate(plan, pixels, rows: lo..<hi, into: store.block(w))
+            }
+        }
+        return store.merged()
+    }
+
+    /// Below this many samples per thread, zeroing and merging another worker's counters costs more than it saves.
+    static let samplesPerWorker = 131_072
+    /// All workers' counters together stay within this many bytes (the default settings use 2.4 MB per worker).
+    static let accumulatorBudget = 64 << 20
+
+    /// Threads for `plan`: the option's count, at most one per row and per `samplesPerWorker` samples, and no more
+    /// than `accumulatorBudget` holds; always at least one.
+    static func workerCount(_ plan: ScopePlan) -> Int {
+        let byMemory = accumulatorBudget / (plan.blockCount * MemoryLayout<UInt32>.size)
+        let bySamples = plan.sampledWidth * plan.sampledHeight / samplesPerWorker
+        return max(1, min(plan.options.workers, plan.sampledHeight, bySamples, byMemory))
+    }
+
+    /// The smallest step s with ceil(width / s) x ceil(height / s) <= maxSamples (1 when the frame fits).
+    public static func samplingStep(width: Int, height: Int, maxSamples: Int) -> Int {
+        var s = 1
+        while ((width + s - 1) / s) * ((height + s - 1) / s) > max(1, maxSamples) { s += 1 }
+        return s
+    }
+
+    /// One worker: its share of the sampled rows, into its own counters.
+    static func accumulate(_ plan: ScopePlan, _ pixels: ScopePixels, rows: Range<Int>, into block: ScopeBlock) {
+        var pass = ScopePass(plan: plan, pixels: pixels.base, block: block)
+        for sy in rows { pass.count(row: sy) }
+        block.counters[0] = pass.samples; block.counters[1] = pass.outside
+    }
+}
+
+/// One worker's walk over its rows. Luma is the standard's decimal arithmetic (`ScopeMatrix.lumaLevel`); the colour
+/// difference is a sum of per-code tables in vectorscope bins x 2^32, rounded once (`ScopeChroma`).
+struct ScopePass {
+    let px: UnsafeBufferPointer<UInt8>, columnStart: UnsafePointer<Int>, t: UnsafePointer<Int>
+    let wave: UnsafeMutablePointer<UInt32>, vec: UnsafeMutablePointer<UInt32>
+    let weights: (r: Int, g: Int, b: Int), radius: Int, side: Int
+    let rowBytes: Int, step: Int, sampledWidth: Int
+    var samples = 0, outside = 0
+
+    init(plan: ScopePlan, pixels: UnsafeBufferPointer<UInt8>, block: ScopeBlock) {
+        px = pixels; columnStart = block.columnStart; t = block.tables; wave = block.wave; vec = block.vector
+        weights = plan.weights
+        radius = plan.radius; side = plan.side
+        rowBytes = plan.width * 4; step = plan.step; sampledWidth = plan.sampledWidth
+    }
+
+    mutating func count(row sy: Int) {
+        var o = sy * step * rowBytes
+        let stride = step * 4
+        for sx in 0..<sampledWidth {
+            if px[o + 3] != 0 { add(at: o, column: columnStart[sx]) }
+            o += stride
+        }
+    }
+
+    @inline(__always)
+    mutating func add(at o: Int, column w: Int) {
+        let r = Int(px[o]), g = Int(px[o + 1]), b = Int(px[o + 2])
+        let y = ScopeMatrix.lumaLevel(weights, r, g, b)
+        wave[(w + y) << 2] &+= 1; wave[(w + r) << 2 + 1] &+= 1; wave[(w + g) << 2 + 2] &+= 1; wave[(w + b) << 2 + 3] &+= 1
+        let d = ScopeChroma.offsets(t, r, g, b)
+        let col = radius + d.cb, row = radius - d.cr
+        if col >= 0, col < side, row >= 0, row < side { vec[row * side + col] &+= 1 } else { outside += 1 }
+        samples += 1
+    }
+}
+
+/// Everything the pass needs, computed once per frame.
+struct ScopePlan: Sendable {
+    let options: ScopeOptions
+    let width: Int, height: Int, step: Int, sampledWidth: Int, sampledHeight: Int
+    let columns: Int, radius: Int, side: Int
+    let weights: (r: Int, g: Int, b: Int)
+    /// Cb then Cr contribution of each R, G and B code, in vectorscope bins x 2^32 (6 x 256 entries).
+    let tables: [Int]
+    /// Offset of each sampled x's waveform column in the interleaved accumulator (`column x 256`).
+    let columnStart: [Int]
+
+    init(frame: ScopeFrame, options: ScopeOptions) {
+        self.options = options
+        width = frame.width; height = frame.height
+        step = ScopeEngine.samplingStep(width: width, height: height, maxSamples: options.maxSamples)
+        sampledWidth = (width + step - 1) / step; sampledHeight = (height + step - 1) / step
+        columns = min(options.columns, sampledWidth)
+        radius = options.vectorRadius; side = 2 * radius + 1
+        weights = options.matrix.decimalWeights
+        tables = ScopeChroma.tables(options.matrix, binsPerUnit: 2 * Double(radius) * options.vectorZoom)
+        let (w, c, s) = (width, columns, step)
+        columnStart = (0..<sampledWidth).map { min(c - 1, $0 * s * c / w) * 256 }
+    }
+
+    var waveCount: Int { 4 * columns * 256 }
+    var vectorCount: Int { side * side }
+    var blockCount: Int { waveCount + vectorCount }
+}
+
+/// The colour difference of 8-bit codes in vectorscope bins, the same arithmetic for the analysis and for
+/// `ScopeAnalysis.vectorBin(red:green:blue:)`.
+enum ScopeChroma {
+    /// 2^32: each table entry is off by at most 2^-33 bins, so three of them sum to within 2^-31 of the exact value.
+    static let one = 1 << 32
+
+    /// Cb = (B' - Y') / cbDivisor and Cr = (R' - Y') / crDivisor are linear in the codes, so each is a sum of one
+    /// table entry per channel.
+    static func tables(_ m: ScopeMatrix, binsPerUnit: Double) -> [Int] {
+        let cb = [-m.kr, -m.kg, 1 - m.kb].map { $0 / m.cbDivisor }, cr = [1 - m.kr, -m.kg, -m.kb].map { $0 / m.crDivisor }
+        return (cb + cr).flatMap { k in (0..<256).map { Int((k * Double($0) / 255 * binsPerUnit * Double(one)).rounded()) } }
+    }
+
+    /// Bins from the centre along +Cb and +Cr, the sum of the three channels rounded once, half up.
+    @inline(__always)
+    static func offsets(_ t: UnsafePointer<Int>, _ r: Int, _ g: Int, _ b: Int) -> (cb: Int, cr: Int) {
+        let half = one >> 1
+        return ((t[r] + t[256 + g] + t[512 + b] + half) >> 32, (t[768 + r] + t[1024 + g] + t[1280 + b] + half) >> 32)
+    }
+}
+
+/// The frame's bytes, shared read-only by the workers for the duration of `analyze`.
+struct ScopePixels: @unchecked Sendable { let base: UnsafeBufferPointer<UInt8> }
+
+/// One worker's counters inside `ScopeAccumulators`, and the read-only lookups every worker shares. The waveform is
+/// interleaved while counting, `[(column x 256 + level) x 4 + plane]`, so one pixel's four increments share a cache line.
+struct ScopeBlock {
+    let wave: UnsafeMutablePointer<UInt32>, vector: UnsafeMutablePointer<UInt32>
+    let counters: UnsafeMutablePointer<Int>
+    let columnStart: UnsafePointer<Int>, tables: UnsafePointer<Int>
+}
+
+/// Zeroed counters for every worker, one allocation each; each worker writes only its own block.
+final class ScopeAccumulators: @unchecked Sendable {
+    let plan: ScopePlan, count: Int
+    let counts: UnsafeMutablePointer<UInt32>, tallies: UnsafeMutablePointer<Int>
+    let columnStart: UnsafeMutablePointer<Int>, tables: UnsafeMutablePointer<Int>
+
+    init(count: Int, plan: ScopePlan) {
+        self.plan = plan; self.count = count
+        counts = .allocate(capacity: count * plan.blockCount); counts.initialize(repeating: 0, count: count * plan.blockCount)
+        tallies = .allocate(capacity: count * 2); tallies.initialize(repeating: 0, count: count * 2)
+        columnStart = Self.copy(plan.columnStart); tables = Self.copy(plan.tables)
+    }
+
+    static func copy(_ values: [Int]) -> UnsafeMutablePointer<Int> {
+        let p = UnsafeMutablePointer<Int>.allocate(capacity: max(1, values.count))
+        values.withUnsafeBufferPointer { src in if let base = src.baseAddress { p.initialize(from: base, count: values.count) } }
+        return p
+    }
+
+    func block(_ i: Int) -> ScopeBlock {
+        let base = counts + i * plan.blockCount
+        return ScopeBlock(wave: base, vector: base + plan.waveCount, counters: tallies + i * 2,
+                          columnStart: UnsafePointer(columnStart), tables: UnsafePointer(tables))
+    }
+
+    /// Sums every block into the first, then lays the waveform out by plane and derives the histograms.
+    func merged() -> ScopeAnalysis {
+        for i in 1..<max(1, count) {
+            let src = counts + i * plan.blockCount
+            for j in 0..<plan.blockCount { counts[j] &+= src[j] }
+        }
+        var samples = 0, outside = 0
+        for i in 0..<count { samples += tallies[i * 2]; outside += tallies[i * 2 + 1] }
+        let (waveform, histogram) = planar(block(0).wave)
+        return ScopeAnalysis(options: plan.options, sourceWidth: plan.width, sourceHeight: plan.height, step: plan.step,
+                             columns: plan.columns, vectorSide: plan.side, samples: samples, vectorOutside: outside,
+                             waveform: waveform, histogram: histogram,
+                             vectorscope: Array(UnsafeBufferPointer(start: block(0).vector, count: plan.vectorCount)))
+    }
+
+    /// The interleaved waveform as `[plane][column][level]`, and its column sums `[plane][level]`.
+    func planar(_ wave: UnsafeMutablePointer<UInt32>) -> ([UInt32], [UInt32]) {
+        let cells = plan.columns * 256
+        var waveform = [UInt32](repeating: 0, count: 4 * cells), histogram = [UInt32](repeating: 0, count: 4 * 256)
+        waveform.withUnsafeMutableBufferPointer { out in
+            histogram.withUnsafeMutableBufferPointer { hist in
+                for cell in 0..<cells {
+                    let level = cell & 255
+                    for p in 0..<4 {
+                        let v = wave[cell << 2 + p]
+                        out[p * cells + cell] = v; hist[p << 8 + level] &+= v
+                    }
+                }
+            }
+        }
+        return (waveform, histogram)
+    }
+
+    func release() { counts.deallocate(); tallies.deallocate(); columnStart.deallocate(); tables.deallocate() }
+}

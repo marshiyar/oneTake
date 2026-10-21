@@ -88,6 +88,13 @@ final class PresetPreviewRendererTests: XCTestCase {
         XCTAssertEqual(r.rendered, ids.count)
     }
 
+    /// A tile's grade carries the clip grade's contract (issue #172): contract 3 by default, 2 when asked.
+    func testTileGradeUsesTheRequestedContract() throws {
+        XCTAssertEqual(try XCTUnwrap(PresetPreviewRenderer.params(preset: "warm-daylight", lut: nil)).version, 3)
+        XCTAssertEqual(try XCTUnwrap(PresetPreviewRenderer.params(preset: "warm-daylight", lut: nil, version: 2)).version, 2)
+        XCTAssertTrue(try XCTUnwrap(PresetPreviewRenderer.params(preset: "warm-daylight", lut: nil, version: 3)).whiteBalanceGains)
+    }
+
     func testCacheStaysUnderBudget() throws {
         let tile = 120 * 68 * 4
         let r = PresetPreviewRenderer(compositor: compositor, budgetBytes: tile * 3 + 100)

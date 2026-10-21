@@ -108,7 +108,10 @@ final class CurveGraphTests: XCTestCase {
         let what = "\(Theme.mode) \(tab.key) \(pts)"
         var problems: [String] = []
         if line.count != 1 { problems.append("\(what): \(line.count) curve lines, want 1") }
-        if markers.count != pts.count { problems.append("\(what): \(markers.count) point markers, want \(pts.count)") }
+        // One marker per point the renderer reads (the end points it adds included, none for a hue curve too short to
+        // render), so every bend of the line has a handle and no handle sits off the line.
+        let rendered = tab.hue ? GradeCurve.normalizedHue(pts, limit: tab.min...tab.max).count : GradeCurve.normalizedRGB(pts).count
+        if markers.count != rendered { problems.append("\(what): \(markers.count) point markers, want \(rendered)") }
         let stray = line.flatMap(\.points).filter { !(Self.contains(box, $0)) }
         if !stray.isEmpty { problems.append("\(what): line vertices outside the graph \(box): \(stray.prefix(3))") }
         let clips = (line + markers).map(\.clip)

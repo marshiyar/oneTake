@@ -2,7 +2,7 @@ name: mpvfx-ci
 
 # The app on Linux and Windows (a build, package and install + launch job per OS beside its test shards) and on macOS
 # through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main, every night and every
-# push of a v* tag; when every platform is green, one publish job releases all installers together
+# push of a v* tag; Linux and Windows publish as soon as they pass and macOS joins the same release later
 # (.github/ci/publish.sh): a run of main as the prerelease nightly-<commit>, a v* tag as the official release of that
 # tag, marked latest. Pull requests and other branches never publish.
 #
@@ -12,7 +12,7 @@ name: mpvfx-ci
 #
 # Work already done on identical inputs is not repeated: a test shard runs only when its key (.github/ci/test-shards.py:
 # the files its tests are built from, binaries.lock included) has no pass recorded on that OS. The nightly run and a
-# dispatch with full_tests run everything.
+# dispatch with full_tests run everything. A pull request runs only the platforms its files can affect (job changes).
 
 on:
   # No paths filter on pull requests: ci-ok is the required check, and a workflow skipped by a paths filter leaves it
@@ -52,9 +52,12 @@ permissions:
 
 jobs:
   changes:
-    # A pull request that changes only documentation (Markdown anywhere, mpvfx-swift/docs/, the licence files) needs no
-    # build or test: every job below is skipped on purpose and ci-ok passes in about a minute. No test or build step
-    # reads those files (checked 2026-10-19). Any other event, or any other file, runs everything.
+    # Which jobs a pull request needs, from the files it changes (.github/ci/platforms.py maps each file to the
+    # platforms whose build it can change; anything shared runs all three). Documentation only (Markdown anywhere,
+    # mpvfx-swift/docs/ except DESIGN.md, the licence files, .gitignore, issue templates, CODEOWNERS, FUNDING.yml):
+    # every job is skipped and ci-ok passes in about a minute. CI scripts and workflows no build uses: only the checks
+    # job runs. A platform's build, package and test jobs run only when one of its files changed; the ones skipped are
+    # skipped on purpose and ci-ok accepts that. Any other event runs everything.
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
@@ -62,7 +65,23 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.files.outputs.code }}
+      linux: ${{ steps.files.outputs.linux }}
+      # Windows and macOS jobs are paused (owner ruling 2026-10-21) to free the runners while the app is built out on
+      # Linux; the jobs stay defined, and the repository variable LINUX_ONLY=false brings them back.
+      windows: ${{ vars.LINUX_ONLY == 'false' && steps.files.outputs.windows || 'false' }}
+      macos: ${{ vars.LINUX_ONLY == 'false' && steps.files.outputs.macos || 'false' }}
+      # true: the pull request touches macOS code (.github/ci/macos_gate.py), so its macOS build runs without the `macos`
+      # label and ci-ok requires it.
+      macos_code: ${{ vars.LINUX_ONLY == 'false' && steps.mac.outputs.macos_code || 'false' }}
+      # true: the pull request changes the test jobs OneTake-actionRunners-1 runs from main (mpvfx-ci.yml, its generated
+      # mpvfx-ci-tests-source.yml or source_workflows.py), so every shard runs here, with its own definition.
+      workflow: ${{ steps.files.outputs.workflow }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          sparse-checkout: .github/ci
+          persist-credentials: false
       - name: Changed files
         id: files
         env:
@@ -70,27 +89,44 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           EVENT: ${{ github.event_name }}
+        shell: bash
         run: |
-          if [ "$EVENT" != pull_request ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$EVENT" != pull_request ]; then
+            printf 'code=true\nlinux=true\nwindows=true\nmacos=true\n' >> "$GITHUB_OUTPUT"; echo "$EVENT: every job runs"; exit 0
+          fi
           # Both sides of a rename count: code renamed to a .md name is still a code change.
           gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
           n=$(wc -l < "$RUNNER_TEMP/files.txt")
-          other=$(grep -vE '\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$' "$RUNNER_TEMP/files.txt" || true)
-          if [ "$n" -gt 0 ] && [ "$n" -lt 3000 ] && [ -z "$other" ]; then
-            echo "code=false" >> "$GITHUB_OUTPUT"; echo "documentation only ($n files): build and tests skipped"
-          else
-            echo "code=true" >> "$GITHUB_OUTPUT"; printf 'code changes:\n%s\n' "$other" | head -20
+          if [ "$n" -ge 3000 ] || grep -qE '^\.github/(workflows/mpvfx-ci(-tests-source)?\.yml|ci/source_workflows\.py)$' "$RUNNER_TEMP/files.txt"; then
+            echo "workflow=true" >> "$GITHUB_OUTPUT"
           fi
+          echo "$n files changed"
+          python3 -I -B .github/ci/platforms.py "$RUNNER_TEMP/files.txt" | tee -a "$GITHUB_OUTPUT"
+          cp "$RUNNER_TEMP/files.txt" "$RUNNER_TEMP/macos-files.txt"
+      - name: macOS code
+        id: mac
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: python3 -I -B .github/ci/macos_gate.py classify "$RUNNER_TEMP/macos-files.txt" | tee -a "$GITHUB_OUTPUT"
 
   plan:
     # Which Linux and Windows test shards this run needs: those with no pass recorded for their inputs.
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.linux == 'true' || needs.changes.outputs.windows == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       linux_shards: ${{ steps.pick.outputs.linux }}
       windows_shards: ${{ steps.pick.outputs.windows }}
+      # The shards remote-shards sends to OneTake-actionRunners-1 (names), and their input keys by "<os>/<shard>".
+      remote_linux: ${{ steps.pick.outputs.remote_linux }}
+      remote_windows: ${{ steps.pick.outputs.remote_windows }}
+      remote_keys: ${{ steps.pick.outputs.remote_keys }}
+      # The oneTake-Runners1 App is installed here, so OneTake-actionRunners-1 can report back (macos-runners too).
+      runners_ok: ${{ steps.app.outputs.installed }}
     defaults:
       run:
         shell: bash
@@ -163,6 +199,12 @@ jobs:
           key: windows-pass-rest-${{ fromJSON(steps.keys.outputs.windows)[3].key }}
           lookup-only: true
           enableCrossOsArchive: true
+      - name: Runners App installed here
+        id: app
+        env:
+          RUNNERS_APP_ID: ${{ secrets.RUNNERS_APP_ID }}
+          RUNNERS_APP_PRIVATE_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+        run: bash ../.github/ci/runners_app_installed.sh >> "$GITHUB_OUTPUT"
       - name: Shards to run
         id: pick
         env:
@@ -171,10 +213,20 @@ jobs:
           FULL: ${{ github.event_name == 'schedule' || inputs.full_tests == true }}
           LINUX_HITS: ${{ steps.l0.outputs.cache-hit }},${{ steps.l1.outputs.cache-hit }},${{ steps.l2.outputs.cache-hit }},${{ steps.l3.outputs.cache-hit }}
           WINDOWS_HITS: ${{ steps.w0.outputs.cache-hit }},${{ steps.w1.outputs.cache-hit }},${{ steps.w2.outputs.cache-hit }},${{ steps.w3.outputs.cache-hit }}
+          # Shards marked `runners` (test-shards.py RUNNERS) go to OneTake-actionRunners-1 when both App secrets are
+          # set and the commit is this repository's (never a fork's pull request) and does not change the test jobs that
+          # repository runs from main (changes.outputs.workflow); otherwise every shard runs here.
+          APP_ID: ${{ secrets.RUNNERS_APP_ID }}
+          APP_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+          OWN: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.changes.outputs.workflow != 'true' }}
+          INSTALLED: ${{ steps.app.outputs.installed }}
         run: |
           python3 -I -B - <<'PY'
           import json, os
           full = os.environ["FULL"] == "true"
+          remote_ok = (bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"
+                       and os.environ["INSTALLED"] == "true")
+          print(f"::notice::{'shards marked runners run on OneTake-actionRunners-1' if remote_ok else 'every shard runs here (no RUNNERS_APP_* secrets or App installation here, or a fork)'}")
           def pick(label, shards, hits):
               hits = os.environ[hits].split(",")
               assert len(hits) == len(shards), f"{label}: {len(shards)} shards, {len(hits)} lookups"
@@ -184,12 +236,23 @@ jobs:
               return run
           linux = pick("linux shard", json.loads(os.environ["LINUX"]), "LINUX_HITS")
           windows = pick("windows shard", json.loads(os.environ["WINDOWS"]), "WINDOWS_HITS")
+          # Each shard runs in exactly one place: here, or on OneTake-actionRunners-1.
+          remote = {o: [s for s in run if remote_ok and s["runners"]] for o, run in (("linux", linux), ("windows", windows))}
+          local = {o: [s for s in run if s not in remote[o]] for o, run in (("linux", linux), ("windows", windows))}
+          keys = {f"{o}/{s['shard']}": s["key"] for o in remote for s in remote[o]}
+          for o in remote:
+              for s in remote[o]:
+                  print(f"::notice::{o} shard {s['shard']}: runs on OneTake-actionRunners-1")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"linux={json.dumps(linux)}\nwindows={json.dumps(windows)}\n")
+              out.write(f"linux={json.dumps(local['linux'])}\nwindows={json.dumps(local['windows'])}\n")
+              out.write(f"remote_linux={json.dumps([s['shard'] for s in remote['linux']])}\n")
+              out.write(f"remote_windows={json.dumps([s['shard'] for s in remote['windows']])}\n")
+              out.write(f"remote_keys={json.dumps(keys)}\n")
           PY
 
   checks:
-    # Fast checks that need no Swift build: the fetch script's tests and copyright blocks.
+    # Fast checks that need no Swift build: the tests of the CI and fetch scripts, and copyright blocks. The macOS jobs
+    # wait for it, so a pull request that fails here never asks for a Mac.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
@@ -200,6 +263,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: CI script tests
+        run: for t in ../.github/ci/test_*.py; do python3 -I -B "$t"; done
       - name: fetch-binaries tests
         run: python3 -I -B scripts/test_fetch_binaries.py
       - name: Copyright blocks
@@ -209,7 +274,7 @@ jobs:
   linux:
     # Build, package and install smoke; the tests run in linux-test beside it.
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.linux == 'true'
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
     timeout-minutes: 30
@@ -317,8 +382,8 @@ jobs:
 
   linux-test:
     # One test shard (.github/ci/test-shards.py) per job, only those the plan job found no pass for.
-    needs: plan
-    if: needs.plan.outputs.linux_shards != '[]'
+    needs: [changes, plan]
+    if: needs.changes.outputs.linux == 'true' && needs.plan.outputs.linux_shards != '[]'
     strategy:
       fail-fast: false
       matrix:
@@ -357,7 +422,7 @@ jobs:
           FILTER: ${{ matrix.filter }}
           SKIP: ${{ matrix.skip }}
         # In batches: the selected tests reach the XCTest runner as one argument, which has a length limit.
-        run: python3 -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+        run: python3 -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit "${PIPESTATUS[0]}"
       - name: Test counts
         if: always()
         run: grep -E "^shard:|Test Suite 'All tests' (passed|failed)" -A1 "$RUNNER_TEMP/test.log" | grep -E "^shard:|Executed" || true
@@ -376,7 +441,7 @@ jobs:
 
   windows:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.windows == 'true'
     runs-on: windows-2022
     timeout-minutes: 30
     defaults:
@@ -481,8 +546,8 @@ jobs:
           if-no-files-found: ignore
 
   windows-test:
-    needs: plan
-    if: needs.plan.outputs.windows_shards != '[]'
+    needs: [changes, plan]
+    if: needs.changes.outputs.windows == 'true' && needs.plan.outputs.windows_shards != '[]'
     strategy:
       fail-fast: false
       matrix:
@@ -516,7 +581,7 @@ jobs:
         env:
           FILTER: ${{ matrix.filter }}
           SKIP: ${{ matrix.skip }}
-        run: python -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+        run: python -I -B -u ../.github/ci/run-shard.py 2>&1 | tee "$RUNNER_TEMP/test.log"; exit "${PIPESTATUS[0]}"
       - name: Test counts
         if: always()
         run: grep -E "^shard:|Test Suite 'All tests' (passed|failed)" -A1 "$RUNNER_TEMP/test.log" | grep -E "^shard:|Executed" || true
@@ -534,9 +599,147 @@ jobs:
           path: mpvfx-swift/.build
           key: windows-debug-${{ github.sha }}
 
+  remote-shards:
+    # The test shards the plan job marked for OneTake-app/OneTake-actionRunners-1 (test-shards.py RUNNERS: three Linux
+    # shards; Windows none yet): one repository_dispatch `onetake-test-shards` with their names and this commit. That
+    # repository calls mpvfx-ci-tests-source.yml (linux-test, generated by .github/ci/source_workflows.py) and
+    # sets one commit status per shard on the head commit, `<os> test (<shard>) (runners-1)`, each naming this run.
+    # This job waits for those statuses (.github/ci/remote_shards.py, one read a minute) and fails when one fails,
+    # errors or has not reported by its deadline, so ci-ok still requires every shard. A pass is then recorded under
+    # the shard's input key here, exactly as linux-test records its own. Never runs for a fork or
+    # without both RUNNERS_APP_* secrets: the plan job then keeps every shard here.
+    needs: plan
+    if: needs.plan.result == 'success' && (needs.plan.outputs.remote_linux != '[]' || needs.plan.outputs.remote_windows != '[]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50   # a shard's 30, its build without a cache, and a margin for the other pool's queue
+    permissions:
+      contents: read
+      statuses: read
+    steps:
+      - name: Runners App token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RUNNERS_APP_ID }}
+          private-key: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+          owner: OneTake-app
+          repositories: OneTake-actionRunners-1
+          permission-contents: write   # repository_dispatch needs it
+      - name: Send the shards to OneTake-actionRunners-1
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SHA: ${{ github.sha }}   # the commit linux-test and windows-test check out (a pull request's merge commit)
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}   # the commit that carries the statuses
+          RUN: ${{ github.run_id }}/${{ github.run_attempt }}
+          LINUX: ${{ needs.plan.outputs.remote_linux }}
+          WINDOWS: ${{ needs.plan.outputs.remote_windows }}
+        run: |
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$SHA" --arg head "$HEAD" --arg run "$RUN" \
+            --argjson linux "$LINUX" --argjson windows "$WINDOWS" \
+            '{event_type: "onetake-test-shards", client_payload: {repository: $repo, sha: $sha, head: $head, run: $run, linux: $linux, windows: $windows}}' |
+            gh api -X POST repos/OneTake-app/OneTake-actionRunners-1/dispatches --input -
+          echo "linux $LINUX and windows $WINDOWS run on OneTake-app/OneTake-actionRunners-1 (run $RUN)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github
+          persist-credentials: false
+      - name: Wait for every shard's status
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN: ${{ github.run_id }}/${{ github.run_attempt }}
+          LINUX: ${{ needs.plan.outputs.remote_linux }}
+          WINDOWS: ${{ needs.plan.outputs.remote_windows }}
+        run: python3 -I -B -u .github/ci/remote_shards.py --minutes 45 | tee -a "$GITHUB_STEP_SUMMARY"; exit "${PIPESTATUS[0]}"
+      - name: Pass record
+        env:
+          RUN: ${{ github.run_id }}/${{ github.run_attempt }}
+        run: mkdir -p mpvfx-swift && echo "passed on OneTake-app/OneTake-actionRunners-1 for oneTake run $RUN" > mpvfx-swift/.test-pass
+      - name: Record the pass of linux library
+        if: contains(fromJSON(needs.plan.outputs.remote_linux), 'library')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-library-${{ fromJSON(needs.plan.outputs.remote_keys)['linux/library'] }}
+      - name: Record the pass of linux audio-presets
+        if: contains(fromJSON(needs.plan.outputs.remote_linux), 'audio-presets')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-audio-presets-${{ fromJSON(needs.plan.outputs.remote_keys)['linux/audio-presets'] }}
+      - name: Record the pass of linux audio-live
+        if: contains(fromJSON(needs.plan.outputs.remote_linux), 'audio-live')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.test-pass
+          key: linux-pass-audio-live-${{ fromJSON(needs.plan.outputs.remote_keys)['linux/audio-live'] }}
+
+  macos-runners:
+    # The organization OneTake-app has its own pool of GitHub-hosted runners, with its own macOS slots. A push to main,
+    # the nightly run (every shard, kind nightly) or a pull request labelled `macos` sends its macOS build there: a repository_dispatch to OneTake-actionRunners-1,
+    # which calls mpvfx-macos.yml on this commit, reports the commit status `macos (runners-1)` here and, for main,
+    # uploads the disk image into this commit's nightly release. Without the RUNNERS_APP_* secrets (a fork, or before
+    # they are set) nothing is sent and the macos job below builds here instead. Fork pull requests are never sent:
+    # their head commit is not in this repository, and OneTake-actionRunners-1 builds only marshiyar/oneTake.
+    needs: [changes, plan]
+    if: >-
+      needs.changes.outputs.macos == 'true' && needs.plan.outputs.runners_ok == 'true'
+      && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule'
+      || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'macos') || needs.changes.outputs.macos_code == 'true')
+      && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sent: ${{ steps.send.outputs.sent }}
+    steps:
+      - name: Runners App configured
+        id: have
+        env:
+          APP_ID: ${{ secrets.RUNNERS_APP_ID }}
+          APP_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+        # Both secrets, or neither is used: a half-set pair builds here instead of failing the token step.
+        run: echo "app=$([ -n "$APP_ID" ] && [ -n "$APP_KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Runners App token
+        id: token
+        if: steps.have.outputs.app == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RUNNERS_APP_ID }}
+          private-key: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+          owner: OneTake-app
+          repositories: OneTake-actionRunners-1
+          permission-contents: write   # repository_dispatch needs it
+      - name: Hand the macOS build to OneTake-actionRunners-1
+        id: send
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          KIND: ${{ github.event_name == 'pull_request' && 'pr' || 'nightly' }}
+          FULL: ${{ github.event_name == 'schedule' }}   # the nightly run tests every shard, as it does here
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::RUNNERS_APP_ID is not set: macOS builds on this repository's runners"
+            echo "sent=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$SHA" --arg kind "$KIND" --arg run "$RUN_URL" --arg full "$FULL" \
+            '{event_type: "onetake-macos", client_payload: {repository: $repo, sha: $sha, kind: $kind, run: $run, full: $full}}' |
+            gh api -X POST repos/OneTake-app/OneTake-actionRunners-1/dispatches --input -
+          echo "sent=true" >> "$GITHUB_OUTPUT"
+          echo "macOS for $SHA runs on OneTake-app/OneTake-actionRunners-1 (status: macos (runners-1))" >> "$GITHUB_STEP_SUMMARY"
+
   macos:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # Owner ruling 2026-10-21: macOS never holds the other platforms back. The macOS runners (xcode-27) are scarce and
+    # queued jobs sat for an hour before being cancelled, so a pull request builds macOS only when it carries the
+    # `macos` label. Main and labelled pull requests go to OneTake-actionRunners-1 (macos-runners) and build here only
+    # when that hand-off was not sent, and so does the nightly run; tags and a dispatch always build here.
+    # It also waits for the checks job, so a pull request that fails a check in seconds on Linux does not wait for a
+    # Mac, and runs only when the pull request's files can affect macOS (job changes).
+    needs: [changes, checks, macos-runners]
+    if: >-
+      always() && needs.changes.outputs.macos == 'true' && needs.checks.result == 'success'
+      && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'macos') || needs.changes.outputs.macos_code == 'true'))
+      && needs.macos-runners.outputs.sent != 'true'
     uses: ./.github/workflows/mpvfx-macos.yml
     secrets: inherit   # only the optional Apple signing secrets; unset, the disk image is ad-hoc signed
     with:
@@ -544,48 +747,168 @@ jobs:
 
   ci-ok:
     # The one required check: every job passed or was skipped on purpose.
-    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos]
+    permissions:
+      contents: read
+      statuses: read
+    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, remote-shards, macos-runners, macos]
     if: always()
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
-      - name: Every job passed or was skipped
+      - name: Every required job passed or was skipped
         env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          REQUIRED: >-
+            ${{ needs.changes.result }} ${{ needs.plan.result }} ${{ needs.checks.result }} ${{ needs.linux.result }}
+            ${{ needs.linux-test.result }} ${{ needs.windows.result }} ${{ needs.windows-test.result }}
+            ${{ needs.remote-shards.result }}
+          MACOS: ${{ needs.macos-runners.result }} ${{ needs.macos.result }}
         run: |
-          echo "job results: $RESULTS"
-          for r in $RESULTS; do
+          echo "required job results: $REQUIRED; macos-runners, macos: $MACOS"
+          # macOS is reported, not required (owner ruling 2026-10-21): a macOS failure, or a job cancelled while it
+          # waited for a runner, warns instead of failing the other platforms.
+          for r in $MACOS; do
+            case "$r" in success|skipped) ;; *) echo "::warning::a macos job ended $r; it is not required for ci-ok" ;; esac
+          done
+          for r in $REQUIRED; do
             case "$r" in success|skipped) ;; *) echo "::error::a required job ended $r"; exit 1 ;; esac
           done
+      # A pull request that touches macOS code must pass its macOS build: the local macos job, or the status the runners
+      # repository reports (a macOS-only compile error once merged because this was only a warning).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request' && needs.changes.outputs.macos_code == 'true'
+        with:
+          sparse-checkout: .github/ci
+          persist-credentials: false
+      # Owner ruling 2026-10-21: CI never holds a merge back waiting. A macOS build that already ran and failed fails
+      # ci-ok; one still running on OneTake-actionRunners-1 does not block (its `macos (runners-1)` status reports it).
+      - name: macOS build not red
+        if: github.event_name == 'pull_request' && needs.changes.outputs.macos_code == 'true'
+        env:
+          LOCAL: ${{ needs.macos.result }}
+          SENT: ${{ needs.macos-runners.outputs.sent }}
+        run: |
+          [ "$LOCAL" != failure ] || { echo "::error::the macOS build failed on this head"; exit 1; }
+          [ "$SENT" != true ] || echo "::notice::the macOS build runs on OneTake-actionRunners-1: see its macos (runners-1) status"
 
   publish:
-    needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
-    # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
+    needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards]
+    # Only main (nightly prerelease) and v* tags publish; publish.sh decides which release.
+    # Owner ruling 2026-10-21: no OS holds another back. Linux and Windows publish as soon as they pass, without waiting
+    # for a macOS runner; publish-macos adds the disk image to the same release when the macOS job finishes. A stable
+    # v<X.Y.Z> tag is the public launch and ships every OS or none, so publish-macos publishes it alone.
     if: >-
       always() && github.event_name != 'pull_request'
-      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && (github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-')))
       && needs.plan.result == 'success' && needs.checks.result == 'success'
-      && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
-      && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
-      && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+      && (needs.linux.result == 'success' || needs.windows.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      # An OS passed when its build and every shard did: those here (linux-test, windows-test) and those sent to
+      # OneTake-actionRunners-1 (remote-shards; it is not needed only when nothing of that OS was sent).
+      LINUX_OK: >-
+        ${{ needs.linux.result == 'success' && (needs.linux-test.result == 'success'
+        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_linux == '[]') }}
+      WINDOWS_OK: >-
+        ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
+        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_windows == '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # publish.sh, VERSION (checked against a v* tag) and the root files (CHANGELOG.md, when there is one).
+          # publish.sh, VERSION (checked against a v* tag) and mpvfx-swift/CHANGELOG.md (cone mode keeps the files of
+          # mpvfx-swift/ itself).
           sparse-checkout: |
             .github
             mpvfx-swift/packaging
+      # One download per OS that passed; the symbols-* artifacts stay in CI.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.LINUX_OK == 'true'
         with:
           path: dist
-          pattern: '{linux,windows,macos}'   # the installers; the symbols-* artifacts stay in CI
-          merge-multiple: true
-      - name: Release
+          name: linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.WINDOWS_OK == 'true'
+        with:
+          path: dist
+          name: windows
+      - name: Release (Linux and Windows)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: bash .github/ci/publish.sh dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png
+        run: |
+          for os in LINUX WINDOWS; do
+            ok="${os}_OK"; [ "${!ok}" = true ] || echo "::warning::${os,,} did not pass; this release leaves it out"
+          done
+          shopt -s nullglob
+          files=(dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png)
+          [ "${#files[@]}" -gt 0 ] || { echo "::error::no installer to publish"; exit 1; }
+          bash .github/ci/publish.sh "${files[@]}"
+
+  publish-macos:
+    # After publish (so the two never race to create the release), whatever publish's result: on main and prerelease
+    # tags it uploads the macOS disk image into the same release; on a stable v<X.Y.Z> tag it publishes every OS at
+    # once and fails unless all of them passed.
+    needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards, macos, publish]
+    if: >-
+      always() && github.event_name != 'pull_request'
+      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && needs.plan.result == 'success' && needs.checks.result == 'success'
+      && (needs.macos.result == 'success' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      STABLE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+      # An OS passed when its build and every shard did: those here (linux-test, windows-test) and those sent to
+      # OneTake-actionRunners-1 (remote-shards; it is not needed only when nothing of that OS was sent).
+      LINUX_OK: >-
+        ${{ needs.linux.result == 'success' && (needs.linux-test.result == 'success'
+        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_linux == '[]') }}
+      WINDOWS_OK: >-
+        ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
+        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
+        && (needs.remote-shards.result == 'success' || needs.plan.outputs.remote_windows == '[]') }}
+      MACOS_OK: ${{ needs.macos.result == 'success' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            mpvfx-swift/packaging
+      - name: Every OS passed (stable tag)
+        if: env.STABLE == 'true'
+        run: |
+          for os in LINUX WINDOWS MACOS; do
+            ok="${os}_OK"
+            [ "${!ok}" = true ] || { echo "::error::${os,,} did not pass; a stable release ships every OS"; exit 1; }
+          done
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.STABLE == 'true'
+        with:
+          path: dist
+          name: linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.STABLE == 'true'
+        with:
+          path: dist
+          name: windows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          name: macos
+      - name: Release (macOS, or every OS on a stable tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png)
+          [ "${#files[@]}" -gt 0 ] || { echo "::error::no installer to publish"; exit 1; }
+          bash .github/ci/publish.sh "${files[@]}"
