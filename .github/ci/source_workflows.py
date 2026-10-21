@@ -65,6 +65,9 @@ SPECS = {
     # The bench-<os> artifacts stay in the calling run; bench.py records the commit it measured (git rev-parse HEAD).
     # windows stays in bench.yml: its pinned setup-swift commit has no version to name (workflow-lint allow list).
     "bench-source.yml": ("bench.yml", "bench-source", ["linux", "macos"], BENCH_INPUTS, None),
+    # The Linux build variants: their guard and other cheap checks stay in the source workflows.
+    "linux-no-vulkan-source.yml": ("linux-no-vulkan.yml", "linux-no-vulkan-source", ["build"], {}, None),
+    "linux-optional-headers-source.yml": ("linux-optional-headers.yml", "linux-optional-headers-source", ["build"], {}, None),
 }
 
 
