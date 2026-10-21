@@ -35,6 +35,10 @@ jobs:
       github.event.label.name == 'queue'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # One record at a time per pull request: a label removed and added again records the newest head last.
+    concurrency:
+      group: merge-train-record-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     permissions: {}
     steps:
       - name: Token for the review App
