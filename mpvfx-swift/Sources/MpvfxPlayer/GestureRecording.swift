@@ -55,23 +55,44 @@ public struct GestureRecorder {
     /// The live values of the latest tick (the stage previews them).
     public private(set) var live = NativeOrderedMap<Double>()
 
-    public init(clipId: String, startTime: Double, fps: Double, base: Base, viewScale: Double, pointer: CanvasPoint) {
+    /// The grab point is fixed at `pointer` (a press on the layer): deltas run from it, and the first sample
+    /// also writes the take's start at time 0 with the same properties.
+    public let anchored: Bool
+
+    /// `anchored`: `pointer` is the grab point. Unanchored, the first move becomes the grab point.
+    /// `modifiers`: those held at the press, so a take never starts on the wrong property set.
+    public init(clipId: String, startTime: Double, fps: Double, base: Base, viewScale: Double, pointer: CanvasPoint,
+                anchored: Bool = false, modifiers: PointerModifiers = []) {
         self.clipId = clipId; self.startTime = startTime; self.fps = fps > 0 ? fps : 30; self.base = base
         self.viewScale = viewScale > 0 ? viewScale : 1
         self.pointer = pointer; startPointer = pointer
         opacity = base.opacity; scale = base.scale
+        self.anchored = anchored; self.modifiers = modifiers
     }
 
-    /// Pointer moved (view px). The first move anchors the deltas at the grab point.
+    /// Pointer moved (view px). Unanchored, the first move anchors the deltas at the grab point.
     public mutating func pointerMoved(_ p: CanvasPoint, modifiers m: PointerModifiers) {
-        if !hasMoved { startPointer = p; hasMoved = true }
+        if !hasMoved { if !anchored { startPointer = p }; hasMoved = true }
         pointer = p; modifiers = m
     }
     public mutating func modifiersChanged(_ m: PointerModifiers) { modifiers = m }
     /// Wheel during recording (web deltaY px, positive = down).
     public mutating func wheel(_ dy: Double, modifiers m: PointerModifiers) {
-        if !hasMoved { startPointer = pointer; hasMoved = true }
+        if !hasMoved { if !anchored { startPointer = pointer }; hasMoved = true }
         scrollDelta += dy; modifiers = m
+    }
+
+    /// Release: samples the final pointer state at least two frames after the start, and when the take is that
+    /// short adds the straight-line midpoint, so a flick quicker than a display frame still commits start, middle
+    /// and end.
+    public mutating func finish(time: Double) {
+        guard hasMoved else { return }
+        let minimum = 2 / fps
+        tick(time: max(time, minimum))
+        guard samples.count == 2, let a = samples.first, let b = samples.last, b.time >= minimum - 1e-9 else { return }
+        var mid = NativeOrderedMap<Double>()
+        for k in b.properties.keys { mid[k] = ((a.properties[k] ?? 0) + (b.properties[k] ?? 0)) / 2 }
+        samples.insert(GestureSample(time: b.time / 2, properties: mid), at: 1)
     }
 
     /// resolveGestureProperties: which properties the current pointer state drives.
@@ -102,18 +123,41 @@ public struct GestureRecorder {
         let dx = (pointer.x - startPointer.x) / viewScale, dy = (pointer.y - startPointer.y) / viewScale
         if !hasMoved && dx == 0 && dy == 0 && scrollDelta == 0 { return false }
         hasMoved = true
+        if anchored && samples.isEmpty && time > 0 { seedStart() }
+        let props = sampleProperties(dx: dx, dy: dy)
+        live = props
+        store(props, at: time)
+        duration = time
+        return true
+    }
+
+    /// recordSample: keeps the latest pointer state for each output frame, so one sample and one trail point per
+    /// frame however fast the pointer reports.
+    mutating func store(_ props: NativeOrderedMap<Double>, at time: Double) {
+        let frame = time > 0 ? (time * fps).rounded(.toNearestOrAwayFromZero) : 0
+        let sample = GestureSample(time: frame > 0 ? frame / fps : 0, properties: props)
+        if let last = samples.last, last.time == sample.time {
+            samples[samples.count - 1] = sample; trail[trail.count - 1] = pointer
+        } else { samples.append(sample); trail.append(pointer) }
+    }
+
+    /// The properties the current pointer state drives, with position made absolute; advances the running
+    /// opacity, scale and depth.
+    mutating func sampleProperties(dx: Double, dy: Double) -> NativeOrderedMap<Double> {
         var (props, o, s, zz) = Self.properties(dx: dx, dy: dy, scroll: scrollDelta, modifiers: modifiers, opacity: opacity, scale: scale, z: z)
         if let x = props["x"] { props["x"] = (base.x + x).rounded(.toNearestOrAwayFromZero) }
         if let y = props["y"] { props["y"] = (base.y + y).rounded(.toNearestOrAwayFromZero) }
         opacity = o; scale = s; z = zz; scrollDelta = 0
-        live = props
-        // recordSample: keep the latest pointer state for each output frame.
-        let frame = time > 0 ? (time * fps).rounded(.toNearestOrAwayFromZero) : 0
-        let sample = GestureSample(time: frame > 0 ? frame / fps : 0, properties: props)
-        if let last = samples.last, last.time == sample.time { samples[samples.count - 1] = sample } else { samples.append(sample) }
-        trail.append(pointer)
-        duration = time
-        return true
+        return props
+    }
+
+    /// The take's start at time 0: the grab state under the modifiers of the first real sample, so holds before
+    /// the first move are kept and only the driven properties are written.
+    mutating func seedStart() {
+        var (props, _, _, _) = Self.properties(dx: 0, dy: 0, scroll: 0, modifiers: modifiers, opacity: base.opacity, scale: base.scale, z: 0)
+        if props["x"] != nil { props["x"] = base.x.rounded(.toNearestOrAwayFromZero) }
+        if props["y"] != nil { props["y"] = base.y.rounded(.toNearestOrAwayFromZero) }
+        samples.append(GestureSample(time: 0, properties: props)); trail.append(startPointer)
     }
 }
 

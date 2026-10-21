@@ -84,6 +84,8 @@ public final class PlayerView {
     public var keepAnimating: (() -> Bool)?
     /// Pointer trail of the gesture being recorded, in view pixels.
     public var recordingTrail: [CanvasPoint] = []
+    /// Record motion's stage outline and banner (nil: Record is off). Set by the controller.
+    public var recordOverlay: RecordOverlay?
     /// Sibling stepped over by the last bring-forward / send-backward, and when.
     public var zOrderFlash: (id: String, start: Double)?
     static let zOrderFlashSeconds = 0.6
