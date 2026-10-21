@@ -140,6 +140,47 @@ final class GradeWheelsTests: XCTestCase {
         XCTAssertEqual(gain(e).level, 0.2, accuracy: 1e-9, "one press, one undo step")
     }
 
+    func testEveryWheelArrowUsesItsStepAndOwnUndoEntry() throws {
+        let cases: [(EditorKey, ColorGrading.Wheel)] = [
+            (.init(.left), .init(hue: 39, amount: 0.5, level: 0.2)),
+            (.init(.right), .init(hue: 41, amount: 0.5, level: 0.2)),
+            (.init(.up), .init(hue: 40, amount: 0.51, level: 0.2)),
+            (.init(.down), .init(hue: 40, amount: 0.49, level: 0.2)),
+            (.init(.left, shift: true), .init(hue: 30, amount: 0.5, level: 0.2)),
+            (.init(.right, shift: true), .init(hue: 50, amount: 0.5, level: 0.2)),
+            (.init(.up, shift: true), .init(hue: 40, amount: 0.6, level: 0.2)),
+            (.init(.down, shift: true), .init(hue: 40, amount: 0.4, level: 0.2))]
+        for (key, expected) in cases {
+            var g = ColorGrading(); g.balance["gain"] = .init(hue: 40, amount: 0.5, level: 0.2)
+            let (p, e) = try inspector(grade: g)
+            p.focus.visible = true; p.focus.current = .custom(Self.set, 2)
+            let steps = e.undoStack.count
+            XCTAssertTrue(p.keyDown(key)); XCTAssertEqual(gain(e), expected)
+            XCTAssertEqual(e.undoStack.count, steps + 1)
+            e.undo(); XCTAssertEqual(e.colorGrading(clipId: "clip:a"), g)
+        }
+    }
+
+    /// Each fresh press is separate, while repeat events from a held wheel or level arrow share one step.
+    func testHeldWheelAndLevelArrowsCoalesceWithoutCombiningSeparatePresses() throws {
+        for part in [2, 12] {
+            var g = ColorGrading(); g.balance["gain"] = .init(hue: 40, amount: 0.5, level: 0.2)
+            let (p, e) = try inspector(grade: g)
+            var clock = 1000.0
+            e.now = { clock += 0.01; return clock }
+            p.focus.visible = true; p.focus.current = .custom(Self.set, part)
+            let steps = e.undoStack.count
+            for i in 0..<5 { XCTAssertTrue(p.keyDown(EditorKey(.right, isRepeat: i > 0))) }
+            XCTAssertEqual(e.undoStack.count, steps + 1)
+            let held = gain(e)
+            XCTAssertEqual(part == 2 ? held.hue : held.level, part == 2 ? 45 : 0.25, accuracy: 1e-9)
+            XCTAssertTrue(p.keyDown(EditorKey(.right)))
+            XCTAssertEqual(e.undoStack.count, steps + 2, "a new physical press has its own undo step")
+            e.undo(); XCTAssertEqual(gain(e), held)
+            e.undo(); XCTAssertEqual(e.colorGrading(clipId: "clip:a"), g)
+        }
+    }
+
     /// At the narrowest panel the field labels (10 px) never run into each other.
     func testWheelFieldLabelsDoNotOverlapAt280() throws {
         let (p, _) = try inspector(width: 280)
