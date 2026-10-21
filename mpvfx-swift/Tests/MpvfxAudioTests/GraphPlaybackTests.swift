@@ -78,10 +78,14 @@ final class GraphPlaybackTests: XCTestCase {
         src.seek(0.4); src.masterGain = 0.5
         let half = src.render(frames: 256)
         XCTAssertEqual(half, slice(Self.offline, frame: 19200, frames: 256).map { $0 * Float(0.5) })
+        // A change while playing ramps over `declickFrames` (LiveDeclickTests); after it the gain is exact again.
+        let ramp = src.declickFrames
         src.muted = true
+        _ = src.render(frames: ramp)
         XCTAssertTrue(src.render(frames: 128).allSatisfy { $0 == 0 })
         src.muted = false; src.masterGain = 1
-        XCTAssertTrue(src.render(frames: 128) == slice(Self.offline, frame: 19200 + 384, frames: 128), "mute keeps the graph running")
+        _ = src.render(frames: ramp)
+        XCTAssertTrue(src.render(frames: 128) == slice(Self.offline, frame: 19200 + 256 + 2 * ramp + 128, frames: 128), "mute keeps the graph running")
     }
 
     func testReplaceProjectPreRollsToCurrentPositionExactly() {
@@ -94,7 +98,10 @@ final class GraphPlaybackTests: XCTestCase {
         _ = src.render(frames: 128 * 10)
         src.replace(edited)
         XCTAssertEqual(src.lastPreRoll?.targetFrame, 12000 + 1280)
-        XCTAssertTrue(src.render(frames: 128 * 30) == slice(editedOffline, frame: 13280, frames: 128 * 30))
+        // The swap crossfades over `declickFrames` (LiveDeclickTests); from there on it is the edited render exactly.
+        let fade = src.declickFrames
+        _ = src.render(frames: fade)
+        XCTAssertTrue(src.render(frames: 128 * 30) == slice(editedOffline, frame: 13280 + fade, frames: 128 * 30))
     }
 
     /// Pre-roll cost (debug build, so small; release numbers come from MpvfxAudioBench).
