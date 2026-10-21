@@ -41,8 +41,18 @@ final class ExportPreviewMatchTests: XCTestCase {
     }
     var root: String { Self.root }
 
-    /// 96x48 at 10 fps, 2 s.
-    func document(grade: String = #"{"adjust":{"exposure":0.6}}"#) throws -> NativeProjectDocument {
+    /// The video clip's grade parameters in `document()`.
+    static let exposureGrade = #"{"adjust":{"exposure":0.6}}"#
+    /// Curves on all seven tabs: a steep RGB rise, a master curve with its end points inside the range, and hue
+    /// curves with a local bump, so export runs every curve table the preview does.
+    static let curvesGrade = #"""
+    {"curves":{"master":[[0.1,0.05],[0.5,0.6],[0.9,0.95]],"red":[[0,0],[0.4,0.1],[0.45,0.7],[1,1]],"green":[[0,0.1],[1,0.9]],
+     "blue":[[0,0],[0.3,0.45],[1,1]]},
+     "hueCurves":{"hueVsHue":[[0,0],[200,30],[260,0]],"hueVsSaturation":[[180,0],[220,0.6],[280,0]],"hueVsLuma":[[20,-0.1],[140,0.1],[300,0]]}}
+    """#
+
+    /// 96x48 at 10 fps, 2 s; the video clip graded with `grade`.
+    func document(grade: String = exposureGrade) throws -> NativeProjectDocument {
         try parseNativeProjectDocument(try NativeJSONValue.parse(#"""
         {"schemaVersion":1,"mediaEngine":"native","id":"match","revision":0,"frameRate":{"numerator":10,"denominator":1},
          "canvas":{"width":96,"height":48,"background":"#102030"},
@@ -68,11 +78,10 @@ final class ExportPreviewMatchTests: XCTestCase {
         """#))
     }
 
-    func export(_ format: ExportFormat, grade: String? = nil, name: String = "match") throws -> (input: NativeTimelineRenderInput, file: Exported) {
+    func export(_ format: ExportFormat, grade: String = exposureGrade, name: String = "match") throws -> (input: NativeTimelineRenderInput, file: Exported) {
         let output = "\(root)/\(name).\(format.rawValue)"
         try? FileManager.default.removeItem(atPath: output)
-        let project = try grade.map { try document(grade: $0) } ?? document()
-        let input = NativeTimelineRenderInput(project: project, projectDir: root, outputPath: output, format: format, quality: .high)
+        let input = NativeTimelineRenderInput(project: try document(grade: grade), projectDir: root, outputPath: output, format: format, quality: .high)
         try renderNativeTimeline(input)
         return (input, Exported(path: output))
     }
@@ -106,6 +115,18 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertTrue(stride(from: 24, to: 44, by: 1).contains { y in (4..<64).contains { x in f.rgba[(y * 96 + x) * 4] > 240 } }, "white text ink")
     }
 
+    /// Curves on every tab: the exported frames are the preview's, first and last frame included, and the curves
+    /// really change the picture (the same project with the exposure grade gives other pixels).
+    func testCurvesGradeExportIsThePreviewFrameForFrame() throws {
+        let mov = try export(.mov, grade: Self.curvesGrade, name: "curves")
+        try assertTimeline(mov.file)
+        let frames = try pairs(mov, [0, 0.7, 1.3, 1.9])
+        let diffs = frames.map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let plain = try previewExportFrame(try export(.mov).input, at: 0.7)
+        XCTAssertGreaterThan(maxAbsDiff(frames[1].2, plain), 20, "the curves grade differs from the exposure grade")
+    }
+
     /// Contract 3 Warmth and Tint (channel gains, issue #172) on the graded video: export is the preview at the first,
     /// a middle and the last frame, and the warm grade shows.
     func testContract3WarmthExportIsThePreviewFrameForFrame() throws {
@@ -123,6 +144,45 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertEqual(try mp4.file.probe.video?.codec, "h264"); XCTAssertEqual(try mp4.file.probe.audio?.codec, "flac")
         let diffs = try pairs(mp4, [0, 0.5, 1.25, 1.9]).map { meanAbsDiff($0.1, $0.2) }
         XCTAssertEqual(diffs.filter { $0 > 4 }, [], "mean channel difference per frame: \(diffs)")
+    }
+
+    /// A 48x96 portrait frame at 10 fps, 2 s: the 96x48 video untouched and set to Fill, and the blue still set to
+    /// Stretch over the frame's lower half (issue #86).
+    func fitDocument() throws -> NativeProjectDocument {
+        try parseNativeProjectDocument(try NativeJSONValue.parse(#"""
+        {"schemaVersion":1,"mediaEngine":"native","id":"fit","revision":0,"frameRate":{"numerator":10,"denominator":1},
+         "canvas":{"width":48,"height":96,"background":"#102030"},
+         "assets":[{"id":"gray","kind":"video","name":"gray","source":"gray.mov","durationFrames":20},
+                   {"id":"blue","kind":"image","name":"blue","source":"blue.bmp","durationFrames":1}],
+         "sequence":{"id":"sequence","name":"Sequence","tracks":[
+           {"id":"overlay","kind":"video","lane":{"authoredTrack":1,"displayTrack":0},"clips":[
+             {"id":"blue","assetId":"blue","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":true,"fit":"stretch",
+              "staticParameters":{"layout.left":0,"layout.top":48,"layout.width":48,"layout.height":48},
+              "effects":[],"parameterTracks":[]}]},
+           {"id":"base","kind":"video","lane":{"authoredTrack":0,"displayTrack":1},"clips":[
+             {"id":"gray","assetId":"gray","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,"fit":"fill",
+              "effects":[],"parameterTracks":[]}]}]}}
+        """#))
+    }
+
+    func testFillAndStretchExportAsThePreviewDrawsThem() throws {
+        let output = "\(root)/fit.mov"
+        try? FileManager.default.removeItem(atPath: output)
+        let input = NativeTimelineRenderInput(project: try fitDocument(), projectDir: root, outputPath: output, format: .mov, quality: .high)
+        try renderNativeTimeline(input)
+        let file = Exported(path: output)
+        // The first, a middle and the last frame.
+        let diffs = try pairs((input: input, file: file), [0, 1.0, 1.9]).map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let f = try file.rgba(1.0)
+        func rgb(_ x: Int, _ y: Int) -> [Int] { let i = (y * 48 + x) * 4; return f.rgba[i..<i + 3].map { Int($0) } }
+        // Fill: the video reaches the frame's top corners, where Fit would leave the #102030 background.
+        XCTAssertGreaterThan(rgb(1, 1)[1], 100, "the video, not the background: \(rgb(1, 1))")
+        XCTAssertGreaterThan(rgb(46, 1)[1], 100, "the video, not the background: \(rgb(46, 1))")
+        // Stretch: the blue still covers the whole lower half, corner to corner.
+        for (x, y) in [(1, 49), (46, 49), (1, 94), (46, 94)] {
+            XCTAssertGreaterThan(rgb(x, y)[2] - rgb(x, y)[0], 100, "blue at \(x),\(y): \(rgb(x, y))")
+        }
     }
 
     func testCancelledExportLeavesNoFile() throws {

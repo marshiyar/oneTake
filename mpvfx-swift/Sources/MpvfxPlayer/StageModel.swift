@@ -28,8 +28,13 @@ public struct FrameDrawContext: Equatable, Sendable {
     /// document's box, rotation and crop; every other layer is drawn from the document as evaluated at this time,
     /// so inspector edits show at once. nil: every element passed in is live (callers without a controller).
     public var liveElementIds: Set<String>?
-    public init(backingScale: Double = 1, isPlaying: Bool = false, speed: Double = 1, liveElementIds: Set<String>? = nil) {
+    /// Selected clip shown raw left of the preview-only compare divider.
+    public var compareClipId: String?
+    public var comparePosition: Double
+    public init(backingScale: Double = 1, isPlaying: Bool = false, speed: Double = 1, liveElementIds: Set<String>? = nil,
+                compareClipId: String? = nil, comparePosition: Double = 0.5) {
         self.backingScale = backingScale; self.isPlaying = isPlaying; self.speed = speed; self.liveElementIds = liveElementIds
+        self.compareClipId = compareClipId; self.comparePosition = comparePosition
     }
 }
 
@@ -56,10 +61,12 @@ public struct StageElement: Equatable, Sendable {
     /// Live overrides while a gesture is being recorded (nil: the document's value).
     public var opacity: Double?
     public var scale: Double?
+    /// On a locked track: the stage selects it but does not move or transform it.
+    public var locked = false
     public init(id: String, name: String, rect: CanvasRect, kind: TimelineClipKind, rotation: Double = 0, crop: CropInsets = .zero,
-                opacity: Double? = nil, scale: Double? = nil) {
+                opacity: Double? = nil, scale: Double? = nil, locked: Bool = false) {
         self.id = id; self.name = name; self.rect = rect; self.kind = kind; self.rotation = rotation; self.crop = crop
-        self.opacity = opacity; self.scale = scale
+        self.opacity = opacity; self.scale = scale; self.locked = locked
     }
     public var centre: CanvasPoint { CanvasPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) }
     /// Visible (cropped) rect in unrotated element space.

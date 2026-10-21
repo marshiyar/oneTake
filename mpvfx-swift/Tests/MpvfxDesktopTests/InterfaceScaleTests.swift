@@ -112,7 +112,7 @@ final class InterfaceScaleTests: XCTestCase {
     }
 
     /// The same layout at 100 % in a 1440 × 900 window and at 200 % in a 2880 × 1800 one: a press at twice the
-    /// point grabs the same seam and focuses the same inspector field.
+    /// point grabs the same dock splitter and focuses the same inspector field.
     func testClickOnASeamAndAnInspectorFieldAt200PercentHitsTheSameControl() throws {
         var fields: [String?] = []
         for k in [1.0, 2.0] {
@@ -123,11 +123,12 @@ final class InterfaceScaleTests: XCTestCase {
             let f = try XCTUnwrap(router.frames)
             XCTAssertEqual(f.size, CanvasSize(1440, 900))
 
-            let seam = try XCTUnwrap(f.leftSeam)
+            let splitter = try XCTUnwrap(router.dock.geometry.splitters.first { $0.axis == .row })
+            let seam = splitter.seam
             let seamMid = CanvasPoint(seam.x + seam.width / 2, seam.y + seam.height / 2)
             XCTAssertEqual(router.cursor(at: seamMid.x * k, seamMid.y * k), .columnResize, "at \(k)")
             router.pointerDown(x: seamMid.x * k, y: seamMid.y * k, button: PointerButton.primary, modifiers: [])
-            XCTAssertEqual(router.drag, .leftSeam, "at \(k)")
+            XCTAssertEqual(router.dock.splitterDrag?.splitter, splitter, "at \(k)")
             router.pointerUp(x: seamMid.x * k, y: seamMid.y * k, button: PointerButton.primary)
 
             let inspector = try XCTUnwrap(session.panels?.right.inspector)
@@ -165,7 +166,7 @@ final class InterfaceScaleTests: XCTestCase {
         XCTAssertEqual(at200.height, 2 * at100.height, accuracy: 1e-9)
     }
 
-    /// At 200 % a 1280 × 800 window lays out in 640 × 400: every pane keeps a size (a side panel at least its rail)
+    /// At 200 % a 1280 × 800 window lays out in 640 × 400: every active dock pane keeps a size
     /// and the status line's own hints fit unclipped (Pango measures them).
     func testEveryPaneStaysReachableAt200PercentIn1280By800() throws {
         let (_, router) = try shell(try temporaryDirectory())
@@ -173,17 +174,16 @@ final class InterfaceScaleTests: XCTestCase {
         let target = CairoImageTarget(width: 1280, height: 800)
         router.draw(target.canvas, size: CanvasSize(1280, 800))
         let f = try XCTUnwrap(router.frames)
-        for region in EditorShellRouter.Region.allCases {
+        for region in [EditorShellRouter.Region.left, .previewTopBar, .player, .right, .timeline] {
             let r = router.rect(region, f)
             XCTAssertGreaterThan(r.width, 0, "\(region)")
             XCTAssertGreaterThan(r.height, 0, "\(region)")
             XCTAssertLessThanOrEqual(r.maxX, 640, "\(region)")
             XCTAssertLessThanOrEqual(r.maxY, 400, "\(region)")
         }
-        XCTAssertGreaterThanOrEqual(f.left.width, PanelTheme.railBox)
-        XCTAssertGreaterThanOrEqual(f.right.width, PanelTheme.railBox)
+        XCTAssertEqual(router.dock.layout.openPanels, ["media", "preview", "inspector", "renders", "timeline"])
         XCTAssertEqual(f.statusLine.height, ShellStatusLine.height, accuracy: 1e-9)
-        let hints = [EditorShellRouter.seamHint, EditorShellRouter.dividerHint] + Array(EditorShellRouter.regionHints.values)
+        let hints = Array(EditorShellRouter.regionHints.values)
         for hint in hints {
             let w = target.canvas.measureText(hint, font: PanelTheme.font(11)).width
             XCTAssertLessThanOrEqual(w, f.statusLine.width - 16, hint)
