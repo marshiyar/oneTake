@@ -156,7 +156,7 @@ jobs:
           SKIP: ${{ matrix.skip }}
         run: |
           args=(); [ -n "$FILTER" ] && args+=(--filter "$FILTER"); [ -n "$SKIP" ] && args+=(--skip "$SKIP")
-          swift test --skip-build "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+          swift test --skip-build "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/test.log"; exit "${PIPESTATUS[0]}"
       - name: Test counts
         if: always()
         run: |
@@ -258,7 +258,7 @@ jobs:
           env -i HOME="$HOME" PATH=/usr/bin:/bin NSUnbufferedIO=YES MPVFX_HIDDEN_TEST_WINDOW=1 MPVFX_SMOKE_DELAY_MS=2500 \
             MPVFX_SMOKE_SNAPSHOT="$GITHUB_WORKSPACE/dist/mac-smoke.png" "$apps/MpVFX.app/Contents/MacOS/MpVFX" > "$RUNNER_TEMP/app.log" 2>&1 &
           pid=$!
-          for i in $(seq 60); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+          for _ in $(seq 60); do kill -0 $pid 2>/dev/null || break; sleep 1; done
           echo "--- app output"; cat "$RUNNER_TEMP/app.log"
           if kill -0 $pid 2>/dev/null; then
             echo "--- still running after 60 s: main and all thread stacks"; sample $pid 3 -file "$RUNNER_TEMP/sample.txt" >/dev/null 2>&1 || true

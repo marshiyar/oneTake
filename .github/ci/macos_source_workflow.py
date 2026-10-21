@@ -19,8 +19,9 @@ The generated file differs from its source in exactly these ways, and nothing el
   - its only trigger is workflow_call, with required inputs source_repository and source_ref (no schedule, no
     dispatch, no caller in this repository), so no default-branch run here ever builds a commit an input chose;
   - every checkout takes that repository and commit and keeps no token (persist-credentials: false);
-  - no cache step: those runs share the runners repository's default-branch cache scope, where a labelled pull
-    request could otherwise plant a build cache that a later nightly (whose disk image is published) restores;
+  - no cache step (a lookup of one reads as a miss): those runs share the runners repository's default-branch
+    cache scope, where a labelled pull request could otherwise plant a build cache that a later nightly (whose disk
+    image is published) restores;
   - no secret: the disk image is always ad-hoc signed (notarization is for stable tags, built in this repository);
   - the build number is the source commit.
 
@@ -57,6 +58,9 @@ def _str(dumper, value):
 _Dumper.add_representer(str, _str)
 
 
+HIT = re.compile(r"\$\{\{ steps\.[\w-]+\.outputs\.cache-hit \}\}")
+
+
 def _step(step):
     uses = step.get("uses", "")
     if uses.startswith(CACHE):
@@ -67,7 +71,9 @@ def _step(step):
                         "ref": "${{ inputs.source_ref }}", "persist-credentials": False}
     env = step.get("env")
     if env:
-        step["env"] = {k: ("" if isinstance(v, str) and "secrets." in v else v) for k, v in env.items()}
+        # No secret, and every removed cache lookup reads as a miss (each shard runs).
+        step["env"] = {k: ("" if isinstance(v, str) and "secrets." in v else HIT.sub("false", v) if isinstance(v, str)
+                           else v) for k, v in env.items()}
         if "MPVFX_BUILD" in env:
             step["env"]["MPVFX_BUILD"] = "${{ inputs.source_ref }}"
     return step
