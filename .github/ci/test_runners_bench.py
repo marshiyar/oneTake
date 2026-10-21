@@ -57,7 +57,16 @@ class Handoff(unittest.TestCase):
         have = step(job, "Runners App configured")
         self.assertEqual(set(have["env"]), {"APP_ID", "APP_KEY"})
         self.assertIn('[ -n "$APP_ID" ] && [ -n "$APP_KEY" ]', have["run"])
-        self.assertEqual(step(job, "Runners App token")["if"], "steps.have.outputs.app == 'true'")
+        self.assertEqual(step(job, "Runners App token")["if"],
+                         "steps.have.outputs.app == 'true' && steps.own.outputs.changed != 'true'")
+
+    def test_a_pull_request_changing_the_moved_jobs_benchmarks_here(self):
+        job = self.jobs["runners"]
+        own = step(job, "Workflow files this pull request changes")
+        self.assertEqual(own["if"], "github.event_name == 'pull_request'")
+        self.assertEqual(own["env"]["WATCH"], r"^\.github/(workflows/bench(-source)?\.yml|ci/source_workflows\.py)$")
+        self.assertIn('echo "changed=true"', own["run"])
+        self.assertEqual(job["permissions"]["pull-requests"], "read")
 
     def test_dispatch_carries_the_commit_its_kind_and_the_pull_request(self):
         send = step(self.jobs["runners"], "Hand the benchmarks")
@@ -132,8 +141,10 @@ class Agentbot(unittest.TestCase):
         self.bot.bench("1")
         self.assertEqual(self.posted, [])
 
-    def test_a_windows_only_run_lists_windows_only(self):
-        self.bot.api = lambda method, path, body=None: {"pull_requests": [{"number": 7}], "head_sha": "a" * 40}
+    def test_a_run_whose_linux_and_macos_were_sent_lists_windows_only(self):
+        jobs = {"jobs": [{"name": "linux", "conclusion": "skipped"}, {"name": "macos", "conclusion": "skipped"},
+                         {"name": "windows", "conclusion": "success"}]}
+        self.bot.api = lambda method, path, body=None: jobs if "/jobs" in path else {"pull_requests": [{"number": 7}], "head_sha": "a" * 40}
         self.bot.artifact_files = lambda run, name, suffix, repo=None: report("w") if name == "bench-windows" else {}
         self.bot.bench_baseline = lambda art, klass: None
         self.bot.bench("1")
@@ -141,6 +152,17 @@ class Agentbot(unittest.TestCase):
         self.assertEqual((pr, marker), (7, "agentbot:bench"))
         self.assertIn("**windows**", body)
         self.assertNotIn("**linux**", body)
+
+    def test_a_local_run_whose_linux_and_macos_failed_still_lists_them(self):
+        jobs = {"jobs": [{"name": "linux", "conclusion": "failure"}, {"name": "macos", "conclusion": "failure"},
+                         {"name": "windows", "conclusion": "success"}]}
+        self.bot.api = lambda method, path, body=None: jobs if "/jobs" in path else {"pull_requests": [{"number": 7}], "head_sha": "a" * 40}
+        self.bot.artifact_files = lambda run, name, suffix, repo=None: report("w") if name == "bench-windows" else {}
+        self.bot.bench_baseline = lambda art, klass: None
+        self.bot.bench("1")
+        (_, _, body), = self.posted
+        self.assertIn("**linux**: no result on this run", body)
+        self.assertIn("**macos**: no result on this run", body)
 
     def test_bench_runners_refuses_malformed_values_before_any_request(self):
         self.bot.api = lambda *a, **k: self.fail("no request for a malformed payload")
@@ -156,7 +178,7 @@ class Agentbot(unittest.TestCase):
         def api(method, path, body=None, repo=None, token=None, **_):
             calls.append((path, repo))
             if path == "actions/runs/5":
-                return {"path": ".github/workflows/onetake-bench.yml", "display_title": f"onetake-bench pr {'c' * 40}"}
+                return {"path": ".github/workflows/onetake-bench.yml", "display_title": f"onetake-bench pr {'c' * 40} {head}"}
             return {"state": "open", "head": {"sha": head}}
         self.bot.api, self.bot.RUNNERS_TOKEN = api, "t"
         self.bot.artifact_files = lambda run, name, suffix, repo=None: report("l") if repo == self.bot.RUNNERS_REPO else {}
@@ -171,7 +193,7 @@ class Agentbot(unittest.TestCase):
         self.assertIn("+100.0%", body)
 
     def test_bench_runners_ignores_a_main_run_and_a_moved_pull_request(self):
-        runs = {"title": f"onetake-bench main {'c' * 40}", "head": "b" * 40}
+        runs = {"title": f"onetake-bench main {'c' * 40} {'b' * 40}", "head": "b" * 40}
 
         def api(method, path, body=None, **_):
             if path.startswith("actions/runs/"):
@@ -180,7 +202,10 @@ class Agentbot(unittest.TestCase):
         self.bot.api, self.bot.RUNNERS_TOKEN = api, "t"
         self.bot.artifact_files = lambda *a, **k: self.fail("nothing read")
         self.bot.bench_runners("5", "7", "b" * 40)
-        runs.update(title=f"onetake-bench pr {'c' * 40}", head="d" * 40)
+        runs.update(title=f"onetake-bench pr {'c' * 40} {'b' * 40}", head="d" * 40)
+        self.bot.bench_runners("5", "7", "b" * 40)
+        # a run of another head, sent with this pull request's number and head: refused before reading anything
+        runs.update(title=f"onetake-bench pr {'c' * 40} {'e' * 40}", head="b" * 40)
         self.bot.bench_runners("5", "7", "b" * 40)
         self.assertEqual(self.posted, [])
 
@@ -197,9 +222,9 @@ class Agentbot(unittest.TestCase):
         self.assertIsNone(self.bot.bench_baseline("bench-linux", "other class"))
 
     def test_runners_baselines_are_green_main_runs_only(self):
-        runs = [{"id": 3, "conclusion": "success", "created_at": "3", "display_title": f"onetake-bench pr {'c' * 40}"},
-                {"id": 2, "conclusion": "failure", "created_at": "2", "display_title": f"onetake-bench main {'c' * 40}"},
-                {"id": 1, "conclusion": "success", "created_at": "1", "display_title": f"onetake-bench main {'c' * 40}"}]
+        runs = [{"id": 3, "conclusion": "success", "created_at": "3", "display_title": f"onetake-bench pr {'c' * 40} {'c' * 40}"},
+                {"id": 2, "conclusion": "failure", "created_at": "2", "display_title": f"onetake-bench main {'c' * 40} {'c' * 40}"},
+                {"id": 1, "conclusion": "success", "created_at": "1", "display_title": f"onetake-bench main {'c' * 40} {'c' * 40}"}]
         self.bot.api = lambda method, path, body=None, repo=None, token=None: {"workflow_runs": runs}
         self.assertEqual(self.bot.latest_runners_main_run(lambda rid: True)["id"], 1)
 

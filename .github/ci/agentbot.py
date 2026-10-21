@@ -40,9 +40,10 @@ TOKEN = os.environ.get("GITHUB_TOKEN", "")
 # their artifacts are in that repository's onetake-bench.yml runs, read with a token for it (agentbot.yml mints one).
 RUNNERS_REPO = "OneTake-app/OneTake-actionRunners-1"
 RUNNERS_TOKEN = os.environ.get("RUNNERS_TOKEN", "")
-# onetake-bench.yml's run-name: "onetake-bench <kind> <sha>"; kind main is a baseline, kind pr a pull request's run.
+# onetake-bench.yml's run-name: "onetake-bench <kind> <sha> <head>"; kind main is a baseline, kind pr a pull request's
+# run, whose head is the pull request head it benchmarked.
 RUNNERS_BENCH = ("linux", "macos")   # the bench.yml jobs bench-source.yml runs there; windows always runs here
-RUNNERS_TITLE = re.compile(r"^onetake-bench (main|pr|branch) ([0-9a-f]{40})$")
+RUNNERS_TITLE = re.compile(r"^onetake-bench (main|pr|branch) ([0-9a-f]{40}) ([0-9a-f]{40})$")
 CI = "mpvfx-ci"
 MAX_COMMENT = 60000
 MAX_PIXELS = 4096 * 4096
@@ -545,6 +546,12 @@ def bench_body(head_sha, mine_by_os, oses):
     return "".join(parts)
 
 
+def sent_away(run_id):
+    """True when this bench run skipped both of the jobs it sends to the runners repository (they ran there)."""
+    jobs = {j.get("name"): j.get("conclusion") for j in api("GET", f"actions/runs/{run_id}/jobs?per_page=100").get("jobs", [])}
+    return all(jobs.get(o) == "skipped" for o in RUNNERS_BENCH)
+
+
 def bench(run_id):
     run = api("GET", f"actions/runs/{run_id}")
     prs = run_prs(run)
@@ -555,9 +562,9 @@ def bench(run_id):
     if not any(mine.values()):
         print("bench: no bench results in this run")
         return
-    # When bench.yml sent linux and macos to the runners repository, this run holds windows only: the comment lists
-    # the systems this run benchmarked, and bench-runners posts the others in a comment of its own.
-    oses = ("linux", "windows", "macos") if mine["linux"] or mine["macos"] else ("windows",)
+    # When bench.yml sent linux and macos to the runners repository, both jobs are skipped in this run: the comment
+    # lists windows only, and bench-runners posts the others in a comment of its own.
+    oses = ("windows",) if sent_away(run_id) else ("linux", "windows", "macos")
     body = bench_body(run["head_sha"], mine, oses)
     for pr in prs:
         upsert_comment(pr, "agentbot:bench", body)
@@ -576,6 +583,9 @@ def bench_runners(run_id, pr, head_sha):
     m = RUNNERS_TITLE.match(run.get("display_title") or "")
     if not run.get("path", "").endswith("onetake-bench.yml") or not m or m.group(1) != "pr":
         print(f"bench-runners: run {run_id} is not a pull request's onetake-bench run")
+        return
+    if m.group(3) != head_sha:
+        print(f"bench-runners: run {run_id} benchmarked head {m.group(3)[:7]}, not {head_sha[:7]}; nothing posted")
         return
     p = api("GET", f"pulls/{pr}")
     if p.get("state") != "open" or p.get("head", {}).get("sha") != head_sha:
