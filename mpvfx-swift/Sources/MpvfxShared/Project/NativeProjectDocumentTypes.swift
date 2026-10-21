@@ -184,6 +184,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// Optional project style link with explicit per-field overrides.
+    public var textStyle: NativeTextStyleLink? = nil
     /// In, Out and Loop moves over the clip's own values (NativeClipMoves.swift); absent means none.
     public var moves: NativeClipMoves? = nil
     /// A held source frame (`NativeClipHold`): the clip shows that one frame for its whole length; absent plays the source.
@@ -291,6 +293,8 @@ public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var assets: [NativeProjectAsset]; public var sequence: NativeProjectSequence
     /// The Easing panel's custom presets for this project (NativeEasingPreset.swift); nil writes no key.
     public var easingPresets: [NativeEasingPreset]? = nil
+    /// Named typography shared by text layers; absent writes no new key.
+    public var textStyles: [NativeTextStyle]? = nil
     /// What fills the frame behind clips that do not cover it (`NativeFill`); nil writes no key (black bars).
     public var compositionFill: NativeFill? = nil
 }
@@ -349,7 +353,7 @@ public extension NativeProjectDocument {
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
-         unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
+         unsupportedTextStylesNotice, unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
     }
 }
 

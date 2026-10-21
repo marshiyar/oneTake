@@ -22,7 +22,7 @@ import MpvfxTimeline
 /// another text clip instead), the font picker popover and importing font files (the Font row takes a family name).
 extension InspectorPanel {
     func textGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup? {
-        guard let t = s.clip.text else { return nil }
+        guard let t = editor.clipText(clipId: s.id) else { return nil }
         let id = s.id
         func tier(_ explicit: Bool) -> PropertyValueTier { explicit ? .explicitCustom : .default }
         func field(_ key: String, _ label: String, _ text: String, explicit: Bool, step: Double? = nil, value: Double = 0,
