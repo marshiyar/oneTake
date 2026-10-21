@@ -88,6 +88,18 @@ struct GradeUniforms: Sendable {
     var shadowWheel = V3.zero, midtoneWheel = V3.zero, highlightWheel = V3.zero
     var rgbCurvesEnabled = false, hueCurvesEnabled = false, secondaryCount = 0
     var lutEnabled = false, lutIntensity: Float = 0
+    /// Warmth and Tint as channel gains (grade contract 3) instead of the older additive offsets (contract 2).
+    var whiteBalanceGains = false
+    /// The luma contrast pivots on (0.5 unless set).
+    var pivot: Float = 0.5
+    /// Lift / Gamma / Gain / Offset: (hue / 360, amount, level) each, and whether any of them is off neutral.
+    var liftWheel = V3.zero, gammaWheel = V3.zero, gainWheel = V3.zero, offsetWheel = V3.zero
+    var balanceOn = false
+    var keyEnabled = false
+    var keyColor = V3(0, 1, 0)
+    var keySimilarity: Float = 0.1
+    var keySmoothness: Float = 0.1
+    var keySpill: Float = 0
     var intensity: Float = 1
     var e = [Float](repeating: 0, count: EK.allCases.count)
     var palette: [V3] = []
@@ -404,14 +416,42 @@ struct GradeProgram: Sendable {
         corrected = mix(V3(repeating: correctedLuma), corrected, Swift.max(0, 1 + decodeSigned(correction.y)))
         corrected += V3(repeating: decodeSigned(correction.z))
         let temperature = decodeSigned(correction.w), tint = decodeSigned(tintCorrection.x)
-        corrected.x += temperature * 0.08 + tint * 0.04
-        corrected.z -= temperature * 0.08 - tint * 0.04
-        corrected.y -= tint * 0.08
+        if tintCorrection.y > 0.75 {   // contract 3: the secondary's flag texel is 1, not 0.5
+            corrected *= whiteBalanceGain(temperature, tint)
+        } else {
+            corrected.x += temperature * 0.08 + tint * 0.04
+            corrected.z -= temperature * 0.08 - tint * 0.04
+            corrected.y -= tint * 0.08
+        }
         return mix(color, corrected, mask)
     }
 
+    /// Warmth and Tint as per-channel gains (grade contract 3): at a mid grey they move R, G and B as far as the
+    /// older offsets did, normalized so a grey keeps its luma; black stays black and nothing is added.
+    @inline(__always) func whiteBalanceGain(_ temperature: Float, _ tint: Float) -> V3 {
+        let g = V3(1 + temperature * 0.16 + tint * 0.08, 1 - tint * 0.16, 1 - temperature * 0.16 + tint * 0.08)
+        return g / lumaOf(g)
+    }
+
+    /// Lift / Gamma / Gain / Offset (issue #176): lift moves black and keeps white, gain scales and keeps black, gamma
+    /// bends between them (0 and 1 stay), offset shifts everything. Each wheel is a colour (hue, amount) plus a level.
+    @inline(__always) func gammaChannel(_ x: Float, _ e: Float) -> Float { x > 0 ? pow(x, e) : x }
+    @inline(__always) func balanceVector(_ w: V3, _ hueScale: Float, _ levelScale: Float) -> V3 {
+        wheelDirection(w.x) * (w.y * hueScale) + V3(repeating: w.z * levelScale)
+    }
+    func applyBalance(_ input: V3) -> V3 {
+        guard u.balanceOn else { return input }
+        let lift = balanceVector(u.liftWheel, 0.2, 0.25), gamma = balanceVector(u.gammaWheel, 0.3, 0.5)
+        let gain = balanceVector(u.gainWheel, 0.4, 0.5), offset = balanceVector(u.offsetWheel, 0.2, 0.25)
+        var color = input + lift * (V3(repeating: 1) - input)
+        color = color * (V3(repeating: 1) + gain)
+        color = V3(gammaChannel(color.x, 1 / Swift.max(1 + gamma.x, 0.1)), gammaChannel(color.y, 1 / Swift.max(1 + gamma.y, 0.1)),
+                   gammaChannel(color.z, 1 / Swift.max(1 + gamma.z, 0.1)))
+        return color + offset
+    }
+
     func applyAdvancedGrade(_ input: V3) -> V3 {
-        var color = applyTonalWheels(input)
+        var color = applyTonalWheels(applyBalance(input))
         color = applyRgbCurves(color)
         color = applyHueCurves(color)
         for i in 0..<Swift.min(u.secondaryCount, 4) { color = applySecondary(color, i) }
@@ -432,10 +472,14 @@ struct GradeProgram: Sendable {
         let blackPoint = clampf(u.blacks * 0.18, -0.18, 0.18)
         let whitePoint = clampf(1 - u.whites * 0.18, 0.82, 1.18)
         color = (color - V3(repeating: blackPoint)) / Swift.max(whitePoint - blackPoint, 0.2)
-        color.x += u.temperature * 0.08 + u.tint * 0.04
-        color.z -= u.temperature * 0.08 - u.tint * 0.04
-        color.y -= u.tint * 0.08
-        color = (color - 0.5) * Swift.max(0, 1 + u.contrast) + 0.5
+        if u.whiteBalanceGains {
+            color *= whiteBalanceGain(u.temperature, u.tint)
+        } else {
+            color.x += u.temperature * 0.08 + u.tint * 0.04
+            color.z -= u.temperature * 0.08 - u.tint * 0.04
+            color.y -= u.tint * 0.08
+        }
+        color = (color - V3(repeating: u.pivot)) * Swift.max(0, 1 + u.contrast) + V3(repeating: u.pivot)
         let satLuma = lumaOf(color)
         let currentSat = clampf(colorSaturation(color), 0, 1)
         let skinLike = smoothstep(0.02, 0.18, color.x - color.y) * smoothstep(0, 0.16, color.y - color.z) * smoothstep(0.18, 0.82, satLuma)
@@ -829,8 +873,20 @@ struct GradeProgram: Sendable {
             color *= 1 - mask * clampf(u.vignette, 0, 1) * 0.75
         }
         if crtCurvature > 0 { color *= displayMask }
-        let graded = clamp3(color, 0, 1)
-        return V4(graded.x, graded.y, graded.z, sampleColor.w)
+        var graded = clamp3(color, 0, 1)
+        var alpha = sampleColor.w
+        if u.keyEnabled {
+            func chroma(_ value: V3) -> V2 {
+                let y = lumaOf(value)
+                return V2((value.z - y) / 1.8556, (value.x - y) / 1.5748)
+            }
+            let distance = length2(chroma(V3(sampleColor.x, sampleColor.y, sampleColor.z)) - chroma(u.keyColor))
+            let matte = smoothstep(u.keySimilarity, u.keySimilarity + Swift.max(u.keySmoothness, 0.000001), distance)
+            alpha *= matte
+            let excessGreen = Swift.max(0, graded.y - Swift.max(graded.x, graded.z))
+            graded.y -= excessGreen * u.keySpill
+        }
+        return V4(graded.x, graded.y, graded.z, alpha)
     }
 
     // MARK: Multipass (blur / bloom, Kuwahara)

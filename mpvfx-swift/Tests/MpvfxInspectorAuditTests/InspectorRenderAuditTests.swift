@@ -228,7 +228,7 @@ final class InspectorRenderAuditTests: XCTestCase {
         select("V", time: 0)
         let linear = previewFrame(at: 1).images.first?.rect.x
         XCTAssertEqual(linear ?? 0, 100, accuracy: 1, "halfway: x 50 canvas px")
-        assertVisualEdit("Keyframe easing", at: 1, { pick("easing", "hold") }) { c in
+        assertVisualEdit("Keyframe easing", at: 1, { ease("hold") }) { c in
             XCTAssertEqual(c.images.first?.rect.x ?? -1, 0, accuracy: 0.5, "hold keeps x 0 until the next key")
         }
     }
@@ -258,7 +258,7 @@ final class InspectorRenderAuditTests: XCTestCase {
     /// A timeline over the audit document at 100 px/s; row 0 is the video track.
     func timeline() -> TimelineController {
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: editor)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         return c
     }
     func tx(_ t: Double) -> Double { 264 + 100 * t }

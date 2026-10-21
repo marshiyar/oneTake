@@ -102,7 +102,7 @@ jobs:
 
   windows:
     needs: installers
-    if: contains(needs.installers.outputs.names, ' windows ')
+    if: vars.LINUX_ONLY == 'false' && contains(needs.installers.outputs.names, ' windows ')   # paused unless LINUX_ONLY is false (mpvfx-ci.yml)
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:
@@ -137,7 +137,7 @@ jobs:
 
   macos:
     needs: installers
-    if: contains(needs.installers.outputs.names, ' macos ')
+    if: vars.LINUX_ONLY == 'false' && contains(needs.installers.outputs.names, ' macos ')   # paused unless LINUX_ONLY is false (mpvfx-ci.yml)
     runs-on: xcode-27
     timeout-minutes: 10
     steps:
