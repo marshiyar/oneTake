@@ -138,3 +138,29 @@ extension LeftSidebarPanel {
         }
     }
 }
+
+/// Where the media bin's filter and sort choice lives between launches: one `mediaBinFilter` object inside a JSON
+/// preferences file. Other keys in the file are kept; a missing, unreadable or hostile file reads as the default
+/// choice, and an unknown value in it falls back to that field's default.
+public final class MediaFilterStore {
+    public let url: URL
+    public init(url: URL) { self.url = url }
+
+    public func load() -> MediaFilter {
+        guard let data = try? Data(contentsOf: url),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let raw = object["mediaBinFilter"] as? [String: Any] else { return MediaFilter() }
+        return MediaFilter(kind: (raw["kind"] as? String).flatMap(MediaFilter.Kind.init) ?? .all,
+                           usage: (raw["usage"] as? String).flatMap(MediaFilter.Usage.init) ?? .all,
+                           sort: (raw["sort"] as? String).flatMap(MediaFilter.Sort.init) ?? .timelineFirst)
+    }
+
+    public func save(_ filter: MediaFilter) {
+        var object: [String: Any] = [:]
+        if let data = try? Data(contentsOf: url), let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] { object = o }
+        object["mediaBinFilter"] = ["kind": filter.kind.rawValue, "usage": filter.usage.rawValue, "sort": filter.sort.rawValue]
+        guard let out = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? out.write(to: url, options: .atomic)
+    }
+}
