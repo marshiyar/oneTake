@@ -287,3 +287,7 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+### Hand-placed beat marks (#289)
+
+Select an audio clip and press B or Add beat to store a mark at the audio clock time. Marks stay on their source frames when clips move or trim, support one-step undo, snap clip edges, and persist in project.json. Drag a mark to move it, Option-click to delete, or Option-comma / Option-period to jump. Unknown beat versions remain in the project with an open notice.

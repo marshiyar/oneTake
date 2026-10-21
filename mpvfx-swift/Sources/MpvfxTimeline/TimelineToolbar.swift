@@ -35,10 +35,9 @@ public final class TimelineToolbar {
     /// Remove-silence button: shown only when the host wires it (the TSX renders it only with onRemoveSilence).
     public var onRemoveSilence: ((_ clipId: String) -> Void)?
     public var isRemovingSilence = false
-    /// Beat analysis loaded for this clip (the analysed music); the add-beat button needs it.
+    /// Legacy analysis selection retained for hosts; hand-placed beats use the selected audio clip.
     public var beatMusicClipId: String?
-    /// Add a user beat at a composition time (beatEditActions.addBeatAtCompositionTime). Without it the beat
-    /// only lands in the view's beat grid.
+    /// Optional host callback; without it the controller persists a source-time mark on the selected audio clip.
     public var onAddBeat: ((_ time: Double) -> Void)?
     public var hovered: Item?
     var draggingSlider: Item?
@@ -73,12 +72,8 @@ public final class TimelineToolbar {
         guard !isRemovingSilence, let c = selectedClip, !selectedLocked else { return false }
         return c.kind == .video && c.assetId != nil
     }
-    /// canAddBeatAt: analysis loaded and the playhead within the music clip.
-    public var canAddBeat: Bool {
-        guard let id = beatMusicClipId, let c = controller.clip(id)?.clip else { return false }
-        let t = controller.playback.currentTime
-        return t >= c.start && t <= c.end
-    }
+    /// Hand-placed beats do not require prior analysis.
+    public var canAddBeat: Bool { controller.canAddSelectedBeat }
     public var zoomPercent: Double {
         TimelineZoom.percent(controller.zoomMode, manual: controller.manualZoomPercent, fit: controller.fitPixelsPerSecond)
     }
@@ -121,7 +116,7 @@ public final class TimelineToolbar {
         case .removeSilence:
             return isRemovingSilence ? "Removing silence…" : canRemoveSilence ? "Remove silence from selected video" : "Select an editable video clip"
         case .addBeat:
-            return beatMusicClipId == nil ? "Add a music track with beat analysis to place beats"
+            return controller.selectedBeatClipId == nil ? "Select an audio clip to place beats (B)"
                 : canAddBeat ? "Add beat at playhead" : "A beat already exists at the playhead"
         case .trackHeight: return "Track height"
         case .zoomOut: return "Zoom out"
@@ -223,7 +218,7 @@ public final class TimelineToolbar {
         case .split: controller.splitSelectedAtPlayhead()
         case .removeSilence: if let id = selectedClip?.id { onRemoveSilence?(id) }
         case .addBeat:
-            let t = controller.playback.currentTime
+            let t = controller.beatEventTime
             if let onAddBeat { onAddBeat(t) } else { controller.addBeat(at: t) }
         case .zoomOut: controller.zoom(in: false)
         case .zoomIn: controller.zoom(in: true)

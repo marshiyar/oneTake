@@ -202,6 +202,7 @@ public struct TimelineClipModel: Sendable, Equatable {
     public var canMute = true
     /// Enabled nodes in the clip's audio FX chain (TimelineFxButton nodeCount: enabledAudioFxNodes).
     public var fxCount = 0
+    public var beatTimes: [Double] = []
     public var end: Double { start + duration }
     public init(id: String? = nil, name: String, start: Double, duration: Double, kind: TimelineClipKind = .video,
                 keyframes: [Double] = [], effectCount: Int = 0) {
@@ -271,6 +272,7 @@ public final class TimelineView {
     public var displacedDrop: (clipIds: [String], target: TimelineDropTarget)?
     public var dragLiftY = 0.0
     public var beats: [TimelineBeat] = []
+    public var beatDragTime: Double?
     public var timeDisplay: TimelineTimeDisplay = .time
     public var frameRate = 30.0
     public var scrubbing = false
@@ -570,6 +572,13 @@ public final class TimelineView {
         }
         c.withState {
             c.clip(r)
+            if let time = beatDragTime, selection.contains(clip.id) {
+                c.fillRect(CanvasRect(x: x(for: time) - 1, y: r.y, width: 2, height: r.height), t.accent)
+            }
+            for time in clip.beatTimes {
+                let bx = x(for: time)
+                c.fillRect(CanvasRect(x: bx - 1, y: r.y + 2, width: 2, height: max(0, r.height - 4)), CanvasColor(ThemeTokens.green500))
+            }
             // Keyframe diamonds (TimelineClipDiamonds), drawn when the bar is at least 20 px wide.
             if r.width >= 20 { drawMarks(c, clip, scope: nil, origin: CanvasPoint(r.x, r.y + r.height / 2)) }
             // Clip name: centred in the header strip, left 12, right 10, 10px/500, ellipsis, at clipNameAlpha.

@@ -56,6 +56,7 @@ public final class TimelineController {
     /// Clip menu "Show thumbnails" flipped the timeline-wide thumbnail mode.
     public var onThumbnailModeChange: ((Bool) -> Void)?
     var gesture: Gesture?
+    var beatDrag: (clipId: String, source: Double, time: Double)?
     /// A press on a keyframe diamond (select on click, retime on drag); takes priority over every clip gesture.
     var keyframeGesture: KeyframeGesture?
     /// Keys selected when a marquee started (⇧ marquee adds to them).
@@ -126,6 +127,7 @@ public final class TimelineController {
             return (g.id, before)
         }
         view.tracks = visible; view.allTracks = all
+        view.beats = all.flatMap(\.clips).flatMap(\.beatTimes).map { TimelineBeat(time: $0) }
         // A keyed clip starts with its one summary row; expanded rows and folded kinds are kept per clip while it exists.
         let clipIds = Set(all.flatMap(\.clips).map(\.id))
         view.expandedClips.formIntersection(clipIds)
@@ -252,6 +254,7 @@ public final class TimelineController {
     /// and ⇧ on an edge rolls the cut (`clipPointerDown`).
     public func pointerDown(x: Double, y: Double, keys: TimelineGestureKeys) {
         if menuPointerDown(x: x, y: y) { return }
+        if beatPointerDown(x: x, y: y, alt: keys.alt) { return }
         let shift = keys.shift || keys.command
         let hit = hitTest(x: x, y: y)
         if tool == .razor, x >= TimelineLayout.contentOrigin, y >= TimelineLayout.rulerHeight {
@@ -274,6 +277,11 @@ public final class TimelineController {
     }
 
     public func pointerMove(x: Double, y: Double) {
+        if beatDrag != nil {
+            beatDrag?.time = view.time(forX: x)
+            view.beatDragTime = beatDrag?.time
+            needsDisplay?(); return
+        }
         if view.gapMenu != nil { gapMenuHover(x: x, y: y); return }
         if let m = view.clipMenu {
             let a = m.item(atX: x, y: y)?.action
@@ -355,6 +363,11 @@ public final class TimelineController {
     }
 
     public func pointerUp(x: Double, y: Double) {
+        if let drag = beatDrag {
+            beatDrag = nil; view.beatDragTime = nil
+            _ = editor?.editBeat(clipId: drag.clipId, sourceFrame: drag.source, to: view.time(forX: x))
+            needsDisplay?(); return
+        }
         if keyframeGesture != nil { keyframePointerUp(); return }
         let rippleTrim: Bool = { if case .trim(_, _, true)? = gesture { return true }; return false }()
         defer { gesture = nil; movePlan = nil; view.dropTarget = nil; view.dragLiftY = 0; view.drag = nil; view.snapType = nil; view.marquee = nil; view.scrubbing = false; cursor = .normal; needsDisplay?() }
@@ -418,6 +431,9 @@ public final class TimelineController {
             }
         }
         if let held = holdKey(k) { return held }
+        if k.alt, !k.command, case .char(let ch) = k.code, ch == "." || ch == "," {
+            _ = jumpBeat(forward: ch == "."); return true
+        }
         if !k.command && !k.alt {
             switch k.code {
             case .delete where !view.selectedKeyframes.isEmpty, .backspace where !view.selectedKeyframes.isEmpty:
@@ -429,6 +445,7 @@ public final class TimelineController {
                 // ⇧Delete: ripple delete (the lane closes up behind the removed clips).
                 return k.shift ? rippleDeleteSelection() : deleteSelection()
             case .escape:
+                if beatDrag != nil { beatDrag = nil; view.beatDragTime = nil; needsDisplay?(); return true }
                 if view.gapMenu != nil { view.gapMenu = nil; view.gapHighlight = [] }
                 else if view.clipMenu != nil { view.clipMenu = nil }
                 else if view.keyframeMenu != nil { view.keyframeMenu = nil }
@@ -439,6 +456,7 @@ public final class TimelineController {
                 else { view.selection = []; view.selectedKeyframes = [] }
                 needsDisplay?(); return true
             case .char(let ch) where (ch == "b" || ch == "B") && !k.shift:
+                if selectedBeatClipId != nil { _ = addSelectedBeat(); return true }
                 tool = tool == .razor ? .select : .razor; return true
             case .char(let ch) where (ch == "v" || ch == "V") && !k.shift:
                 tool = .select; return true

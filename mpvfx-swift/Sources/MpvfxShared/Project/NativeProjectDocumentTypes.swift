@@ -202,6 +202,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     /// The text, voice, rate and pitch an audio clip made from text was spoken with (`NativeClipNarration`); absent
     /// on every other clip.
     public var narration: NativeClipNarrationRecord? = nil
+    /// Hand-placed beat marks in original source frames; absent means none.
+    public var beats: NativeClipBeats? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -349,7 +351,7 @@ public extension NativeProjectDocument {
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
-         unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
+         unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
     }
 }
 

@@ -36,6 +36,7 @@ public let shortcutSections: [ShortcutSection] = {
                       ("Y", "Slip tool"), ("⌘⌥ Drag clip", "Slip: change which media plays"),
                       ("⇧ Drag edge", "Roll the cut between two clips"),
                       ("⌘G", "Group elements"), ("⌘⇧G", "Ungroup"), ("Del", "Delete selected element (no keyframe selected)")]),
+        s("Beat marks", [("B", "Add beat on selected audio clip"), ("⌥, / ⌥.", "Jump to previous / next beat"), ("Drag beat", "Move beat"), ("⌥Click beat", "Delete beat")]),
         s("Gesture recording modifiers", [("Drag", "Record x / y position"), ("Scroll", "Record z depth"), ("⇧ Drag", "Record rotationX / rotationY"),
                                           ("⌥ Drag", "Record rotation"), ("⌘ Drag↕", "Record opacity"), ("⌘ Scroll", "Record scale")]),
         s("Canvas", [("\\", "Toggle before / after compare"), ("Drag", "Move element / add keyframe"), ("⌥ Drag", "Move entire animation path"), ("⇧ Drag", "Uniform resize")]),
