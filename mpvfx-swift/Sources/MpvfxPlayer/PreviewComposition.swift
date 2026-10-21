@@ -72,6 +72,10 @@ public struct PreviewLayer: Equatable, Sendable {
     /// The media's natural width over height when known: sizes the decode so a Fill or Stretch picture, larger than
     /// the box on one axis, is decoded at the size it is drawn rather than scaled up from a contained frame.
     public var mediaAspect: Double?
+    /// What fills the frame behind a picture that does not cover it (colour, gradient or blurred copy); nil: nothing.
+    public var fill: PreviewFill?
+    /// Set on the layer of an image fill: where the picture it sits behind lands, left uncovered by this layer.
+    public var fillCutout: PreviewFillCutout?
 
     public init(clipId: String, source: String, kind: Kind, start: Double, end: Double, sourceIn: Double, rate: Double = 1,
                 startFrame: Int = 0, endFrame: Int = Int.max, box: CanvasRect, scaleX: Double = 1, scaleY: Double = 1,
@@ -140,6 +144,11 @@ public struct PreviewComposition {
         public var offlineFileName: String? = nil
         /// The media's natural width over height (PreviewLayer.mediaAspect), nil when unknown.
         public var mediaAspect: Double? = nil
+        /// The clip's colour, gradient or blurred-copy fill (an image fill is `fillImagePath`).
+        public var fill: PreviewFill? = nil
+        /// The image fill's file and natural aspect when the asset is on disk.
+        public var fillImagePath: String? = nil
+        public var fillImageAspect: Double? = nil
     }
 
     /// Pre-roll horizon, in seconds, for a clip that comes on screen through a transition: both of its decoders run
@@ -183,6 +192,7 @@ public struct PreviewComposition {
                     ordered.append((Entry(clip: clip, kind: .text, path: "text:\(clip.id)", layer: layer), n))
                 } else if var entry = media.entry(clip, asset: asset, layer: layer) {
                     if entry.kind != .offline { entry.gradeAnimation = PreviewGradeAnimation.forClip(entry.clip, projectDir: projectDir?.path) }
+                    if entry.kind == .video || entry.kind == .image { media.attachFill(&entry, document: document, assets: assets) }
                     ordered.append((entry, n))
                 }
             }
@@ -233,6 +243,19 @@ public struct PreviewComposition {
             return (path, present)
         }
 
+        /// The fill of `entry`'s clip (its own, else the project's). An image fill's file is checked like any media:
+        /// a missing one marks the asset offline and draws nothing.
+        mutating func attachFill(_ entry: inout Entry, document: NativeProjectDocument, assets: [String: NativeProjectAsset]) {
+            guard let fill = PreviewComposition.resolvedFill(entry.clip, document: document), fill.isSupported else { return }
+            if fill.kind == "image" {
+                guard let asset = fill.assetId.flatMap({ assets[$0] }), asset.kind == .image, let found = check(asset), found.present else { return }
+                entry.fillImagePath = found.path
+                entry.fillImageAspect = naturalSize(asset).flatMap(\.aspect)
+            } else {
+                entry.fill = PreviewFill(fill)
+            }
+        }
+
         /// The entry of a video or image clip; sound-only clips are checked (so they are marked offline) but not drawn.
         mutating func entry(_ clip: NativeProjectClip, asset: NativeProjectAsset, layer: Double) -> Entry? {
             guard let found = check(asset), asset.kind != .audio, let src = asset.source else { return nil }
@@ -264,9 +287,17 @@ public struct PreviewComposition {
         for track in document.sequence.tracks {
             for clip in track.clips where !isLeftOut(track: track, clip: clip) {
                 if let asset = assets[clip.assetId] { _ = media.check(asset) }
+                if let fill = resolvedFill(clip, document: document), fill.isSupported, fill.kind == "image",
+                   let asset = fill.assetId.flatMap({ assets[$0] }), asset.kind == .image { _ = media.check(asset) }
             }
         }
         return media.offline
+    }
+
+    /// A clip's own fill, or the project's when it has none or inherits.
+    static func resolvedFill(_ clip: NativeProjectClip, document: NativeProjectDocument) -> NativeFill? {
+        if let own = clip.fill, own.kind != "inherit" { return own }
+        return document.compositionFill
     }
 
     /// Hidden tracks and hidden clips (the timeline eye toggle) are left out of the picture, as export leaves them out.
@@ -284,10 +315,27 @@ public struct PreviewComposition {
     /// Layers covering `time`, bottom first. Invisible layers are kept (callers skip them) so order stays stable.
     public func layers(at time: Double) -> [PreviewLayer] {
         let f = Double(frameIndex(at: time))
-        return entries.compactMap { e in
-            guard e.drawStart <= f, f < e.drawEnd else { return nil }
-            return layer(e, at: time)
+        return entries.flatMap { e -> [PreviewLayer] in
+            guard e.drawStart <= f, f < e.drawEnd else { return [] }
+            let l = layer(e, at: time)
+            guard let fillLayer = imageFillLayer(e, for: l) else { return [l] }
+            return [fillLayer, l]
         }
+    }
+
+    /// The layer of an image fill: the picture covers the frame (cover fit) behind the clip, which it leaves
+    /// uncovered. It is an ordinary image layer, so preview and export decode and draw it as any other.
+    func imageFillLayer(_ e: Entry, for owner: PreviewLayer) -> PreviewLayer? {
+        guard let path = e.fillImagePath else { return nil }
+        var l = PreviewLayer(clipId: "\(owner.clipId)#fill", source: path, kind: .image, start: owner.start, end: owner.end, sourceIn: 0,
+                             startFrame: owner.startFrame, endFrame: owner.endFrame,
+                             box: CanvasRect(x: 0, y: 0, width: canvas.width, height: canvas.height), opacity: owner.opacity)
+        l.timelineFPS = owner.timelineFPS
+        l.fit = .fill
+        l.mediaAspect = e.fillImageAspect
+        l.fillCutout = PreviewFillCutout(box: owner.box, crop: owner.crop, fit: owner.fit, aspect: owner.mediaAspect, rotation: owner.rotation,
+                                         scaleX: owner.scaleX, scaleY: owner.scaleY)
+        return l
     }
 
     /// Clips that start within (time, time + horizon], for pre-rolling their decoders during playback.
@@ -365,6 +413,7 @@ public struct PreviewComposition {
         out.offlineFileName = e.offlineFileName
         out.fit = c.fit
         out.mediaAspect = e.mediaAspect
+        out.fill = e.fill
         out.masks = (c.masks ?? []).filter(\.isSupported).map { mask in
             var evaluated = mask
             if let v = num("mask.\(mask.id).x") { evaluated.x = v }
@@ -465,6 +514,29 @@ public enum PreviewPainter {
 
     static func draw(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
         guard layer.isVisible else { return }
+        if let cut = layer.fillCutout {
+            // An image fill: an ordinary picture layer drawn everywhere but where the clip's own picture lands.
+            let quad = CanvasFillPainter.coveredQuad(box: cut.box, crop: cut.crop, fit: cut.fit,
+                                                     picture: cut.aspect.map { (Int(($0 * 10_000).rounded()), 10_000) },
+                                                     rotation: cut.rotation, scaleX: cut.scaleX, scaleY: cut.scaleY, frame: frame, scale: s)
+            if CanvasFillPainter.covers(quad, frame) { return }
+            c.withState {
+                c.clip(CanvasFillPainter.holePath(canvas: frame, quad: quad))
+                drawLayer(layer, image: image, on: c, frame: frame, scale: s)
+            }
+            return
+        }
+        if let fill = layer.fill {
+            let quad = layer.transform3D.isIdentity
+                ? CanvasFillPainter.coveredQuad(box: layer.box, crop: layer.crop, fit: layer.fit, picture: image.map { ($0.width, $0.height) },
+                                                rotation: layer.rotation, scaleX: layer.scaleX, scaleY: layer.scaleY, frame: frame, scale: s)
+                : []
+            CanvasFillPainter.draw(fill, quad: quad, picture: image, opacity: layer.opacity, canvas: frame, scale: s, on: c)
+        }
+        drawLayer(layer, image: image, on: c, frame: frame, scale: s)
+    }
+
+    private static func drawLayer(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
         let box = toView(layer.box, frame: frame, scale: s)
         let cx = box.x + box.width / 2, cy = box.y + box.height / 2
         let t3 = layer.transform3D
