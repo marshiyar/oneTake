@@ -20,6 +20,25 @@ behaviour is fixed on purpose because saved data depends on it.
   `Object.prototype` keys (for example `"constructor"`); this is kept as `ExportResolutionChoice.objectPrototypeKey`
   (`ExportPolicy.swift`) so saved render settings naming one read the same.
 
+## Captions (SRT)
+
+- `sequence.captions` holds cue times as whole milliseconds, the unit SRT writes, so an SRT import keeps its exact
+  times instead of rounding them to frames (`Sources/MpvfxShared/Project/NativeCaptionTrack.swift`). The field is
+  optional: documents written before captions existed have no `captions` key, open unchanged and save without one,
+  so the schema version stays 1.
+- The SRT format has no standard; the reader and writer follow two published descriptions: the Library of Congress,
+  "SubRip Subtitle format (SRT)", fdd000569, <https://www.loc.gov/preservation/digital/formats/fdd/fdd000569.shtml>
+  (last significant update 2025-05-27; read 2026-10-21), and Matroska, "Subtitles", section "SRT Subtitles",
+  <https://www.matroska.org/technical/subtitles.html> (read 2026-10-21). Both describe a counter line, a timing line
+  `HH:MM:SS,mmm --> HH:MM:SS,mmm`, the text lines and a blank line; the LoC page notes that SRT has no character
+  encoding standard (SubRip writes Windows-1252 by default, or UTF-8 or UTF-16 with or without a byte order mark).
+- Decisions: import reads UTF-8 (with or without a byte order mark) and UTF-16 with one, and refuses any other
+  encoding with the line of the first byte that is not text rather than guess a code page; a dot is accepted in place
+  of the comma; overlapping cues are refused (the document allows no overlap); a cue must end after it starts.
+  Export writes UTF-8 without a byte order mark, CRLF line endings and a comma, through the durable write path.
+  A cue's text may not hold a blank line, `-->`, a control character other than a tab, or U+FFFD (what the
+  document reader makes of an invalid UTF-8 byte), so every stored cue exports and reads back unchanged.
+
 ## Edge cases
 
 - Numbers: source-time math runs in overflow-checked Int64; a value that does not fit throws

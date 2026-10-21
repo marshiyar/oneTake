@@ -281,6 +281,19 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         return try exclusive(s) { try duplicateProjectMedia(s.directory, path, durableWrite: durableWrite) }
     }
 
+    // MARK: Captions
+
+    public func importCaptions(projectId: String, path: String, content: String) throws -> DesktopCaptionImport {
+        let s = try store(projectId)
+        let r = try exclusive(s) { try s.importCaptions(fromSRT: path, content: content) }
+        return DesktopCaptionImport(content: r.content, cueCount: r.cueCount)
+    }
+
+    public func exportCaptions(projectId: String, path: String, content: String) throws -> Int {
+        let s = try store(projectId)
+        return try exclusive(s) { try s.exportCaptions(toSRT: path, content: content) }
+    }
+
     // MARK: Libraries
 
     public func libraryViews() async throws -> [DesktopLibraryView] {

@@ -239,6 +239,9 @@ public extension NativeAudioGroup {
 public struct NativeProjectSequence: Codable, Equatable, Sendable {
     public var id: String; public var name: String; public var durationFrames: Double?
     public var audioGroups: [NativeAudioGroup]?; public var tracks: [NativeProjectTrack]
+    /// The caption track (`NativeCaptionTrack.swift`); absent in a project without captions and in every project
+    /// written before captions existed, which open unchanged.
+    public var captions: NativeCaptionTrack? = nil
 }
 
 /// The timeline kind a document stores in `mediaEngine`. Every document is a native timeline drawn by the Swift
@@ -306,6 +309,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidPlaybackRate = "invalid-playback-rate", invalidBinding = "invalid-binding", duplicateBinding = "duplicate-binding"
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
+    case invalidCaption = "invalid-caption"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip"
 }
 
