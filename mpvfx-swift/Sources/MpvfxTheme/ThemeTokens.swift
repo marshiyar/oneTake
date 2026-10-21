@@ -68,26 +68,61 @@ public enum ThemeAppearance: String, Sendable, CaseIterable {
     }
 }
 
-/// The current mode and its change observers. Set it from the main thread; drawing code reads it.
+/// The current mode and its change observers. Mutations and callbacks stay on the main thread;
+/// drawing code may read the mode from any thread.
 public enum Theme {
-    public private(set) static var mode: ThemeMode = .dark
-    private static var observers: [(id: Int, fn: (ThemeMode) -> Void)] = []
-    private static var nextObserver = 0
+    private static let state = State()
+    public static var mode: ThemeMode { state.mode }
 
-    /// Switches the mode and tells the observers (only when it changes).
-    public static func setMode(_ m: ThemeMode) {
-        guard m != mode else { return }
-        mode = m
-        for o in observers { o.fn(m) }
-    }
-    /// Calls `fn` after every mode change. Returns an id for `removeObserver`.
+    /// On the main thread, switches the mode and synchronously tells observers only when it changes.
+    public static func setMode(_ m: ThemeMode) { state.setMode(m) }
+    /// On the main thread, registers `fn` for subsequent changes. Returns an id for `removeObserver`.
     @discardableResult
     public static func addObserver(_ fn: @escaping (ThemeMode) -> Void) -> Int {
-        nextObserver += 1
-        observers.append((nextObserver, fn))
-        return nextObserver
+        state.addObserver(fn)
     }
-    public static func removeObserver(_ id: Int) { observers.removeAll { $0.id == id } }
+    /// Removes an observer on the main thread.
+    public static func removeObserver(_ id: Int) { state.removeObserver(id) }
+
+    // SAFETY: storedMode is accessed only under modeLock. Observers (including their non-Sendable
+    // captures) and nextObserver are accessed only after a main-thread precondition. Native GTK,
+    // AppKit and Win32 callbacks use this synchronous API without requiring actor-isolated callers.
+    private final class State: @unchecked Sendable {
+        private let modeLock = NSLock()
+        private var storedMode: ThemeMode = .dark
+        private var observers: [(id: Int, fn: (ThemeMode) -> Void)] = []
+        private var nextObserver = 0
+
+        var mode: ThemeMode {
+            modeLock.lock()
+            defer { modeLock.unlock() }
+            return storedMode
+        }
+
+        func setMode(_ m: ThemeMode) {
+            precondition(Thread.isMainThread, "Theme mutations must run on the main thread")
+            guard m != mode else { return }
+            modeLock.lock()
+            storedMode = m
+            modeLock.unlock()
+            // Snapshot before delivery: callbacks may read tokens, change subscriptions or switch
+            // mode again. No lock is held while calling user code; the current delivery keeps its order.
+            let delivery = observers
+            for o in delivery { o.fn(m) }
+        }
+
+        func addObserver(_ fn: @escaping (ThemeMode) -> Void) -> Int {
+            precondition(Thread.isMainThread, "Theme observers must be registered on the main thread")
+            nextObserver += 1
+            observers.append((nextObserver, fn))
+            return nextObserver
+        }
+
+        func removeObserver(_ id: Int) {
+            precondition(Thread.isMainThread, "Theme observers must be removed on the main thread")
+            observers.removeAll { $0.id == id }
+        }
+    }
 }
 
 /// A token's two values.
@@ -104,6 +139,10 @@ public enum ThemeTokens {
     /// The accent (docs/DESIGN.md): active tool, selection, focus, changed values.
     public static let studioAccentPair = ThemePair(0x4C8DF0, 0x1A5FCC)
     public static var studioAccent: ThemeColor { studioAccentPair.now }
+    /// A primary button's fill under `onAccent` text (the Media panel's Import): the accent a step darker in dark
+    /// mode so white 12 pt text keeps 4.5:1 (the accent itself gives 3.3:1); the hover is darker again.
+    public static let primaryFillPair = ThemePair(0x2F6FD6, 0x1A5FCC)
+    public static let primaryFillHoverPair = ThemePair(0x2763C4, 0x164FAD)
     /// The accent's line form (playhead, drop slots, timeline highlights): the accent blue a step lighter so a 1 px
     /// line stays visible. Named `mint` for the colour it used to be.
     public static let mintPair = ThemePair(0x5A98F0, 0x1A5FCC)

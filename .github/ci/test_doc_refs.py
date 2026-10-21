@@ -71,6 +71,18 @@ class DocRefsTests(unittest.TestCase):
         f, w, issues = self.run_on(text)
         self.assertEqual((f, w, issues), ([], [], []))
 
+    def test_a_number_the_listing_missed_is_looked_up_before_it_is_broken(self):
+        saved = doc_refs.known_numbers, doc_refs.exists
+        doc_refs.known_numbers = lambda repo: {1}
+        doc_refs.exists = lambda repo, n: n == 2
+        try:
+            args = type("A", (), {"repo": "o/r", "offline": False})()
+            findings = []
+            doc_refs.check_issues(args, [(None, 1, "a:1"), (None, 2, "a:2"), (None, 3, "a:3")], findings)
+        finally:
+            doc_refs.known_numbers, doc_refs.exists = saved
+        self.assertEqual(findings, ["a:3: #3 is not an issue or pull request of o/r"])
+
     def test_issue_references_are_collected(self):
         _, _, issues = self.run_on("closes #12, see [#34](https://github.com/marshiyar/oneTake/issues/34) and "
                                    "https://github.com/other/repo/pull/7 and `#if os(Linux)`\n")

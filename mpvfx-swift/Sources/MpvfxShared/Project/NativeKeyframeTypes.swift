@@ -326,3 +326,14 @@ public func createNativeParameterTrack(_ input: NativeParameterTrackInput, engin
                                 valueType: input.valueType, frameRate: frameRate, keyframes: keyframes,
                                 autoRotate: input.autoRotate == true ? true : nil)
 }
+
+public extension NativeParameterValue {
+    /// The value's numbers in order: one for a number, x then y for a point, red, green, blue then alpha for a colour.
+    var components: [Double] {
+        switch self {
+        case .number(let n): return [n]
+        case .vec2(let p): return [p.x, p.y]
+        case .rgba(let c): return [c.red, c.green, c.blue, c.alpha]
+        }
+    }
+}
