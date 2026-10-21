@@ -20,13 +20,32 @@ public enum PanelTabStrip {
     public static let height = 32.0
     /// The strip's square icon buttons (hide, panel menu) and the Import media button's height.
     public static let buttonSize = 24.0
-    static let edgeInset = 4.0, buttonGap = 2.0
+    static let tabPadding = 10.0, underline = 2.0, edgeInset = 4.0, buttonGap = 2.0
+    static var font: CanvasFont { PanelTheme.font(PanelTheme.textXs, .medium) }
 
     public static func drawBackground(_ c: CanvasContext, _ r: CanvasRect) {
         c.fillRect(r, PanelTheme.panelBg)
         PanelDraw.hline(c, x0: r.x, x1: r.maxX, y: r.maxY - 1, PanelTheme.panelHairline)
     }
 
+    public static func tabWidth(_ c: CanvasContext, _ label: String) -> Double {
+        c.measureText(label, font: font).width + tabPadding * 2
+    }
+    /// One tab; `r` spans the strip's height, so the underline covers the hairline under the active tab.
+    public static func tab(_ c: CanvasContext, _ r: CanvasRect, label: String, active: Bool, hovered: Bool) {
+        let color = active ? PanelTheme.text0 : (hovered ? PanelTheme.text1 : PanelTheme.text3)
+        PanelDraw.text(c, label, in: CanvasRect(x: r.x, y: r.y, width: r.width, height: r.height - 1), font: font, color: color, align: .center)
+        if active { c.fillRect(CanvasRect(x: r.x, y: r.maxY - underline, width: r.width, height: underline), PanelTheme.accent) }
+    }
+    /// The tabs laid left to right from the strip's left edge.
+    public static func tabRects(_ c: CanvasContext, _ strip: CanvasRect, labels: [String]) -> [CanvasRect] {
+        var x = strip.x + edgeInset
+        return labels.map { label in
+            let r = CanvasRect(x: x, y: strip.y, width: tabWidth(c, label), height: strip.height)
+            x = r.maxX
+            return r
+        }
+    }
     /// The `index`th icon button from the strip's right end (0 is the panel menu button).
     public static func buttonRect(_ strip: CanvasRect, index: Int) -> CanvasRect {
         let x = strip.maxX - edgeInset - buttonSize - Double(index) * (buttonSize + buttonGap)

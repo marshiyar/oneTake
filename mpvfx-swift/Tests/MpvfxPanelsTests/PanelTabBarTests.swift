@@ -131,7 +131,7 @@ final class PanelTabBarTests: XCTestCase {
         s.draw(c, size: CanvasSize(370, 900))
         var stops: [LeftSidebarPanel.Hit?] = []
         while s.keyDown(Self.key(.tab)) { stops.append(s.focus.current); c.reset(); s.draw(c, size: CanvasSize(370, 900)) }
-        XCTAssertEqual(stops, [.tab(.assets), .importMedia, .hideSidebar, .panelMenu])
+        XCTAssertEqual(stops, [.tab(.assets), .hideSidebar, .panelMenu, .importMedia])   // drawn order: the strip, then the header's Import
     }
 
     /// The Grade curve tabs: one Tab stop (the selected tab), Right selects the next, and at 280 pt the tabs that do

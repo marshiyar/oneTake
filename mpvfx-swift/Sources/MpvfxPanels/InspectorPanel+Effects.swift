@@ -215,10 +215,12 @@ extension InspectorPanel {
     func tileGrid(id: String, _ tiles: [CatalogTile], onPick: @escaping (Int) -> Void) -> InspectorCustomRow {
         let cols = 3, gap = 4.0
         // The height follows the width the body draws at (the panel is resizable), as the Grade preset grid's does.
-        let height = Self.previewGridHeight(count: max(1, tiles.count), width: bodyContentWidth, columns: cols, gap: gap)
+        let natural = Self.previewGridHeight(count: max(1, tiles.count), width: bodyContentWidth, columns: cols, gap: gap)
+        let height = PanelGrid.snapUp(natural)   // a whole grid slot: the tiles take up the rounding, so no gap opens below them
+        let rowCount = Double((max(1, tiles.count) + cols - 1) / cols)
         return InspectorCustomRow(id: id, height: height, draw: { [weak self] c, r, panel in
             let w = (r.width - gap * Double(cols - 1)) / Double(cols)
-            let h = 2 + (w - 2) * 9 / 16 + 27
+            let h = 2 + (w - 2) * 9 / 16 + 27 + max(0, r.height - natural) / rowCount
             for (i, t) in tiles.enumerated() {
                 let tr = CanvasRect(x: r.x + Double(i % cols) * (w + gap), y: r.y + Double(i / cols) * (h + gap), width: w, height: h)
                 let hov = panel.hovered == .custom(id, i)
