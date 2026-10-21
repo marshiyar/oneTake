@@ -253,6 +253,8 @@ public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var id: String; public var revision: Double
     public var frameRate: RationalFrameRate; public var canvas: NativeCanvas
     public var assets: [NativeProjectAsset]; public var sequence: NativeProjectSequence
+    /// The Easing panel's custom presets for this project (NativeEasingPreset.swift); nil writes no key.
+    public var easingPresets: [NativeEasingPreset]? = nil
 }
 
 public extension NativeProjectDocument {
