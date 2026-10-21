@@ -212,6 +212,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                 }
             }
             validateNativeClipFades(clip, clipPath, &issues)
+            validateNativeClipMoves(clip["moves"], clipDuration: clip["durationFrames"]?.numberValue, "\(clipPath).moves", &issues)
             validateNativeClipPresentation(clip, clipPath, &issues)
             validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
             if clip["text"] != nil, assetKind != "element" {

@@ -184,6 +184,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// In, Out and Loop moves over the clip's own values (NativeClipMoves.swift); absent means none.
+    public var moves: NativeClipMoves? = nil
     /// A held source frame (`NativeClipHold`): the clip shows that one frame for its whole length; absent plays the source.
     public var holdSourceFrame: NativeClipHold? = nil
     /// How a media clip's picture fills its box (the inspector's Fit row); absent means Fit, the contain fit every
@@ -339,7 +341,7 @@ public extension NativeProjectDocument {
 
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
-        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedHoldNotice, undrawnTransitionsNotice].compactMap { $0 }
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice].compactMap { $0 }
     }
 }
 
@@ -354,7 +356,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
     case duplicateTransition = "duplicate-transition"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
-    case invalidSpeedRamp = "invalid-speed-ramp"
+    case invalidSpeedRamp = "invalid-speed-ramp", invalidMove = "invalid-move"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {
