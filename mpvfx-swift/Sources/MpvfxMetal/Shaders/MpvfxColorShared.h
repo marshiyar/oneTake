@@ -53,6 +53,9 @@ enum MpvfxEK {
     EK_COUNT
 };
 
+// Blend modes, in NativeBlendMode's case order (MpvfxColorTests checks the two match).
+enum MpvfxBlend { BLEND_normal = 0, BLEND_multiply, BLEND_screen, BLEND_overlay, BLEND_add, BLEND_softLight, BLEND_darken, BLEND_lighten, BLEND_COUNT };
+
 // Parameters of the multipass kernels (buffer 0), by index.
 enum MpvfxBlurParam { BLUR_DIR_X = 0, BLUR_DIR_Y, BLUR_RADIUS, BLUR_BLOOM_PASS, BLUR_THRESHOLD, BLUR_SOURCE_FLIPPED, BLUR_PARAM_COUNT };
 enum MpvfxMomentsParam { MOMENTS_RADIUS = 0, MOMENTS_BLUR_AMOUNT, MOMENTS_PARAM_COUNT };

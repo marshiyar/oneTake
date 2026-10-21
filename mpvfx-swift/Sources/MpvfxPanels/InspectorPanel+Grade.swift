@@ -44,6 +44,9 @@ public struct GradeUIState: Equatable {
     public internal(set) var sampleFrame: CanvasImage?
     var samplePending = false
     public internal(set) var sampleError = false
+    /// Auto balance is waiting for the clip's frame / found none to measure.
+    var autoBalancePending = false
+    var autoBalanceFailed = false
     public var showMatte = false
     var sampleRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     var matteMemo: (key: ColorGrading.Secondary, image: CanvasImage)?
@@ -96,6 +99,8 @@ extension InspectorPanel {
                                         keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.intensityId], shown: g)))))
         gap(6)
         rows.append(.init(.section("Primary")))
+        gap(4)
+        rows.append(autoBalanceRow(s.id))
         gap(4)
         rows += primaryRows(editor, s, g, commit: commit)
         gap(6)

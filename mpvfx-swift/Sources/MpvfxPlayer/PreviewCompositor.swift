@@ -59,6 +59,7 @@ public final class PreviewCompositor: FrameSource {
         public var gradeCurrent = true
     }
     public private(set) var lastShown: [Shown] = []
+    var blendSurface: RasterCanvas?
     /// Draws where a layer showed a stand-in instead of its exact frame.
     public private(set) var heldFrames = 0
     /// The lane each clip last drew from (a trim or retime switches lanes; the old frames bridge the gap).
@@ -124,7 +125,6 @@ public final class PreviewCompositor: FrameSource {
         guard let comp = composition, comp.canvas.width > 0 else {
             placeholder.draw(c, in: rect, time: time, elements: elements); return
         }
-        c.fillRect(rect, comp.background)
         let s = rect.width / comp.canvas.width
         let live = context.liveElementIds.map { ids in elements.filter { ids.contains($0.id) } } ?? elements
         let layers = Self.applyStage(live, to: comp.layers(at: time), frame: rect, scale: s)
@@ -133,15 +133,26 @@ public final class PreviewCompositor: FrameSource {
         let ahead = forward ? lookahead(layers, comp: comp, scale: s, backing: context.backingScale, speed: context.speed) : 0
         let behind = backward ? reverseChunk(layers, comp: comp, scale: s, backing: context.backingScale, speed: -context.speed) : 0
 
+        // A frame holding a blended layer is painted on a raster surface the blend can read back, then drawn in `rect`
+        // (the picture export paints); other frames draw straight onto `c`.
+        let blended = layers.contains { $0.isVisible && $0.blend != .normal }
+        let offscreen = blended ? blendCanvas(rect, backing: context.backingScale) : nil
+        let target: CanvasContext = offscreen ?? c
+        let area = offscreen.map { CanvasRect(x: 0, y: 0, width: Double($0.surface.width), height: Double($0.surface.height)) } ?? rect
+        let areaScale = offscreen == nil ? s : area.width / comp.canvas.width
+        if let offscreen { offscreen.clear(.transparent) }
+        target.fillRect(area, comp.background)
+        defer { if let offscreen { c.drawImage(offscreen.image(), in: rect) } }
+
         var used = Set<String>()
         var shown: [Shown] = []
         for layer in layers where layer.isVisible {
             if layer.kind == .offline {   // missing media: a slate naming the file, never decoded
-                PreviewPainter.drawOffline(layer, on: c, frame: rect, scale: s)
+                PreviewPainter.drawOffline(layer, on: target, frame: area, scale: areaScale)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
             if layer.kind == .text {   // text layers are laid out, not decoded
-                PreviewPainter.drawText(layer, on: c, frame: rect, scale: s)
+                PreviewPainter.drawText(layer, on: target, frame: area, scale: areaScale)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
             let size = decodeSize(layer, scale: s, backing: context.backingScale)
@@ -155,7 +166,7 @@ public final class PreviewCompositor: FrameSource {
             }
             let look = shownImage(layer, pick.image, frame: pick.frame, time: time, fps: comp.fps, target: size,
                                   lane: pick.lane)
-            draw(layer, raw: pick.image, shown: look.image, shownIsCurrent: look.current, on: c, frame: rect, scale: s,
+            draw(layer, raw: pick.image, shown: look.image, shownIsCurrent: look.current, on: target, frame: area, scale: areaScale,
                  context: context)
             shown.append(Shown(clipId: layer.clipId, frame: pick.frame, exact: pick.exact,
                                grade: look.grade, gradeCurrent: look.current))
@@ -243,14 +254,24 @@ public final class PreviewCompositor: FrameSource {
         // A completed grade from a previous request is useful during normal playback, but must never be paired
         // with a different raw source frame in Compare. Until this frame's grade completes, show it raw on both sides.
         let after = shownIsCurrent ? shown : raw
+        // The wipe is clipped on `c`; a blend reads the whole canvas back, so the compared clip draws unblended.
+        var plain = layer; plain.blend = .normal
         c.withState {
             c.clip(CanvasRect(x: frame.x, y: frame.y, width: max(0, split - frame.x), height: frame.height))
-            PreviewPainter.draw(layer, image: raw, on: c, frame: frame, scale: scale)
+            PreviewPainter.draw(plain, image: raw, on: c, frame: frame, scale: scale)
         }
         c.withState {
             c.clip(CanvasRect(x: split, y: frame.y, width: max(0, frame.maxX - split), height: frame.height))
-            PreviewPainter.draw(layer, image: after, on: c, frame: frame, scale: scale)
+            PreviewPainter.draw(plain, image: after, on: c, frame: frame, scale: scale)
         }
+    }
+
+    /// The raster surface a blended frame is painted on: `rect` in device pixels, kept while the size is unchanged.
+    func blendCanvas(_ rect: CanvasRect, backing: Double) -> RasterCanvas? {
+        let w = max(1, Int((rect.width * max(backing, 1)).rounded())), h = max(1, Int((rect.height * max(backing, 1)).rounded()))
+        if let canvas = blendSurface, canvas.surface.width == w, canvas.surface.height == h { return canvas }
+        blendSurface = try? RasterCanvas(width: w, height: h)
+        return blendSurface
     }
 
     func decodeSize(_ layer: PreviewLayer, scale s: Double, backing: Double) -> PreviewDecodeSize {
