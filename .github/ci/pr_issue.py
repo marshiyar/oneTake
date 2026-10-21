@@ -32,6 +32,7 @@ train's body must carry their `Closes #<n>` lines.
 
 Prints a Markdown verdict; exit 0 pass or exempt, 1 the check fails, 2 bad arguments or the API could not be read.
 """
+import importlib.util
 import json
 import os
 import re
@@ -44,9 +45,20 @@ API_HOST = "api.github.com"
 EXEMPT_LABEL = "no-issue"
 EXEMPT_AUTHORS = {"dependabot[bot]", "chatgpt-codex-connector[bot]"}
 TRAIN_BRANCH = re.compile(r"train/\d+")
-# Kept equal to the docs filter of the `changes` job in .github/workflows/mpvfx-ci.yml.
-DOCS_FILE = re.compile(r"\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$")
-DOCS_MAX_FILES = 3000
+
+
+def _load_platforms():
+    # The `changes` job of mpvfx-ci decides "documentation only" with platforms.py; this check uses the same rules.
+    # Loaded by path: under -I the script's own folder is not on sys.path.
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "platforms.py")
+    spec = importlib.util.spec_from_file_location("platforms", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+PLATFORMS = _load_platforms()
+DOCS_MAX_FILES = PLATFORMS.MAX_FILES
 # Keyword and number on one line: GitHub does not link `Closes:` and `#12` across a line break.
 CLOSING = re.compile(r"(?<![\w/#-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t]*:?[ \t]+#(\d+)\b", re.IGNORECASE)
 MAX_REFERENCES = 20
@@ -99,7 +111,7 @@ def changed_files(get, number):
 
 
 def docs_only(files):
-    return files is not None and 0 < len(files) < DOCS_MAX_FILES and all(DOCS_FILE.search(f) for f in files)
+    return files is not None and 0 < len(files) < DOCS_MAX_FILES and not PLATFORMS.classify(files)[0]
 
 
 def referenced_issues(body):

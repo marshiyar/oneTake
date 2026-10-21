@@ -51,6 +51,7 @@ public final class PlayerController {
         case crop(id: String, edge: CropEdge, start: StageElement)
         case marquee(x: Double, y: Double, additive: Bool)
         case pan(x: Double, y: Double, panX: Double, panY: Double)
+        case compare
     }
     var gesture: Gesture?
     /// Where the move / group / resize press landed (view px) and whether it has travelled past `dragThreshold`.
@@ -69,9 +70,14 @@ public final class PlayerController {
     // Gesture recording (wired by `enableGestureRecording`).
     public var recordingDocument: (() -> NativeProjectDocument?)?
     public var recordingEngine: KeyframeEngine?
-    /// Commits the recorded document as one undo step ("Gesture recording"); returns false when it was refused.
+    /// Commits the recorded document as one undo step ("Record motion"); returns false when it was refused.
     public var onRecordingCommit: ((_ edited: NativeProjectDocument, _ before: NativeProjectDocument) -> Bool)?
     public internal(set) var recorder: GestureRecorder?
+    /// Record motion is armed (PlayerController+Record.swift).
+    var recordArmed = false
+    /// Extra selection handles (view px, given the selected element in view coordinates): a press on one while
+    /// Record is armed starts a take, like the body, corner and rotate handles.
+    public var extraHandleHit: ((_ point: CanvasPoint, _ selected: StageElement) -> Bool)?
     var recordingStart: StageElement?
     var recordingProjectId: String?
     var recordingLimit = Double.infinity
@@ -168,11 +174,15 @@ public final class PlayerController {
             if tb.gridPopoverOpen { tb.gridPopoverOpen = false; needsDisplay?() }
             if y < view.toolbarHeight { return }
         }
+        if view.toolbar.compareEnabled, view.selection != nil {
+            let f = view.frameRect(in: size), divider = f.x + f.width * view.toolbar.comparePosition
+            if f.contains(p), abs(p.x - divider) <= 12 { gesture = .compare; return }
+        }
         if let fit = view.fitButtonRect(in: size, measure), fit.contains(p) {
             view.zoom = .fit; view.zoomChanged(); zoomTouched(); needsDisplay?(); return
         }
         if let b = view.button(at: p, in: size) { press(b); return }
-        guard vp.contains(p), recorder == nil else { return }   // recording: the stage only follows the pointer
+        guard vp.contains(p), !recordTakesPress(p, shift: shift) else { return }   // armed Record owns stage presses
 
         if let e = selected {
             let ve = view.chromeElement(e, in: size)
@@ -245,10 +255,13 @@ public final class PlayerController {
     public func pointerMove(x: Double, y: Double, shift: Bool? = nil) {
         if let shift { shiftHeld = shift }
         let p = CanvasPoint(x, y); lastPointer = p
-        if recorder != nil { recorder?.pointerMoved(p, modifiers: modifiers) }
+        if recorder != nil { recordMove(p); return }   // only a held press on the layer drives it
         guard let g = gesture else { idleMove(p); return }
         let s = max(view.scale(in: size), 1e-9)
         switch g {
+        case .compare:
+            let f = view.frameRect(in: size)
+            view.toolbar.comparePosition = max(0, min(1, (x - f.x) / max(f.width, 1))); needsDisplay?()
         case let .pan(x0, y0, px, py):
             let f = view.fittedRect(in: size), vp = view.viewportRect(in: size)
             let (cx, cy) = PreviewZoom.clampPan(x: px + x - x0, y: py + y - y0, percent: view.zoom.percent,
@@ -277,7 +290,7 @@ public final class PlayerController {
 
     func drag(_ g: Gesture, _ p: CanvasPoint, scale s: Double) {
         switch g {
-        case .pan, .marquee: break
+        case .pan, .marquee, .compare: break
         case let .move(id, start, x0, y0):
             let d = moveDelta(x0: x0, y0: y0, to: p, moving: [start])
             update(id) { $0.rect.x = start.rect.x + d.dx / s; $0.rect.y = start.rect.y + d.dy / s }
@@ -359,8 +372,9 @@ public final class PlayerController {
 
     public func pointerUp(x: Double, y: Double) {
         defer { gesture = nil; view.snapGuides = []; view.spacingGuides = []; endTransformGesture() }
-        guard let g = gesture else { return }
+        guard recorder == nil, let g = gesture else { finishTake(); return }   // release ends a take
         switch g {
+        case .compare: needsDisplay?()
         case .pan: zoomTouched(); return
         case let .marquee(_, _, additive):
             let picked = view.marqueeCandidates
@@ -424,7 +438,7 @@ public final class PlayerController {
     public func scroll(x: Double, y: Double, dx: Double, dy: Double, zoom: Bool) -> Bool {
         let vp = view.viewportRect(in: size)
         guard vp.contains(CanvasPoint(x, y)) else { return false }
-        if recorder != nil { recorder?.wheel(dy, modifiers: modifiers.union(zoom ? .ctrl : [])); return true }
+        if recorder != nil { recorder?.wheel(dy, modifiers: modifiers.union(zoom ? .ctrl : [])); dragEngaged = true; return true }
         let f = view.fittedRect(in: size)
         let viewport = CanvasSize(vp.width, vp.height), content = CanvasSize(f.width, f.height)
         if zoom {
@@ -440,24 +454,18 @@ public final class PlayerController {
     }
 
     /// Stage-owned keys: C toggles the crop tool, Enter applies it, Esc cancels it (or closes a menu),
-    /// G toggles the grid, R records a gesture (when wired).
+    /// G toggles the grid, R arms Record motion (when wired).
     public func keyDown(_ k: EditorKey) -> Bool {
         guard !k.command, !k.alt else { return false }
         if nudgeKey(k) { return true }
         flushNudge()
         switch k.code {
-        case .escape:
-            if cancelGesture() { return true }
-            if view.contextMenu != nil { view.contextMenu = nil; needsDisplay?(); return true }
-            if view.toolbar.gridPopoverOpen { view.toolbar.gridPopoverOpen = false; needsDisplay?(); return true }
-            if view.cropActive { cancelCrop(); return true }
-            if view.isFullscreen { view.isFullscreen = false; needsDisplay?(); return true }   // Esc leaves fullscreen
-            return false
+        case .escape: return escapeKey()
         case .enter where view.cropActive: runCrop(.apply); return true
         case .char(let ch) where ch == "c" || ch == "C":
             guard view.cropAvailable || view.cropActive else { return false }
             runCrop(view.cropActive ? .cancel : .start); return true
-        case .char(let ch) where !k.shift && (ch == "g" || ch == "G"):
+        case .char(let ch) where !k.shift && (ch == "g" || ch == "G" || ch == "\\"):
             // Bare S stays Split (the app reserves it), so only G reaches the tools bar.
             let handled = view.toolbar.key(ch); if handled { needsDisplay?() }; return handled
         case .char(let ch) where !k.shift && !k.isRepeat && (ch == "r" || ch == "R" || ch == "f" || ch == "F"):

@@ -27,8 +27,13 @@ public struct FrameDrawContext: Equatable, Sendable {
     /// document's box, rotation and crop; every other layer is drawn from the document as evaluated at this time,
     /// so inspector edits show at once. nil: every element passed in is live (callers without a controller).
     public var liveElementIds: Set<String>?
-    public init(backingScale: Double = 1, isPlaying: Bool = false, speed: Double = 1, liveElementIds: Set<String>? = nil) {
+    /// Selected clip shown raw left of the preview-only compare divider.
+    public var compareClipId: String?
+    public var comparePosition: Double
+    public init(backingScale: Double = 1, isPlaying: Bool = false, speed: Double = 1, liveElementIds: Set<String>? = nil,
+                compareClipId: String? = nil, comparePosition: Double = 0.5) {
         self.backingScale = backingScale; self.isPlaying = isPlaying; self.speed = speed; self.liveElementIds = liveElementIds
+        self.compareClipId = compareClipId; self.comparePosition = comparePosition
     }
 }
 

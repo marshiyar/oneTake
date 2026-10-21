@@ -239,6 +239,13 @@ final class WindowsShell: EditorSaveChannel, @unchecked Sendable {
             }
             answer(choice == IDYES)
         }
+        session.onProjectMoved = { [weak self] message, answer in
+            let text = message + "\n\nYes: Locate Folder…\nNo: Keep Editing."
+            let choice = withWide("The project folder is missing") { t in
+                withWide(text) { m in MessageBoxW(self?.hwnd, m, t, UINT(MB_YESNO | MB_ICONWARNING)) }
+            }
+            answer(choice == IDYES)
+        }
         session.onImportRequested = { [weak self, weak session] in
             guard let self else { return }
             Task {

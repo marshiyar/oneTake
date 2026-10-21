@@ -78,6 +78,13 @@ final class EditorSession {
     var editHistory: TimelineHistoryPersister?
     /// Save/import failures for the shell to show (stderr until a shell sets it).
     var onError: (_ title: String, _ message: String) -> Void = { t, m in FileHandle.standardError.write(Data("[MpVFX] \(t): \(m)\n".utf8)) }
+    /// True while the project's folder is gone (moved or deleted): autosave waits until "Locate Folder…" finds it
+    /// (EditorSession+ProjectMoved).
+    var projectFolderMissing = false
+    var projectMovedPromptOpen = false
+    /// Set by the shell to ask what to do about a vanished project folder: answer true for "Locate Folder…", false for
+    /// "Keep Editing". Without it the message goes to `onError` and editing continues.
+    var onProjectMoved: ((_ message: String, _ answer: @escaping (_ locate: Bool) -> Void) -> Void)?
 
     /// `projectPath` (MPVFX_PROJECT) opens that project; otherwise the default project, or the built-in demo
     /// when `demo` is set (smoke tests) or there is no backend.
@@ -125,13 +132,7 @@ final class EditorSession {
         syncStage()
         let previousOnChange = editor.onChange
         editor.onChange = { [weak self] in previousOnChange?(); self?.documentChanged(); self?.rebuildAudioGraphIfNeeded() }
-        if let backend, let project {
-            do {
-                try backend.watchProject(id: project.id) { [weak self] text in
-                    self?.postToUI { self?.externalChange(text) }   // postToUI hops to the UI thread
-                }
-            } catch { FileHandle.standardError.write(Data("[MpVFX] not watching the project file: \(error)\n".utf8)) }
-        }
+        watchOpenProject()
     }
 
     // MARK: Save / import (through the DesktopBackend)
@@ -182,7 +183,7 @@ final class EditorSession {
 
     private func autosave() {
         cancelAutosave = nil
-        guard let backend, let project, isDirty else { return }
+        guard let backend, let project, isDirty, !projectFolderMissing else { return }
         if autosaveInFlight { autosaveAgain = true; return }
         autosaveInFlight = true
         let document = editor.document, engine = self.engine, id = project.id, generation = saveGeneration
@@ -193,7 +194,14 @@ final class EditorSession {
                 try backend.saveProject(id: id, content: content)
                 return content
             }
-            post { self?.autosaveFinished(document, generation: generation, result) }
+            post {
+                guard let self else { return }
+                if case .failure(let e) = result, (e as? DesktopError)?.isProjectMoved == true {
+                    self.autosaveMissedTheFolder(e, generation: generation)
+                    return
+                }
+                self.autosaveFinished(document, generation: generation, result)
+            }
         }
     }
 
@@ -208,6 +216,18 @@ final class EditorSession {
             onError("Could not save the project", "\(e)")
         }
         if autosaveAgain { autosaveAgain = false; autosave() }
+    }
+
+    /// An autosave found the project's folder gone. A result older than the last save or relocation is stale (the folder
+    /// was located meanwhile), so it neither pauses autosave again nor asks.
+    private func autosaveMissedTheFolder(_ error: Error, generation: Int) {
+        autosaveInFlight = false
+        guard generation == saveGeneration else {
+            if autosaveAgain { autosaveAgain = false; autosave() }
+            return
+        }
+        autosaveAgain = false
+        _ = projectFolderVanished(error, explicitSave: false)
     }
 
     /// The document on disk changed outside the app.
@@ -270,7 +290,18 @@ final class EditorSession {
         composedDocument = nil; graphInputs = nil
         try loadContent(opened.content)
         player.view.canvasSize = CanvasSize(editor.document.canvas.width, editor.document.canvas.height)
-        if let notice = editor.document.undrawnElementLayersNotice { player.view.showToast(notice) }
+        for notice in editor.document.undrawnContentNotices { player.view.showToast(notice) }
+    }
+
+    /// The open project's folder was found at `moved.directory` (Locate Folder…): media resolves against it from now on.
+    /// The editor's document, its unsaved edits and the undo history stay as they are.
+    func adoptMovedFolder(_ moved: DesktopProject) {
+        project = moved
+        projectDir = URL(fileURLWithPath: moved.directory)
+        saveGeneration += 1   // an autosave still posting its result back wrote to the old folder
+        compositor.releaseAll()   // decoders opened on the old paths
+        composedDocument = nil; graphInputs = nil
+        syncStage(); redraw()
     }
 
     // MARK: Media in the project
@@ -303,7 +334,7 @@ final class EditorSession {
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
         case "s":
-            do { try save() } catch { onError("Could not save the project", "\(error)") }
+            do { try save() } catch { if !projectFolderVanished(error, explicitSave: true) { onError("Could not save the project", "\(error)") } }
             return true
         case "i":
             guard let onImportRequested, project != nil else { return false }

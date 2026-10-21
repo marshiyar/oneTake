@@ -93,7 +93,7 @@ extension InspectorPanel {
         switch scopeFrame?(clipId, Self.sampleFrameSize, Self.sampleFrameSize) ?? .unavailable {
         case .ready(let img): grade.sampleFrame = img; grade.samplePending = false; grade.sampleError = false
         case .rendering: grade.samplePending = true
-        case .unavailable: grade.samplePending = false; grade.sampleError = true
+        case .unavailable, .failed: grade.samplePending = false; grade.sampleError = true
         }
     }
 }
