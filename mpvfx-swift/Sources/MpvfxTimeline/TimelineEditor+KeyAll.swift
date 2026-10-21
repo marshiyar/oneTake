@@ -27,7 +27,8 @@ public extension TimelineEditor {
     /// image, element) Position, Size, Rotation, Scale, Opacity, Depth, Tilt X, Tilt Y and Perspective (Roll is
     /// Rotation); clips with sound (audio, and video whose audio is not detached) Volume. Position keys the scalar
     /// x / y parameters when the clip has them (recorded and older projects), else the vec2 track; Opacity keys
-    /// whichever opacity parameter already animates (older projects carry `visual.autoAlpha`), else `visual.opacity`.
+    /// whichever opacity parameter already animates (older projects carry `visual.autoAlpha`), else `visual.opacity`. Video and image clips add the grade values
+    /// their grade sets or animates (`gradeKeyableParameters`, issue #179).
     func keyableParameters(clipId: String, time: Double) -> [TimelineKeyableParameter] {
         guard let (_, c) = clip(clipId) else { return [] }
         let kind = document.assets.first { $0.id == c.assetId }?.kind ?? .element
@@ -64,7 +65,26 @@ public extension TimelineEditor {
         out.append(.init(Self.scaleId, .vec2(Vec2Value(x: 1, y: 1))))
         out += opacityKeyableParameters(clipId: clipId, time: time)
         out += NativeTransform3D.parameterIds.map { .init($0, .number(0)) }
+        if kind(ofClip: clipId) != .element { out += gradeKeyableParameters(clipId: clipId) }
         return out
+    }
+
+    /// Grade parameters (issue #179) the clip's grade sets away from neutral, or that already animate. Keying all
+    /// forty of an untouched grade would only bury the lanes in flat keys.
+    internal func gradeKeyableParameters(clipId: String) -> [TimelineKeyableParameter] {
+        guard let (_, c) = clip(clipId) else { return [] }
+        let animated = Set(NativeGradeParameter.animatedIds(c))
+        return NativeGradeParameter.allIds.compactMap { id in
+            let authored = NativeGradeParameter.authoredValue(id, in: c)
+            let neutral = id == NativeGradeParameter.intensityId ? 1.0 : 0.0
+            guard animated.contains(id) || (authored.map { abs($0 - neutral) > 1e-9 } ?? false) else { return nil }
+            return .init(id, .number(authored ?? neutral))
+        }
+    }
+
+    internal func kind(ofClip clipId: String) -> NativeProjectAssetKind {
+        guard let (_, c) = clip(clipId) else { return .element }
+        return document.assets.first { $0.id == c.assetId }?.kind ?? .element
     }
 
     internal func positionKeyableParameters(clipId: String, x: Double, y: Double) -> [TimelineKeyableParameter] {
