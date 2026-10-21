@@ -298,6 +298,12 @@ public protocol DesktopBackend: Sendable {
     /// Calls `onExternalChange` (on a background queue) with the new text whenever the document is changed
     /// on disk by anything other than this backend. Replaces an earlier watch on the same project.
     func watchProject(id: String, onExternalChange: @escaping @Sendable (String) -> Void) throws
+    /// Like `watchProject(id:onExternalChange:)`, and also reports `.missing` when the project's folder was moved or
+    /// deleted (`ProjectMoved.swift`). Replaces an earlier watch on the same project.
+    func watchProjectEvents(id: String, onEvent: @escaping @Sendable (DesktopProjectEvent) -> Void) throws
+    /// Points an open project at the folder it was moved to (`path`: the folder, its `.studio` or the document) and keeps
+    /// its id and watch; returns the document found there. Nothing is written.
+    func relocateProject(id: String, to path: String) throws -> DesktopProject
     /// Project folders in the projects directory and the open libraries, newest first.
     func listProjects() -> [DesktopProjectSummary]
     /// Recently opened projects that still exist, newest first.

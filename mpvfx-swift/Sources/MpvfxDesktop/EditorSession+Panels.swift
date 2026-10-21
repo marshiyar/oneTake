@@ -635,9 +635,7 @@ extension EditorSession {
             if let old = project { backend.closeProject(id: old.id) }
             compositor.releaseAll()   // the closed project's decoders, frames and graded pictures
             try adoptProject(opened)
-            do {
-                try backend.watchProject(id: opened.id) { [weak self] text in self?.postToUI { self?.externalChange(text) } }
-            } catch { FileHandle.standardError.write(Data("[MpVFX] not watching the project file: \(error)\n".utf8)) }
+            watchOpenProject()
             timeline.view.selection = []
             playback.seek(0); timeline.syncFromPlayback()
             panels?.projectSwitched()
