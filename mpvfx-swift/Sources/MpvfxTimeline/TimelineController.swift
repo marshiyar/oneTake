@@ -413,9 +413,7 @@ public final class TimelineController {
                 view.selectedKeyframes = []   // keyframeHistoryState: undo/redo clear the key selection
                 return k.shift ? (editor?.redo() ?? false) : (editor?.undo() ?? false)
             case "y" where !k.meta: return editor?.redo() ?? false
-            case "=", "+": zoom(in: true); return true
-            case "-": zoom(in: false); return true
-            case "0": zoomToFit(); return true
+            case "=", "+", "-", "0": return zoomKey(Character(ch.lowercased()))
             case "a" where !k.shift && !k.alt: return selectAll()
             case "d" where !k.shift && !k.alt: return duplicateSelection()
             case "c" where k.alt: return copyGradeSelection()
@@ -423,6 +421,7 @@ public final class TimelineController {
             case "c": return copySelection()
             case "x": guard copySelection() else { return false }; return deleteSelection()
             case "v": return pasteClipboard()
+            case "k" where !k.alt: return keySelectedProperties(animatedOnly: k.shift)
             default: return false
             }
         }
