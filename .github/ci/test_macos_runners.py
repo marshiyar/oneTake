@@ -14,6 +14,7 @@
 #===----------------------------------------------------------------------===#
 """Tests for the macOS hand-off to OneTake-app/OneTake-actionRunners-1 in mpvfx-ci.yml: when it is sent, the local
 fallback, the inputs mpvfx-macos.yml takes for it, and ci-ok treating macOS as reported, not required."""
+import importlib.util
 import os
 import unittest
 
@@ -63,47 +64,47 @@ class Handoff(unittest.TestCase):
         self.assertEqual(macos["uses"], "./.github/workflows/mpvfx-macos.yml")
 
 
-class Inputs(unittest.TestCase):
-    def test_every_checkout_and_the_build_number_follow_the_source_inputs(self):
-        wf = workflow("mpvfx-macos.yml")
-        inputs = wf[True]["workflow_call"]["inputs"]   # PyYAML reads the key `on` as True
-        self.assertEqual(inputs["source_repository"]["default"], "")
-        self.assertEqual(inputs["source_ref"]["default"], "")
-        checkouts = [s for j in wf["jobs"].values() for s in j.get("steps", [])
-                     if "actions/checkout" in s.get("uses", "")]
+class SourceWorkflow(unittest.TestCase):
+    """mpvfx-macos-source.yml, the entry point OneTake-actionRunners-1 calls (generated from mpvfx-macos.yml)."""
+
+    def setUp(self):
+        self.wf = workflow("mpvfx-macos-source.yml")
+        self.steps = [s for j in self.wf["jobs"].values() for s in j["steps"]]
+
+    def test_it_is_what_the_generator_writes(self):
+        script = os.path.join(ROOT, ".github", "ci", "macos_source_workflow.py")
+        spec = importlib.util.spec_from_file_location("gen", script)
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        with open(gen.SOURCE, encoding="utf-8") as f, open(gen.TARGET, encoding="utf-8") as g:
+            self.assertEqual(g.read(), gen.generate(f.read()), "rerun .github/ci/macos_source_workflow.py")
+
+    def test_only_a_call_with_a_named_commit_runs_it(self):
+        on = self.wf["on"]   # the generator writes the key quoted, so it reads back as a string, not True
+        self.assertEqual(list(on), ["workflow_call"])
+        inputs = on["workflow_call"]["inputs"]
+        self.assertTrue(inputs["source_repository"]["required"])
+        self.assertTrue(inputs["source_ref"]["required"])
+
+    def test_checkouts_take_the_source_and_keep_no_token(self):
+        checkouts = [s for s in self.steps if s.get("uses", "").startswith("actions/checkout@")]
         self.assertEqual(len(checkouts), 3)
         for s in checkouts:
-            self.assertEqual(s["with"]["repository"], "${{ inputs.source_repository || github.repository }}")
-            self.assertEqual(s["with"]["ref"], "${{ inputs.source_ref }}")
-            self.assertIs(s["with"]["persist-credentials"], False)   # no token is left for the source's scripts
-        steps = [s for j in wf["jobs"].values() for s in j.get("steps", [])]
-        package = next(s for s in steps if s.get("name", "").startswith("Package"))
-        self.assertEqual(package["env"]["MPVFX_BUILD"], "${{ inputs.source_ref || github.sha }}")
+            self.assertEqual(s["with"], {"repository": "${{ inputs.source_repository }}",
+                                         "ref": "${{ inputs.source_ref }}", "persist-credentials": False})
 
-    def test_a_call_naming_a_source_gets_no_signing_secret(self):
-        envs = [s.get("env") or {} for j in workflow("mpvfx-macos.yml")["jobs"].values() for s in j.get("steps", [])]
-        secret = [v for env in envs for v in env.values() if isinstance(v, str) and "secrets." in v]
-        self.assertEqual(len(secret), 5)
-        for value in secret:
-            self.assertIn("inputs.source_ref == '' && secrets.", value)
+    def test_no_cache_and_no_secret(self):
+        self.assertFalse([s for s in self.steps if "actions/cache" in s.get("uses", "")])
+        values = [v for s in self.steps for v in (s.get("env") or {}).values() if isinstance(v, str)]
+        self.assertFalse([v for v in values if "secrets." in v])
 
-    def test_a_call_naming_a_source_never_restores_or_saves_a_cache(self):
-        # Runs from OneTake-actionRunners-1 share its default-branch cache scope; a labelled PR's code must not be able
-        # to plant a build cache that a later nightly (whose disk image is published) restores.
-        steps = [s for j in workflow("mpvfx-macos.yml")["jobs"].values() for s in j.get("steps", [])]
-        caches = [s for s in steps if "actions/cache" in s.get("uses", "")]
-        self.assertEqual(len(caches), 9)
-        for s in caches:
-            self.assertTrue(s["if"].startswith("inputs.source_ref == ''"), s)
+    def test_the_build_number_is_the_source_commit(self):
+        package = next(s for s in self.steps if s.get("name", "").startswith("Package"))
+        self.assertEqual(package["env"]["MPVFX_BUILD"], "${{ inputs.source_ref }}")
 
-    def test_cache_keys_follow_the_source_commit(self):
-        steps = [s for j in workflow("mpvfx-macos.yml")["jobs"].values() for s in j.get("steps", [])]
-        # The build caches (macos27-*); the test-pass records are keyed by their inputs' hash instead.
-        keys = [s["with"]["key"] for s in steps
-                if "actions/cache" in s.get("uses", "") and s["with"]["key"].startswith("macos27-")]
-        self.assertEqual(len(keys), 4)
-        for key in keys:
-            self.assertTrue(key.endswith("${{ inputs.source_ref || github.sha }}"), key)
+    def test_the_local_workflow_is_left_as_it_was(self):
+        local = workflow("mpvfx-macos.yml")[True]["workflow_call"]["inputs"]
+        self.assertNotIn("source_ref", local)
 
 
 class Gate(unittest.TestCase):

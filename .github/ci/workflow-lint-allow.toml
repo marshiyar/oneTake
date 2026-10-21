@@ -63,6 +63,27 @@ reason = "contents: write token stays in .git/config, but publish.sh releases wi
 
 [[allow]]
 rule = "persist-credentials"
+workflow = "mpvfx-macos.yml"
+job = "plan"
+count = 1
+reason = "Read-only token; nothing uses git after the checkout. Called from mpvfx-ci (ci-ok); follow-up PR after #56, which edits this file."
+
+[[allow]]
+rule = "persist-credentials"
+workflow = "mpvfx-macos.yml"
+job = "test"
+count = 1
+reason = "Read-only token; nothing uses git after the checkout. Called from mpvfx-ci (ci-ok); follow-up PR after #56, which edits this file."
+
+[[allow]]
+rule = "persist-credentials"
+workflow = "mpvfx-macos.yml"
+job = "package"
+count = 1
+reason = "Read-only token; nothing uses git after the checkout. Called from mpvfx-ci (ci-ok); follow-up PR after #56, which edits this file."
+
+[[allow]]
+rule = "persist-credentials"
 workflow = "codeql.yml"
 job = "scripts-and-workflows"
 count = 1

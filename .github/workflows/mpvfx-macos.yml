@@ -12,10 +12,7 @@ name: mpvfx-macos
 #
 # Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
 # are optional (outside pull requests only): set, the disk image is signed with a Developer ID and notarized; unset, it
-# is ad-hoc signed. A call naming source_ref (from OneTake-actionRunners-1) never gets them: it builds code this
-# repository's event did not choose, so it is always ad-hoc signed. It also restores and saves no cache: those runs
-# share the runners repository's default-branch cache scope, so a labelled pull request could otherwise plant a build
-# cache that a later nightly, whose disk image is published, would restore.
+# is ad-hoc signed.
 
 on:
   workflow_call:
@@ -26,14 +23,6 @@ on:
       full_tests:
         type: boolean
         default: false
-      # Set by OneTake-app/OneTake-actionRunners-1, which runs these jobs on its own organization's runners: the
-      # repository and commit to build. Empty (every call from this repository), the run's own commit is built.
-      source_repository:
-        type: string
-        default: ''
-      source_ref:
-        type: string
-        default: ''
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -64,18 +53,12 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Called from OneTake-app/OneTake-actionRunners-1 these name the oneTake commit to build; empty, this repository.
-          repository: ${{ inputs.source_repository || github.repository }}
-          ref: ${{ inputs.source_ref }}
-          persist-credentials: false   # nothing here uses git after the checkout
       - name: Shards and their input keys
         id: keys
         run: |
           swift package dump-package > "$RUNNER_TEMP/package.json"
           echo "all=$(python3 -I -B ../.github/ci/test-shards.py --os macos "$RUNNER_TEMP/package.json")" >> "$GITHUB_OUTPUT"
       - name: Pass recorded for library?
-        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         id: c0
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -83,7 +66,6 @@ jobs:
           key: macos-pass-library-${{ fromJSON(steps.keys.outputs.all)[0].key }}
           lookup-only: true
       - name: Pass recorded for audio-presets?
-        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         id: c1
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -91,7 +73,6 @@ jobs:
           key: macos-pass-audio-presets-${{ fromJSON(steps.keys.outputs.all)[1].key }}
           lookup-only: true
       - name: Pass recorded for audio-live?
-        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         id: c2
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -99,7 +80,6 @@ jobs:
           key: macos-pass-audio-live-${{ fromJSON(steps.keys.outputs.all)[2].key }}
           lookup-only: true
       - name: Pass recorded for rest?
-        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         id: c3
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -141,11 +121,6 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Called from OneTake-app/OneTake-actionRunners-1 these name the oneTake commit to build; empty, this repository.
-          repository: ${{ inputs.source_repository || github.repository }}
-          ref: ${{ inputs.source_ref }}
-          persist-credentials: false   # nothing here uses git after the checkout
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           # Pinned, not "newest": the image's newest folder can hold a beta whose Metal Toolchain does not install.
@@ -156,11 +131,10 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
-        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
-          key: macos27-debug-${{ github.ref_name }}-${{ inputs.source_ref || github.sha }}
+          key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
             macos27-debug-${{ github.ref_name }}-
             macos27-debug-
@@ -192,16 +166,15 @@ jobs:
       - name: Record the pass for these inputs
         run: cp "$RUNNER_TEMP/test.log" .test-pass
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         with:
           path: mpvfx-swift/.test-pass
           key: macos-pass-${{ matrix.shard }}-${{ matrix.key }}
       - name: Save caches
-        if: inputs.source_ref == '' && (always() && matrix.shard == 'rest')
+        if: always() && matrix.shard == 'rest'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
-          key: macos27-debug-${{ github.ref_name }}-${{ inputs.source_ref || github.sha }}
+          key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
 
   package:
     runs-on: xcode-27
@@ -212,11 +185,6 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Called from OneTake-app/OneTake-actionRunners-1 these name the oneTake commit to build; empty, this repository.
-          repository: ${{ inputs.source_repository || github.repository }}
-          ref: ${{ inputs.source_ref }}
-          persist-credentials: false   # nothing here uses git after the checkout
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app
@@ -226,11 +194,10 @@ jobs:
       - name: Engine libraries (binaries.lock)
         run: python3 -I -B scripts/fetch-binaries.py
       - name: Restore caches
-        if: inputs.source_ref == ''   # never from OneTake-actionRunners-1: see the header
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
-          key: macos27-release-${{ github.ref_name }}-${{ inputs.source_ref || github.sha }}
+          key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
             macos27-release-${{ github.ref_name }}-
             macos27-release-
@@ -248,8 +215,8 @@ jobs:
       - name: Signing certificate (Developer ID, when the optional secrets are set)
         id: cert
         env:
-          MACOS_CERT_P12_BASE64: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && inputs.source_ref == '' && secrets.MACOS_CERT_P12_BASE64 || '' }}
-          MACOS_CERT_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && inputs.source_ref == '' && secrets.MACOS_CERT_PASSWORD || '' }}
+          MACOS_CERT_P12_BASE64: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_P12_BASE64 || '' }}
+          MACOS_CERT_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_PASSWORD || '' }}
         run: |
           if [ -n "$MACOS_CERT_P12_BASE64" ]; then
             echo "identity=$(sh packaging/macos/import-cert.sh)" >> "$GITHUB_OUTPUT"
@@ -259,10 +226,10 @@ jobs:
       - name: Package (disk image with the engine libraries in Contents/Frameworks)
         env:
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
-          APPLE_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && inputs.source_ref == '' && secrets.APPLE_ID || '' }}
-          APPLE_APP_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && inputs.source_ref == '' && secrets.APPLE_APP_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && inputs.source_ref == '' && secrets.APPLE_TEAM_ID || '' }}
-          MPVFX_BUILD: ${{ inputs.source_ref || github.sha }}
+          APPLE_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
+          APPLE_APP_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_TEAM_ID || '' }}
+          MPVFX_BUILD: ${{ github.sha }}
           MPVFX_SYMBOLS_DIR: ${{ github.workspace }}/symbols
         run: |
           export MPVFX_BUILD=${MPVFX_BUILD::7}
@@ -303,11 +270,11 @@ jobs:
             echo "::error::the installed app could not load its Metal kernels"; exit 1
           fi
       - name: Save caches
-        if: inputs.source_ref == '' && (always())
+        if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mpvfx-swift/.build
-          key: macos27-release-${{ github.ref_name }}-${{ inputs.source_ref || github.sha }}
+          key: macos27-release-${{ github.ref_name }}-${{ github.sha }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
