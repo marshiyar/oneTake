@@ -194,7 +194,7 @@ public final class PlayerController {
         if view.cropActive { return }
         // Group box: dragging inside it moves every member.
         if view.selectedIds.count > 1, !shift, let gb = view.groupBounds(in: size), gb.contains(p) {
-            gesture = .group(starts: view.elements.filter { view.selectedIds.contains($0.id) && !$0.locked }, x: x, y: y)
+            pressGroup(at: p)
             needsDisplay?(); return
         }
         let frame = view.frameRect(in: size)
