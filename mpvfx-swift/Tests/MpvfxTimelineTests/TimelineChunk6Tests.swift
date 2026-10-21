@@ -80,11 +80,11 @@ final class TimelineChunk6Tests: XCTestCase {
     func testUTogglesExpansion() throws {
         let (c, _) = try make()
         c.view.selection = ["clip:a"]
-        // Collapsed: media 48 + effect strip 18 + the summary row 28; U adds the Rotation row under it.
-        XCTAssertEqual(c.view.trackRowHeight(0), 94)
+        // Collapsed: the media row + effect strip 18 + the summary row 28; U adds the Rotation row under it.
+        XCTAssertEqual(c.view.trackRowHeight(0), c.view.trackHeight + 18 + 28)
         XCTAssertTrue(c.keyDown(EditorKey(.char("u"))))
         XCTAssertTrue(c.view.expandedClips.contains("clip:a"))
-        XCTAssertEqual(c.view.trackRowHeight(0), 122)
+        XCTAssertEqual(c.view.trackRowHeight(0), c.view.trackHeight + 18 + 56)
         XCTAssertTrue(c.keyDown(EditorKey(.char("u"))))
         XCTAssertEqual(c.view.trackRowHeight(0), L.defaultTrackHeight + 18 + 28)
         c.view.selection = ["clip:m1"]
