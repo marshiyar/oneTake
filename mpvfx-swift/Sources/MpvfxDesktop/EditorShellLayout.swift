@@ -128,6 +128,7 @@ final class EditorShellRouter: CanvasInput {
     var onTimelineHeightCommit: (Double) -> Void = { _ in }
     var isFullscreen: () -> Bool = { false }
     var needsDisplay: () -> Void = {}
+    var saveFailureStatus: () -> String? = { nil }
     /// Hovered seam/divider, for the hover tint and the host's resize cursor.
     private(set) var hoveredHandle: Drag?
     private(set) var frames: EditorShellFrames?
@@ -173,7 +174,7 @@ final class EditorShellRouter: CanvasInput {
                 let r = rect(region, f)
                 if r.width > 0, r.height > 0 { c.fillRect(r, PanelTheme.panelBg) }
             }
-            ShellStatusLine.draw(c, f.statusLine, hint: statusHint)
+            ShellStatusLine.draw(c, f.statusLine, hint: statusHint, error: saveFailureStatus())
         } else {
             c.fillRect(f.preview, PanelTheme.neutral950)
         }
@@ -413,6 +414,7 @@ extension EditorSession {
         router.panes[.player] = ShellPane(input: pi) { [weak self] c, size in self?.drawPlayer(c, size: size) }
         router.panes[.timeline] = ShellPane(input: ti) { c, size in region.draw(c, size: size) }
         router.needsDisplay = { [weak self] in self?.redraw() }
+        router.saveFailureStatus = { [weak self] in self?.saveFailureStatus }
         installPanels(router, userData: userData)
         installSettings(router, userData: userData)
         installTimelineHooks()
