@@ -4,6 +4,8 @@ name: codeql
 # with the pinned engine libraries, as mpvfx-ci does), the Python scripts behind CI and packaging, and the workflow
 # files themselves (the `actions` language: injection, unpinned actions, token scope). Results land under Security >
 # Code scanning. Runs on pull requests, pushes to main and weekly; separate from mpvfx-ci and never a required check.
+# The Swift analysis of main and of this repository's pull requests runs on OneTake-app's runner
+# pool (job swift-runners); python and actions always run here.
 
 on:
   pull_request:
@@ -45,7 +47,83 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
 
+  swift-runners:
+    # A push to main or a pull request from one of this repository's branches sends its Swift analysis to the
+    # organization OneTake-app's runner pool (a repository_dispatch `onetake-codeql-swift` to OneTake-actionRunners-1),
+    # which calls codeql-swift-source.yml (the swift job below, generated) on this commit and uploads the SARIF file to this repository's code scanning with
+    # the oneTake-Runners1 App, then sets the commit status `codeql swift (runners-1)`. The swift job below is then
+    # skipped: the analysis runs in exactly one place. Without both RUNNERS_APP_* secrets (a fork, or before they are
+    # set) nothing is sent and swift runs here, as it does for the weekly run and a dispatch.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read   # the files a pull request changes
+    outputs:
+      sent: ${{ steps.send.outputs.sent }}
+    steps:
+      - name: Workflow files this pull request changes
+        # OneTake-actionRunners-1 runs codeql-swift-source.yml from main, so a pull request that changes the swift job
+        # (or the generator) is analysed here, with its own definition.
+        id: own
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          WATCH: '^\.github/(workflows/codeql(-swift-source)?\.yml|ci/source_workflows\.py)$'
+        run: |
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
+          if grep -qE "$WATCH" "$RUNNER_TEMP/files.txt"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::this pull request changes codeql.yml, codeql-swift-source.yml or source_workflows.py: it is analysed here"
+          fi
+      - name: Runners App configured
+        id: have
+        env:
+          APP_ID: ${{ secrets.RUNNERS_APP_ID }}
+          APP_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+        # Both secrets, or neither is used: a half-set pair analyses here instead of failing the token step.
+        run: echo "app=$([ -n "$APP_ID" ] && [ -n "$APP_KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Runners App token
+        id: token
+        if: steps.have.outputs.app == 'true' && steps.own.outputs.changed != 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RUNNERS_APP_ID }}
+          private-key: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+          owner: OneTake-app
+          repositories: OneTake-actionRunners-1
+          permission-contents: write   # repository_dispatch needs it
+      - name: Hand the Swift analysis to OneTake-actionRunners-1
+        id: send
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SHA: ${{ github.sha }}   # the commit analysed: main's push, or the pull request's merge commit
+          REF: ${{ github.ref }}   # refs/heads/main or refs/pull/<n>/merge: where code scanning files the results
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}   # the commit that carries the status
+          RUN: ${{ github.run_id }}/${{ github.run_attempt }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::RUNNERS_APP_ID is not set: the Swift analysis runs on this repository's runners"
+            echo "sent=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$SHA" --arg ref "$REF" --arg head "$HEAD" --arg run "$RUN" \
+            '{event_type: "onetake-codeql-swift", client_payload: {repository: $repo, sha: $sha, ref: $ref, head: $head, run: $run}}' |
+            gh api -X POST repos/OneTake-app/OneTake-actionRunners-1/dispatches --input -
+          echo "sent=true" >> "$GITHUB_OUTPUT"
+          echo "Swift analysis of $SHA runs on OneTake-app/OneTake-actionRunners-1 (status: codeql swift (runners-1))" >> "$GITHUB_STEP_SUMMARY"
+
   swift:
+    # Runs here only when nothing was sent above (skipped, failed, or no App secrets): the analysis runs in one place.
+    # !cancelled(), not always(): a newer run's cancel-in-progress still cancels it.
+    # OneTake-actionRunners-1 runs this same job from codeql-swift-source.yml, which .github/ci/source_workflows.py
+    # generates from it (no upload there: the runners repository uploads the SARIF file with its App).
+    needs: swift-runners
+    if: ${{ !cancelled() && needs.swift-runners.outputs.sent != 'true' }}
     # CodeQL's Swift extractor runs only on macOS (the action and the extractor both refuse Linux) and supports Swift up
     # to 6.3.x. The xcode-27 image only has Xcode 27 (Swift 6.4), so this job uses the macos-26 image, whose Xcode 26.x
     # carries Swift 6.3; the step below fails loudly if the selected Xcode is not on 6.3.
@@ -62,6 +140,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # nothing here uses git against origin
       - name: Xcode ${{ env.XCODE_VERSION }} (Swift 6.3)
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app
