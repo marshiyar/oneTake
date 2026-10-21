@@ -436,7 +436,7 @@ final class MediaBinTests: XCTestCase {
         let c = PanelMeasureCanvas()
         s.draw(c, size: CanvasSize(370, 800))
         XCTAssertTrue(c.drawnStrings.contains("Added")); XCTAssertTrue(c.drawnStrings.contains("05:36"))
-        XCTAssertTrue(c.drawnStrings.contains("Import media")); XCTAssertTrue(c.drawnStrings.contains("Search assets..."))
+        XCTAssertTrue(c.drawnStrings.contains("Import media")); XCTAssertTrue(c.drawnStrings.contains("Search assets…"))
         var added: String?
         s.onAddAtPlayhead = { added = $0 }
         let card = try XCTUnwrap(s.hits.rect { $0 == .asset("v1") })

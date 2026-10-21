@@ -371,7 +371,7 @@ public final class LeftSidebarPanel {
             let focused = search != nil
             let text = focused ? search!.draft : searchQuery
             let tr = CanvasRect(x: sr.x + 28, y: sr.y + 5, width: sr.width - 48, height: 16.5)
-            PanelDraw.text(c, text.isEmpty && !focused ? "Search assets..." : text, in: tr, font: PanelTheme.font(11),
+            PanelDraw.text(c, text.isEmpty && !focused ? "Search assets…" : text, in: tr, font: PanelTheme.font(11),
                            color: text.isEmpty ? PanelTheme.text5 : PanelTheme.text1)
             if focused { let tw = c.measureText(text, font: PanelTheme.font(11)).width
                 c.fillRect(CanvasRect(x: tr.x + tw + 1, y: tr.y + 2, width: 1, height: 12.5), PanelTheme.text1) }
