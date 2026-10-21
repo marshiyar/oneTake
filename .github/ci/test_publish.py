@@ -16,7 +16,11 @@
 
 Each case sources publish.sh in bash inside a temporary directory holding mpvfx-swift/packaging/VERSION (0.1.0), so
 no GitHub call is made; pruning runs against a stand-in `gh` on PATH that records what it was asked to delete."""
-import os, shutil, subprocess, tempfile, unittest
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUBLISH = os.path.join(HERE, "publish.sh")
@@ -35,12 +39,14 @@ class Base(unittest.TestCase):
         with open(os.path.join(self.dir, "mpvfx-swift", "packaging", "VERSION"), "w") as f:
             f.write("0.1.0\n")
 
-    def bash(self, script, ref_type="tag", ref="", extra_env=None):
+    def bash(self, script, ref_type="tag", ref="", extra_env=None, stdin=""):
+        """Run a fixed bash snippet after sourcing publish.sh. Every varying value reaches it through the
+        environment or stdin, never through the script text."""
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "GITHUB_REF_TYPE": ref_type, "GITHUB_REF_NAME": ref,
-               "GITHUB_SHA": SHA, "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "42"}
+               "GITHUB_SHA": SHA, "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "42", "PUBLISH_SH": PUBLISH}
         env.update(extra_env or {})
-        return subprocess.run([BASH, "-c", f'. "{PUBLISH}"; {script}'], cwd=self.dir, env=env,
-                              capture_output=True, text=True, timeout=30)
+        return subprocess.run([BASH, "-c", '. "$PUBLISH_SH"; ' + script], cwd=self.dir, env=env, input=stdin,
+                              capture_output=True, text=True, timeout=30, check=False)
 
     def decide(self, ref, ref_type="tag"):
         r = self.bash(DUMP, ref_type, ref)
@@ -112,10 +118,11 @@ class Decide(Base):
         self.assertEqual(d["mode"], "none")
 
 
-ASSETS = ["MpVFX-0.1.0-macos-arm64.dmg", "mpvfx_0.1.0_amd64.deb", "MpVFX-0.1.0-setup.exe",
+ASSETS = ("MpVFX-0.1.0-macos-arm64.dmg", "mpvfx_0.1.0_amd64.deb", "MpVFX-0.1.0-setup.exe",
           "MpVFX-0.1.0-linux-x86_64.tar.gz", "MpVFX-0.1.0-windows-x64.zip", "mac-smoke.png", "linux-smoke.png",
-          "windows-smoke.png"]
+          "windows-smoke.png")
 NOT_NOTARIZED = "macOS: not notarized: right-click → Open the first time"
+NOTES = 'decide >/dev/null; mapfile -t assets < <(printf "%s" "$ASSETS"); changes_md=$CHANGES; notes'
 
 
 class Notes(Base):
@@ -127,8 +134,7 @@ class Notes(Base):
                 f.write(marker + "\n")
         if hidden_marker:
             open(os.path.join(self.dir, "dist", ".not-notarized"), "w").close()
-        words = " ".join(f"'{a}'" for a in assets)
-        r = self.bash(f"decide >/dev/null; assets=({words}); changes_md='{changes}'; notes", ref_type, ref)
+        r = self.bash(NOTES, ref_type, ref, {"ASSETS": "\n".join(assets), "CHANGES": changes})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout
 
@@ -180,7 +186,7 @@ class Notes(Base):
         self.assertNotIn("not notarized", text)
 
     def test_missing_installer_is_said(self):
-        text = self.notes("v0.1.0", marker="notarized", assets=["mpvfx_0.1.0_amd64.deb"])
+        text = self.notes("v0.1.0", marker="notarized", assets=("mpvfx_0.1.0_amd64.deb",))
         self.assertIn("| macOS | not in this build |", text)
         self.assertNotIn("![", text)
 
@@ -236,8 +242,8 @@ class Changes(Base):
                                             "v0.1.0-rc.1=rc", "v0.1.0=stable", "build-main-7=", "v0.1.0-foo="])
 
     def previous(self, tag, channel, tags):
-        listing = "\\n".join(tags)
-        r = self.bash(f'printf "{listing}\\n" | previous_release {tag} {channel}')
+        r = self.bash('previous_release "$TAG" "$CHANNEL"', extra_env={"TAG": tag, "CHANNEL": channel},
+                      stdin="".join(t + "\n" for t in tags))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout.strip()
 
@@ -253,8 +259,8 @@ class Changes(Base):
         self.assertEqual(self.previous("v0.1.0", "stable", ["v0.1.0", "v0.1.0-rc.1"]), "")
 
     def fmt(self, subjects, total):
-        listing = "\\n".join(subjects)
-        r = self.bash(f'printf "{listing}\\n" | format_changes v0.1.0-beta.1 {total}')
+        r = self.bash('format_changes v0.1.0-beta.1 "$TOTAL"', extra_env={"TOTAL": str(total)},
+                      stdin="".join(s + "\n" for s in subjects))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout.splitlines()
 
@@ -293,7 +299,7 @@ class Main(Base):
                     ' shift; done ;;\n'
                     '  "api repos/o/r/compare/v0.1.0-beta.1..."*) printf "2\\nFix export (#12)\\nAdd beta channel (#11)\\n" ;;\n'
                     'esac\n')
-        os.chmod(os.path.join(bindir, "gh"), 0o755)
+        os.chmod(os.path.join(bindir, "gh"), 0o700)
         r = self.bash('main dist/*.dmg dist/*.deb dist/*-smoke.png', "tag", "v0.1.0-beta.2",
                       {"PATH": bindir + os.pathsep + os.environ.get("PATH", ""), "GH_LOG": log,
                        "NOTES_COPY": notes_copy})
@@ -326,7 +332,7 @@ class Prune(Base):
                     'if [ "$1 $2" = "release list" ]; then\n'
                     '  printf "%s\\n" nightly-aaaaaaa v0.1.0 v0.1.0-alpha.1 v0.1.0-beta.2 v0.1.0-rc.1 nightly-bbbbbbb\n'
                     'else echo "$@" >> "$GH_LOG"; fi\n')
-        os.chmod(os.path.join(bindir, "gh"), 0o755)
+        os.chmod(os.path.join(bindir, "gh"), 0o700)
         r = self.bash("prune_nightlies", extra_env={"PATH": bindir + os.pathsep + os.environ.get("PATH", ""),
                                                     "GH_LOG": log})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
