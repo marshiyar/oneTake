@@ -15,7 +15,8 @@
 // DocumentAudioGraph), its stems decoded by the media engine (AudioSampleReader), pulled block by block in step with
 // the frames as 48 kHz stereo interleaved Float32 for MediaWriter (stems decoded by DocumentAudioGraph.decodeStem).
 // Covers audio groups (volume, mute, FX chain, automation), clip FX chains and automation, static clip volume,
-// keyframed clip volume (`audio.volume` tracks, applied as a per-sample gain on the clip's stem before its FX chain),
+// keyframed clip volume (`audio.volume` tracks, applied by DocumentAudioGraph as a per-sample gain on the clip's stem
+// before its FX chain, the same function live playback builds with),
 // mute, playback rate (pitch-preserving tempo, or resampled when the clip's preservesPitch is false) and source trims.
 import Foundation
 import MpvfxShared
@@ -34,19 +35,14 @@ final class ExportAudioMix {
         let project = plan.project
         let all = DocumentAudioGraph.inputs(project, duration: plan.duration, projectDir: URL(fileURLWithPath: plan.root))
         guard let inputs = exportAudioInputs(all, project, media: plan.media) else { return nil }
-        let clipsById = Dictionary(project.sequence.tracks.flatMap(\.clips).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        var graph = try Self.decode(inputs, cancellation: cancellation, onProgress: onProgress)
-        for i in graph.tracks.indices {
-            guard let clip = clipsById[graph.tracks[i].id] else { continue }
-            try applyKeyframedVolume(&graph.tracks[i], clip, ExportVolumeContext(project: project, engine: engine))
-        }
+        let graph = try Self.decode(inputs, engine: engine, cancellation: cancellation, onProgress: onProgress)
         renderer = AudioGraphRenderer(graph)
         onProgress?(1)
     }
 
     /// The graph project with every stem decoded. Export never drops what playback would play: an unreadable FX
     /// chain, automation or stem fails the render with the reason.
-    private static func decode(_ inputs: DocumentAudioGraph.Inputs, cancellation: MediaCancellation?,
+    private static func decode(_ inputs: DocumentAudioGraph.Inputs, engine: KeyframeEngine?, cancellation: MediaCancellation?,
                                onProgress: ((Double) -> Void)?) throws -> AudioGraphProject {
         var issues: [String] = []
         var decoded = 0
@@ -57,7 +53,7 @@ final class ExportAudioMix {
             decoded += 1
             onProgress?(0.9 * Double(decoded) / total)
             return stem
-        }, issues: &issues)
+        }, issues: &issues, sampleRate: Double(EXPORT_AUDIO_SAMPLE_RATE), engine: engine)
         graph.sampleRate = Double(EXPORT_AUDIO_SAMPLE_RATE)
         try cancellation?.throwIfCancelled()
         if !issues.isEmpty { throw MediaToolError("Audio cannot be exported: " + issues.joined(separator: "; ")) }
@@ -84,32 +80,4 @@ func exportAudioInputs(_ all: DocumentAudioGraph.Inputs, _ project: NativeProjec
     let assetOf = Dictionary(project.sequence.tracks.flatMap(\.clips).map { ($0.id, $0.assetId) }, uniquingKeysWith: { a, _ in a })
     inputs.tracks = inputs.tracks.filter { t in assetOf[t.id].map { media[$0]?.audio == true } ?? false }
     return inputs.tracks.contains(where: { !$0.muted }) ? inputs : nil
-}
-
-/// What keyframed clip volume is evaluated against.
-struct ExportVolumeContext {
-    let project: NativeProjectDocument
-    let engine: KeyframeEngine?
-}
-
-/// Keyframed clip volume: the keyframes replace the clip's static volume, linear between project frames.
-func applyKeyframedVolume(_ track: inout AudioGraphTrack, _ clip: NativeProjectClip, _ context: ExportVolumeContext) throws {
-    let project = context.project
-    let sampler = ExportClipSampler(clip, canvasWidth: project.canvas.width, canvasHeight: project.canvas.height, engine: context.engine)
-    guard sampler.hasVolumeAnimation else { return }
-    let fps = project.frameRate.numerator / project.frameRate.denominator
-    let frames = Int(clip.durationFrames.rounded(.up)) + 1
-    var gains = [Double](repeating: 1, count: frames)
-    for f in 0..<frames { gains[f] = Swift.max(0, try sampler.number("audio.volume", at: Double(f)) ?? 1) }
-    let samplesPerFrame = Double(EXPORT_AUDIO_SAMPLE_RATE) / fps
-    for c in track.stem.indices {
-        track.stem[c].withUnsafeMutableBufferPointer { buffer in
-            for k in 0..<buffer.count {
-                let pos = Double(k) / samplesPerFrame
-                let lo = Swift.min(frames - 1, Int(pos)), hi = Swift.min(frames - 1, lo + 1)
-                buffer[k] *= Float(gains[lo] + (gains[hi] - gains[lo]) * (pos - Double(lo)))
-            }
-        }
-    }
-    track.volume = 1
 }

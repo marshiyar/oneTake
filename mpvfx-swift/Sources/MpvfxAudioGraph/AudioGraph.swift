@@ -141,7 +141,8 @@ final class ChainStage {
 final class TrackStage: FrameSource {
     let startFrame: Int
     let length: Int           // frames of the processed file that survive atrim
-    var volume: Float         // in-place editable (AudioGraphRenderer.applyParameterEdits) unless baked
+    /// In-place editable (AudioGraphRenderer.applyParameterEdits) unless baked; glides once the stage has played.
+    var volume: LiveGain
     /// The volume lives in the envelope walker (automation), so `volume` is fixed at 1.
     let bakedVolume: Bool
     /// The clip's FX chain as built (nil: no enabled nodes), for in-place parameter edits.
@@ -200,7 +201,7 @@ final class TrackStage: FrameSource {
             }
         }
         length = min(fileLength, filterFrames(dur + tail, sr))
-        volume = filterVolume(baked ? 1 : t.volume)
+        volume = LiveGain(filterVolume(baked ? 1 : t.volume))
         bakedVolume = baked
         startFrame = Int(jsMathRound(t.start * 1000)) * Int(sr) / 1000
         panGains = equalPower(t.pan)
@@ -209,15 +210,39 @@ final class TrackStage: FrameSource {
     func pull(_ count: Int, _ l: inout [Float], _ r: inout [Float], _ offset: Int) {
         for k in 0..<count {
             let c = produced + k
+            let g = volume.next()
             var a: Float = 0, b: Float = 0
             if c >= startFrame && local < length {
                 fileFrame(&a, &b); local += 1
-                a *= volume; b *= volume
+                a *= g; b *= g
                 if let (gl, gr) = panGains { a *= gl; b *= gr }
             }
             l[offset + k] = a; r[offset + k] = b
         }
         produced += count
+    }
+}
+
+@inline(__always) func finiteOrZero(_ x: Float) -> Float { x.isFinite ? x : 0 }
+
+/// A fader the live edit moves: before the stage has played, `set` assigns (the stage then renders exactly as one
+/// built with the value); afterwards it glides there linearly over `frames` frames.
+struct LiveGain {
+    private(set) var value: Float
+    private var glide: LiveGlide?
+    private var played = false
+    init(_ value: Float) { self.value = value }
+    mutating func set(_ v: Float, frames: Int) {
+        guard played, frames > 0, v != value || glide != nil else { value = v; glide = nil; return }
+        glide = LiveGlide(from: value, to: v, frames: frames)
+    }
+    /// The gain for the next frame.
+    @inline(__always) mutating func next() -> Float {
+        played = true
+        guard var g = glide else { return value }
+        value = g.next()
+        glide = g.finished ? nil : g
+        return value
     }
 }
 
@@ -232,7 +257,7 @@ func equalPower(_ pan: Double) -> (Float, Float)? {
 /// track-input filter of the final mix (start 0, volume = fader unless baked).
 final class GroupStage: FrameSource {
     let members: [TrackStage]
-    var volume: Float         // in-place editable unless baked
+    var volume: LiveGain      // in-place editable unless baked
     let bakedVolume: Bool
     var proc: FxChainProcessor?
     let panGains: (Float, Float)?
@@ -245,7 +270,7 @@ final class GroupStage: FrameSource {
         let chain = g.fxChain.flatMap { $0.enabledNodes.isEmpty ? nil : $0 }
         let kf = g.automation.flatMap { VolumeEnvelope.laneKeyframes($0, trackStart: 0, duration: duration) }
         var walker = kf.flatMap { $0.isEmpty ? nil : VolumeEnvelope.walker($0, trackStart: 0, baseVolume: g.volume) }
-        volume = filterVolume(walker != nil ? 1 : g.volume)
+        volume = LiveGain(filterVolume(walker != nil ? 1 : g.volume))
         bakedVolume = walker != nil
         panGains = equalPower(g.pan)
         let members = self.members
@@ -280,7 +305,8 @@ final class GroupStage: FrameSource {
     func pull(_ count: Int, _ l: inout [Float], _ r: inout [Float], _ offset: Int) {
         source(count, &l, &r, offset)
         for k in 0..<count {
-            l[offset + k] *= volume; r[offset + k] *= volume
+            let v = volume.next()
+            l[offset + k] *= v; r[offset + k] *= v
             if let (gl, gr) = panGains { l[offset + k] *= gl; r[offset + k] *= gr }
         }
     }
@@ -352,7 +378,8 @@ public final class AudioGraphRenderer {
         }
         position += count
         var out = [Float](repeating: 0, count: count * 2)
-        for k in 0..<count { out[2 * k] = outL[k] * makeup; out[2 * k + 1] = outR[k] * makeup }
+        // A non-finite sample never reaches the device or the encoder.
+        for k in 0..<count { out[2 * k] = finiteOrZero(outL[k] * makeup); out[2 * k + 1] = finiteOrZero(outR[k] * makeup) }
         return out
     }
 
@@ -391,6 +418,7 @@ public final class AudioGraphRenderer {
         guard old.duration == next.duration, old.sampleRate == next.sampleRate, old.quantizeIntermediates == next.quantizeIntermediates,
               old.tracks.count == next.tracks.count, old.groups.count == next.groups.count else { return false }
         var edits: [() -> Void] = []
+        let glide = LiveEdit.glideFrames(next.sampleRate)
         func chainEdits(_ a: FxChain?, _ b: FxChain?, _ automation: Automation?, _ proc: FxChainProcessor?) -> Bool {
             if a == b { return true }
             guard let a, let b, let proc, !a.enabledNodes.isEmpty,
@@ -407,7 +435,7 @@ public final class AudioGraphRenderer {
                 if let stage {
                     guard !stage.bakedVolume else { return false }
                     let v = filterVolume(b.volume)
-                    edits.append { stage.volume = v }
+                    edits.append { stage.volume.set(v, frames: glide) }
                 }
             }
             // A track that was not built (muted, or in a muted group) has nothing running to edit.
@@ -419,7 +447,7 @@ public final class AudioGraphRenderer {
             if a.volume != b.volume, let stage {
                 guard !stage.bakedVolume else { return false }
                 let v = filterVolume(b.volume)
-                edits.append { stage.volume = v }
+                edits.append { stage.volume.set(v, frames: glide) }
             }
             if stage != nil, !chainEdits(a.fxChain, b.fxChain, a.automation, stage?.proc) { return false }
         }
