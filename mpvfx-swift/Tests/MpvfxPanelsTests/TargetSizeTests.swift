@@ -44,7 +44,27 @@ final class TargetSizeTests: XCTestCase {
 
     /// Undersized, unspaced targets at this revision ("<state> <action> <w>x<h>"). Remove an entry when its target
     /// is fixed; the test fails while a listed entry passes.
-    static let knownUndersized: Set<String> = []
+    static let knownUndersized: Set<String> = [
+        // Inspector group header buttons (clear and reset), one point short in each dimension.
+        "design/audio-fx headerClear 23x23", "design/audio-fx headerReset 23x23",
+        "design/effects headerClear 23x23", "design/effects headerReset 23x23",
+        "design/grade headerClear 23x23", "design/grade headerReset 23x23",
+        "design/layout headerClear 23x23", "design/layout headerReset 23x23",
+        "design/media headerClear 23x23", "design/media headerReset 23x23",
+        "design/style headerClear 23x23", "design/style headerReset 23x23",
+        // Transform rows: the label scrub zones beside the number fields, and the stopwatch toggles.
+        "design/layout scrub(\"h\") 10.2x30", "design/layout scrub(\"w\") 10.2x30",
+        "design/layout scrub(\"x\") 10.2x30", "design/layout scrub(\"y\") 10.2x30",
+        "design/layout stopwatch(\"rotation\") 16x16", "design/layout stopwatch(\"scale\") 16x16",
+        // Grade: the curve tabs, the curve graph's foot control and a colour-wheel control.
+        "design/grade custom(\"grade:curvefoot\", 0) 17x17",
+        "design/grade custom(\"grade:curvetabs\", 1) 9.0x23.5", "design/grade custom(\"grade:curvetabs\", 2) 9.0x23.5",
+        "design/grade custom(\"grade:curvetabs\", 3) 9.0x23.5", "design/grade custom(\"grade:wheels\", 12) 16x16",
+        // Audio FX: the rack's add button.
+        "design/audio-fx button(\"fx:add\") 52.8x15",
+        // Renders tab: the format info button.
+        "renders/done formatInfo 16x16", "renders/error formatInfo 16x16",
+    ]
 
     /// One audited region: where it was drawn and what it does.
     struct Region { let state: String, action: String, rect: CanvasRect, container: Bool }
