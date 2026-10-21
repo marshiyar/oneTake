@@ -66,28 +66,39 @@ struct GPU {
     let cpuFallbacks: () -> Int
 }
 
+/// Whether this build has a GPU renderer at all: Linux has one only when the Vulkan headers were installed at build
+/// time (Package.swift adds CMpvfxVulkan then), so a Linux build without them benchmarks the CPU port alone.
+#if canImport(CMpvfxVulkan) || os(Windows) || canImport(MpvfxMetal)
+let gpuBuilt = true
+#else
+let gpuBuilt = false
+#endif
+
 func gpuRenderer() -> GPU? {
+    #if canImport(CMpvfxVulkan) || os(Windows) || canImport(MpvfxMetal)
     let software = ProcessInfo.processInfo.environment["MPVFX_GPU"]?.lowercased() == "software"
     do {
-        #if os(Linux)
+        #if canImport(CMpvfxVulkan)
         let r = try VulkanColorRenderer(allowSoftware: software)
         return GPU(renderer: r, backend: r.backend, deviceName: r.deviceName, isSoftware: r.isSoftware, cpuFallbacks: { r.cpuFallbacks })
         #elseif os(Windows)
         let r: D3D11ColorRenderer
         do { r = try D3D11ColorRenderer(warp: false) } catch { if !software { throw error }; r = try D3D11ColorRenderer(warp: true) }
         return GPU(renderer: r, backend: r.backend, deviceName: r.deviceName, isSoftware: r.isSoftware, cpuFallbacks: { r.cpuFallbacks })
-        #elseif canImport(MpvfxMetal)
+        #else
         guard let r = MetalColorRenderer.makeDefault() else { print("GPU compute renderer unavailable: no Metal device or the kernels did not load"); return nil }
         // GitHub's hosted macOS runners expose "Apple Paravirtual device": a virtual GPU, not the speed of a real one.
         let name = r.device.name
         return GPU(renderer: r, backend: r.backend, deviceName: name, isSoftware: name.contains("Paravirtual"), cpuFallbacks: { r.cpuFallbacks })
-        #else
-        return nil
         #endif
     } catch {
         print("GPU compute renderer unavailable: \(error)")
         return nil
     }
+    #else
+    print("GPU compute renderer unavailable: built without a GPU backend (Linux without the Vulkan headers, libvulkan-dev)")
+    return nil
+    #endif
 }
 
 let cases: [(String, String)] = [
@@ -96,21 +107,33 @@ let cases: [(String, String)] = [
     ("blur 1 + bloom 2 + grain", #"{"effects":{"blur":1,"bloom":2},"details":{"grain":1}}"#),
 ]
 let cpu = CPUColorRenderer()
-guard let gpu = gpuRenderer() else {
+let gpu = gpuRenderer()
+if gpu == nil && gpuBuilt {
     print("no GPU compute device (MPVFX_GPU=software accepts lavapipe / WARP; macOS needs a Metal device)")
     exit(1)
 }
-print("CPU port: \(ProcessInfo.processInfo.activeProcessorCount) cores; GPU: \(gpu.backend) on \(gpu.deviceName)\(gpu.isSoftware ? " (software device: correctness only, not GPU speed)" : ""); median of \(frames) frames")
-print("| frame | grade | CPU ms | GPU ms | speed-up | max diff | channels > 1 |")
-print("|---|---|---:|---:|---:|---:|---:|")
+if let gpu {
+    print("CPU port: \(ProcessInfo.processInfo.activeProcessorCount) cores; GPU: \(gpu.backend) on \(gpu.deviceName)\(gpu.isSoftware ? " (software device: correctness only, not GPU speed)" : ""); median of \(frames) frames")
+    print("| frame | grade | CPU ms | GPU ms | speed-up | max diff | channels > 1 |")
+    print("|---|---|---:|---:|---:|---:|---:|")
+} else {
+    print("CPU port: \(ProcessInfo.processInfo.activeProcessorCount) cores; GPU: unavailable in this build (CPU port only); median of \(frames) frames")
+    print("| frame | grade | CPU ms |")
+    print("|---|---|---:|")
+}
 for (w, h) in [(1920, 1080), (3840, 2160)] {
     let src = card(w, h)
     for (name, json) in cases {
         let g = ColorGradeRenderer(params: params(json), seedKey: "clip:bench")
-        let c = median(cpu, g, src, SIMD2(w, h)), q = median(gpu.renderer, g, src, SIMD2(w, h))
+        let c = median(cpu, g, src, SIMD2(w, h))
+        guard let gpu else {
+            print(String(format: "| %dx%d | %@ | %.1f |", w, h, name, c.ms))
+            continue
+        }
+        let q = median(gpu.renderer, g, src, SIMD2(w, h))
         var maxDiff = 0, over1 = 0
         for i in 0..<c.out.count { let d = abs(Int(c.out[i]) - Int(q.out[i])); maxDiff = max(maxDiff, d); if d > 1 { over1 += 1 } }
         print(String(format: "| %dx%d | %@ | %.1f | %.1f | %.1fx | %d | %d |", w, h, name, c.ms, q.ms, c.ms / q.ms, maxDiff, over1))
     }
 }
-if gpu.cpuFallbacks() > 0 { print("GPU frames that fell back to the CPU: \(gpu.cpuFallbacks())"); exit(1) }
+if let gpu, gpu.cpuFallbacks() > 0 { print("GPU frames that fell back to the CPU: \(gpu.cpuFallbacks())"); exit(1) }

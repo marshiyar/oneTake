@@ -25,6 +25,7 @@ final class MacCanvasHost: NSView {
     /// Cursor for a point (resize seams); nil = arrow.
     var cursorAt: ((Double, Double) -> NSCursor?)?
     var lastSize = CanvasSize(0, 0)
+    var accessibilityControls: (() -> [CanvasAccessibilityControl])?
     /// A file drag from Finder moved over the canvas (nil: it left).
     var onFilesDragged: ((CanvasPoint?) -> Void)?
     /// Files dropped from Finder (local paths, view points).
@@ -41,6 +42,15 @@ final class MacCanvasHost: NSView {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func accessibilityChildren() -> [Any]? {
+        accessibilityControls?().map { control in
+            let local = NSRect(x: control.frame.x, y: control.frame.y, width: control.frame.width, height: control.frame.height)
+            let screen = window?.convertToScreen(convert(local, to: nil)) ?? local
+            return MacCanvasAccessibilitySwitch(parent: self, label: control.label, value: control.value,
+                                                frame: screen, press: control.press)
+        }
+    }
 
     func invalidate() { needsDisplay = true }
 
@@ -150,7 +160,7 @@ final class MacCanvasHost: NSView {
         let scale = precise ? 1.0 : 53.0
         let dx = -Double(e.scrollingDeltaX) * scale, dy = -Double(e.scrollingDeltaY) * scale
         guard dx != 0 || dy != 0 else { return }
-        input?.scroll(dx: dx, dy: dy, x: p.x, ctrl: e.modifierFlags.contains(.control), shift: e.modifierFlags.contains(.shift), precise: precise)
+        input?.scroll(dx: dx, dy: dy, x: p.x, ctrl: Self.modifiers(e).zoomsWheel, shift: e.modifierFlags.contains(.shift), precise: precise)
     }
 
     /// Trackpad pinch arrives in Chromium as a ctrl+wheel; do the same so the timeline zooms.
@@ -202,5 +212,15 @@ final class MacCanvasHost: NSView {
         return EditorKey(code, shift: f.contains(.shift), ctrl: f.contains(.control), alt: f.contains(.option),
                          meta: f.contains(.command), isRepeat: e.type == .keyDown && e.isARepeat)
     }
+}
+
+private final class MacCanvasAccessibilitySwitch: NSAccessibilityElement {
+    private let action: () -> Void
+    init(parent: Any, label: String, value: Bool, frame: NSRect, press: @escaping () -> Void) {
+        action = press
+        super.init(accessibilityRole: .checkBox, frame: frame, label: label, parent: parent)
+        setAccessibilityValue(value)
+    }
+    override func accessibilityPerformPress() -> Bool { action(); return true }
 }
 #endif

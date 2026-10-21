@@ -14,10 +14,10 @@
 // Projects a clip's keyframes onto the timeline (no engine calls).
 import Foundation
 
-public enum NativeTimelineProperty: String, CaseIterable {
+public enum NativeTimelineProperty: String, CaseIterable, Sendable {
     case x, y, z, rotation, rotationX, rotationY, scale, scaleX, scaleY, scaleZ, transformPerspective, opacity, width, height
 }
-public enum NativeTimelinePropertyGroupId: String, CaseIterable { case position, rotation, scale, opacity, size }
+public enum NativeTimelinePropertyGroupId: String, CaseIterable, Sendable { case position, rotation, scale, opacity, size }
 
 public struct NativeTimelineKeyframeDiamond: Equatable {
     public var id: String, keyframeId: String, animationId: String, parameterId: String
@@ -50,7 +50,7 @@ public struct NativeTimelineKeyframeProjection: Equatable {
 public typealias NativeTimelineKeyframeProjectionResult = Result<NativeTimelineKeyframeProjection, NativeTimelineKeyframeProjectionFailure>
 
 private let groupDefs: [(NativeTimelinePropertyGroupId, String)] = [(.position, "Position"), (.rotation, "Rotation"), (.scale, "Scale"), (.opacity, "Opacity"), (.size, "Size")]
-private struct PropDef { let parameterId: String; let property: NativeTimelineProperty; let label: String; let group: NativeTimelinePropertyGroupId; let order: Int }
+private struct PropDef: Sendable { let parameterId: String; let property: NativeTimelineProperty; let label: String; let group: NativeTimelinePropertyGroupId; let order: Int }
 private let propDefs: [String: PropDef] = {
     let list: [(String, NativeTimelineProperty, String, NativeTimelinePropertyGroupId)] = [
         ("transform.position.x", .x, "X", .position), ("transform.position.y", .y, "Y", .position), ("transform.position.z", .z, "Z", .position),

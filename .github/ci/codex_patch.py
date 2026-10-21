@@ -27,7 +27,7 @@ MAX_FILES = 40
 # Also every script a job with credentials runs: publish.sh (contents: write), and in the macOS signing job the
 # signing checks and packaging, the Metal toolchain set-up and the engine fetch (they run with the imported signing
 # identity and the notarization secrets).
-REFUSED = re.compile(r"^(\.github/workflows/|\.github/ci/(agentbot|codex_patch|sentinel|strip-check)\.py$|"
+REFUSED = re.compile(r"^(\.github/workflows/|\.github/ci/(agentbot|codacy_to_codex|codex_patch|sentinel|strip-check)\.py$|"
                      r"\.github/ci/(publish|metal-toolchain)\.sh$|mpvfx-swift/packaging/macos/|"
                      r"mpvfx-swift/scripts/fetch-binaries\.py$|"
                      r"\.github/sentinel|\.github/dependabot\.yml$|\.github/CODEOWNERS$|\.codex/|\.claude/|"
