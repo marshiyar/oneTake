@@ -63,6 +63,7 @@ public struct PreviewLayer: Equatable, Sendable {
     /// A dip transition's colour laid over the picture (nil: none), and how much of it (0…1).
     public var transitionColor: CanvasColor?
     public var transitionColorAmount = 0.0
+    public var spatialTransition: PreviewSpatialTransition?
     /// Source seconds of the one frame a held clip shows for its whole length (`clip.holdSourceFrame`); nil plays the source.
     public var holdSourceTime: Double?
     /// Supported masks evaluated at this timeline time.
@@ -453,6 +454,10 @@ public struct PreviewComposition {
         if let s = t.incoming, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.incomingMix(atFrame: frame) }
         else if let s = t.outgoing, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.outgoingMix(atFrame: frame) }
         else { return }
+        if span.kind == .wipe || span.kind == .push {
+            layer.spatialTransition = .init(kind: span.kind, direction: span.direction, softness: span.softness,
+                                            progress: span.progress(atFrame: frame), incoming: span.toClipId == layer.clipId)
+        }
         layer.opacity *= mix.opacity
         if mix.colorAmount > 0 { layer.transitionColor = CanvasColor(hex: span.color); layer.transitionColorAmount = mix.colorAmount }
     }
@@ -528,6 +533,17 @@ public enum PreviewPainter {
     }
 
     private static func drawPlain(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
+        if let transition = layer.spatialTransition {
+            var plain = layer; plain.spatialTransition = nil
+            drawSpatial(transition, on: c, frame: frame) { canvas, rect, scale in
+                drawPlain(plain, image: image, on: canvas, frame: rect, scale: s * scale)
+            }
+            return
+        }
+        drawUntransitioned(layer, image: image, on: c, frame: frame, scale: s)
+    }
+
+    private static func drawUntransitioned(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
         if let cut = layer.fillCutout {
             // An image fill: an ordinary picture layer drawn everywhere but where the clip's own picture lands.
             let quad = CanvasFillPainter.coveredQuad(box: cut.box, crop: cut.crop, fit: cut.fit,

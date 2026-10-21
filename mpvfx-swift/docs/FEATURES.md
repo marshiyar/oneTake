@@ -287,3 +287,5 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+Cut transitions: select either clip at a touching cut and open Design → Transition. Add/remove a transition, choose Dissolve, Dip, Wipe or Push, and edit duration in frames. Wipe and Push have Left/Right/Up/Down directions; Wipe has edge softness; Dip offers black or white. Tab reaches every control; Space selects an option and Enter commits duration. Each edit is one undo step. Wipe and Push need source handles on both sides, with shared picture/audio timing. Preview and export use the same canvas-space painter.
