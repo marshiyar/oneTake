@@ -33,9 +33,36 @@ public struct NativeCaptionCue: Codable, Equatable, Hashable, Sendable {
     /// Milliseconds from the start of the sequence; always after `startMs`.
     public var endMs: Int
     public var text: String
-    public init(id: String, startMs: Int, endMs: Int, text: String) {
-        self.id = id; self.startMs = startMs; self.endMs = endMs; self.text = text
+    /// When each word of `text` is spoken, in the same milliseconds as the cue; absent when the cue has no word
+    /// times (an SRT import has none). Omitted from the file when absent, so a project without them is unchanged.
+    public var words: [NativeCaptionWord]? = nil
+    public init(id: String, startMs: Int, endMs: Int, text: String, words: [NativeCaptionWord]? = nil) {
+        self.id = id; self.startMs = startMs; self.endMs = endMs; self.text = text; self.words = words
     }
+}
+
+/// One spoken word of a cue: `text` heard from `start` to `end`, milliseconds from the start of the sequence.
+public struct NativeCaptionWord: Codable, Equatable, Hashable, Sendable {
+    public var text: String
+    public var start: Int
+    public var end: Int
+    public init(text: String, start: Int, end: Int) { self.text = text; self.start = start; self.end = end }
+}
+
+/// Why a cue's word times are not valid, or nil: the words join with single spaces to the cue text, each lies inside
+/// the cue with `start <= end`, and each starts at or after the end of the one before it.
+public func nativeCaptionWordsProblem(_ cue: NativeCaptionCue) -> String? {
+    guard let words = cue.words else { return nil }
+    if words.isEmpty { return "Caption word times must hold at least one word" }
+    if words.map(\.text).joined(separator: " ") != cue.text { return "Caption word times must spell the cue text word for word" }
+    var previousEnd = cue.startMs
+    for (n, word) in words.enumerated() {
+        if word.end < word.start { return "Caption word \(n + 1) ends before it starts" }
+        if word.start < previousEnd { return "Caption word \(n + 1) starts before the cue or overlaps the word before it" }
+        if word.end > cue.endMs { return "Caption word \(n + 1) ends after the cue ends" }
+        previousEnd = word.end
+    }
+    return nil
 }
 
 /// The track id an SRT import gives a sequence that has no caption track yet.
@@ -103,6 +130,7 @@ func validateNativeCaptionTrack(_ raw: NativeJSONValue?, _ path: String, _ issue
         validateCaptionText(cue["text"], "\(cuePath).text", &issues)
         guard let timed = captionCueTimes(cue, cuePath, &issues) else { continue }
         if let problem = nativeCaptionTimingProblem(timed, after: previous) { pushIssue(&issues, .invalidCaption, cuePath, problem) }
+        validateCaptionWords(cue, timed, cuePath, &issues)
         previous = timed
     }
 }
@@ -126,4 +154,28 @@ private func captionCueTimes(_ cue: NativeJSONValue, _ path: String, _ issues: i
     }
     guard times.count == 2 else { return nil }
     return NativeCaptionCue(id: "", startMs: times[0], endMs: times[1], text: "")
+}
+
+/// The cue's `words`, when present: an array of `{ text, start, end }` that passes `nativeCaptionWordsProblem`.
+private func validateCaptionWords(_ cue: NativeJSONValue, _ times: NativeCaptionCue, _ path: String,
+                                  _ issues: inout [NativeProjectDocumentValidationIssue]) {
+    guard let raw = cue["words"] else { return }
+    guard let list = raw.arrayValue else { return pushIssue(&issues, .invalidCaption, "\(path).words", "Caption words must be an array") }
+    var words: [NativeCaptionWord] = []
+    for (index, item) in list.enumerated() {
+        let at = "\(path).words[\(index)]"
+        guard item.isRecord, let text = item["text"]?.stringValue else {
+            pushIssue(&issues, .invalidCaption, at, "A caption word must be an object with a text string"); continue
+        }
+        guard isNonNegativeInteger(item["start"]), isNonNegativeInteger(item["end"]),
+              let start = item["start"]?.numberValue, let end = item["end"]?.numberValue else {
+            pushIssue(&issues, .invalidCaption, at, "A caption word's start and end must be whole milliseconds"); continue
+        }
+        words.append(NativeCaptionWord(text: text, start: Int(start), end: Int(end)))
+    }
+    guard words.count == list.count else { return }
+    var checked = times
+    checked.text = cue["text"]?.stringValue ?? ""
+    checked.words = words
+    if let problem = nativeCaptionWordsProblem(checked) { pushIssue(&issues, .invalidCaption, "\(path).words", problem) }
 }
