@@ -78,6 +78,12 @@ enum GradeReferenceCases {
         // Contract 3: Warmth and Tint as channel gains, in the primary and in a secondary.
         cases.append(Case(name: "v3.whiteBalance", json: #"{"version":3,"adjust":{"temperature":0.7,"tint":-0.4}}"#))
         cases.append(Case(name: "v3.secondaryWhiteBalance", json: #"{"version":3,"secondaries":[{"key":{"hue":{"center":0,"range":180,"softness":0}},"correction":{"temperature":-0.6,"tint":0.5}}]}"#))
+        // Lift / Gamma / Gain / Offset and the contrast pivot (issue #176).
+        for k in GradeValues.balanceKeys {
+            cases.append(Case(name: "balance.\(k)", json: #"{"balance":{"\#(k)":{"hue":200,"amount":0.7,"level":0.35}}}"#))
+        }
+        cases.append(Case(name: "balance.all", json: #"{"balance":{"lift":{"hue":30,"amount":0.4,"level":-0.3},"gamma":{"hue":300,"amount":0.5,"level":-0.6},"gain":{"hue":120,"amount":0.3,"level":0.5},"offset":{"hue":60,"amount":0.2,"level":-0.2}}}"#))
+        cases.append(Case(name: "pivot", json: #"{"adjust":{"contrast":0.6},"pivot":0.3}"#))
         cases.append(Case(name: "intensity", json: #"{"adjust":{"saturation":-1,"exposure":0.4},"intensity":0.4}"#))
         for k in ColorGradeParams.wheelKeys {
             cases.append(Case(name: "wheel.\(k)", json: #"{"wheels":{"\#(k)":{"hue":210,"amount":0.8,"level":0.3}}}"#))
@@ -87,6 +93,12 @@ enum GradeReferenceCases {
         cases.append(Case(name: "hue.hueVsHue", json: #"{"hueCurves":{"hueVsHue":[[0,60],[120,-30],[240,90]]}}"#))
         cases.append(Case(name: "hue.hueVsSaturation", json: #"{"hueCurves":{"hueVsSaturation":[[0,-0.8],[120,0.5],[240,-0.2]]}}"#))
         cases.append(Case(name: "hue.hueVsLuma", json: #"{"hueCurves":{"hueVsLuma":[[0,0.3],[120,-0.2],[240,0.1]]}}"#))
+        // Curve shapes the editor makes: a steep rise after a flat floor, end points without (0,0)/(1,1), the
+        // 16-point maximum, and a local hue bump between two flat anchors (the first point on an empty hue curve).
+        cases.append(Case(name: "curve.steep", json: #"{"curves":{"red":[[0,0],[0.58,0],[0.62,0.65],[1,1]],"master":[[0.2,0.1],[0.8,0.9]]}}"#))
+        let sixteen = (0..<16).map { i in "[\(Double(i) / 15),\(i % 2 == 0 ? Double(i) / 15 : min(1, Double(i) / 15 + 0.08))]" }.joined(separator: ",")
+        cases.append(Case(name: "curve.sixteenPoints", json: #"{"curves":{"green":[\#(sixteen)]}}"#))
+        cases.append(Case(name: "hue.localBump", json: #"{"hueCurves":{"hueVsSaturation":[[60,0],[120,0.8],[180,0]],"hueVsHue":[[0,0],[30,40],[90,0],[180,-25],[270,0],[330,15]]}}"#))
         cases.append(Case(name: "secondaries", json: """
         {"secondaries":[{"key":{"hue":{"center":10,"range":30,"softness":20},"saturation":{"min":0.2,"max":1,"softness":0.1},"luma":{"min":0.1,"max":0.9,"softness":0.1}},
                           "correction":{"hueShift":40,"saturation":-0.5,"luma":0.1,"temperature":0.3,"tint":-0.2}},

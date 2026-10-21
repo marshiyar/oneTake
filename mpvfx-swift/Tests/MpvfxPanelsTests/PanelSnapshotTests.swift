@@ -158,13 +158,17 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             let r = try Self.rightFixture(open: "layout", h: 1040)
             let t = snapshot("inspector-layout", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            // The inspector starts under the 32px tab strip and spans the panel's full width.
-            assertPixel(t, 200, 76, scale: scale, "#141414")      // header border-b: 44.5px laid out, painted at 76
-            assertPixel(t, 200, 78, scale: scale, "#1d1d1d")      // open Transform header (77…117)
-            assertPixel(t, 386, 96, scale: scale, "#71717a")      // open caret M2 4l4 4 4-4z at (381,90.5), text-3
-            assertPixel(t, 200, 122, scale: scale, "#191919")     // open body bg-panel-bg-inset from 117
-            assertPixel(t, 100, 162, scale: scale, "#1d1d1d")     // Position X field (16,152.5 185×30) rounded bg-panel-bg
-            assertPixel(t, 204, 162, scale: scale, "#191919")     // gap-2 between the X and Y fields
+            // The inspector starts under the 32px tab strip and spans the panel's full width; on the 8 pt grid
+            // (docs/DESIGN.md "Layout grid") the clip header is 48 with its hairline, group headers 40.
+            assertPixel(t, 200, 79, scale: scale, "#141414")      // clip header hairline: 32 + 47
+            assertPixel(t, 200, 82, scale: scale, "#1d1d1d")      // open Transform header (80…120)
+            assertPixel(t, 386, 99, scale: scale, "#71717a")      // open caret M2 4l4 4 4-4z at (381,94), text-3
+            assertPixel(t, 200, 124, scale: scale, "#191919")     // open body bg-panel-bg-inset from 120
+            // Position: its label line 128…152, then the X and Y fields (154…182) between the gutter and the value edge
+            // (393 − 128 = 265), 8 apart: X 16…136.5, Y 144.5…265.
+            assertPixel(t, 100, 162, scale: scale, "#1d1d1d")     // Position X field, rounded bg-panel-bg
+            assertPixel(t, 140, 162, scale: scale, "#191919")     // the column gap between the X and Y fields
+            assertPixel(t, 280, 162, scale: scale, "#191919")     // past the value edge: the reserved keyframe gutter
             assertPixel(t, 100, 176, scale: scale, "#272727", tol: 8)   // value underline border-panel-border-input/50
         }
         // FlatSegmentedRow: the active option sits on a 2px accent underline; KeyframeNavigation's active diamond.
@@ -172,17 +176,18 @@ final class PanelSnapshotTests: XCTestCase {
             let insp = InspectorPanel()
             let seg = InspectorRow.Segmented(key: "k", label: "Ease", options: [(key: "a", label: "Linear", active: true), (key: "b", label: "Ease", active: false)], select: { _ in })
             let kf = InspectorRow.Keyframe(state: .onKey, toggle: {}, stopwatch: {}, prev: nil, next: nil)
-            let t = snapshot("inspector-controls", w: 240, h: 64, scale: scale, background: PanelTheme.panelBgInset) { c in
-                insp.drawSegmented(c, CanvasRect(x: 0, y: 0, width: 240, height: 32), seg)
-                insp.drawKeyframeNav(c, right: 240, midY: 48, key: "x", kf)
+            let w = 377.0   // a row of the 1440 × 900 default panel (409 − 2 × 16)
+            let t = snapshot("inspector-controls", w: w, h: 64, scale: scale, background: PanelTheme.panelBgInset) { c in
+                insp.drawSegmented(c, CanvasRect(x: 0, y: 0, width: w, height: 32), seg)
+                insp.drawKeyframeNav(c, right: w, midY: 48, key: "x", kf)
             }
-            // Options laid right to left: "Ease" ends at 240, "Linear" 2px before it; underline = last 2px of 26.5.
-            let easeW = t.canvas.measureText("Ease", font: PanelTheme.font(11)).width + 12
-            let linearW = t.canvas.measureText("Linear", font: PanelTheme.font(11)).width + 12
-            let underlineY = 28.3   // 16 + 26.5/2 - 2 … 29.25
-            assertPixel(t, 240 - easeW - 2 - linearW / 2, underlineY, scale: scale, "#4c8df0", tol: 10)
-            assertPixel(t, 240 - easeW / 2, underlineY, scale: scale, "#191919")
-            assertPixel(t, 240 - 41 + 14 + 6.5, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)   // 9px diamond centre
+            // The options span the control column (104) to the value edge (377 − 128 = 249), left to right; each
+            // underline is the last 2px of its 28-tall option (2…30).
+            let rects = InspectorPanel.segmentRects(InspectorPanel.segmentWidths(t.canvas, seg), in: CanvasRect(x: 104, y: 0, width: 145, height: 32))
+            XCTAssertEqual(rects.first?.x ?? 0, 104, accuracy: 0.01); XCTAssertEqual(rects.last?.maxX ?? 0, 249, accuracy: 0.01)
+            assertPixel(t, rects[0].midX, 29, scale: scale, "#4c8df0", tol: 10)
+            assertPixel(t, rects[1].midX, 29, scale: scale, "#191919")
+            assertPixel(t, w - 36, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)   // 9px diamond centre in the second 24 pt cell
         }
     }
 
@@ -256,13 +261,16 @@ final class PanelSnapshotTests: XCTestCase {
         XCTAssertTrue(c.drawnStrings.contains("Scopes")); XCTAssertTrue(c.drawnStrings.contains("Off"))
         XCTAssertTrue(c.drawnStrings.contains("Retry look previews"))
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
-        XCTAssertEqual(tile.y, 76.5 + 123, accuracy: 0.5)
+        // The Grade header scrolled to the body's top (32 + 48), its 40, the body's 8, the closed Scopes row (35 in a
+        // 40 slot), 12, the retry link (18 in a 24 slot), 6.
+        let gridTop = 80.0 + 40 + 8 + 40 + 12 + 24 + 6
+        XCTAssertEqual(tile.y, gridTop, accuracy: 0.5)
         XCTAssertEqual(tile.x, 16, accuracy: 0.5)
-        // With look frames available the link goes and the grid moves up by its 18 + 6.
+        // With look frames available the link goes and the grid moves up by its slot and gap, 24 + 6.
         r.inspector.presetPreview = { _ in .rendering }
         c.reset(); r.draw(c, size: CanvasSize(409, 1900))
         XCTAssertFalse(c.drawnStrings.contains("Retry look previews"))
-        XCTAssertEqual(try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) }).y, 76.5 + 123 - 24, accuracy: 0.5)
+        XCTAssertEqual(try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) }).y, gridTop - 30, accuracy: 0.5)
     }
 
     /// Opening Scopes asks the host for a frame at the analysis size and shows the status, a chip per scope, the
@@ -290,7 +298,7 @@ final class PanelSnapshotTests: XCTestCase {
         for s in labels { XCTAssertTrue(c.drawnStrings.contains(s), s) }
         let open = 28 + 22 + 22 + 6 + ScopeLayout.height([.waveform, .vectorscope], width: 377) + 7
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
-        XCTAssertEqual(tile.y, 76.5 + 123 + open - 35, accuracy: 1, "the open scopes push the grid down")
+        XCTAssertEqual(tile.y, 80 + 40 + 8 + PanelGrid.snapUp(open) + 12 + 24 + 6, accuracy: 1, "the open scopes push the grid down")
         let parade = try XCTUnwrap(ScopeKind.allCases.firstIndex(of: .parade))
         try click(r, part: 2 + parade)
         XCTAssertEqual(r.inspector.grade.scopes.kinds, [.waveform, .vectorscope, .parade])
@@ -474,11 +482,11 @@ final class PanelSnapshotTests: XCTestCase {
             r.inspector.tick(0.2)
             t = snapshot("inspector-enter-1", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             assertPixel(t, 200, 122, scale: scale, "#191919")            // settled: bg-panel-bg-inset
-            // Focus ring on the Transform header (77…117): 2px accent just outside it, clipped to the scrolling body
+            // Focus ring on the Transform header (80…120): 2px accent just outside it, clipped to the scrolling body
             // (so its top edge under the clip header is hidden, as the overflow-y-auto body clips the outline).
             r.inspector.focus.current = .group("layout"); r.inspector.focus.visible = true
             t = snapshot("inspector-focus", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
-            assertPixel(t, 200, 118, scale: scale, "#4c8df0", tol: 30)
+            assertPixel(t, 200, 121, scale: scale, "#4c8df0", tol: 30)
         }
     }
 }

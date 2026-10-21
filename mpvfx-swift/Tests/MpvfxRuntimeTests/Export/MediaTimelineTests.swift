@@ -38,6 +38,12 @@ final class MediaTimelineTests: XCTestCase {
         XCTAssertThrowsError(try mediaTimelineForExport(document)) { XCTAssertTrue("\($0)".contains("Media path is missing"), "\($0)") }
     }
 
+    func testAMissingMediaPathNamesTheAssetNotItsId() throws {
+        XCTAssertThrowsError(try mediaTimelineForExport(try project())) {
+            XCTAssertEqual("\($0)", "Media path is missing for clip.mov")
+        }
+    }
+
     func testAnOlderProjectWithoutAStoredEngineNameExports() throws {
         var document = try project()
         XCTAssertEqual(document.mediaEngine, .native)   // parse migrates the missing field

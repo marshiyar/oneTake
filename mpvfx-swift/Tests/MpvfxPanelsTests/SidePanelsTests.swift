@@ -124,6 +124,55 @@ final class InspectorPanelTests: XCTestCase {
         XCTAssertEqual(audio.groups.map(\.title), ["Audio FX", "Media"])
     }
 
+    func testGradeHeaderBypassIsOneUndoableEdit() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        p.openGroupId = "grade"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("grade") })
+        let before = editor.colorGrading(clipId: "clip:a")?.enabled ?? true
+        XCTAssertGreaterThanOrEqual(toggle.width, 24)
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled, !before)
+        XCTAssertEqual(editor.undoStack.count, 1)
+        XCTAssertTrue(editor.undo())
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled ?? true, before)
+    }
+
+    func testGradeAndEffectsBypassesPublishAccessibleSwitches() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        p.openGroupId = "grade"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let controls = p.accessibilityControls
+        XCTAssertEqual(Set(controls.map(\.label)), ["Grade enabled", "Effects enabled"])
+        XCTAssertTrue(controls.allSatisfy { $0.frame.width >= 24 && $0.frame.height >= 24 })
+        try XCTUnwrap(controls.first { $0.label == "Grade enabled" }).press()
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled, false)
+    }
+
+    func testEffectsHeaderBypassPreservesAmounts() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        var grade = editor.colorGrading(clipId: "clip:a") ?? ColorGrading(); grade.effects["blur"] = 0.45
+        XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", grade))
+        p.openGroupId = "effects"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effectsEnabled, false)
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        XCTAssertTrue(p.pointerDown(center(try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") }))))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+    }
+
+    func testEffectsHeaderBypassPersistsOnANeutralGrade() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        XCTAssertNil(editor.colorGrading(clipId: "clip:a"))
+        p.openGroupId = "effects"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effectsEnabled, false)
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        XCTAssertNotNil(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(c.drawnStrings.contains("off"))
+    }
+
     /// The accordion entrance (hf-flat-group-enter, 120 ms ease-out): the toggled group and the one it closed
     /// animate while a host clock drives `tick`; nothing animates without one.
     func testAccordionEntranceRunsFor120ms() throws {
@@ -340,8 +389,33 @@ final class ColorGradingTests: XCTestCase {
             XCTAssertGreaterThan(amount.y, last.maxY, "Amount starts after the grid at \(panelW)")
         }
     }
+    func testPasteGradeRequiresClipboardAndVisualSelection() throws {
+        func pasteHit(_ p: InspectorPanel) -> CanvasRect? {
+            let canvas = PanelMeasureCanvas()
+            p.gradeClipboardRow().draw(canvas, CanvasRect(x: 0, y: 0, width: 360, height: 28), p)
+            return p.hits.rect { $0 == .custom("grade:clipboard", 1) }
+        }
+
+        let editor = try demoEditor()
+        let emptyClipboard = InspectorPanel()
+        emptyClipboard.editor = editor; emptyClipboard.selection = ["clip:a"]
+        emptyClipboard.onPasteGrade = { true }
+        XCTAssertNil(pasteHit(emptyClipboard), "a wired callback does not imply that a grade is available")
+
+        let audioOnly = InspectorPanel()
+        audioOnly.editor = editor; audioOnly.selection = ["clip:music"]
+        audioOnly.gradeClipboardAvailable = true; audioOnly.onPasteGrade = { true }
+        XCTAssertNil(pasteHit(audioOnly), "an audio-only selection is not a grade target")
+
+        let visual = InspectorPanel()
+        visual.editor = editor; visual.selection = ["clip:music", "clip:a"]
+        visual.gradeClipboardAvailable = true; visual.onPasteGrade = { true }
+        XCTAssertNotNil(pasteHit(visual), "any visual clip in a mixed selection enables grade paste")
+    }
     func testGradeUiWheelDragAndCurvePoint() throws {
         let editor = try demoEditor()
+        // A contract 2 grade (saved before Lift / Gamma / Gain / Offset), which keeps its tonal wheels (issue #176).
+        XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", ColorGrading(json: ["adjust": .object(["contrast": .number(0.1)])])))
         let p = InspectorPanel(); p.editor = editor; p.selection = ["clip:a"]; p.openGroupId = "grade"
         let c = PanelMeasureCanvas(); let rect = CanvasRect(x: 0, y: 0, width: 380, height: 4000)
         p.draw(c, in: rect)
@@ -570,7 +644,7 @@ final class RightPanelTests: XCTestCase {
         let c = PanelMeasureCanvas()
         r.draw(c, size: CanvasSize(409, 600))
         XCTAssertTrue(r.keyDown(EditorKey(.tab)))
-        XCTAssertEqual(r.focus.current, .design, "Tab starts at the strip's first tab")
+        XCTAssertEqual(r.focus.current, .renders, "Tab starts at the strip's selected tab: the tab bar is one stop (docs/DESIGN.md \"Tabs\")")
         var n = 0
         while r.focus.current != .export, n < 30 { _ = r.keyDown(EditorKey(.tab)); n += 1 }
         XCTAssertEqual(r.focus.current, .export)
@@ -648,12 +722,12 @@ final class PanelTabStripTests: XCTestCase {
         XCTAssertTrue(r.pointerMove(center(menu)))
         XCTAssertEqual(r.hint, "Panel menu")
         _ = r.pointerDown(center(menu))
-        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide panel"], "nothing finished to hide yet")
+        XCTAssertEqual(r.dropdown.options.map(\.label), ["Keyframe easing", "Hide panel"], "nothing finished to hide yet; Keyframe easing opens the Easing tab")
         r.dropdown.close()
         r.jobs = [.init(id: "1", name: "Main.mp4", status: .complete), .init(id: "2", name: "Next.mp4", status: .rendering)]
         c.reset(); r.draw(c, size: CanvasSize(409, 800))
         _ = r.pointerDown(center(menu))
-        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide finished renders", "Hide panel"])
+        XCTAssertEqual(r.dropdown.options.map(\.label), ["Hide finished renders", "Keyframe easing", "Hide panel"])
         r.dropdown.pick("hideFinished")
         XCTAssertEqual(actions, [.hideFinished])
         _ = r.pointerDown(center(menu))

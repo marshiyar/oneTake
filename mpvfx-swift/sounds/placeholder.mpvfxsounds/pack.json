@@ -1,0 +1,164 @@
+{
+  "v": 1,
+  "id": "placeholder",
+  "name": "Placeholder sounds",
+  "version": "1.0.0",
+  "licence": {
+    "id": "placeholder-owned",
+    "title": "Placeholder pack, owned by the project",
+    "file": "LICENCE.txt",
+    "summary": "Owned by the MpVFX project and for testing only; replaced by the commissioned set."
+  },
+  "items": [
+    {
+      "id": "calm-pad",
+      "title": "Placeholder Calm Pad",
+      "kind": "music",
+      "moods": [
+        "calm",
+        "warm"
+      ],
+      "tags": [
+        "pad",
+        "ambient",
+        "bed"
+      ],
+      "file": "audio/calm-pad.wav",
+      "sha256": "390b6306913eb4f27daea15888ee7933f174f5b64c96078e766ab6a31092c90b",
+      "durationMs": 8000,
+      "sampleRate": 22050,
+      "channels": 1,
+      "bpm": 60,
+      "loopable": true
+    },
+    {
+      "id": "bright-arpeggio",
+      "title": "Placeholder Bright Arpeggio",
+      "kind": "music",
+      "moods": [
+        "bright",
+        "playful"
+      ],
+      "tags": [
+        "arpeggio",
+        "light"
+      ],
+      "file": "audio/bright-arpeggio.wav",
+      "sha256": "3aaabbd56c0c49ae21d361a0ed424bad304c30b24d7dfa33e979c8075942751b",
+      "durationMs": 8000,
+      "sampleRate": 22050,
+      "channels": 1,
+      "bpm": 120,
+      "loopable": true
+    },
+    {
+      "id": "driving-pulse",
+      "title": "Placeholder Driving Pulse",
+      "kind": "music",
+      "moods": [
+        "driving",
+        "tense"
+      ],
+      "tags": [
+        "beat",
+        "kick"
+      ],
+      "file": "audio/driving-pulse.wav",
+      "sha256": "f9fea9133f0471be00bc7897e8db4a3e76549c6d54be2bc501a2cc20706eba36",
+      "durationMs": 8000,
+      "sampleRate": 22050,
+      "channels": 1,
+      "bpm": 120,
+      "loopable": true
+    },
+    {
+      "id": "dark-drone",
+      "title": "Placeholder Dark Drone",
+      "kind": "ambience",
+      "moods": [
+        "dark",
+        "tense"
+      ],
+      "tags": [
+        "drone",
+        "low"
+      ],
+      "file": "audio/dark-drone.wav",
+      "sha256": "45559e59fcc891ac657214658aa66c4458491ea94c80fbc50a24ff9cb92d56c1",
+      "durationMs": 9000,
+      "sampleRate": 22050,
+      "channels": 1,
+      "loopable": true
+    },
+    {
+      "id": "sweep-up",
+      "title": "Placeholder Noise Sweep Up",
+      "kind": "effect",
+      "moods": [
+        "tense"
+      ],
+      "tags": [
+        "sweep",
+        "riser",
+        "noise"
+      ],
+      "file": "audio/sweep-up.wav",
+      "sha256": "1c43211ba3261f63d0f5d4c56a5b202dd0ab49153126c44b3e0d1715a2e3f0d2",
+      "durationMs": 2000,
+      "sampleRate": 44100,
+      "channels": 1
+    },
+    {
+      "id": "sweep-down",
+      "title": "Placeholder Noise Sweep Down",
+      "kind": "effect",
+      "moods": [
+        "dark"
+      ],
+      "tags": [
+        "sweep",
+        "downer",
+        "noise"
+      ],
+      "file": "audio/sweep-down.wav",
+      "sha256": "daffcf33d7486479b08820194e9246b26ce4a504f9cd69ed4ef682e857033d98",
+      "durationMs": 2000,
+      "sampleRate": 44100,
+      "channels": 1
+    },
+    {
+      "id": "click",
+      "title": "Placeholder Click",
+      "kind": "effect",
+      "moods": [],
+      "tags": [
+        "click",
+        "ui",
+        "short"
+      ],
+      "file": "audio/click.wav",
+      "sha256": "573f6adfbae02a77ce31e8fcf48156fe3778f818016531b492d2b2b8bbc0d516",
+      "durationMs": 200,
+      "sampleRate": 44100,
+      "channels": 1
+    },
+    {
+      "id": "soft-chime",
+      "title": "Placeholder Soft Chime",
+      "kind": "effect",
+      "moods": [
+        "warm",
+        "bright"
+      ],
+      "tags": [
+        "chime",
+        "bell"
+      ],
+      "file": "audio/soft-chime.wav",
+      "sha256": "4aa0e2802c100b1ca18d0027372cedab596b9562213151624c6e3dcffd87abef",
+      "durationMs": 1500,
+      "sampleRate": 44100,
+      "channels": 1
+    }
+  ]
+}

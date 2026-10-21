@@ -72,8 +72,8 @@ final class TimelineControllerTests: XCTestCase {
     func make() throws -> (TimelineController, TimelineEditor) {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300)   // fit = (1266 - 264 - 2) / 60 px/s
-        c.setZoom(percent: 600)              // 100 px/s
+        c.viewport = CanvasSize(1266, 300)
+        c.setZoom(pixelsPerSecond: 100)
         return (c, e)
     }
     func clip(_ e: TimelineEditor, _ id: String) -> (track: String, start: Double, dur: Double)? {
@@ -170,7 +170,7 @@ final class TimelineVisualTests: XCTestCase {
     func testHandlesSquareCornerPreRollAndBeats() throws {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         c.view.selection = ["clip:b"]
         c.view.beats = [TimelineBeat(time: 8.5, strength: 1), TimelineBeat(time: 9.5, strength: 1)]   // showBeats needs two
         let t = CairoImageTarget(width: 1264, height: 300)
@@ -232,7 +232,7 @@ final class TimelineChunk4Tests: XCTestCase {
     func make() throws -> (TimelineController, TimelineEditor) {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)   // 100 px/s
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         return (c, e)
     }
     func starts(_ e: TimelineEditor, _ track: String) -> [Double] {
