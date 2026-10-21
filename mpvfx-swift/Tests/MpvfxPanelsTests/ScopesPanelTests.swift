@@ -15,6 +15,7 @@ import Foundation
 import XCTest
 import MpvfxCanvas
 import MpvfxScopes
+import MpvfxTheme
 @testable import MpvfxPanels
 
 /// The Grade group's scopes as a tool: several at once, their layout, settings, the trace bitmaps and the
@@ -26,6 +27,18 @@ final class ScopesPanelTests: XCTestCase {
         for y in 0..<h { for x in 0..<w {
             let v = UInt8(x * 255 / (w - 1)), i = (y * w + x) * 4
             px[i] = v; px[i + 1] = v; px[i + 2] = v
+        } }
+        return CanvasImage(width: w, height: h, rgba: px)
+    }
+
+    /// BT.471 100/0/75/0 bars over a black-to-white ramp (the bottom third): every scope has something to show.
+    static func barsOverRamp(_ w: Int = 160, _ h: Int = 90) -> CanvasImage {
+        let bars: [[UInt8]] = [[255, 255, 255], [191, 191, 0], [0, 191, 191], [0, 191, 0], [191, 0, 191], [191, 0, 0], [0, 0, 191], [0, 0, 0]]
+        var px = [UInt8](repeating: 255, count: w * h * 4)
+        for y in 0..<h { for x in 0..<w {
+            let i = (y * w + x) * 4, v = UInt8(x * 255 / (w - 1))
+            let c = y < h * 2 / 3 ? bars[x * bars.count / w] : [v, v, v]
+            px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]
         } }
         return CanvasImage(width: w, height: h, rgba: px)
     }
@@ -69,61 +82,69 @@ final class ScopesPanelTests: XCTestCase {
     func testWaveformTraceDrawsBlackAtTheBottomAndWhiteAtTheTop() throws {
         let frame = try ScopeFrame(width: 64, height: 36, rgba: Self.ramp().rgba)
         let a = ScopeEngine.analyze(frame)
-        let img = ScopeTraces.waveform(a, planes: [(.luma, .init(0xFFFFFF))], gain: 1)
+        let img = ScopeTraces.waveform(a, planes: [(.luma, ThemeColor(0xFFFFFF))], gain: 1, size: PixelSize(64, 256))
         XCTAssertEqual(img.width, 64); XCTAssertEqual(img.height, 256)
         XCTAssertGreaterThan(Self.red(img, 0, 255), 200, "column 0 (black) lit on the bottom row")
         XCTAssertGreaterThan(Self.red(img, 63, 0), 200, "column 63 (white) lit on the top row")
         XCTAssertEqual(Self.red(img, 0, 0), 0, "nothing where nothing landed")
+        let small = ScopeTraces.waveform(a, planes: [(.luma, ThemeColor(0xFFFFFF))], gain: 1, size: PixelSize(16, 32))
+        XCTAssertGreaterThan(Self.red(small, 0, 31), 200, "at a smaller size the cells under a pixel are summed, not dropped")
+        XCTAssertGreaterThan(Self.red(small, 15, 0), 200)
         XCTAssertEqual(img.rgba[3], 255, "opaque")
     }
 
     func testParadeLanesCarryOneChannelEach() throws {
         let a = ScopeEngine.analyze(try ScopeFrame(width: 16, height: 9, rgba: Self.solid(255, 0, 128).rgba))
-        let img = ScopeTraces.parade(a, colours: [.init(0xFF0000), .init(0x00FF00), .init(0x0000FF)], gain: 1)
-        let lane = a.columns, gap = max(2, lane / 32)
-        XCTAssertEqual(img.width, 3 * lane + 2 * gap)
-        XCTAssertGreaterThan(Self.red(img, 0, 0), 200, "R lane: 255 at the top")
-        XCTAssertGreaterThan(img.rgba[((255) * img.width + lane + gap) * 4 + 1], 200, "G lane: 0 at the bottom")
-        XCTAssertGreaterThan(img.rgba[((255 - 128) * img.width + 2 * (lane + gap)) * 4 + 2], 200, "B lane: 128 mid-height")
+        let img = ScopeTraces.parade(a, colours: [ThemeColor(0xFF0000), ThemeColor(0x00FF00), ThemeColor(0x0000FF)], gain: 1, size: PixelSize(300, 256))
+        let lanes = ScopeTraces.paradeLanes(width: 300)
+        XCTAssertEqual(lanes.map(\.count), [98, 98, 98])
+        XCTAssertGreaterThan(Self.red(img, lanes[0].lowerBound, 0), 200, "R lane: 255 at the top")
+        XCTAssertGreaterThan(img.rgba[(255 * img.width + lanes[1].lowerBound) * 4 + 1], 200, "G lane: 0 at the bottom")
+        XCTAssertGreaterThan(img.rgba[((255 - 128) * img.width + lanes[2].lowerBound) * 4 + 2], 200, "B lane: 128 mid-height")
+        XCTAssertEqual(img.rgba[(255 * img.width + lanes[0].upperBound) * 4 + 1], 0, "the gap between lanes stays black")
     }
 
     func testVectorscopeTraceShowsPureBlueOnTheRightEdge() throws {
         let a = ScopeEngine.analyze(try ScopeFrame(width: 16, height: 9, rgba: Self.solid(0, 0, 255).rgba))
-        let img = ScopeTraces.vectorscope(a, colour: .init(0xFFFFFF), gain: 1)
+        let img = ScopeTraces.vectorscope(a, colour: ThemeColor(0xFFFFFF), gain: 1, size: PixelSize(257, 257))
         XCTAssertEqual(img.width, 257)
         XCTAssertGreaterThan(Self.red(img, 256, 140), 200, "Cb +0.5, Cr -0.0458: the right edge, 12 bins below centre")
+        let grey = ScopeEngine.analyze(try ScopeFrame(width: 16, height: 9, rgba: Self.solid(90, 90, 90).rgba))
+        let small = ScopeTraces.vectorscope(grey, colour: ThemeColor(0xFFFFFF), gain: 1, size: PixelSize(64, 64))
+        XCTAssertGreaterThan(Self.red(small, 32, 32), 200, "a single centre bin stays lit at a smaller size")
     }
 
     func testTheWorkerAnalysesOffTheDrawThreadAndKeepsOnlyTheNewestFrame() throws {
-        let worker = ScopeWorker(), settings = ScopeSettings()
+        let worker = ScopeWorker(), settings = ScopeRequest(settings: ScopeSettings(), sizes: [.waveform: PixelSize(100, 60)])
         worker.queue.suspend()
         let frames = [Self.solid(10, 10, 10), Self.solid(128, 128, 128), Self.solid(250, 250, 250)]
         for f in frames {
-            let r = worker.result(for: f, settings: settings)
+            let r = worker.result(for: f, request: settings)
             XCTAssertNil(r.result); XCTAssertFalse(r.current, "a draw never waits for the analysis")
         }
         XCTAssertEqual(worker.analysed, 0)
         worker.queue.resume(); worker.wait()
         XCTAssertEqual(worker.analysed, 1, "only the newest request was analysed")
-        let done = try XCTUnwrap(worker.result(for: frames[2], settings: settings).result)
+        let done = try XCTUnwrap(worker.result(for: frames[2], request: settings).result)
         XCTAssertEqual(done.analysis.histogram(.luma, level: 250), 16 * 9)
-        XCTAssertNotNil(done.traces[.waveform]); XCTAssertNotNil(done.traces[.vectorscope])
-        XCTAssertTrue(worker.result(for: frames[2], settings: settings).current)
+        XCTAssertEqual(done.traces[.waveform]?.width, 100, "traces are made at the size the row asked for")
+        XCTAssertNotNil(done.traces[.vectorscope])
+        XCTAssertTrue(worker.result(for: frames[2], request: settings).current)
     }
 
     func testChangingASettingReanalysesAndResetDropsTheResult() throws {
         let worker = ScopeWorker(), frame = Self.ramp()
-        var settings = ScopeSettings()
-        _ = worker.result(for: frame, settings: settings); worker.wait()
-        settings.toggle(.falseColor)
-        let stale = worker.result(for: frame, settings: settings)
+        var settings = ScopeRequest(settings: ScopeSettings(), sizes: [:])
+        _ = worker.result(for: frame, request: settings); worker.wait()
+        settings.settings.toggle(.falseColor)
+        let stale = worker.result(for: frame, request: settings)
         XCTAssertNotNil(stale.result, "the last result stays up while the new one is made")
         XCTAssertFalse(stale.current)
         worker.wait()
-        let fresh = try XCTUnwrap(worker.result(for: frame, settings: settings).result)
+        let fresh = try XCTUnwrap(worker.result(for: frame, request: settings).result)
         XCTAssertNotNil(fresh.traces[.falseColor])
         worker.reset()
-        XCTAssertNil(worker.result(for: frame, settings: settings).result)
+        XCTAssertNil(worker.result(for: frame, request: settings).result)
         worker.wait()
     }
 

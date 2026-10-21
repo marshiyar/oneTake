@@ -42,9 +42,20 @@ struct ScopeTile {
         c.strokeRect(r.insetBy(0.5), PanelTheme.panelHairline, width: 1)
     }
 
-    /// The trace area of waveform-like tiles: a label gutter on the left, the caption above.
+    /// Where `kind`'s trace bitmap is drawn in tile `r`; nil for scopes drawn without one (histogram, false colour).
+    static func tracePlot(_ kind: ScopeKind, _ r: CanvasRect) -> CanvasRect? {
+        switch kind {
+        case .waveform, .overlay, .parade: return plotRect(r)
+        case .vectorscope: return vectorPlot(r)
+        case .histogram, .falseColor: return nil
+        }
+    }
+
+    /// The trace area of waveform-like tiles: a label gutter on the left, the caption above. On whole points, so the
+    /// device-sized trace lands pixel for pixel at 1x and 2x.
     static func plotRect(_ r: CanvasRect) -> CanvasRect {
-        CanvasRect(x: r.x + gutter, y: r.y + captionHeight + 4, width: r.width - gutter - 6, height: r.height - captionHeight - 10)
+        let x = (r.x + gutter).rounded(), y = (r.y + captionHeight + 4).rounded()
+        return CanvasRect(x: x, y: y, width: (r.maxX - 6 - x).rounded(.down), height: (r.maxY - 6 - y).rounded(.down))
     }
 
     func caption(_ c: CanvasContext) {
@@ -63,10 +74,11 @@ struct ScopeTile {
         Self.levelLines(c, plot, scale: settings.scale)
         guard let a = result?.analysis else { return }
         if kind == .parade {
-            let lane = a.columns, gap = max(2, lane / 32), total = Double(3 * lane + 2 * gap)
+            let pixels = result?.traces[kind]?.width ?? Int(plot.width), total = Double(max(1, pixels))
             for (i, ch) in [ScopeChannel.red, .green, .blue].enumerated() {
-                let x0 = plot.x + Double(i * (lane + gap)) / total * plot.width
-                let lr = CanvasRect(x: x0, y: plot.y, width: Double(lane) / total * plot.width, height: plot.height)
+                let lane = ScopeTraces.paradeLanes(width: pixels)[i]
+                let lr = CanvasRect(x: plot.x + Double(lane.lowerBound) / total * plot.width, y: plot.y,
+                                    width: Double(lane.count) / total * plot.width, height: plot.height)
                 Self.clipMarks(c, a, [ch], in: lr)
                 PanelDraw.text(c, ["R", "G", "B"][i], in: CanvasRect(x: lr.x + 2, y: lr.y + 1, width: 10, height: 11),
                                font: PanelTheme.font(8), color: PanelTheme.scopeInk.withAlpha(0.45))
@@ -104,8 +116,8 @@ struct ScopeTile {
 
     /// The square plot, centred under the caption.
     static func vectorPlot(_ r: CanvasRect) -> CanvasRect {
-        let side = max(1, min(r.width - 8, r.height - captionHeight - 6))
-        return CanvasRect(x: (r.midX - side / 2).rounded(), y: r.y + captionHeight + 2, width: side, height: side)
+        let side = max(1, min(r.width - 8, r.height - captionHeight - 6).rounded(.down))
+        return CanvasRect(x: (r.midX - side / 2).rounded(), y: (r.y + captionHeight + 2).rounded(), width: side, height: side)
     }
 
     func drawVectorscope(_ c: CanvasContext) {

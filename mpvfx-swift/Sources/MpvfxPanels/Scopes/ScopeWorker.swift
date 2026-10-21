@@ -16,11 +16,18 @@ import MpvfxCanvas
 import MpvfxScopes
 import MpvfxTheme
 
+/// What the row asks for: its settings, and the device-pixel size of each scope's trace.
+public struct ScopeRequest: Equatable, Sendable {
+    public var settings: ScopeSettings
+    public var sizes: [ScopeKind: PixelSize]
+    public init(settings: ScopeSettings, sizes: [ScopeKind: PixelSize]) { self.settings = settings; self.sizes = sizes }
+}
+
 /// One frame analysed for the shown scopes: the counts, a trace bitmap per scope and the false-colour picture.
 public struct ScopeResult: @unchecked Sendable {
     public let analysis: ScopeAnalysis
     public let traces: [ScopeKind: CanvasImage]
-    public let settings: ScopeSettings
+    public let request: ScopeRequest
 }
 
 /// Analyses scope frames on one serial background queue, so a scope update never blocks a draw. Only the newest
@@ -28,7 +35,7 @@ public struct ScopeResult: @unchecked Sendable {
 /// queued again. A draw shows the last finished result until the newer one is ready; `onReady` (called on the
 /// background queue) asks the host to redraw.
 public final class ScopeWorker: @unchecked Sendable {
-    struct Key: Equatable { var frame: String; var settings: ScopeSettings }
+    struct Key: Equatable { var frame: String; var request: ScopeRequest }
 
     public var onReady: (() -> Void)?
 
@@ -51,10 +58,10 @@ public final class ScopeWorker: @unchecked Sendable {
     /// Why the newest frame could not be analysed (the row shows it), nil after a frame that could.
     public var lastFailure: ScopeError? { lock.lock(); defer { lock.unlock() }; return failure }
 
-    /// The result for `frame` with `settings` when it is finished; else the analysis is queued (latest wins) and
+    /// The result for `frame` and `request` when it is finished; else the analysis is queued (latest wins) and
     /// the last finished result, if any, is returned so the scopes do not blank while it runs. UI thread; never waits.
-    public func result(for frame: CanvasImage, settings: ScopeSettings) -> (result: ScopeResult?, current: Bool) {
-        let key = Key(frame: Self.fingerprint(frame), settings: settings)
+    public func result(for frame: CanvasImage, request: ScopeRequest) -> (result: ScopeResult?, current: Bool) {
+        let key = Key(frame: Self.fingerprint(frame), request: request)
         lock.lock(); defer { lock.unlock() }
         if let done = finished, done.key == key { return (done.result, true) }
         if running != key { pending = (key, frame) }
@@ -80,7 +87,7 @@ public final class ScopeWorker: @unchecked Sendable {
             pending = nil; running = job.key
             let started = generation
             lock.unlock()
-            let outcome = Result { try Self.analyse(job.frame, settings: job.key.settings) }
+            let outcome = Result { try Self.analyse(job.frame, request: job.key.request) }
             lock.lock()
             let current = started == generation
             if current {
@@ -96,22 +103,24 @@ public final class ScopeWorker: @unchecked Sendable {
     }
 
     /// The analysis and the bitmaps of the shown scopes; throws `ScopeError` when the frame is not a valid picture.
-    static func analyse(_ frame: CanvasImage, settings: ScopeSettings) throws -> ScopeResult {
+    static func analyse(_ frame: CanvasImage, request: ScopeRequest) throws -> ScopeResult {
         let scopeFrame = try ScopeFrame(width: frame.width, height: frame.height, rgba: frame.rgba)
-        let a = ScopeEngine.analyze(scopeFrame, options: settings.options)
+        let a = ScopeEngine.analyze(scopeFrame, options: request.settings.options)
         var traces: [ScopeKind: CanvasImage] = [:]
-        for kind in settings.kinds { traces[kind] = trace(kind, a, scopeFrame, settings: settings) }
-        return ScopeResult(analysis: a, traces: traces, settings: settings)
+        for kind in request.settings.kinds { traces[kind] = trace(kind, a, scopeFrame, request: request) }
+        return ScopeResult(analysis: a, traces: traces, request: request)
     }
 
-    static func trace(_ kind: ScopeKind, _ a: ScopeAnalysis, _ frame: ScopeFrame, settings: ScopeSettings) -> CanvasImage? {
-        let T = ThemeTokens.self, gain = settings.gain
+    static func trace(_ kind: ScopeKind, _ a: ScopeAnalysis, _ frame: ScopeFrame, request: ScopeRequest) -> CanvasImage? {
+        let T = ThemeTokens.self, gain = request.settings.gain, size = request.sizes[kind] ?? PixelSize(a.columns, 256)
         switch kind {
-        case .waveform: return ScopeTraces.waveform(a, planes: [(.luma, T.scopeLuma)], gain: gain)
-        case .overlay: return ScopeTraces.waveform(a, planes: [(.red, T.scopeRed), (.green, T.scopeGreen), (.blue, T.scopeBlue)], gain: gain)
-        case .parade: return ScopeTraces.parade(a, colours: [T.scopeRed, T.scopeGreen, T.scopeBlue], gain: gain)
-        case .vectorscope: return ScopeTraces.vectorscope(a, colour: T.scopeVector, gain: gain)
-        case .falseColor: return CanvasImage(width: frame.width, height: frame.height, rgba: FalseColor.map(frame, matrix: settings.matrix))
+        case .waveform: return ScopeTraces.waveform(a, planes: [(.luma, T.scopeLuma)], gain: gain, size: size)
+        case .overlay:
+            return ScopeTraces.waveform(a, planes: [(.red, T.scopeRed), (.green, T.scopeGreen), (.blue, T.scopeBlue)], gain: gain, size: size)
+        case .parade: return ScopeTraces.parade(a, colours: [T.scopeRed, T.scopeGreen, T.scopeBlue], gain: gain, size: size)
+        case .vectorscope: return ScopeTraces.vectorscope(a, colour: T.scopeVector, gain: gain, size: size)
+        case .falseColor:
+            return CanvasImage(width: frame.width, height: frame.height, rgba: FalseColor.map(frame, matrix: request.settings.matrix))
         case .histogram: return nil   // drawn as curves over the counts
         }
     }

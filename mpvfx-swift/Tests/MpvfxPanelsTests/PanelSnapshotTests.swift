@@ -18,6 +18,7 @@ import MpvfxCanvas
 import MpvfxTheme
 import MpvfxShared
 import MpvfxTimeline
+import MpvfxScopes
 import OneTakeKeyframes
 @testable import MpvfxPanels
 
@@ -309,17 +310,21 @@ final class PanelSnapshotTests: XCTestCase {
     }
 
     /// The scopes in the right column of a 1440 x 900 window (409 wide), in dark and in light: black scope tiles in
-    /// both, the ramp's waveform lit from black (bottom left) to white (top right), the vectorscope's centre lit.
+    /// both; the ramp's waveform lit from black (bottom left) to white (top right); on the vectorscope the greys on the
+    /// centre and each 75 % bar inside its drawn target.
     func testGradeScopesSnapshotInDarkAndLight() throws {
         defer { Theme.setMode(.dark) }
         for mode in [ThemeMode.dark, .light] {
             Theme.setMode(mode)
             let r = try Self.rightFixture(open: "grade", h: 900)
             r.inspector.grade.scopesOpen = true
-            r.inspector.scopeFrame = { _, _, _ in .ready(ScopesPanelTests.ramp()) }
+            r.inspector.scopeFrame = { _, _, _ in .ready(ScopesPanelTests.barsOverRamp()) }
             r.draw(PanelMeasureCanvas(), size: CanvasSize(409, 900))
             r.inspector.scopeWorker.wait()
             for scale in [1.0, 2.0] {
+                // A first draw at this scale asks for traces at its device pixels; the host redraws when they are ready.
+                let first = CairoImageTarget(width: Int(409 * scale), height: Int(900 * scale))
+                first.canvas.scale(scale, scale); r.draw(first.canvas, size: CanvasSize(409, 900)); r.inspector.scopeWorker.wait()
                 let t = snapshot("inspector-grade-scopes-\(mode.rawValue)", w: 409, h: 900, scale: scale) { r.draw($0, size: CanvasSize(409, 900)) }
                 let row = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
                 let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + 28 + 22 + 22 + 6, width: 377)
@@ -328,15 +333,52 @@ final class PanelSnapshotTests: XCTestCase {
         }
     }
 
+    /// The other four scopes (RGB overlay, parade, histogram, false colour) on the 10-bit scale, dark and light, for
+    /// review: the false-colour tile paints the white bar red (clipped) and the black bar purple (crushed).
+    func testOtherScopesSnapshotInDarkAndLight() throws {
+        defer { Theme.setMode(.dark) }
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            let r = try Self.rightFixture(open: "grade", h: 900)
+            r.inspector.grade.scopesOpen = true
+            for k in [ScopeKind.overlay, .parade, .histogram, .falseColor] { r.inspector.grade.scopes.toggle(k) }
+            r.inspector.grade.scopes.scale = .code10
+            XCTAssertEqual(r.inspector.grade.scopes.kinds, [.overlay, .parade, .histogram, .falseColor])
+            r.inspector.scopeFrame = { _, _, _ in .ready(ScopesPanelTests.barsOverRamp()) }
+            let first = CairoImageTarget(width: 818, height: 1800)
+            first.canvas.scale(2, 2); r.draw(first.canvas, size: CanvasSize(409, 900)); r.inspector.scopeWorker.wait()
+            let t = snapshot("inspector-grade-scopes-others-\(mode.rawValue)", w: 409, h: 900, scale: 2) { r.draw($0, size: CanvasSize(409, 900)) }
+            let row = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
+            let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + 28 + 22 + 22 + 6, width: 377)
+            let fc = try XCTUnwrap(tiles.first { $0.kind == .falseColor }).rect
+            let area = InspectorPanel.containRect(160, 90, in: CanvasRect(x: fc.x + 6, y: fc.y + 18, width: fc.width - 22, height: fc.height - 24))
+            let clipped = t.pixel(Int((area.x + area.width / 16) * 2), Int((area.y + 4) * 2))
+            XCTAssertEqual([clipped.r, clipped.g, clipped.b], [255, 0, 0], "the white bar is clipped: red")
+            let crushed = t.pixel(Int((area.maxX - area.width / 16) * 2), Int((area.y + 4) * 2))
+            XCTAssertEqual([crushed.r, crushed.g, crushed.b], [128, 0, 160], "the black bar is crushed: purple")
+        }
+    }
+
     func assertScopeTiles(_ t: CairoImageTarget, _ tiles: [(kind: ScopeKind, rect: CanvasRect)], scale: Double) throws {
         let wave = try XCTUnwrap(tiles.first { $0.kind == .waveform }).rect
         let vector = try XCTUnwrap(tiles.first { $0.kind == .vectorscope }).rect
         let plot = ScopeTile.plotRect(wave), vp = ScopeTile.vectorPlot(vector)
         XCTAssertLessThan(luma(t, wave.x + 4, wave.maxY - 3, scale), 30, "the scope ground is black in both modes")
-        XCTAssertGreaterThan(luma(t, plot.x + 1.5, plot.maxY - 1.5, scale), 120, "black is drawn (bottom left)")
-        XCTAssertGreaterThan(luma(t, plot.maxX - 1.5, plot.y + 1.5, scale), 120, "white is drawn (top right)")
+        XCTAssertGreaterThan(luma(t, plot.x + 0.25, plot.maxY - 0.25, scale), 120, "black is drawn (bottom left)")
+        XCTAssertGreaterThan(luma(t, plot.maxX - 0.25, plot.y + 0.25, scale), 120, "white is drawn (top right)")
         XCTAssertLessThan(luma(t, plot.x + 4, plot.y + plot.height * 0.3, scale), 60, "nothing above the diagonal at the left")
-        XCTAssertGreaterThan(luma(t, vp.midX, vp.midY, scale), 120, "greys sit on the centre")
+        XCTAssertGreaterThan(brightest(t, vp.midX, vp.midY, scale), 120, "greys sit on the centre")
+        for target in ScopeTargets.bars(.rec709, amplitude: 0.75) {
+            let p = ScopeGeometry.vectorPoint(cb: target.cb, cr: target.cr, zoom: 1)
+            XCTAssertGreaterThan(brightest(t, vp.x + p.x * vp.width, vp.y + p.y * vp.height, scale), 120, "\(target.name) on its target")
+        }
+    }
+
+    /// The brightest luma within a pixel of (x, y): a one-bin trace is one device pixel, wherever rounding put it.
+    func brightest(_ t: CairoImageTarget, _ x: Double, _ y: Double, _ scale: Double) -> Double {
+        var best = 0.0
+        for dy in -1...1 { for dx in -1...1 { best = max(best, luma(t, x + Double(dx) / scale, y + Double(dy) / scale, scale)) } }
+        return best
     }
 
     func luma(_ t: CairoImageTarget, _ x: Double, _ y: Double, _ scale: Double) -> Double {

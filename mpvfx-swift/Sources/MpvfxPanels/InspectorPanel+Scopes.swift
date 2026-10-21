@@ -37,14 +37,17 @@ extension InspectorPanel {
         return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, _ in
             guard let self else { return }
             let state: PresetPreviewState? = open ? (self.scopeFrame?(clipId, Self.scopeFrameSide, Self.scopeFrameSide) ?? .unavailable) : nil
+            let top = r.y + Self.scopeHead + Self.scopeChips + Self.scopeOptions + 6
+            let tiles = ScopeLayout.tiles(self.grade.scopes.kinds, x: r.x, y: top, width: r.width)
             var result: (result: ScopeResult?, current: Bool) = (nil, false)
-            if case .ready(let frame)? = state { result = self.scopeWorker.result(for: frame, settings: self.grade.scopes) }
+            if case .ready(let frame)? = state {
+                result = self.scopeWorker.result(for: frame, request: Self.scopeRequest(self.grade.scopes, tiles, scale: c.deviceScale))
+            }
             self.drawScopesHead(c, r, status: self.scopeStatus(state, current: result.current))
             if open {
                 self.drawScopeChips(c, CanvasRect(x: r.x, y: r.y + Self.scopeHead, width: r.width, height: Self.scopeChips))
                 self.drawScopeOptions(c, CanvasRect(x: r.x, y: r.y + Self.scopeHead + Self.scopeChips, width: r.width, height: Self.scopeOptions))
-                let top = r.y + Self.scopeHead + Self.scopeChips + Self.scopeOptions + 6
-                for tile in ScopeLayout.tiles(self.grade.scopes.kinds, x: r.x, y: top, width: r.width) {
+                for tile in tiles {
                     ScopeTile(kind: tile.kind, rect: tile.rect, result: result.result, settings: self.grade.scopes).draw(c)
                 }
             }
@@ -54,6 +57,17 @@ extension InspectorPanel {
             self.scopePointer(part)
             self.onEdited?()
         })
+    }
+
+    /// The settings and, per tile, its trace's size in device pixels (the plot area times the canvas scale).
+    static func scopeRequest(_ settings: ScopeSettings, _ tiles: [(kind: ScopeKind, rect: CanvasRect)], scale: Double) -> ScopeRequest {
+        let k = max(1, scale)
+        var sizes: [ScopeKind: PixelSize] = [:]
+        for tile in tiles {
+            guard let plot = ScopeTile.tracePlot(tile.kind, tile.rect) else { continue }
+            sizes[tile.kind] = PixelSize(Int((plot.width * k).rounded()), Int((plot.height * k).rounded()))
+        }
+        return ScopeRequest(settings: settings, sizes: sizes)
     }
 
     /// "Off" closed; while open: the frame's state, then whether the scopes show it yet.

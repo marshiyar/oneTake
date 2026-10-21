@@ -61,6 +61,8 @@ final class ScopesWindowSnapshotTests: XCTestCase {
         right.inspector.scopeFrame = { _, _, _ in .ready(frame) }
         _ = render(s, nil)
         right.inspector.scopeWorker.wait()
+        var steps = 0
+        while right.tick(1.0 / 60), steps < 600 { steps += 1 }   // the groups' entry fade, as the host's ticks run it
         return (s, right)
     }
 
@@ -81,7 +83,7 @@ final class ScopesWindowSnapshotTests: XCTestCase {
             let row = try XCTUnwrap(right.inspector.hits.rect { $0 == .custom("grade:scopes", 0) }, "the Scopes row is on screen")
             let frames = try XCTUnwrap(s.shell?.frames)
             let tiles = ScopeLayout.tiles(right.inspector.grade.scopes.kinds, x: frames.right.x + 16,
-                                          y: frames.right.y + row.y + 28 + 22 + 22 + 6, width: 377)
+                                          y: frames.right.y + row.y + 28 + 22 + 22 + 6, width: frames.right.width - 32)
             XCTAssertEqual(tiles.map(\.kind), [.waveform, .vectorscope])
             for tile in tiles where tile.rect.maxY < frames.right.maxY {
                 let p = t.pixel(Int(tile.rect.x + 3), Int(tile.rect.maxY - 3))
