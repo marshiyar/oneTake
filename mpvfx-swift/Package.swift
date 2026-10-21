@@ -146,7 +146,7 @@ let package = Package(
                     .linkedFramework("Speech", .when(platforms: [.macOS])),
                 ]),
         // Host-independent desktop shell logic (app paths, save barrier, lifecycle, single instance, menu); unit-tested.
-        .target(name: "MpvfxDesktopCore", dependencies: ["MpvfxTheme"]),
+        .target(name: "MpvfxDesktopCore", dependencies: ["MpvfxTheme", "MpvfxAudioGraph"]),
         // DesktopBackend on the runtime: projects, media import, library.
         .target(name: "MpvfxBackend", dependencies: ["MpvfxDesktopCore", "MpvfxRuntime", "MpvfxShared"]),
         // No target dependency on CMpvfxColorShared: its headers are included textually (header search path), because

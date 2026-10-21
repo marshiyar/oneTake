@@ -19,6 +19,7 @@ import MpvfxAudioGraph
 /// UI state of one Audio FX rack (per clip or bus).
 public struct AudioFxUIState: Equatable {
     public enum Menu: Equatable { case none, presets, add }
+    public var modulePreset: String?
     var owner: String?
     public var menu: Menu = .none
     /// The chain index whose module is open (`openNode`, 0 at mount).
@@ -462,6 +463,30 @@ extension InspectorPanel {
                 },
             ])),
         ]
+        let menuOpen = ui.modulePreset == nodeId
+        let presets = AudioFxPresets.modulePresets(node.type, version: node.version ?? chain.version)
+            + audioFxUserPresets.filter { $0.type == node.type }
+        controls.append(.init(.buttons([
+            .init(key: "\(fxKey):ab", label: node.activeSlotB ? "B" : "A", style: .muted) {
+                var next = chain; next.nodes[i].selectSlotB(!node.activeSlotB); write(next)
+            },
+            .init(key: "\(fxKey):copy-ab", label: "Copy A to B", style: .muted) {
+                var next = chain; next.nodes[i].copyAToB(); write(next)
+            },
+            .init(key: "\(fxKey):presets", label: "Presets", style: .muted) { [weak self] in
+                self?.audioFxUI.modulePreset = menuOpen ? nil : nodeId; self?.onEdited?()
+            },
+            .init(key: "\(fxKey):save", label: "Save settings", style: .muted, action: { [weak self] in
+                guard let self else { return }
+                self.onSaveAudioFxPreset?("\(label) \(self.audioFxUserPresets.filter { $0.type == node.type }.count + 1)", node)
+            }, disabled: onSaveAudioFxPreset == nil),
+        ])))
+        for preset in presets {
+            controls.append(.init(.buttons([.init(key: "\(fxKey):preset:\(preset.id)", label: preset.label, style: .muted) { [weak self] in
+                var next = chain; next.nodes[i] = preset.applying(to: node)
+                self?.audioFxUI.modulePreset = nil; write(next)
+            }])))
+        }
         // The open face (FxNodeOpenBody): what it is for, the one knob and its ends, then Details.
         let copy = AudioFxCopy.effects[node.type]
         let profile = AudioFxProfiles.profiles[node.type]
@@ -488,7 +513,8 @@ extension InspectorPanel {
         let graphH = Self.afxGraphHeight(node.type)
         let openH = open ? doesH + graphH + paramsH(shownFace) + endsH + detailsH + paramsH(shownAll) : 0
         let graphPointer = afxNodeGraphPointer(node, i, update: update)
-        let cardH = 2 + Self.nodeHeadH + (summary != nil ? Self.nodeSummaryH : 0) + openH
+        let presetH = 28.0 + (menuOpen ? Double(presets.count + 1) * 24 : 0)
+        let cardH = 2 + Self.nodeHeadH + presetH + (summary != nil ? Self.nodeSummaryH : 0) + openH
         let topGap = inRun != nil ? 4.0 : 0
         let name = Self.afxLettered(label, family: family)
         return .init(.custom(InspectorCustomRow(id: "afx:node:\(i)", height: topGap + cardH, draw: { [weak self] c, r, _ in
@@ -530,6 +556,22 @@ extension InspectorPanel {
             }
             self.addHit(nameR, .button("\(fxKey):open"))
             var y = head.maxY
+            let stripY = y + 14
+            var stripRight = self.afxSwitch(c, right: head.maxX, midY: stripY, "Presets ▾", hit: .button("\(fxKey):presets")) - 4
+            stripRight = self.afxSwitch(c, right: stripRight, midY: stripY, "Copy A to B", hit: .button("\(fxKey):copy-ab")) - 4
+            _ = self.afxSwitch(c, right: stripRight, midY: stripY, node.activeSlotB ? "A / [B]" : "[A] / B", hit: .button("\(fxKey):ab"))
+            y += 28
+            if menuOpen {
+                for preset in presets {
+                    let row = CanvasRect(x: head.x, y: y, width: head.width, height: 24)
+                    PanelDraw.text(c, preset.label, in: row, font: PanelTheme.font(10), color: PanelTheme.text1)
+                    self.addHit(row, .button("\(fxKey):preset:\(preset.id)")); y += 24
+                }
+                let row = CanvasRect(x: head.x, y: y, width: head.width, height: 24)
+                PanelDraw.text(c, "Save settings to library", in: row, font: PanelTheme.font(10), color: PanelTheme.text2)
+                if self.onSaveAudioFxPreset != nil { self.addHit(row, .button("\(fxKey):save")) }
+                y += 24
+            }
             if let summary {
                 PanelDraw.text(c, summary, in: CanvasRect(x: card.x + 2 + 6, y: y, width: card.width - 3 - 12, height: 15), font: PanelTheme.font(10),
                                color: PanelTheme.text2.withAlpha(a))

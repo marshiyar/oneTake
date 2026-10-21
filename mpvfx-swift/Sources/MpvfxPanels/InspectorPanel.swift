@@ -15,6 +15,8 @@ import Foundation
 import MpvfxCanvas
 import MpvfxShared
 import MpvfxTimeline
+import struct MpvfxAudioGraph.FxNode
+import struct MpvfxAudioGraph.AudioFxModulePreset
 
 /// The Design tab: the flat inspector drawn natively. One accordion group is open at a time; closed groups
 /// are summary rows above and below it. Rows edit the open document through TimelineEditor (undoable).
@@ -43,6 +45,8 @@ public final class InspectorPanel {
     /// An audio group whose bus FX rack is shown while no clip is selected (timeline group header FX / name buttons).
     /// Selecting a clip retires it.
     public var audioGroupId: String?
+    public var audioFxUserPresets: [AudioFxModulePreset] = []
+    public var onSaveAudioFxPreset: ((String, FxNode) -> Void)?
     public var onEdited: (() -> Void)?
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?

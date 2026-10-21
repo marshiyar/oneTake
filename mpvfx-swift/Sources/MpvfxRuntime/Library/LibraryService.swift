@@ -19,6 +19,8 @@
 // - trackExport polls a status closure.
 import Foundation
 import MpvfxShared
+import struct MpvfxAudioGraph.FxNode
+import struct MpvfxAudioGraph.AudioFxModulePreset
 
 public struct LibraryError: Error, Equatable, CustomStringConvertible {
     public let message: String
@@ -313,6 +315,15 @@ public final class LibraryService: @unchecked Sendable {
         return PosixPath.join(l.root, "renders", try checkLibraryId(projectId))
     }
     /// :373 root.
+    public func audioFxPresets(projectId: String) throws -> [AudioFxModulePreset] {
+        guard let library = forProject(projectId) else { return [] }
+        return try AudioFxPresetLibrary.presets(PosixPath.join(library.root, "Catalog.sqlite"))
+    }
+    public func saveAudioFxPreset(projectId: String, name: String, node: FxNode) throws {
+        guard let library = forProject(projectId) else { throw LibraryError("Save this project in a library to save effect presets") }
+        try AudioFxPresetLibrary.save(PosixPath.join(library.root, "Catalog.sqlite"), name: name, node: node)
+    }
+
     public func root(_ libraryId: String) throws -> String { try get(libraryId).root }
     /// :376 createEvent.
     public func createEvent(_ libraryId: String, _ name: String) async throws {
