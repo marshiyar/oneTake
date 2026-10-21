@@ -35,7 +35,8 @@ import MpvfxShared
 /// at draft cost and settles on the exact full-size look. A new picture (playback, a seek) after a finished one is
 /// graded at full size straight away: a draft there would only double the work per frame.
 ///
-/// Memory: the pictures every slot holds (finished look, reduced source, draft) stay within `budgetBytes`
+/// Memory: the pictures every slot holds (finished look, reduced source, draft), with the canvas drawable a draw made
+/// from each (`CanvasImage.heldBytes`), stay within `budgetBytes`
 /// (`MemoryBudget.gradedFrames`); past it the idle slots asked for least recently are dropped (never the one just
 /// graded, never one with a grade running or waiting). A memory-pressure warning drops every idle slot but the most
 /// recent; critical drops every idle slot. Slots of clips that left the timeline go with `keepOnly`.
@@ -70,7 +71,7 @@ public final class PreviewGrader: @unchecked Sendable {
         /// When the slot was last asked for a picture (eviction order).
         var used: UInt64 = 0
         var bytes: Int {
-            (result?.image.rgba.count ?? 0) + (reduced?.image.rgba.count ?? 0) + (draft?.image.rgba.count ?? 0)
+            (result?.image.heldBytes ?? 0) + (reduced?.image.heldBytes ?? 0) + (draft?.image.heldBytes ?? 0)
         }
         var busy: Bool { runningKey != nil || pending != nil }
     }
@@ -115,19 +116,38 @@ public final class PreviewGrader: @unchecked Sendable {
         slots = slots.filter { $0.value.busy || $0.key == newest }
     }
 
-    /// Drops least recently used idle slots (not `keep`) until the pictures fit the budget. Call with `lock` held.
-    func trimLocked(keep: String) {
+    /// Drops least recently used idle slots (not `keep`, none used after `usedAfter`) until the pictures fit the
+    /// budget. Call with `lock` held.
+    func trimLocked(keep: String, usedAfter: UInt64 = .max) {
         var total = slots.values.reduce(0) { $0 + $1.bytes }
         guard total > budgetBytes else { return }
-        for (clip, slot) in slots.sorted(by: { $0.value.used < $1.value.used }) where clip != keep && !slot.busy {
+        for (clip, slot) in slots.sorted(by: { $0.value.used < $1.value.used }) where clip != keep && !slot.busy && slot.used <= usedAfter {
             if total <= budgetBytes { break }
             total -= slot.bytes
             slots[clip] = nil
         }
     }
 
-    /// The latest finished picture for `clip`, if any.
-    public func latest(_ clip: String) -> Result? { lock.lock(); defer { lock.unlock() }; return slots[clip]?.result }
+    /// The tick of the last `fitBudget`: slots used after it belong to the draw being fitted.
+    var fittedTick: UInt64 = 0
+
+    /// Drops least recently used idle slots until the pictures, with the canvas drawables their draws made, fit the
+    /// budget again; never one asked for since the last fit (the draw that just ran shows it). The preview calls it
+    /// after every draw.
+    public func fitBudget() {
+        lock.lock(); defer { lock.unlock() }
+        trimLocked(keep: "", usedAfter: fittedTick)
+        fittedTick = tick
+    }
+
+    /// The latest finished picture for `clip`, if any. Asking marks the slot used (a picture on screen is kept by
+    /// `fitBudget`).
+    public func latest(_ clip: String) -> Result? {
+        lock.lock(); defer { lock.unlock() }
+        guard let slot = slots[clip] else { return nil }
+        tick += 1; slot.used = tick
+        return slot.result
+    }
 
     /// Asks for `request` on `clip` (no-op when it is already finished, running or waiting). Never blocks.
     public func request(_ clip: String, _ request: Request) {

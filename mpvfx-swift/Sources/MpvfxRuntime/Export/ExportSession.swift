@@ -102,7 +102,7 @@ public func planExport(_ project: NativeProjectDocument, settings: ExportSetting
     return ExportPlan(outputDimensions: dims, durationSeconds: duration, frameCount: exportFrameCount(duration, settings.fps),
                       estimatedAudioBytes: estimateExportAudioSizeBytes(duration, settings.format, hasAudio),
                       fileExtension: capability.extension, qualityApplies: capability.video.qualityApplies, issues: issues,
-                      notices: project.undrawnElementLayersNotice.map { [$0] } ?? [])
+                      notices: project.undrawnContentNotices)
 }
 
 public enum ExportStatus: Equatable, Sendable { case rendering, completed, cancelled, failed }

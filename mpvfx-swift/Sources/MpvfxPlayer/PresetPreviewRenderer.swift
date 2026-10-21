@@ -220,7 +220,8 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         return ColorGradeParams(json: o)
     }
 
-    static func size(_ i: CanvasImage) -> Int { i.width * i.height * 4 }
+    /// Pixels plus the drawable the inspector's draw makes from them (#95).
+    static func size(_ i: CanvasImage) -> Int { i.drawnBytes }
 
     func evict(protecting keep: Key) {
         guard bytes > budgetBytes else { return }
