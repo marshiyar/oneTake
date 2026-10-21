@@ -110,6 +110,13 @@ public enum AudioFx {
             num("limit", "Ceiling", "dB", -24, 0, 0.1, -1), num("attack", "Attack", "ms", 0.1, 80, 0.1, 5),
             num("release", "Release", "ms", 1, 8000, 1, 50, scale: .log), num("level_out", "Output", "dB", -24, 24, 0.1, 0),
         ], implementation: "limiter"),
+        FxDef(id: "deesser", label: "De-esser", group: "dynamics", params: [
+            freq("frequency", "Detector frequency", 6500, 4000, 10000),
+            num("threshold", "Threshold", "dB", -60, 0, 0.5, -30), num("range", "Range", "dB", -24, 0, 0.5, -18),
+            num("attack", "Attack", "ms", 0.1, 20, 0.1, 1, scale: .log),
+            num("release", "Release", "ms", 10, 500, 1, 100, scale: .log),
+            .enumeration(key: "listen", label: "Listen", options: [("off", "Off"), ("on", "Detector band")], defaultValue: "off"),
+        ], implementation: "split-band-deesser"),
         FxDef(id: "gate", label: "Noise Gate", group: "dynamics", params: [
             num("threshold", "Threshold", "dB", -80, 0, 0.5, -35), num("range", "Range", "dB", -80, 0, 0.5, -24),
             num("ratio", "Ratio", ":1", 1, 20, 0.1, 10), num("attack", "Attack", "ms", 0.01, 9000, 0.1, 1, scale: .log),

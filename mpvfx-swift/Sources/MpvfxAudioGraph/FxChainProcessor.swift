@@ -241,6 +241,7 @@ func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, ela
     case "biquad-highpass": return BiquadUnit(.highpass, p, sr, version: version)
     case "biquad-lowpass": return BiquadUnit(.lowpass, p, sr, version: version)
     case "compressor": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: false) : CompressorProcessor(p, sampleRate: sr))
+    case "split-band-deesser": return ProcessorUnit(DeesserProcessor(p, sampleRate: sr))
     case "limiter": return ProcessorUnit(LimiterProcessor(p, sampleRate: sr))
     case "gate": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: true) : GateProcessor(p, sampleRate: sr))
     case "bitcrusher": return ProcessorUnit(BitcrusherProcessor(p))

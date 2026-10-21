@@ -287,3 +287,7 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+### De-esser (#209)
+
+The Dynamics rack offers **De-ess**, a version-2 split-band processor with a stereo-linked 4–10 kHz detector (default center 6.5 kHz), frequency in Hz, threshold/range in dB, attack/release in ms, and a detector-listen choice. Its detector-level transfer curve uses the same gain law as processing; the unaffected low band is recombined with the attenuated high band. `DeesserTests` covers sibilant reduction, low-tone preservation, stereo linking and listening; `AudioFxLiveEditTests` covers registry and live/export parity. The gain-reduction meter remains dependent on #206.

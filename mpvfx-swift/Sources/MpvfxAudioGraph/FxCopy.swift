@@ -47,6 +47,10 @@ public enum AudioFxCopy {
                              primary: "strength", ends: ("Barely touched", "Very even, quite squashed"),
                              params: ["threshold": "Starts working at", "ratio": "How hard", "attack": "How fast it grabs",
                                       "release": "How fast it lets go", "knee": "How gradual", "makeup": "Volume back up", "mix": "Blend with the original"]),
+        "deesser": Effect(title: "De-ess", does: "Tames sharp s and sh sounds only when they get loud. Listen isolates the detector band.",
+                          primary: "threshold", ends: ("Catches quieter s sounds", "Only the loudest"),
+                          params: ["frequency": "Listen around", "threshold": "Starts working at", "range": "Maximum reduction",
+                                   "attack": "How fast it catches", "release": "How fast it recovers", "listen": "Listen to detector"]),
         "limiter": Effect(title: "Peak Ceiling", does: "Nothing gets louder than this, ever. A safety net at the end of the chain.",
                           primary: "limit", ends: ("A lot of headroom", "Right up to the edge"),
                           params: ["limit": "Never exceed", "attack": "How fast it catches", "release": "How fast it recovers", "level_out": "Level after"]),
@@ -135,6 +139,7 @@ public enum AudioFxCopy {
             let g = n(p, "gain")
             return g == 0 ? "Doing nothing yet" : "\(g > 0 ? "More" : "Less") sparkle above \(hz(n(p, "frequency")))"
         case "compressor": return "Evening out — \(strength(min(1, (n(p, "ratio", 3) - 1) / 7), ["gentle", "moderate", "firm"]))"
+        case "deesser": return "Taming s sounds around \(s(n(p, "frequency", 6500))) Hz, up to \(s(-n(p, "range", -18))) dB"
         case "limiter": return "Nothing louder than \(s(n(p, "limit", -1))) dB"
         case "gate": return "Closing gaps quieter than \(s(n(p, "threshold", -45))) dB"
         case "saturate": return "\(strength(min(1, abs(n(p, "threshold", -6)) / 30), ["A little", "Some", "Heavy"])) warmth"
@@ -152,7 +157,7 @@ public enum AudioFxCopy {
     }
 }
 
-/// The add menu's named jobs: a peaking filter with the range decision already made.
+/// The add menu's named jobs: effects with their purpose and starting settings already chosen.
 public struct FxJob: Sendable {
     public let id: String, label: String, does: String, type: String
     public let params: [(String, Double)]
@@ -160,6 +165,7 @@ public struct FxJob: Sendable {
 
 public enum AudioFxJobs {
     public static let all: [FxJob] = [
+        FxJob(id: "de-ess", label: "De-ess", does: "Sharp s and sh sounds jump out of the voice.", type: "deesser", params: []),
         FxJob(id: "tame-boominess", label: "Tame Boominess", does: "Too much low-end body — it booms.", type: "peaking",
               params: [("frequency", 200), ("gain", -4), ("q", 1.4)]),
         FxJob(id: "reduce-mud", label: "Reduce Mud", does: "Muffled, like it is behind cardboard.", type: "peaking",
