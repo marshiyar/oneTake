@@ -208,7 +208,7 @@ public final class InspectorPanel {
         drawFocusAndScrollbar(c, body: body, content: total)
     }
 
-    /// A group header's height (on the grid).
+    /// Five grid steps: closed headers stack on the grid below the 48 pt clip header.
     static let groupHeaderHeight = 40.0
 
     /// The header for what is selected; returns its height, or nil when the panel shows no groups (several clips,
