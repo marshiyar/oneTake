@@ -151,7 +151,7 @@ final class LibraryCommandsTests: XCTestCase {
         let dialogs = ScriptedDialogs()
         let (reopened, save) = try await libraryWithACompletedExport(dialogs)
         let late = root + "/Out/Late.mp4"
-        dialogs.whileSaving = { FileManager.default.createFile(atPath: late, contents: Data("written meanwhile".utf8)) }
+        dialogs.whileSaving = { XCTAssertTrue(FileManager.default.createFile(atPath: late, contents: Data("written meanwhile".utf8))) }
         dialogs.saves = [root + "/Out/Late"]
         do { _ = try await run(reopened, dialogs, save); XCTFail("expected an error") }
         catch {
