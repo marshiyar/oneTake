@@ -39,6 +39,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
     } else {
         pushIssue(&issues, .invalidCanvas, "canvas", "Canvas must be an object")
     }
+    validateNativeEasingPresets(input["easingPresets"], &issues)
 
     var assetsById: [String: NativeJSONValue] = [:]
     let kinds = ["video", "audio", "image", "element"]
