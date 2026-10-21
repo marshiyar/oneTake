@@ -13,14 +13,17 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxTheme
+import MpvfxTimeline
 
 /// The slate the stage draws in place of a clip whose media file is missing (issue #102): a dark hatched card in the
 /// clip's box with "Media offline" and the file name, so a missing file reads as missing instead of as a blank.
 extension PreviewPainter {
-    static let offlineSlateFill = CanvasColor(r: 0.09, g: 0.09, b: 0.10)
-    static let offlineSlateHatch = CanvasColor(r: 0.94, g: 0.27, b: 0.27, a: 0.22)
-    static let offlineSlateTitle = CanvasColor(r: 0.97, g: 0.44, b: 0.44)
-    static let offlineSlateText = CanvasColor(r: 0.85, g: 0.85, b: 0.85)
+    // Stage content, not chrome: the slate keeps the dark palette in both themes, like the stage background.
+    static var offlineSlateFill: CanvasColor { CanvasColor(ThemeTokens.stageDefaultBackground) }
+    static var offlineSlateHatch: CanvasColor { CanvasColor(ThemeTokens.red500Pair.dark.alpha(0.22)) }
+    static var offlineSlateTitle: CanvasColor { CanvasColor(ThemeTokens.red400Pair.dark) }
+    static var offlineSlateText: CanvasColor { CanvasColor(ThemeTokens.whitePair.dark.alpha(0.85)) }
 
     /// Draws an offline layer (kind .offline) where its picture would be: the layer's scale and rotation about its box
     /// centre, or its 3D transform (depth, tilt, lens) through the same projection as a decoded picture.
