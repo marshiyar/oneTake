@@ -77,38 +77,12 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
     if sequence["durationFrames"] != nil && !isPositiveInteger(sequence["durationFrames"]) {
         pushIssue(&issues, .invalidTrack, "sequence.durationFrames", "Sequence duration must be a positive integer")
     }
+    validateNativeCaptionTrack(sequence["captions"], "sequence.captions", &issues)
     guard let tracks = sequence["tracks"]?.arrayValue else {
         pushIssue(&issues, .invalidTrack, "sequence.tracks", "Tracks must be an array"); return issues
     }
 
-    var audioGroupIds = Set<String>()
-    if let rawGroups = sequence["audioGroups"] {
-        if let groups = rawGroups.arrayValue {
-            let maxGain = pow(10.0, 12.0 / 20.0)
-            for (index, group) in groups.enumerated() {
-                let path = "sequence.audioGroups[\(index)]"
-                guard group.isRecord else { pushIssue(&issues, .invalidTrack, path, "Audio group must be an object"); continue }
-                requireId(group["id"], "\(path).id", &issues)
-                collectDuplicateId(&audioGroupIds, group["id"], "\(path).id", &issues)
-                if group["label"] != nil && !isNonEmptyString(group["label"]) {
-                    pushIssue(&issues, .invalidTrack, "\(path).label", "Audio group label must be a non-empty string")
-                }
-                if let v = group["volume"] {
-                    if !(v.numberValue.map { $0.isFinite && $0 >= 0 && $0 <= maxGain } ?? false) {
-                        pushIssue(&issues, .invalidTrack, "\(path).volume", "Audio group gain must be within the supported fader range")
-                    }
-                }
-                if group["muted"] != nil && group["muted"]?.boolValue == nil {
-                    pushIssue(&issues, .invalidTrack, "\(path).muted", "Audio group mute must be a boolean")
-                }
-                for name in ["fxChain", "automation"] where group[name] != nil && (str(group[name]) ?? "").isEmpty {
-                    pushIssue(&issues, .invalidTrack, "\(path).\(name)", "\(name) must be serialized text")
-                }
-            }
-        } else {
-            pushIssue(&issues, .invalidTrack, "sequence.audioGroups", "Audio groups must be an array")
-        }
-    }
+    let audioGroupIds = validateAudioGroups(sequence["audioGroups"], &issues)
 
     var trackIds = Set<String>(), authoredLaneIds = Set<String>(), displayLaneIds = Set<Double>()
     var clipIds = Set<String>(), bindingIdentities = Set<String>()
@@ -234,8 +208,8 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                     pushIssue(&issues, .invalidClip, "\(clipPath).crop", "Crop needs finite non-negative top, right, bottom and left insets")
                 }
             }
-            validateNativeClipFades(clip, clipPath, &issues); validateNativeClipStyle(clip["style"], "\(clipPath).style", &issues)
-            validateNativeClipText(clip["text"], "\(clipPath).text", &issues)
+            validateNativeClipFades(clip, clipPath, &issues)
+            validateNativeClipPresentation(clip, clipPath, &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }
@@ -309,4 +283,42 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         }
     }
     return issues
+}
+
+/// `sequence.audioGroups`: each bus's id, label, fader gain, mute and serialized FX/automation. Returns the bus ids.
+private func validateAudioGroups(_ rawGroups: NativeJSONValue?, _ issues: inout Issues) -> Set<String> {
+    var audioGroupIds = Set<String>()
+    guard let rawGroups else { return audioGroupIds }
+    guard let groups = rawGroups.arrayValue else {
+        pushIssue(&issues, .invalidTrack, "sequence.audioGroups", "Audio groups must be an array"); return audioGroupIds
+    }
+    for (index, group) in groups.enumerated() {
+        let path = "sequence.audioGroups[\(index)]"
+        guard group.isRecord else { pushIssue(&issues, .invalidTrack, path, "Audio group must be an object"); continue }
+        requireId(group["id"], "\(path).id", &issues)
+        collectDuplicateId(&audioGroupIds, group["id"], "\(path).id", &issues)
+        validateAudioGroupFields(group, path, &issues)
+    }
+    return audioGroupIds
+}
+
+private func validateAudioGroupFields(_ group: NativeJSONValue, _ path: String, _ issues: inout Issues) {
+    if group["label"] != nil && !isNonEmptyString(group["label"]) {
+        pushIssue(&issues, .invalidTrack, "\(path).label", "Audio group label must be a non-empty string")
+    }
+    if let v = group["volume"], !isFaderGain(v) {
+        pushIssue(&issues, .invalidTrack, "\(path).volume", "Audio group gain must be within the supported fader range")
+    }
+    if group["muted"] != nil && group["muted"]?.boolValue == nil {
+        pushIssue(&issues, .invalidTrack, "\(path).muted", "Audio group mute must be a boolean")
+    }
+    for name in ["fxChain", "automation"] where group[name] != nil && (str(group[name]) ?? "").isEmpty {
+        pushIssue(&issues, .invalidTrack, "\(path).\(name)", "\(name) must be serialized text")
+    }
+}
+
+/// A finite gain from 0 to +12 dB (the fader's range).
+private func isFaderGain(_ v: NativeJSONValue) -> Bool {
+    let maxGain = pow(10.0, 12.0 / 20.0)
+    return v.numberValue.map { $0.isFinite && $0 >= 0 && $0 <= maxGain } ?? false
 }

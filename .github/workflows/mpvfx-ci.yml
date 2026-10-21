@@ -66,11 +66,13 @@ jobs:
     outputs:
       code: ${{ steps.files.outputs.code }}
       linux: ${{ steps.files.outputs.linux }}
-      windows: ${{ steps.files.outputs.windows }}
-      macos: ${{ steps.files.outputs.macos }}
+      # Windows and macOS jobs are paused (owner ruling 2026-10-21) to free the runners while the app is built out on
+      # Linux; the jobs stay defined, and the repository variable LINUX_ONLY=false brings them back.
+      windows: ${{ vars.LINUX_ONLY == 'false' && steps.files.outputs.windows || 'false' }}
+      macos: ${{ vars.LINUX_ONLY == 'false' && steps.files.outputs.macos || 'false' }}
       # true: the pull request touches macOS code (.github/ci/macos_gate.py), so its macOS build runs without the `macos`
       # label and ci-ok requires it.
-      macos_code: ${{ steps.mac.outputs.macos_code }}
+      macos_code: ${{ vars.LINUX_ONLY == 'false' && steps.mac.outputs.macos_code || 'false' }}
       # true: the pull request changes the test jobs OneTake-actionRunners-1 runs from main (mpvfx-ci.yml, its generated
       # mpvfx-ci-tests-source.yml or source_workflows.py), so every shard runs here, with its own definition.
       workflow: ${{ steps.files.outputs.workflow }}
@@ -751,7 +753,7 @@ jobs:
     needs: [changes, plan, checks, linux, linux-test, windows, windows-test, remote-shards, macos-runners, macos]
     if: always()
     runs-on: ubuntu-24.04
-    timeout-minutes: 50   # the wait for macos (runners-1) below, only for a pull request that touches macOS code
+    timeout-minutes: 5
     steps:
       - name: Every required job passed or was skipped
         env:
@@ -777,14 +779,16 @@ jobs:
         with:
           sparse-checkout: .github/ci
           persist-credentials: false
-      - name: macOS build required
+      # Owner ruling 2026-10-21: CI never holds a merge back waiting. A macOS build that already ran and failed fails
+      # ci-ok; one still running on OneTake-actionRunners-1 does not block (its `macos (runners-1)` status reports it).
+      - name: macOS build not red
         if: github.event_name == 'pull_request' && needs.changes.outputs.macos_code == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
           LOCAL: ${{ needs.macos.result }}
           SENT: ${{ needs.macos-runners.outputs.sent }}
-        run: python3 -I -B .github/ci/macos_gate.py wait
+        run: |
+          [ "$LOCAL" != failure ] || { echo "::error::the macOS build failed on this head"; exit 1; }
+          [ "$SENT" != true ] || echo "::notice::the macOS build runs on OneTake-actionRunners-1: see its macos (runners-1) status"
 
   publish:
     needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards]

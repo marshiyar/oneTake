@@ -121,7 +121,7 @@ class Workflow(unittest.TestCase):
             self.jobs = yaml.safe_load(f)["jobs"]
 
     def test_changes_publishes_macos_code(self):
-        self.assertEqual(self.jobs["changes"]["outputs"]["macos_code"], "${{ steps.mac.outputs.macos_code }}")
+        self.assertEqual(self.jobs["changes"]["outputs"]["macos_code"], "${{ vars.LINUX_ONLY == 'false' && steps.mac.outputs.macos_code || 'false' }}")
         mac = next(s for s in self.jobs["changes"]["steps"] if s.get("id") == "mac")
         self.assertIn("macos_gate.py classify", mac["run"])
 
@@ -129,17 +129,15 @@ class Workflow(unittest.TestCase):
         for name in ("macos-runners", "macos"):
             self.assertIn("needs.changes.outputs.macos_code == 'true'", self.jobs[name]["if"], name)
 
-    def test_ci_ok_waits_for_the_macos_build(self):
+    def test_ci_ok_fails_only_on_a_red_macos_build_and_never_waits(self):
+        # Owner ruling 2026-10-21: CI never holds a merge back waiting for the remote macOS build.
         gate = self.jobs["ci-ok"]
-        self.assertIn("macos-runners", gate["needs"])
         self.assertIn("macos", gate["needs"])
-        s = next(s for s in gate["steps"] if s.get("name") == "macOS build required")
-        self.assertIn("macos_gate.py wait", s["run"])
+        s = next(s for s in gate["steps"] if s.get("name") == "macOS build not red")
         self.assertIn("needs.changes.outputs.macos_code == 'true'", s["if"])
-        self.assertEqual(s["env"]["SENT"], "${{ needs.macos-runners.outputs.sent }}")
         self.assertEqual(s["env"]["LOCAL"], "${{ needs.macos.result }}")
-        self.assertEqual(gate["permissions"]["statuses"], "read")
-        self.assertGreaterEqual(gate["timeout-minutes"], 50)
+        self.assertIn('"$LOCAL" != failure', s["run"])
+        self.assertNotIn("macos_gate.py wait", s["run"])
 
 
 if __name__ == "__main__":

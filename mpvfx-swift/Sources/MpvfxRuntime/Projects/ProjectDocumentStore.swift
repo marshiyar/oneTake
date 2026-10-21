@@ -26,7 +26,7 @@ public struct OpenedProjectDocument: Equatable, Sendable {
 }
 
 public struct ProjectDocumentError: Error, Equatable, CustomStringConvertible, Sendable {
-    public enum Kind: String, Sendable { case notAProject, alreadyExists, invalidDocument, conflict }
+    public enum Kind: String, Sendable { case notAProject, alreadyExists, invalidDocument, conflict, missing }
     public var kind: Kind
     public var message: String
     public init(_ kind: Kind, _ message: String) { self.kind = kind; self.message = message }
@@ -149,7 +149,8 @@ public final class ProjectDocumentStore: @unchecked Sendable {
     }
 
     /// Writes `content` as the new document. No-op when it equals what is saved. Throws `.conflict` when
-    /// the file changed on disk since it was last read or saved here (nothing is written then).
+    /// the file changed on disk since it was last read or saved here, `.missing` when it is gone (its folder was
+    /// moved or deleted); nothing is written then.
     public func save(_ content: String) throws {
         stateLock.lock(); defer { stateLock.unlock() }
         if content == savedContent { return }
@@ -160,7 +161,9 @@ public final class ProjectDocumentStore: @unchecked Sendable {
                 DurableFileTransactionChange(path: NATIVE_PROJECT_DOCUMENT_PATH, expectedBefore: savedContent, after: content),
             ]))
         } catch let e as ProjectsError where e.kind == .conflict {
-            throw ProjectDocumentError(.conflict, "The project file was changed outside MpVFX; it was not overwritten.")
+            throw missingOr(ProjectDocumentError(.conflict, "The project file was changed outside MpVFX; it was not overwritten."))
+        } catch {
+            throw missingOr(error)
         }
         _ = try? transactions.acknowledge(txn)
         _savedContent = content
@@ -182,7 +185,9 @@ public final class ProjectDocumentStore: @unchecked Sendable {
             receipt = try transactions.commit(DurableFileTransactionInput(id: txn, files: files,
                 history: DurableFileTransactionHistory(label: label, kind: .manual), moves: moves.isEmpty ? nil : moves))
         } catch let e as ProjectsError where e.kind == .conflict {
-            throw ProjectDocumentError(.conflict, "The project changed outside MpVFX; nothing was changed.")
+            throw missingOr(ProjectDocumentError(.conflict, "The project changed outside MpVFX; nothing was changed."))
+        } catch {
+            throw missingOr(error)
         }
         _ = try? transactions.acknowledge(txn)
         _savedContent = content
@@ -194,7 +199,8 @@ public final class ProjectDocumentStore: @unchecked Sendable {
     @discardableResult
     public func reload() throws -> String {
         stateLock.lock(); defer { stateLock.unlock() }
-        let content = try ProjectFS.readUTF8(PosixPath.join(directory, NATIVE_PROJECT_DOCUMENT_PATH))
+        let content: String
+        do { content = try ProjectFS.readUTF8(documentPath) } catch { throw missingOr(error) }
         _id = try ProjectDocuments.validate(content).id
         _savedContent = content
         return content
