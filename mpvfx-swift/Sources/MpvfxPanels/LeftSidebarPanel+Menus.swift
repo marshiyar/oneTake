@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
 
 /// The panel's menus: the tab strip's panel menu, the switcher (libraries and events), "…" (library and project
 /// actions, recent projects), the filter menu, and a tile's context menu.
@@ -20,8 +21,10 @@ extension LeftSidebarPanel {
     typealias Option = PanelDropdown.Option
 
     func openPanelMenu() {
-        openDropdown(.panelMenu, [.init(value: "import", label: "Import media…"), .init(value: "hide", label: "Hide panel")], nil) { [weak self] v in
-            if v == "import" { self?.onImport?() } else { self?.layout.toggleLeft() }
+        let generators = NativeGeneratorKind.allCases.map { Option(value: "generator:" + $0.rawValue, label: "Add " + $0.label.lowercased(), group: "Background generators") }
+        openDropdown(.panelMenu, [.init(value: "import", label: "Import media…")] + generators + [.init(value: "hide", label: "Hide panel")], nil) { [weak self] v in
+            if v.hasPrefix("generator:"), let kind = NativeGeneratorKind(rawValue: String(v.dropFirst(10))) { self?.onAddGenerator?(kind) }
+            else if v == "import" { self?.onImport?() } else { self?.layout.toggleLeft() }
         }
     }
 

@@ -25,6 +25,7 @@ public struct PreviewFill: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case color(CanvasColor)
         case gradient(angle: Double, stops: [Stop])
+        case radial(center: CanvasPoint, stops: [Stop])
         /// The clip's own picture, scaled to cover the frame, blurred (`blur` is a sigma in canvas px) and darkened.
         case blur(blur: Double, darken: Double)
     }
@@ -40,7 +41,8 @@ public struct PreviewFill: Equatable, Sendable {
         case "gradient":
             let stops = fill.stops.compactMap { s in CanvasColor(hex: s.color).map { Stop(offset: s.offset, color: $0) } }
             guard stops.count >= 2 else { return nil }
-            kind = .gradient(angle: fill.resolvedAngle, stops: stops)
+            kind = fill.gradientType == "radial" ? .radial(center: CanvasPoint(fill.centerX, fill.centerY), stops: stops)
+                : .gradient(angle: fill.resolvedAngle, stops: stops)
         case "blur":
             kind = .blur(blur: fill.resolvedBlur / 2, darken: fill.resolvedDarken)
         default: return nil
@@ -124,6 +126,9 @@ enum CanvasFillPainter {
             case .gradient(let angle, let stops):
                 let w = max(1, Int((canvas.width * c.deviceScale).rounded())), h = max(1, Int((canvas.height * c.deviceScale).rounded()))
                 if let img = gradientImage(angle: angle, stops: stops, width: w, height: h) { c.drawImage(img, in: canvas, opacity: opacity) }
+            case .radial(let center, let stops):
+                let w = max(1, Int((canvas.width * c.deviceScale).rounded())), h = max(1, Int((canvas.height * c.deviceScale).rounded()))
+                if let img = gradientImage(angle: 0, stops: stops, width: w, height: h, center: center) { c.drawImage(img, in: canvas, opacity: opacity) }
             case .blur(let sigma, let darken):
                 guard let picture else { return }
                 let k = c.deviceScale / 4
@@ -141,9 +146,9 @@ enum CanvasFillPainter {
 
     /// A linear gradient over `width` x `height` px: the CSS gradient line at `angle` degrees (0 points up, 90 right,
     /// 180 down), stops interpolated in straight sRGB. Nil beyond the size a frame can have.
-    static func gradientImage(angle: Double, stops: [PreviewFill.Stop], width: Int, height: Int) -> CanvasImage? {
+    static func gradientImage(angle: Double, stops: [PreviewFill.Stop], width: Int, height: Int, center: CanvasPoint? = nil) -> CanvasImage? {
         guard width > 0, height > 0, width <= 16_384, height <= 16_384, width * height <= 36_000_000, stops.count >= 2 else { return nil }
-        let key = "g|\(angle)|\(stops.map { "\($0.offset),\($0.color.r),\($0.color.g),\($0.color.b),\($0.color.a)" }.joined(separator: ";"))|\(width)x\(height)"
+        let key = "g|\(String(describing: center))|\(angle)|\(stops.map { "\($0.offset),\($0.color.r),\($0.color.g),\($0.color.b),\($0.color.a)" }.joined(separator: ";"))|\(width)x\(height)"
         if let hit = cache.get(key) { return hit }
         let a = angle * .pi / 180
         let dx = sin(a), dy = -cos(a)
@@ -157,7 +162,13 @@ enum CanvasFillPainter {
         let cx = Double(width) / 2, cy = Double(height) / 2
         for y in 0..<height {
             for x in 0..<width {
-                let t = length > 0 ? ((Double(x) + 0.5 - cx) * dx + (Double(y) + 0.5 - cy) * dy) / length + 0.5 : 0
+                let t: Double
+                if let center {
+                    let rx = (Double(x) + 0.5) / Double(width) - center.x
+                    let ry = (Double(y) + 0.5) / Double(height) - center.y
+                    let radius = max(1e-9, hypot(max(center.x, 1 - center.x), max(center.y, 1 - center.y)))
+                    t = hypot(rx, ry) / radius
+                } else { t = length > 0 ? ((Double(x) + 0.5 - cx) * dx + (Double(y) + 0.5 - cy) * dy) / length + 0.5 : 0 }
                 let c = lut[max(0, min(steps, Int((t * Double(steps)).rounded())))]
                 let i = (y * width + x) * 4
                 out[i] = c.0; out[i + 1] = c.1; out[i + 2] = c.2; out[i + 3] = c.3

@@ -199,6 +199,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var masks: [NativeClipMask]? = nil
     /// This clip's own canvas fill, or `inherit` for the project's (`NativeFill`); nil means the project's.
     public var fill: NativeFill? = nil
+    /// Procedural picture on an element clip; uses the shared solid/gradient fill format.
+    public var generator: NativeFill? = nil
     /// The text, voice, rate and pitch an audio clip made from text was spoken with (`NativeClipNarration`); absent
     /// on every other clip.
     public var narration: NativeClipNarrationRecord? = nil
