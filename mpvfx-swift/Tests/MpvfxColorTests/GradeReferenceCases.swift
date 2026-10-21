@@ -24,6 +24,8 @@ enum GradeReferenceCases {
         var interpolation: CubeLUT.Interpolation = .trilinear
         /// Effects driven by hash noise (sin-based or fract jumps) can flip a few pixels on 1-ulp differences.
         var noisy = false
+        /// A colour key (an effect of its own in the document, `ColorGradeParams.colorKey`).
+        var key: ColorGradeParams.ColorKey? = nil
     }
 
     static func params(_ s: String) -> ColorGradeParams {
@@ -33,7 +35,9 @@ enum GradeReferenceCases {
     }
 
     static func renderer(_ c: Case) -> ColorGradeRenderer {
-        ColorGradeRenderer(params: params(c.json), lut: c.lut, seedKey: "clip:reference", interpolation: c.interpolation)
+        var p = params(c.json)
+        p.colorKey = c.key
+        return ColorGradeRenderer(params: p, lut: c.lut, seedKey: "clip:reference", interpolation: c.interpolation)
     }
 
     /// A warm/cool test card: gradients, a hard edge, a circle and a few colour patches (so the qualifiers, edge
@@ -141,6 +145,11 @@ enum GradeReferenceCases {
         cases.append(Case(name: "preset.vhs", json: #"{"preset":"vhs-playback"}"#, noisy: true))
         cases.append(Case(name: "preset.8mm", json: #"{"preset":"home-movie-8mm"}"#, noisy: true))
         cases.append(Case(name: "heavy.kuwaharaCrosshatchAscii", json: heavyJSON))
+        // Colour key: the matte comes from the source, spill from the graded colour, per key hue.
+        cases.append(Case(name: "key.green", json: #"{"adjust":{"exposure":0.1}}"#, key: .init(color: SIMD3(0.1, 0.7, 0.25), similarity: 0.12, smoothness: 0.25, spill: 0.8)))
+        cases.append(Case(name: "key.blueSpillSaturation", json: #"{"adjust":{"saturation":0.5}}"#, key: .init(color: SIMD3(0.16, 0.2, 0.86), similarity: 0.1, smoothness: 0.3, spill: 1)))
+        cases.append(Case(name: "key.redSpill", json: #"{"adjust":{"contrast":0.3}}"#, key: .init(color: SIMD3(0.93, 0.25, 0.2), similarity: 0.08, smoothness: 0.2, spill: 1)))
+        cases.append(Case(name: "key.only", json: #"{}"#, key: .init(color: SIMD3(0, 1, 0), similarity: 0.05, smoothness: 0.4, spill: 0)))
         return cases
     }
 
