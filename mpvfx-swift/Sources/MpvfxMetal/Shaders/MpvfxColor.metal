@@ -370,6 +370,12 @@ inline float hueRangeMask(float hue, float saturation, float4 key) {
     return 1.0f - smoothstepf(range, range + softness, hueDistance);
 }
 
+// Warmth and Tint as channel gains (grade contract 3), normalized so a grey keeps its luma.
+inline float3 whiteBalanceGain(float temperature, float tint) {
+    float3 g = V3(1.0f + temperature * 0.16f + tint * 0.08f, 1.0f - tint * 0.16f, 1.0f - temperature * 0.16f + tint * 0.08f);
+    return g / lumaOf(g);
+}
+
 float3 applySecondary(float3 color, int index, Tex1 secT) {
     int base = index * 5;
     float4 hueKey = secT.read(uint(base)), satKey = secT.read(uint(base + 1)), lumaKey = secT.read(uint(base + 2));
@@ -386,9 +392,13 @@ float3 applySecondary(float3 color, int index, Tex1 secT) {
     corrected = mix3(V3S(correctedLuma), corrected, FMAX(0.0f, 1.0f + decodeSigned(correction.y)));
     corrected += V3S(decodeSigned(correction.z));
     float temperature = decodeSigned(correction.w), tint = decodeSigned(tintCorrection.x);
-    corrected.x += temperature * 0.08f + tint * 0.04f;
-    corrected.z -= temperature * 0.08f - tint * 0.04f;
-    corrected.y -= tint * 0.08f;
+    if (tintCorrection.y > 0.75f) {
+        corrected *= whiteBalanceGain(temperature, tint);
+    } else {
+        corrected.x += temperature * 0.08f + tint * 0.04f;
+        corrected.z -= temperature * 0.08f - tint * 0.04f;
+        corrected.y -= tint * 0.08f;
+    }
     return mix3(color, corrected, mask);
 }
 
@@ -459,9 +469,13 @@ float3 applyPrimaryGrade(float3 input, constant float* u) {
     float blackPoint = clampf(U(blacks) * 0.18f, -0.18f, 0.18f);
     float whitePoint = clampf(1.0f - U(whites) * 0.18f, 0.82f, 1.18f);
     color = (color - V3S(blackPoint)) / FMAX(whitePoint - blackPoint, 0.2f);
-    color.x += U(temperature) * 0.08f + U(tint) * 0.04f;
-    color.z -= U(temperature) * 0.08f - U(tint) * 0.04f;
-    color.y -= U(tint) * 0.08f;
+    if (U(whiteBalanceGains) > 0.0f) {
+        color *= whiteBalanceGain(U(temperature), U(tint));
+    } else {
+        color.x += U(temperature) * 0.08f + U(tint) * 0.04f;
+        color.z -= U(temperature) * 0.08f - U(tint) * 0.04f;
+        color.y -= U(tint) * 0.08f;
+    }
     color = (color - 0.5f) * FMAX(0.0f, 1.0f + U(contrast)) + 0.5f;
     float satLuma = lumaOf(color);
     float currentSat = clampf(colorSaturation(color), 0.0f, 1.0f);
@@ -863,7 +877,19 @@ float4 shade(float2 frag, P_ALL) {
     }
     if (crtCurvature > 0.0f) { color *= displayMask; }
     float3 graded = clamp3(color, 0.0f, 1.0f);
-    return V43(graded, sampleColor.w);
+    float alpha = sampleColor.w;
+    if (U(keyEnabled) > 0.0f) {
+        float3 key = V3(U(keyR), U(keyG), U(keyB));
+        float3 source = sampleColor.xyz;
+        float y = lumaOf(source), keyY = lumaOf(key);
+        float2 chroma = V2((source.z - y) / 1.8556f, (source.x - y) / 1.5748f);
+        float2 keyChroma = V2((key.z - keyY) / 1.8556f, (key.x - keyY) / 1.5748f);
+        float distance = SQRT(POW(chroma.x - keyChroma.x, 2.0f) + POW(chroma.y - keyChroma.y, 2.0f));
+        alpha *= smoothstepf(U(keySimilarity), U(keySimilarity) + FMAX(U(keySmoothness), 0.000001f), distance);
+        float excessGreen = FMAX(0.0f, graded.y - FMAX(graded.x, graded.z));
+        graded.y -= excessGreen * U(keySpill);
+    }
+    return V43(graded, alpha);
 }
 
 // MARK: Kernels

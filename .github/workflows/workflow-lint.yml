@@ -1,0 +1,64 @@
+name: workflow-lint
+
+# The rules for automated checks (.github/CHECKS.md), applied to every workflow file by .github/ci/workflow_lint.py:
+# actions pinned to a commit SHA with a version comment, read-only top-level permissions, a timeout on every job, a
+# concurrency group, checkouts without stored credentials, no pull request code checked out by a privileged trigger,
+# repository scripts run with python3 -I -B, and no secrets spread to jobs that do not need them. Accepted findings
+# are listed with reasons in .github/ci/workflow-lint-allow.toml, which only shrinks: on a pull request the list is
+# compared with the base branch's copy. Python only, no build, about half a minute. Advisory (not in ci-ok) until it has
+# been green on main for two weeks; then a pull request moves it into ci-ok (.github/CHECKS.md "New checks").
+
+on:
+  # No paths filter: it is cheap, and a check that is meant to become required must not be skipped by one.
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: PyYAML (the distribution's python3-yaml when the image lacks it)
+        run: |
+          python3 -I -B -c 'import yaml' 2>/dev/null || {
+            sudo apt-get update -q
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends python3-yaml
+          }
+          python3 -I -B -c 'import sys, yaml; print("python", sys.version.split()[0], "PyYAML", yaml.__version__)'
+      - name: The linter's own tests
+        run: python3 -I -B .github/ci/test_workflow_lint.py
+      - name: The base branch's allow list (pull requests only)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Fails closed: only a 404 (the base has no list yet) skips the shrink check.
+          if err=$(gh api -H 'Accept: application/vnd.github.raw' \
+              "repos/$REPO/contents/.github/ci/workflow-lint-allow.toml?ref=$BASE" 2>&1 > "$RUNNER_TEMP/base-allow.toml"); then
+            echo "base allow list: $(grep -c '^\[\[allow\]\]' "$RUNNER_TEMP/base-allow.toml") entries"
+          elif printf '%s' "$err" | grep -q 'HTTP 404'; then
+            rm -f "$RUNNER_TEMP/base-allow.toml"
+            echo "::notice::the base branch has no allow list yet: the shrink check is skipped for this pull request"
+          else
+            echo "::error::could not read the base branch's allow list: $err"; exit 1
+          fi
+      - name: Every workflow against the rules
+        run: |
+          set -o pipefail
+          base=(); [ -f "$RUNNER_TEMP/base-allow.toml" ] && base=(--base-allow "$RUNNER_TEMP/base-allow.toml")
+          python3 -I -B .github/ci/workflow_lint.py "${base[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
