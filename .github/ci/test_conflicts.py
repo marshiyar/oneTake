@@ -55,7 +55,9 @@ class FakeGh:
             return 0, "".join(json.dumps(p) + "\n" for p in self.prs.values()), ""
         n = int(path.split("/")[4].split("?")[0])
         if path.endswith("/comments?per_page=100"):
-            return 0, "".join(json.dumps(b) + "\n" for b in self.comments[n]), ""
+            # like gh --jq: a string result prints raw unless the filter ends in tojson
+            enc = json.dumps if (jq or "").rstrip().endswith("tojson") else str
+            return 0, "".join(enc(b) + "\n" for b in self.comments[n]), ""
         self.polls[n] = self.polls.get(n, 0) + 1
         m = self.mergeable[n]
         if isinstance(m, list):
@@ -196,6 +198,12 @@ class Round(unittest.TestCase):
         gh.run.add(3, mergeable=False, repo="fork/r")
         self.assertEqual(self.go(gh, git), [])
         self.assertEqual((git.calls, gh.run.writes), ([], []))
+
+    def test_comment_bodies_parse_like_gh_prints_them(self):
+        gh = make_gh()
+        gh.run.add(1)
+        gh.run.comments[1] = ["plain text, not JSON", "two\nlines"]
+        self.assertEqual(gh.comment_bodies(1), ["plain text, not JSON", "two\nlines"])
 
     def test_git_error_skips_that_pr_only(self):
         gh, git = make_gh(), FakeGit(error="boom")
