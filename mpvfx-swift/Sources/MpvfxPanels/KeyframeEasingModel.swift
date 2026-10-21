@@ -36,13 +36,18 @@ public struct KeyframeEasingTarget: Equatable {
         guard let clipId, editor.clip(clipId) != nil else { return nil }
         let properties = easedParameterIds.filter { editor.isAnimated(clipId: clipId, $0) }
         let picked = selected.filter { $0.clipId == clipId && properties.contains($0.parameterId) && editor.outgoing($0) != nil }
-            .sorted { ($0.frame, $0.parameterId) < ($1.frame, $1.parameterId) }
+            .sorted(by: Self.inTimeOrder)
         let pid = picked.first?.parameterId ?? chosen.flatMap { properties.contains($0) ? $0 : nil } ?? properties.first
         guard let pid else { return nil }
         let refs = picked.filter { $0.parameterId == pid }
         if !refs.isEmpty { return .init(clipId: clipId, parameterId: pid, properties: properties, refs: refs, fromSelection: true) }
         let atPlayhead = editor.keyframesAtOrBefore(clipId: clipId, parameterIds: [pid], time: time)
         return .init(clipId: clipId, parameterId: pid, properties: properties, refs: atPlayhead, fromSelection: false)
+    }
+
+    /// Earlier frame first; on the same frame, by parameter id.
+    public static func inTimeOrder(_ a: TimelineKeyframeRef, _ b: TimelineKeyframeRef) -> Bool {
+        a.frame != b.frame ? a.frame < b.frame : a.parameterId < b.parameterId
     }
 }
 
@@ -76,7 +81,7 @@ public final class KeyframeEasingState {
 
 /// The panel's edits; each is one undo step over every target key.
 public enum KeyframeEasing {
-    public enum Side: Sendable { case out, `in` }
+    public typealias Side = KeyframeEase.End
     /// A key's two handles as the numbers show them: influence 0…1, velocity in property units per second.
     public struct Sides: Equatable {
         public var outInfluence, outVelocity, inInfluence, inVelocity: Double
@@ -107,27 +112,31 @@ public enum KeyframeEasing {
     }
 
     /// Sets one side of every target key's outgoing curve: the influence as given, the velocity converted per key
-    /// (each segment has its own distance and length). Nil keeps that number. Holds and last keys are skipped.
+    /// (each segment has its own distance and length). Nil keeps that number. The other side's control point, and
+    /// any unknown keys the curve carried, stay exactly as they were. Holds and last keys are skipped.
     @discardableResult
     public static func setSide(_ editor: TimelineEditor, _ t: KeyframeEasingTarget, _ side: Side, influence: Double?, velocity: Double?) -> Bool {
         let changes: [(TimelineKeyframeRef, NativeInterpolation)] = t.refs.compactMap { r in
-            guard let seg = segment(editor, r), var h = editor.outgoing(r).flatMap(handles) else { return nil }
+            guard let seg = segment(editor, r), let p = editor.outgoing(r).flatMap(points), let h = KeyframeEase.handles(p) else { return nil }
             let slope = velocity.map { KeyframeEase.slope(velocity: $0, valueChange: seg.valueChange, seconds: seg.seconds) }
-            switch side {
-            case .out: h.outInfluence = influence ?? h.outInfluence; h.outSlope = slope ?? h.outSlope
-            case .in: h.inInfluence = influence ?? h.inInfluence; h.inSlope = slope ?? h.inSlope
-            }
-            return (r, .cubicBezier(KeyframeEase.points(h)))
+            let now = side == .out ? (h.outInfluence, h.outSlope) : (h.inInfluence, h.inSlope)
+            return (r, .cubicBezier(KeyframeEase.setting(side, of: p, influence: influence ?? now.0, slope: slope ?? now.1)))
         }
         return editor.withHistory("Edit keyframe easing") { editor.setOutgoing(changes) }
     }
 
-    static func handles(_ v: NativeInterpolation) -> KeyframeEase.Handles? {
+    /// The control points a curve edit starts from: a linear segment as the cubic that moves at its linear speed;
+    /// nil for a hold (no handles).
+    static func points(_ v: NativeInterpolation) -> CubicBezierControlPoints? {
         switch v {
         case .hold: return nil
-        case .linear: return .init(outInfluence: 1.0 / 3, outSlope: 1, inInfluence: 1.0 / 3, inSlope: 1)
-        case .cubicBezier(let p): return KeyframeEase.handles(p)
+        case .linear: return CubicBezierControlPoints(x1: 1.0 / 3, y1: 1.0 / 3, x2: 2.0 / 3, y2: 2.0 / 3)
+        case .cubicBezier(let p): return p
         }
+    }
+
+    static func handles(_ v: NativeInterpolation) -> KeyframeEase.Handles? {
+        points(v).flatMap(KeyframeEase.handles)
     }
 
     static func distance(_ a: NativeParameterValue, _ b: NativeParameterValue) -> Double {
@@ -152,8 +161,9 @@ public enum KeyframeEasing {
 /// is the motion the preview and export render.
 public enum KeyframeEasingGraph {
     public struct Samples: Equatable {
-        /// Clip-local frame of the first sample, and frames between samples.
-        public var firstFrame: Double, step: Double
+        /// Clip-local frame of each sample: evenly spaced, the last one exactly the last key (the final gap may be
+        /// shorter).
+        public var frames: [Double]
         /// One array of components per sample.
         public var values: [[Double]]
         /// Speed at each sample in property units per second (2D: along the path; colour: the fastest channel).
@@ -166,14 +176,15 @@ public enum KeyframeEasingGraph {
               let first = track.keyframes.first?.frame, let last = track.keyframes.last?.frame else { return nil }
         let span = max(1, last - first), step = max(1, (span / Double(max(1, maxSamples))).rounded(.up))
         let count = Int((span / step).rounded(.up)) + 1
+        let frames = (0..<count).map { min(last, first + Double($0) * step) }
         let dims = track.valueType == .number ? 1 : (track.valueType == .vec2 ? 2 : 4)
         let engine: KeyframeEngine
         do { engine = try editor.engine ?? keyframeEngine() } catch { return nil }
         var values: [[Double]] = []
         let keyed = KeyframeTrack(track)
         do {
-            for i in 0..<count {
-                let flat = try engine.sample(keyed, firstFrame: min(last, first + Double(i) * step), count: 1)
+            for frame in frames {
+                let flat = try engine.sample(keyed, firstFrame: frame, count: 1)
                 guard flat.count == dims else { return nil }
                 values.append(flat)
             }
@@ -181,17 +192,17 @@ public enum KeyframeEasingGraph {
             return nil   // the engine refused the track: the panel shows no graph rather than a wrong one
         }
         let rate = track.frameRate.numerator / max(track.frameRate.denominator, 1)
-        return Samples(firstFrame: first, step: step, values: values, speeds: speeds(values, framesPerStep: step, rate: rate),
+        return Samples(frames: frames, values: values, speeds: speeds(values, frames: frames, rate: rate),
                        keyFrames: track.keyframes.map(\.frame))
     }
 
-    /// Central differences (one-sided at the ends), in units per second.
-    static func speeds(_ values: [[Double]], framesPerStep step: Double, rate: Double) -> [Double] {
-        guard values.count > 1 else { return values.map { _ in 0 } }
+    /// Central differences (one-sided at the ends) over the samples' real frame gaps, in units per second.
+    static func speeds(_ values: [[Double]], frames: [Double], rate: Double) -> [Double] {
+        guard values.count > 1, frames.count == values.count else { return values.map { _ in 0 } }
         return values.indices.map { i in
             let a = max(0, i - 1), b = min(values.count - 1, i + 1)
             let dist = KeyframeEasing.magnitude(zip(values[a], values[b]).map { $1 - $0 })
-            return dist / (Double(b - a) * step) * rate
+            return dist / max(1e-9, frames[b] - frames[a]) * rate
         }
     }
 }
