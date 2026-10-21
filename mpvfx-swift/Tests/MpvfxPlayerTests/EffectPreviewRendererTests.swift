@@ -20,6 +20,12 @@ import MpvfxShared
 
 /// Effects catalog and look tile demos: the built-in sample picture graded with each tile's grade, off the UI thread,
 /// through the production colour renderer, with typed failures for what cannot render.
+/// A tile that did not settle to a picture: the test fails with what it showed instead.
+struct TileNotReady: Error, CustomStringConvertible {
+    let detail: String
+    var description: String { "the tile never became ready: \(detail)" }
+}
+
 final class EffectPreviewRendererTests: XCTestCase {
     static let w = 248, h = 140   // a 2x catalog tile
 
@@ -35,7 +41,7 @@ final class EffectPreviewRendererTests: XCTestCase {
     }
 
     func image(_ state: PresetPreviewState, file: StaticString = #filePath, line: UInt = #line) throws -> CanvasImage {
-        guard case .ready(let img) = state else { XCTFail("not ready: \(state)", file: file, line: line); throw XCTSkip("not ready") }
+        guard case .ready(let img) = state else { throw TileNotReady(detail: "\(state)") }
         return img
     }
 

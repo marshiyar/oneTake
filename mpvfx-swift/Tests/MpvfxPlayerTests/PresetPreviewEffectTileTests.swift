@@ -31,8 +31,7 @@ extension PresetPreviewRendererTests {
             }
             r.wait()
         }
-        XCTFail("\(demo.key) never became ready")
-        throw XCTSkip("not ready")
+        throw TileNotReady(detail: demo.key)
     }
 
     /// A1: the blur tile equals `ColorGradeRenderer` applied to the same frame ("neutral" is inactive, so its tile is
