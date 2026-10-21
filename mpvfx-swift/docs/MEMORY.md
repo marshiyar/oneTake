@@ -66,8 +66,25 @@ background loop.
   `budget_sum_mib` on the Linux hosted runner (issue #97).
 - Until issue #97 the preview benchmark kept its playback phase's compositor, with a frame cache filled up to the
   budget, alive while its real-time phase filled a second one, so `peak_rss_mib` counted two caches the app never
-  holds at once (estimated from the baseline: Linux stacked 3328 MiB is about one 1597 MiB budget plus 320
-  real-time frames of 3.5 MiB plus the process). The bench now releases the first compositor before the second starts.
+  holds at once (Linux stacked 3328 MiB was about one 1597 MiB budget plus 320 real-time frames of 3.5 MiB plus the
+  process). The bench now releases the first compositor before the second starts.
+- Measured after issue #97 (bench workflow run 39541322522, merge commit 8487937, GitHub-hosted Linux runner with
+  15.6 GiB RAM and 4 cores, 5 processes per scenario, 1280x720 display; p95, MiB). `budget_sum_mib` is 1854:
+
+  | scenario | `peak_rss_mib` | `cache_bytes_mib` | `in_flight_mib` | `grader_bytes_mib` | `unaccounted_mib` |
+  |---|---:|---:|---:|---:|---:|
+  | stacked | 2243 (was 3328 p50) | 1596 | 7.0 | 0 | 647 |
+  | 1080p | 1631 (was 2169 p50) | 1055 | 3.5 | 0 | 576 |
+  | graded | 1627 (was 2220 p50) | 1055 | 3.5 | 3.5 | 569 |
+  | 4k | 1382 (was 1575 p50) | 633 | 3.5 | 0 | 749 |
+  | scrub | 711 | 137 | 3.5 | 0 | 574 |
+
+  Every scenario is within `budget_sum_mib` + 512 (2366). `start_rss_mib` is 25. The 570 to 750 MiB left
+  unaccounted is what the process holds once decoding runs outside the caches (the engine's decoder state, canvas
+  surfaces, allocator overhead); scrub, with an almost empty cache, shows the same amount. Real-time playback is
+  unchanged: 100% exact frames and 30 new pictures/s for 1080p, stacked and graded, and 10.0 for 4K (was 10.4).
+  Unthrottled fps is 1.3 to 2.2% lower than in run 39517931817 (stacked 34.73 against 35.26, 1080p 63.67 against
+  64.79, p50).
 - Dropping graded pictures under budget pressure costs a re-grade (a GPU pass on macOS, CPU time on Linux) when that
   clip is shown again.
 - The macOS-only paths (Metal pool budget, the system memory-pressure source, `phys_footprint`) are exercised only on
