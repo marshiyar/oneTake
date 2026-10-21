@@ -104,7 +104,9 @@ The editor speaks plainly, in the user's terms, and tells them what to do next.
 
 - **Target size** (WCAG 2.2 SC 2.5.8, <https://www.w3.org/TR/WCAG22/#target-size-minimum>, read 2026-10-21): every
   pointer target is at least 24 × 24 pt, or spaced so a 24 pt circle on its centre touches no other target. A hit
-  rect may be larger than the glyph it draws.
+  rect may be larger than the glyph it draws. The inspector's keyframe controls (stopwatch, previous, diamond, next)
+  are four 24 pt squares laid edge to edge with each glyph centred, so none of them overlaps the next; a value's
+  reset target is a 24 pt square ending 3 pt past its glyph.
 - **Non-text contrast** (WCAG 2.2 SC 1.4.11, <https://www.w3.org/TR/WCAG22/#non-text-contrast>, read 2026-10-21):
   the focus ring, selected and active states, signal colours and field outlines reach 3:1 against the surfaces next
   to them.

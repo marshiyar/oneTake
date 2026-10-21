@@ -440,13 +440,21 @@ public final class InspectorPanel {
         if compact { c.fillRoundedRect(r.snapped, radius: PanelTheme.radius, PanelTheme.panelBg) }
         let pad = compact ? 6.0 : 0.0
         var right = r.maxX - pad
+        // Where the field's target ends: before the reset's and the keyframe controls' (the field draws to `right`).
+        var hitRight = right
         if n.tier == .explicitCustom, n.reset != nil {
             let rr = CanvasRect(x: right - 11, y: r.midY - 5.5, width: 11, height: 11)
             if isHover { PanelIcon.reset.draw(c, in: rr, color: hovered == .reset(n.key) ? PanelTheme.text1 : PanelTheme.text3) }
-            hits.add(rr.insetBy(-3), .reset(n.key))
+            // A pointer target square ending 3 past the glyph, as the hover glyph's old 3pt margin did.
+            let t = PanelTheme.minTarget, hit = CanvasRect(x: rr.maxX + 3 - t, y: r.midY - t / 2, width: t, height: t)
+            hits.add(hit, .reset(n.key))
             right = rr.x - 4
+            hitRight = hit.x
         }
-        if let kf = n.keyframe, !compact { right = drawKeyframeNav(c, right: right, midY: r.midY, key: n.key, kf) - 4 }
+        if let kf = n.keyframe, !compact {
+            right = drawKeyframeNav(c, right: min(right, hitRight), midY: r.midY, key: n.key, kf) - 4
+            hitRight = right + 4
+        }
         let labelFont = PanelTheme.font(11)
         let lw = c.measureText(n.label, font: labelFont).width
         let labelRect = CanvasRect(x: r.x + pad, y: r.midY - 8.25, width: lw, height: 16.5)
@@ -460,7 +468,7 @@ public final class InspectorPanel {
         if scrubs { hits.add(labelHit, .scrub(n.key)) }
         // The field's own target starts after the scrub zone and ends before the stopwatch's.
         let fieldHitX = scrubs ? max(field.x, labelHit.maxX) : field.x
-        let fieldHitMaxX = min(field.maxX, n.keyframe == nil || compact ? field.maxX : hits.rect(where: { $0 == .stopwatch(n.key) })?.x ?? field.maxX)
+        let fieldHitMaxX = min(field.maxX, hitRight)
         let editing = self.field?.key == n.key
         var text = n.text
         if let s = scrub, s.key == n.key, let fmt = n.scrub?.format { text = fmt(s.current) }
@@ -478,29 +486,32 @@ public final class InspectorPanel {
         if !n.disabled { hits.add(CanvasRect(x: fieldHitX, y: r.y, width: max(0, fieldHitMaxX - fieldHitX), height: r.height), .field(n.key)) }
     }
 
-    /// Keyframe controls on the property's row (docs/DESIGN.md Rollout 5): the 12px stopwatch (Phosphor Timer, the
-    /// accent while the property is animated, else #a3a3a3 at .6; hover full opacity) 4px before the keyframe
-    /// navigation (`flex h-5 items-center gap-0.5`, 41 wide): 12×20 stepper with the 6×10 arrow
-    /// (`M5 1L1 5L5 9`, #a3a3a3, 1.4 round, opacity .25 when there is nowhere to go), the 9px KeyframeDiamond
-    /// (`p-0.5`; ghost .25 / inactive .6 #a3a3a3 outline, active #3CE6AC filled; hover full opacity), the next
-    /// stepper. Returns the gutter's left edge.
+    /// Keyframe controls on the property's row (docs/DESIGN.md Rollout 5, "Accessibility floors"): the 12px
+    /// stopwatch (Phosphor Timer, the accent while the property is animated, else #a3a3a3 at .6; hover full
+    /// opacity), the previous stepper (the 6×10 arrow `M5 1L1 5L5 9`, #a3a3a3, 1.4 round, opacity .25 when there is
+    /// nowhere to go), the 9px KeyframeDiamond (ghost .25 / inactive .6 #a3a3a3 outline, active #3CE6AC filled;
+    /// hover full opacity) and the next stepper. Each is its own `PanelTheme.minTarget` square, laid edge to edge
+    /// leftwards from `right` with its glyph centred (issue #149, WCAG 2.2 SC 2.5.8): the glyphs keep their size,
+    /// the four targets never overlap. Returns the gutter's left edge.
     @discardableResult
     func drawKeyframeNav(_ c: CanvasContext, right: Double, midY: Double, key: String, _ kf: InspectorRow.Keyframe) -> Double {
         let bg = PanelTheme.panelBgInset
-        let x0 = right - 41
+        let t = PanelTheme.minTarget
+        /// The `i`-th target from the right (0 = next, 3 = stopwatch).
+        func slot(_ i: Double) -> CanvasRect { CanvasRect(x: right - t * (i + 1), y: midY - t / 2, width: t, height: t) }
+        let watchHit = slot(3), prevHit = slot(2), diamondHit = slot(1), nextHit = slot(0)
         let arrow = PanelTheme.neutral400
-        let watch = CanvasRect(x: x0 - 16, y: midY - 6, width: 12, height: 12)
+        let watch = CanvasRect(x: watchHit.midX - 6, y: midY - 6, width: 12, height: 12)
         let watchColor = kf.state == .none ? arrow.over(bg, opacity: hovered == .stopwatch(key) ? 1 : 0.6)
             : (hovered == .stopwatch(key) ? PanelTheme.text0 : PanelTheme.accent)
         PanelIcon.phosphor(.timer).draw(c, in: watch, color: watchColor)
-        hits.add(watch.target, .stopwatch(key))
-        let prevBtn = CanvasRect(x: x0, y: midY - 10, width: 12, height: 20)
+        hits.add(watchHit, .stopwatch(key))
         let hasPrev = kf.prev != nil, hasNext = kf.next != nil
-        c.strokeSVG(["M5 1L1 5L5 9"], viewBox: 10, in: CanvasRect(x: prevBtn.x + 3, y: midY - 5, width: 10, height: 10),
+        // The arrows span x 1…5 of their 10-unit box: the box starts 3 before the target's centre.
+        c.strokeSVG(["M5 1L1 5L5 9"], viewBox: 10, in: CanvasRect(x: prevHit.midX - 3, y: midY - 5, width: 10, height: 10),
                     arrow.over(bg, opacity: hasPrev ? 1 : 0.25), width: 1.4)
-        if hasPrev { hits.add(prevBtn.insetBy(-2), .kfPrev(key)) }
-        let d = CanvasRect(x: x0 + 14, y: midY - 6.5, width: 13, height: 13)
-        let dia = CanvasRect(x: d.x + 2, y: d.y + 2, width: 9, height: 9)
+        if hasPrev { hits.add(prevHit, .kfPrev(key)) }
+        let dia = CanvasRect(x: diamondHit.midX - 4.5, y: midY - 4.5, width: 9, height: 9)
         let hov = hovered == .keyframe(key)
         switch kf.state {
         case .onKey: c.fill(Self.keyframeDiamond(dia), PanelTheme.mint)
@@ -508,12 +519,11 @@ public final class InspectorPanel {
             let o = hov ? 1 : (kf.state == .animated ? 0.6 : 0.25)
             c.stroke(Self.keyframeDiamond(dia), arrow.over(bg, opacity: o), StrokeStyle(width: 1.2 * 0.9))
         }
-        hits.add(d.insetBy(-2), .keyframe(key))
-        let nextBtn = CanvasRect(x: x0 + 29, y: midY - 10, width: 12, height: 20)
-        c.strokeSVG(["M1 1L5 5L1 9"], viewBox: 10, in: CanvasRect(x: nextBtn.x + 3, y: midY - 5, width: 10, height: 10),
+        hits.add(diamondHit, .keyframe(key))
+        c.strokeSVG(["M1 1L5 5L1 9"], viewBox: 10, in: CanvasRect(x: nextHit.midX - 3, y: midY - 5, width: 10, height: 10),
                     arrow.over(bg, opacity: hasNext ? 1 : 0.25), width: 1.4)
-        if hasNext { hits.add(nextBtn.insetBy(-2), .kfNext(key)) }
-        return watch.x
+        if hasNext { hits.add(nextHit, .kfNext(key)) }
+        return watchHit.x
     }
 
     /// KeyframeDiamond's `<rect x=5 y=0.7 width=6 height=6 rx=1 transform="rotate(45 5 0.7)">` in a 10-unit
@@ -554,7 +564,9 @@ public final class InspectorPanel {
             if s.tier == .explicitCustom, s.reset != nil {
                 PanelIcon.reset.draw(c, in: CanvasRect(x: slot.x, y: slot.y, width: 11, height: 11),
                                      color: hovered == .reset(s.key) ? PanelTheme.text1 : PanelTheme.text3)
-                hits.add(slot.insetBy(-2), .reset(s.key))
+                // A pointer target square ending at the slot's right edge, clear of the keyframe controls.
+                hits.add(slot.target(in: CanvasRect(x: row.x, y: row.midY - PanelTheme.minTarget / 2, width: slot.maxX - row.x,
+                                                    height: PanelTheme.minTarget)), .reset(s.key))
             }
             right = slot.x - 10
         }
