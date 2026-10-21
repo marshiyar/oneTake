@@ -28,8 +28,9 @@ extension PresetPreviewRenderer {
     public func effectPreview(_ req: EffectPreviewRequest, time: Double) -> State {
         let slot = req.key, grade = req.grade, pixelWidth = req.pixelWidth, pixelHeight = req.pixelHeight
         let sizes = 2...EffectPreviewRenderer.maxSide
-        guard sizes.contains(pixelWidth), sizes.contains(pixelHeight), let clipId = req.clipId, let comp = compositor.composition,
-              let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
+        guard sizes.contains(pixelWidth), sizes.contains(pixelHeight), let clipId = req.clipId,
+              let found = decodableEntry(clipId) else { return .unavailable }
+        let (comp, entry) = found
         let c = entry.clip
         let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
         let t = max(first, min(last, time))
@@ -59,9 +60,11 @@ extension PresetPreviewRenderer {
     }
 
     /// Whether `clipId`'s picture can never arrive because its media gave up decoding (the Grade preset tiles' host
-    /// then falls back to the sample picture instead of showing "Rendering" forever). Call on the UI thread.
+    /// then falls back to the sample picture instead of showing "Rendering" forever). An offline clip (its media file is
+    /// missing) has given up without decoding. Call on the UI thread.
     public func decodeGaveUp(clipId: String) -> Bool {
         guard let comp = compositor.composition, let e = comp.entries.first(where: { $0.clip.id == clipId }) else { return false }
+        guard e.kind != .offline else { return true }
         return decodeGaveUp(lane: comp.layer(e, at: e.clip.startFrame / comp.fps).laneKey)
     }
 

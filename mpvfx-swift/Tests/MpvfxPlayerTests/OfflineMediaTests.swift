@@ -18,6 +18,7 @@ import Foundation
 import XCTest
 import MpvfxCanvas
 import MpvfxShared
+import MpvfxPanels
 @testable import MpvfxPlayer
 
 final class OfflineMediaTests: XCTestCase {
@@ -84,6 +85,9 @@ final class OfflineMediaTests: XCTestCase {
             return XCTFail("an offline clip has no graded frame")
         }
         XCTAssertTrue(presets.isAvailable(clipId: "A"), "a clip with its file still previews")
+        let tile = EffectPreviewRequest(key: "fx:blur", grade: [:], clipId: "G", pixelWidth: 32, pixelHeight: 16)
+        guard case .unavailable = presets.effectPreview(tile, time: 3.2) else { return XCTFail("an offline clip has no effect tile") }
+        XCTAssertTrue(presets.decodeGaveUp(clipId: "G"), "the tile host shows the sample picture, not Rendering")
     }
 
     func testAMissingSoundFileIsMarkedOfflineButNotDrawn() throws {

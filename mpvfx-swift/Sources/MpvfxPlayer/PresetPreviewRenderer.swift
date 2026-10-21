@@ -134,7 +134,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     }
 
     /// The composition entry of `clipId` when it has a picture to decode (not offline: its file is missing).
-    private func decodableEntry(_ clipId: String) -> (comp: PreviewComposition, entry: PreviewComposition.Entry)? {
+    func decodableEntry(_ clipId: String) -> (comp: PreviewComposition, entry: PreviewComposition.Entry)? {
         guard let comp = compositor.composition,
               let entry = comp.entries.first(where: { $0.clip.id == clipId && $0.kind != .offline }) else { return nil }
         return (comp, entry)
