@@ -80,8 +80,8 @@ internal final class NativeTextStyleTests: XCTestCase {
         var raw = try NativeJSONValue.from(styled())
         raw["sequence"]?["tracks"]?[0]?["clips"]?[1]?["textStyle"]?["styleId"] = .string("missing")
         XCTAssertTrue(
-            validateNativeProjectDocument(raw, engine: engine).contains {
-                issue in issue.code == .invalidClip && issue.path.hasSuffix("textStyle.styleId")
+            validateNativeProjectDocument(raw, engine: engine).contains { issue in
+                issue.code == .invalidClip && issue.path.hasSuffix("textStyle.styleId")
             }
         )
         raw = try NativeJSONValue.from(styled())
@@ -89,8 +89,8 @@ internal final class NativeTextStyleTests: XCTestCase {
         let duplicate = try XCTUnwrap(styles[0])
         raw["textStyles"]?.append(duplicate)
         XCTAssertTrue(
-            validateNativeProjectDocument(raw, engine: engine).contains {
-                issue in issue.code == .duplicateId && issue.path == "textStyles[1].id"
+            validateNativeProjectDocument(raw, engine: engine).contains { issue in
+                issue.code == .duplicateId && issue.path == "textStyles[1].id"
             }
         )
     }
