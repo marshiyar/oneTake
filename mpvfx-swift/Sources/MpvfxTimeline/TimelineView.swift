@@ -16,16 +16,15 @@ import MpvfxCanvas
 import MpvfxTheme
 
 /// Timeline layout constants. The media row height is the one
-/// value the user changes (toolbar Track height slider, timelineTrackHeight), so it is instance
+/// value the user changes (toolbar track-height presets, timelineTrackHeight), so it is instance
 /// state; everything else is fixed.
 public struct TimelineLayout: Equatable, Sendable {
-    /// Media row height: 28...96 in steps of 4 on the slider, stored rounded and clamped (setTimelineTrackHeight).
+    /// Media row height: 32...96, rounded and clamped, stored rounded and clamped (setTimelineTrackHeight).
     public var trackHeight: Double { didSet { trackHeight = Self.clampTrackHeight(trackHeight) } }
     public init(trackHeight: Double = defaultTrackHeight) { self.trackHeight = Self.clampTrackHeight(trackHeight) }
-    /// Compact track headers (docs/DESIGN.md step 4): 28 px is the default media row height and the fixed height of an
-    /// audio-group header row. A stored height from before (32...96) stays valid.
-    public static let defaultTrackHeight = 28.0, groupHeaderHeight = 28.0
-    public static let minTrackHeight = 28.0, maxTrackHeight = 96.0, trackHeightStep = 4.0
+    /// Media rows default to Small (32 px); audio-group header rows remain 28 px.
+    public static let defaultTrackHeight = 32.0, groupHeaderHeight = 28.0
+    public static let minTrackHeight = 32.0, maxTrackHeight = 96.0, trackHeightStep = 4.0
     public static func clampTrackHeight(_ h: Double) -> Double {
         guard h.isFinite else { return defaultTrackHeight }
         return max(minTrackHeight, min(maxTrackHeight, (h + 0.5).rounded(.down)))
@@ -64,7 +63,6 @@ public struct TimelineTheme: Sendable {
     public var clipActive: CanvasColor { accent.withAlpha(0.16) }      // TRACK_STYLE.clipActive
     public var trackLabel: CanvasColor { ink.withAlpha(Theme.mode == .light ? 0.6 : 0.5) }   // TRACK_STYLE.label
     public var accent: CanvasColor { CanvasColor(ThemeTokens.mint) }   // the accent's line form
-    public var preRoll: CanvasColor { CanvasColor(ThemeTokens.preRoll) }   // preRollBackground
     public var clipRadius = 3.0
     public init() {}
     public static let `default` = TimelineTheme()
@@ -328,9 +326,6 @@ public final class TimelineView {
     }
     /// timelineTrackOriginGapColor
     public static func originGapColor(_ clips: [TimelineClipModel], theme: TimelineTheme) -> CanvasColor? {
-        if clips.contains(where: { $0.kind == .video }) { return theme.preRoll }
-        if clips.contains(where: { $0.kind == .image }) { return CanvasColor(ThemeTokens.blue500) }
-        if clips.contains(where: { $0.kind == .audio }) { return CanvasColor(ThemeTokens.purple500) }
         return nil
     }
 
@@ -477,7 +472,7 @@ public final class TimelineView {
                                snapType == .playhead ? t.accent : CanvasColor(ThemeTokens.white.alpha(0.6)))
                 }
             }
-            // Sticky header column + origin gap (pre-roll surface).
+            // Sticky header column; the origin gutter keeps the lane background.
             for (i, track) in tracks.enumerated() {
                 let top = rowTop(i), h = trackRowHeight(i)
                 c.fillRect(CanvasRect(x: 0, y: top, width: L.labelColumnWidth, height: h), t.gutterBackground)
@@ -576,7 +571,7 @@ public final class TimelineView {
             let nameY = header.y + max(0, (header.height - 10) / 2)
             if r.width >= 40 || selected {
                 let f = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .medium)
-                if let label = Self.ellipsize(c, clip.name, font: f, maxWidth: r.width - 22) {
+                if let label = Self.ellipsize(c, clip.name, font: f, maxWidth: r.width - (clip.effectCount > 0 ? 64 : 22)) {
                     c.drawText(label, at: .init(r.x + 12, nameY), font: f, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipNameAlpha)))
                 }
                 // Duration as timecode: bottom 6, left 12, mono 9px, at clipTimecodeAlpha; left out when the
@@ -591,7 +586,11 @@ public final class TimelineView {
                 }
             }
             if clip.effectCount > 0 {
-                c.drawText("fx", at: .init(r.maxX - 22, nameY), font: CanvasFont(family: Self.uiFontFamily, size: 10, weight: .semibold), color: t.accent.withAlpha(0.8))
+                let label = "fx \(clip.effectCount)", font = CanvasFont(family: Self.uiFontFamily, size: 9, weight: .semibold)
+                let w = c.measureText(label, font: font).width + 10
+                let pill = CanvasRect(x: r.maxX - w - 6, y: header.centerY - 7, width: w, height: 14)
+                c.fillRoundedRect(pill, radius: 7, CanvasColor(ThemeTokens.white.alpha(0.12)))
+                c.drawText(label, at: .init(pill.x + 5, pill.centerY - 4.5), font: font, color: CanvasColor(ThemeTokens.white.alpha(0.92)))
             }
             // Trim handle bars: 2px, inset 4px, top/bottom 6px, rgba(255,255,255,.55) at opacity*0.6 (width >= 32 or selected).
             let op = Self.handleOpacity(hovered: hovered, selected: selected, dragging: dragging) * 0.6

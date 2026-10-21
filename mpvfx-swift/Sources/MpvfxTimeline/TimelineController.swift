@@ -417,6 +417,7 @@ public final class TimelineController {
             default: return false
             }
         }
+        if !k.command, !k.alt, k.shift, case .char(let ch) = k.code, ch.lowercased() == "z" { zoomToFit(); return true }
         if let held = holdKey(k) { return held }
         if !k.command && !k.alt {
             switch k.code {

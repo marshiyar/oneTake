@@ -16,7 +16,7 @@ import OneTakeKeyframes
 @testable import MpvfxTimeline
 import MpvfxCanvas
 
-/// docs/TIMELINE.md "Zoom": fit spans the sequence end plus its margin, half the fit is the zoom-out limit, buttons and keys
+/// docs/TIMELINE.md "Zoom": fit spans the sequence end plus its margin, fit is the zoom-out limit, buttons and keys
 /// zoom about the playhead, pointer gestures about the pointer.
 final class TimelineZoomFitTests: XCTestCase {
     static let width = 1266.0
@@ -47,13 +47,13 @@ final class TimelineZoomFitTests: XCTestCase {
         XCTAssertLessThan(c.view.x(for: c.view.duration), Self.width - 2, "the sequence end is on screen")
     }
 
-    func testHalfTheFitIsTheZoomOutLimit() throws {
-        XCTAssertEqual(TimelineZoom.clamp(10, fit: 20), 50)
-        XCTAssertEqual(TimelineZoom.next(false, mode: .fit, manual: 100, fit: 20), 50)
-        XCTAssertEqual(TimelineZoom.pinch(deltaY: 500, mode: .manual, manual: 150, fit: 20), 50, "a pinch out stops at half the fit")
+    func testFitIsTheZoomOutLimit() throws {
+        XCTAssertEqual(TimelineZoom.clamp(10, fit: 20), 100)
+        XCTAssertEqual(TimelineZoom.next(false, mode: .fit, manual: 100, fit: 20), 100)
+        XCTAssertEqual(TimelineZoom.pinch(deltaY: 500, mode: .manual, manual: 150, fit: 20), 100, "a pinch out stops at fit")
         let c = try make()
         c.zoom(in: false); c.zoom(in: false)
-        XCTAssertEqual(c.view.pixelsPerSecond, c.fitPixelsPerSecond / 2, accuracy: 1e-9)
+        XCTAssertEqual(c.view.pixelsPerSecond, c.fitPixelsPerSecond, accuracy: 1e-9)
         XCTAssertGreaterThan(c.view.x(for: c.view.rulerEnd), c.view.x(for: c.view.duration), "room after the end to drop a clip")
     }
 

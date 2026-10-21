@@ -20,7 +20,7 @@ import MpvfxTheme
 public final class TimelineToolbar {
     public enum Item: Hashable, Sendable {
         case select, razor, slip, roll, snap, keyframe, autoKeyframe, split, removeSilence, addBeat
-        case trackHeight, zoomOut, zoomSlider, zoomIn, zoomPercent
+        case trackHeight, trackSmall, trackMedium, trackLarge, zoomFit, zoomOut, zoomSlider, zoomIn, zoomPercent
     }
     /// The TSX keyframe button's three looks (useKeyframeToggle state).
     public enum KeyframeState: Equatable, Sendable { case active, inactive, none }
@@ -29,7 +29,7 @@ public final class TimelineToolbar {
     /// Height of the strip: py-0.5 + h-7 buttons + the 1px border-b.
     public static let height = 33.0
     static let padX = 8.0, button = 28.0, gap = 2.0, iconSize = 16.0
-    static let heightSliderWidth = 64.0, zoomSliderWidth = 96.0, percentWidth = 38.0
+    static let zoomSliderWidth = 96.0, percentWidth = 88.0
     static let thumb = 10.0
 
     /// Remove-silence button: shown only when the host wires it (the TSX renders it only with onRemoveSilence).
@@ -83,18 +83,31 @@ public final class TimelineToolbar {
         TimelineZoom.percent(controller.zoomMode, manual: controller.manualZoomPercent, fit: controller.fitPixelsPerSecond)
     }
 
+    public var tickReadout: String {
+        let seconds = TimelineRuler.majorInterval(duration: view.duration, pps: view.pixelsPerSecond, frameRate: view.frameRate)
+        if seconds < 1 { return "\(Int((seconds * view.frameRate).rounded())) f/tick" }
+        if seconds >= 60 { return "\(Int(seconds / 60)) min/tick" }
+        return "\(Int(seconds)) s/tick"
+    }
+
     public func isEnabled(_ item: Item) -> Bool {
         switch item {
         case .keyframe: keyframeState != .none
         case .split: canSplit
         case .removeSilence: canRemoveSilence
         case .addBeat: canAddBeat
+        case .zoomOut: zoomPercent > TimelineZoom.minPercent
+        case .zoomFit: abs(zoomPercent - 100) > 0.01 || view.scrollX > 0
+        case .zoomIn: zoomPercent < TimelineZoom.maxPercent(fit: controller.fitPixelsPerSecond)
         default: true
         }
     }
     public func isPressed(_ item: Item) -> Bool {
         switch item {
         case .select, .razor, .slip, .roll: controller.tool == Self.tool(for: item)
+        case .trackSmall: view.trackHeight == 32
+        case .trackMedium: view.trackHeight == 48
+        case .trackLarge: view.trackHeight == 72
         case .snap: controller.snapEnabled
         case .autoKeyframe: controller.autoKeyframeEnabled
         default: false
@@ -124,10 +137,14 @@ public final class TimelineToolbar {
             return beatMusicClipId == nil ? "Add a music track with beat analysis to place beats"
                 : canAddBeat ? "Add beat at playhead" : "A beat already exists at the playhead"
         case .trackHeight: return "Track height"
-        case .zoomOut: return "Zoom out"
-        case .zoomSlider: return "\(Int(zoomPercent))%"
-        case .zoomIn: return "Zoom in"
-        case .zoomPercent: return "Timeline zoom level"
+        case .trackSmall: return "Small tracks (32 px)"
+        case .trackMedium: return "Medium tracks (48 px)"
+        case .trackLarge: return "Large tracks (72 px)"
+        case .zoomFit: return "Zoom to fit (⇧Z)"
+        case .zoomOut: return "Zoom out (⌘− / Ctrl−)"
+        case .zoomSlider: return "Zoom about the playhead (double-click to fit)"
+        case .zoomIn: return "Zoom in (⌘+ / Ctrl+)"
+        case .zoomPercent: return "Each ruler tick spans \(tickReadout)"
         }
     }
 
@@ -147,12 +164,15 @@ public final class TimelineToolbar {
             x += Self.button + Self.gap
             if i == 3 { x += 4 + 1 + 4 + Self.gap }     // divider after the tools: mx-1 h-4 w-px
         }
-        // Right group: label(icon + gap-1 + mx-1 slider mx-1, mr-2) | − | mx-1 slider mx-1 | + | ml-1 percent.
-        let labelW = Self.iconSize + 4 + 4 + Self.heightSliderWidth + 4
+        // Track-height presets | Fit | − | zoom slider | + | time per major tick.
+        let labelW = Self.iconSize + 4 + 3 * (Self.button + Self.gap)
         let zoomBoxW = 4 + Self.zoomSliderWidth + 4
-        let total = labelW + 8 + Self.gap + Self.button + Self.gap + zoomBoxW + Self.gap + Self.button + Self.gap + 4 + Self.percentWidth
+        let total = labelW + 8 + Self.gap + 40 + Self.gap + Self.button + Self.gap + zoomBoxW + Self.gap + Self.button + Self.gap + 4 + Self.percentWidth
         var r = max(x, width - Self.padX - total)
-        out.append((.trackHeight, box(r, labelW, 24))); r += labelW + 8 + Self.gap
+        out.append((.trackHeight, box(r, Self.iconSize, 24))); r += Self.iconSize + 4
+        for item in [Item.trackSmall, .trackMedium, .trackLarge] { out.append((item, box(r, Self.button))); r += Self.button + Self.gap }
+        r += 8 + Self.gap
+        out.append((.zoomFit, box(r, 40))); r += 40 + Self.gap
         out.append((.zoomOut, box(r, Self.button))); r += Self.button + Self.gap
         out.append((.zoomSlider, box(r, zoomBoxW, 24))); r += zoomBoxW + Self.gap
         out.append((.zoomIn, box(r, Self.button))); r += Self.button + Self.gap + 4
@@ -162,15 +182,10 @@ public final class TimelineToolbar {
 
     /// The range input inside a slider's box: track rect and thumb travel.
     func sliderTrack(_ item: Item, in r: CanvasRect) -> CanvasRect {
-        item == .trackHeight
-            ? CanvasRect(x: r.x + Self.iconSize + 4 + 4, y: r.y, width: Self.heightSliderWidth, height: r.height)
-            : CanvasRect(x: r.x + 4, y: r.y, width: Self.zoomSliderWidth, height: r.height)
+        CanvasRect(x: r.x + 4, y: r.y, width: Self.zoomSliderWidth, height: r.height)
     }
     /// 0...1 position of a slider's thumb.
     func sliderFraction(_ item: Item) -> Double {
-        if item == .trackHeight {
-            return (view.trackHeight - TimelineLayout.minTrackHeight) / (TimelineLayout.maxTrackHeight - TimelineLayout.minTrackHeight)
-        }
         return TimelineZoom.slider(percent: zoomPercent, fit: controller.fitPixelsPerSecond) / 100
     }
 
@@ -185,7 +200,7 @@ public final class TimelineToolbar {
         guard let item = item(atX: x, y: y, width: width), isEnabled(item) else { return nil }
         switch item {
         case .zoomSlider where clickCount >= 2: controller.zoomToFit()        // onDoubleClick → fit
-        case .zoomSlider, .trackHeight:
+        case .zoomSlider:
             draggingSlider = item; dragSlider(x: x, width: width)
         default: activate(item)
         }
@@ -204,12 +219,7 @@ public final class TimelineToolbar {
         guard let item = draggingSlider, let r = layout(width: width).first(where: { $0.item == item })?.rect else { return }
         let track = sliderTrack(item, in: r)
         let f = max(0, min(1, (x - track.x - Self.thumb / 2) / max(1, track.width - Self.thumb)))
-        if item == .trackHeight {
-            let steps = ((TimelineLayout.maxTrackHeight - TimelineLayout.minTrackHeight) / TimelineLayout.trackHeightStep)
-            controller.setTrackHeight(TimelineLayout.minTrackHeight + (f * steps).rounded() * TimelineLayout.trackHeightStep)
-        } else {
-            controller.setZoom(percent: TimelineZoom.percent(slider: f * 100, fit: controller.fitPixelsPerSecond))
-        }
+        controller.setZoom(percent: TimelineZoom.percent(slider: f * 100, fit: controller.fitPixelsPerSecond))
     }
 
     /// Run a button (also used for keyboard / menu equivalents).
@@ -225,6 +235,10 @@ public final class TimelineToolbar {
         case .addBeat:
             let t = controller.playback.currentTime
             if let onAddBeat { onAddBeat(t) } else { controller.addBeat(at: t) }
+        case .trackSmall: controller.setTrackHeight(32)
+        case .trackMedium: controller.setTrackHeight(48)
+        case .trackLarge: controller.setTrackHeight(72)
+        case .zoomFit: controller.zoomToFit()
         case .zoomOut: controller.zoom(in: false)
         case .zoomIn: controller.zoom(in: true)
         case .trackHeight, .zoomSlider, .zoomPercent: break
@@ -243,6 +257,9 @@ public final class TimelineToolbar {
         let items = layout(width: width)
         if let lastTool = items.first(where: { $0.item == .roll })?.rect {
             c.fillRect(CanvasRect(x: lastTool.maxX + Self.gap + 4, y: lastTool.centerY - 8, width: 1, height: 16), CanvasColor(T.neutral800))
+        }
+        if let r = items.first(where: { $0.item == .zoomFit })?.rect {
+            c.fillRect(CanvasRect(x: r.x - 8, y: 8, width: 1, height: 16), view.theme.gutterBorder)
         }
         for (item, r) in items { drawItem(c, item, r) }
     }
@@ -275,12 +292,13 @@ public final class TimelineToolbar {
                 c.stroke(TimelineIconPath.parse("M3 2h10M3 14h10M8 4v8M6 6l2-2 2 2M6 10l2 2 2-2", viewBox: 16, into: ib),
                          CanvasColor(T.neutral400), StrokeStyle(width: 1.2))
             }
+            if item == .trackHeight { return }
             drawSlider(c, track: sliderTrack(item, in: r), fraction: sliderFraction(item))
             return
         case .zoomPercent:
-            let f = CanvasFont.mono(11), s = "\(Int(zoomPercent))%"
+            let f = CanvasFont.mono(11), s = tickReadout
             let w = c.measureText(s, font: f).width
-            c.drawText(s, at: .init(r.maxX - w, r.centerY - 6.5), font: f, color: CanvasColor(T.neutral500))
+            c.drawText(s, at: .init(r.maxX - w, r.centerY - 6.5), font: f, color: view.theme.textSecondary)
             return
         default: break
         }
@@ -288,6 +306,10 @@ public final class TimelineToolbar {
         if let bg { c.fillRoundedRect(r, radius: 6, CanvasColor(bg)) }
         let col = CanvasColor(fg)
         switch item {
+        case .trackSmall, .trackMedium, .trackLarge, .zoomFit:
+            let label = item == .trackSmall ? "S" : item == .trackMedium ? "M" : item == .trackLarge ? "L" : "Fit"
+            let font = CanvasFont(size: 11, weight: .medium)
+            c.drawText(label, at: .init(r.centerX - c.measureText(label, font: font).width / 2, r.centerY - 5.5), font: font, color: view.theme.textPrimary)
         case .select, .razor, .slip, .roll: Self.drawToolGlyph(c, item, icon, col)
         case .snap: Self.drawMagnet(c, icon, col)
         case .keyframe:

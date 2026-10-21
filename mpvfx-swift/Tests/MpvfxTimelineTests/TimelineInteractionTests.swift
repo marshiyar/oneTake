@@ -18,13 +18,13 @@ import MpvfxCanvas
 
 final class TimelineZoomTests: XCTestCase {
     func testFitAndClamp() {
-        // docs/TIMELINE.md "Zoom": fit spans the end plus its margin (10 s + 1 s); half the fit is the zoom-out limit.
+        // docs/TIMELINE.md "Zoom": fit spans the end plus its margin (10 s + 1 s); fit is the zoom-out limit.
         XCTAssertEqual(TimelineZoom.fitPixelsPerSecond(viewportWidth: 1266, duration: 10, contentOrigin: 264), 1000.0 / 11)
         XCTAssertEqual(TimelineZoom.fitPixelsPerSecond(viewportWidth: 200, duration: 10, contentOrigin: 264), 100)
         XCTAssertEqual(TimelineZoom.maxPercent(fit: 10), 14400)
-        XCTAssertEqual(TimelineZoom.clamp(3, fit: 10), 50)
+        XCTAssertEqual(TimelineZoom.clamp(3, fit: 10), 100)
         XCTAssertEqual(TimelineZoom.next(true, mode: .fit, manual: 500, fit: 10), 200)
-        XCTAssertEqual(TimelineZoom.next(false, mode: .manual, manual: 150, fit: 10), 75)
+        XCTAssertEqual(TimelineZoom.next(false, mode: .manual, manual: 150, fit: 10), 100)
         XCTAssertEqual(TimelineZoom.pinch(deltaY: 0, mode: .manual, manual: 300, fit: 10), 300)
         XCTAssertEqual(TimelineZoom.pinch(deltaY: -50, mode: .manual, manual: 100, fit: 10), (100 * exp(0.7)).rounded())
     }
@@ -87,8 +87,8 @@ final class TimelineControllerTests: XCTestCase {
         XCTAssertEqual(c.view.tracks.map(\.id), ["track:v2", "track:v1", "track:a1"], "displayTrack order")
         XCTAssertEqual(e.duration, 11)
         XCTAssertEqual(c.view.pixelsPerSecond, 100, accuracy: 1e-9)
-        XCTAssertEqual(TimelineView.originGapColor(c.view.tracks[0].clips, theme: .default), CanvasColor(hex: "#3B82F6"))
-        XCTAssertEqual(TimelineView.originGapColor(c.view.tracks[1].clips, theme: .default), CanvasColor(hex: "#FF5353"))
+        XCTAssertNil(TimelineView.originGapColor(c.view.tracks[0].clips, theme: .default))
+        XCTAssertNil(TimelineView.originGapColor(c.view.tracks[1].clips, theme: .default))
     }
 
     func testHitTestAndScrub() throws {

@@ -35,7 +35,7 @@ public final class TimelineRegion {
     public var media: TimelineMediaFeeder?
     var top: Double { TimelineToolbar.height }
     /// Status-line text for what is under the pointer: the track header control's action (nil elsewhere).
-    public var hint: String? { controller.headerHint }
+    public var hint: String? { toolbar.hovered.map { toolbar.tooltip($0) } ?? controller.headerHint }
 
     public init(controller: TimelineController, preferences: TimelineUIPreferencesStore? = nil) {
         self.controller = controller

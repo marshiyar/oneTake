@@ -35,7 +35,7 @@ final class TimelineToolbarTests: XCTestCase {
         let (tb, _, _) = try make()
         let items = tb.layout(width: Self.width)
         XCTAssertEqual(items.map(\.item), [.select, .razor, .slip, .roll, .snap, .keyframe, .autoKeyframe, .split, .addBeat,
-                                           .trackHeight, .zoomOut, .zoomSlider, .zoomIn, .zoomPercent])
+                                           .trackHeight, .trackSmall, .trackMedium, .trackLarge, .zoomFit, .zoomOut, .zoomSlider, .zoomIn, .zoomPercent])
         XCTAssertEqual(items[0].rect, CanvasRect(x: 8, y: 2, width: 28, height: 28))
         XCTAssertEqual(items[1].rect.x, 38)
         XCTAssertEqual(items[4].rect.x, 38 + 3 * (28 + 2) + 9 + 2, "divider mx-1 w-px between the four tools and the actions")
@@ -101,33 +101,28 @@ final class TimelineToolbarTests: XCTestCase {
         c.playback.seek(4); click(tb, .addBeat); XCTAssertEqual(added, 4)
     }
 
-    func testTrackHeightSliderStepsAndResizesRows() throws {
+    func testTrackHeightPresetsAndPersistedCustomHeight() throws {
         let (tb, c, _) = try make()
         var saved: Double?
         c.onTrackHeightChange = { saved = $0 }
-        XCTAssertEqual(c.view.trackHeight, 28, "compact rows by default (docs/DESIGN.md step 4)")
-        let r = tb.layout(width: Self.width).first { $0.item == .trackHeight }!.rect
-        let track = tb.sliderTrack(.trackHeight, in: r)
-        tb.pointerDown(x: track.maxX - 1, y: r.centerY, width: Self.width); tb.pointerUp()
-        XCTAssertEqual(c.view.trackHeight, 96); XCTAssertEqual(saved, 96)
-        tb.pointerDown(x: track.centerX, y: r.centerY, width: Self.width); tb.pointerUp()
-        XCTAssertEqual(c.view.trackHeight.truncatingRemainder(dividingBy: 4), 0, "the slider steps by 4 px")
-        tb.pointerDown(x: track.x, y: r.centerY, width: Self.width); tb.pointerUp()
-        XCTAssertEqual(c.view.trackHeight, 28)
-        c.setTrackHeight(61); XCTAssertEqual(c.view.trackHeight, 61, "rounded, clamped (the store keeps any integer)")
+        for (item, height) in [(TimelineToolbar.Item.trackSmall, 32.0), (.trackMedium, 48), (.trackLarge, 72)] {
+            click(tb, item)
+            XCTAssertEqual(c.view.trackHeight, height)
+            XCTAssertTrue(tb.isPressed(item))
+            XCTAssertEqual(c.view.rowTop(1) - c.view.rowTop(0), height)
+        }
+        XCTAssertEqual(saved, 72)
+        c.setTrackHeight(61)
+        XCTAssertFalse(tb.isPressed(.trackSmall)); XCTAssertFalse(tb.isPressed(.trackMedium)); XCTAssertFalse(tb.isPressed(.trackLarge))
+        c.setTrackHeight(1); XCTAssertEqual(c.view.trackHeight, 32)
         c.setTrackHeight(200); XCTAssertEqual(c.view.trackHeight, 96)
-        c.setTrackHeight(64)
-        XCTAssertEqual(c.view.rowTop(1) - c.view.rowTop(0), 64)
-        let clip = c.view.tracks[1].clips[0]
-        XCTAssertEqual(c.view.clipRect(track: 1, clip).height, 64 - 2 * TimelineLayout.clipY)
-        XCTAssertEqual(c.hitTest(x: c.view.x(for: 1), y: c.view.rowTop(1) + 60), .clip(id: "clip:a", row: 1, edge: nil))
     }
 
     func testZoomButtonsSliderAndPercent() throws {
         let (tb, c, _) = try make()
         XCTAssertEqual(tb.zoomPercent, 100)
         click(tb, .zoomIn); XCTAssertEqual(tb.zoomPercent, 200)
-        click(tb, .zoomOut); click(tb, .zoomOut); XCTAssertEqual(tb.zoomPercent, 50)
+        click(tb, .zoomOut); click(tb, .zoomOut); XCTAssertEqual(tb.zoomPercent, 100)
         let fit = c.fitPixelsPerSecond
         XCTAssertEqual(TimelineZoom.percent(slider: TimelineZoom.slider(percent: 400, fit: fit), fit: fit), 400)
         XCTAssertEqual(TimelineZoom.slider(percent: TimelineZoom.minPercent, fit: fit), 0)
@@ -137,7 +132,7 @@ final class TimelineToolbarTests: XCTestCase {
         XCTAssertEqual(tb.zoomPercent, TimelineZoom.maxPercent(fit: fit))
         click(tb, .zoomSlider, clicks: 2)
         XCTAssertEqual(c.zoomMode, .fit, "double-click returns to fit")
-        XCTAssertEqual(tb.tooltip(.zoomSlider), "100%")
+        XCTAssertTrue(tb.tooltip(.zoomSlider).contains("double-click to fit"))
     }
 
     func testIconPathParsesAbsoluteAndRelative() {

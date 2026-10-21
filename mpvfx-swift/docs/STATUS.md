@@ -1,5 +1,7 @@
 # Status
 
+Timeline controls (#165): Fit button and ⇧Z; fit is the zoom-out limit; the zoom readout follows the ruler's major interval. S/M/L rows are 32/48/72 px with pressed state. Clip edits shorten an explicit sequence duration together with their undo step (omitted durations stay inferred). The pre-zero gutter has no identity fill; clips show `fx N` pills and quiet effect strips; toolbar hover names reach the status line in readable text. Native CoreGraphics timeline fixture captures cover 1440×900 and 1280×800 in both themes; full shell/GPU captures remain unverified.
+
 What the app does at this revision, feature by feature. "Works" means wired into the running Linux, macOS and Windows app
 and covered by tests; "partial" means some of it is there; "stub" means the call exists but throws or does nothing;
 "missing" means there is no code for it.

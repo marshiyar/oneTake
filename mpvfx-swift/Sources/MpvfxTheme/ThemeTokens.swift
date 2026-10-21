@@ -308,6 +308,4 @@ public enum ThemeTokens {
     public static let scopeSkin = ThemeColor(0xFBBF24), scopeClip = ThemeColor(0xFF3B30)
     /// Timeline band edge colours (identity, both modes).
     public static let bandEdges: [ThemeColor] = [0x3CE6AC, 0x5BA6FF, 0xBE77FF, 0xFFB04D, 0xFF6799].map { ThemeColor($0) }
-    /// Timeline pre-roll stripe (preRollBackground).
-    public static let preRoll = ThemeColor(0xFF5353)
 }

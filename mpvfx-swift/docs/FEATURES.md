@@ -1,5 +1,7 @@
 # Feature inventory
 
+Timeline controls (#165): Fit button and ⇧Z; fit is the zoom-out limit; the zoom readout follows the ruler's major interval. S/M/L rows are 32/48/72 px with pressed state. Clip edits shorten an explicit sequence duration together with their undo step (omitted durations stay inferred). The pre-zero gutter has no identity fill; clips show `fx N` pills and quiet effect strips; toolbar hover names reach the status line in readable text. Native CoreGraphics timeline fixture captures cover 1440×900 and 1280×800 in both themes; full shell/GPU captures remain unverified.
+
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript
 or a web view. The design audit in §11 is the floor for how the editor looks.
