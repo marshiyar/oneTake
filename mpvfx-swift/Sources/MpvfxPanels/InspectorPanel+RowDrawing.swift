@@ -69,7 +69,7 @@ extension InspectorPanel {
 
     static func sliderAccessories(_ s: InspectorRow.Slider) -> Accessories {
         let custom = s.tier == .explicitCustom && s.reset != nil
-        return Accessories(key: s.key, keyframe: s.settings == nil ? s.keyframe : nil, resetGlyph: custom, resetHit: custom)
+        return Accessories(key: s.key, keyframe: s.keyframe, resetGlyph: custom, resetHit: custom)
     }
 
     static func numberAccessories(_ n: InspectorRow.Number, hovering: Bool) -> Accessories {
@@ -223,24 +223,36 @@ extension InspectorPanel {
         if n.scrub != nil && !n.disabled { addHit(CanvasRect(x: line.x, y: line.y, width: width, height: line.height), .scrub(n.key)) }
     }
 
+    /// A focused field's backdrop, then its caret after the draft; a read-only value shows its text selected instead.
+    func drawFieldEditing(_ c: CanvasContext, _ tr: CanvasRect, text: String, font: CanvasFont, readOnly: Bool) {
+        c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput)
+        guard readOnly else {
+            c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent)
+            return
+        }
+        let w = min(tr.width, c.measureText(text, font: font).width)
+        c.fillRect(CanvasRect(x: tr.maxX - w - 1, y: tr.y + 1, width: w + 2, height: tr.height - 2), PanelTheme.accent.withAlpha(0.3))
+    }
+
     /// The value field in `slot` (its line centred): the value, the draft and caret while typed, the underline, the hit.
     func drawNumberField(_ c: CanvasContext, _ slot: CanvasRect, _ n: InspectorRow.Number) {
         let field = CanvasRect(x: slot.x, y: slot.midY - 9.25, width: slot.width, height: 18.5)
+        let textX = n.swatch.map { drawSwatchSlot($0, field: field, midY: slot.midY, c) } ?? field.x
         let editing = self.field?.key == n.key
         var text = n.text
         if let s = scrub, s.key == n.key, let fmt = n.scrub?.format { text = fmt(s.current) }
         if editing, let f = self.field { text = f.draft }
-        let tr = CanvasRect(x: field.x, y: field.y, width: field.width, height: 16.5)
-        if editing { c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput) }
+        let tr = CanvasRect(x: textX, y: field.y, width: max(0, field.maxX - textX), height: 16.5)
+        if editing { drawFieldEditing(c, tr, text: text, font: PanelTheme.mono(11), readOnly: n.readOnly) }
         PanelDraw.text(c, text, in: tr, font: PanelTheme.mono(11),
                        color: n.tier.valueInk(disabled: n.disabled, typing: editing, adjusting: scrub?.key == n.key), align: .right)
-        if editing { c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent) }   // caret
         let hover = isHovering(n.key)
         let underline: CanvasColor = n.tier == .explicitCustom
             ? PanelTheme.accent.withAlpha(hover ? 0.7 : 0.3)
             : PanelTheme.panelBorderInput.withAlpha(hover ? 1 : 0.5)
         c.fillRect(CanvasRect(x: field.x, y: field.maxY - 1, width: field.width, height: 1).snapped, editing ? PanelTheme.accent : underline)
         if !n.disabled { addHit(CanvasRect(x: field.x, y: slot.y, width: field.width, height: slot.height), .field(n.key)) }
+        if let sw = n.swatch { addHit(Self.swatchTarget(field: field, midY: slot.midY), .button(sw.key)) }   // after the field: it wins
     }
 
     // MARK: Accessories (reset, keyframes)
@@ -324,16 +336,20 @@ extension InspectorPanel {
     /// FlatSlider: the grey label (rowLabel) in the label column; the track (2px bg-panel-hover line, a 1×4 text-5
     /// centre tick, a text-5 fill from the left only for a custom value; knob 7px text-4, 8px white when custom) from
     /// the control column to the mono value ending at the value edge, in the tier colour; then the reset cell and the
-    /// keyframe gutter, which holds a settings gear instead on the Finish rows. Stacked: the label line on top with the
+    /// keyframe gutter, with a separate settings gear on the Finish rows. Stacked: the label line on top with the
     /// accessories, the track and value below.
     func drawSlider(_ c: CanvasContext, _ r: CanvasRect, _ s: InspectorRow.Slider, stacked: Bool = false) {
         let lines = stacked ? Self.stackedLines(r) : (r, r)
-        if let st = s.settings { drawGear(c, line: lines.0, key: s.key, active: st.active) }
-        let edge = drawAccessories(c, line: lines.0, Self.sliderAccessories(s))
+        if let st = s.settings {
+            let gearLine = CanvasRect(x: lines.0.x, y: lines.0.y, width: lines.0.width - Self.keyframeGutter - PanelGrid.itemGap - PanelGrid.minTarget - PanelGrid.itemGap, height: lines.0.height)
+            drawGear(c, line: gearLine, key: s.key + Self.gearSuffix, active: st.active)
+        }
+        let gearSpace = s.settings == nil ? 0.0 : PanelGrid.minTarget + PanelGrid.itemGap
+        let edge = drawAccessories(c, line: lines.0, Self.sliderAccessories(s)) - gearSpace
         let cols = PanelGrid.columns(lines.0)
         let labelW = stacked ? max(0, edge - lines.0.x - PanelGrid.columnGap) : cols.label.width
         PanelDraw.text(c, s.label, in: CanvasRect(x: lines.0.x, y: lines.0.midY - 8.25, width: labelW, height: 16.5), font: Self.rowFont, color: s.tier.labelColor)
-        drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: stacked ? lines.1.maxX : Self.valueEdge(lines.1))
+        drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: stacked ? lines.1.maxX : edge)
     }
 
     /// The settings gear in the gutter's last cell.

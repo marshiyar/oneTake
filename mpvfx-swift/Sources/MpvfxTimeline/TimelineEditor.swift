@@ -100,6 +100,7 @@ public final class TimelineEditor {
                 track.groupId = t.clips.first { $0.audioGroupId?.isEmpty == false }?.audioGroupId
                 track.hidden = t.hidden == true
                 track.locked = t.locked == true
+                track.soloed = t.soloed == true
                 track.muted = !t.clips.isEmpty && t.clips.allSatisfy(\.muted)
                 return track
             }

@@ -83,6 +83,8 @@ public struct PanelPreferences: Codable, Equatable, Sendable {
     public var openInspectorGroup: String?
     /// Timeline section height (NLEContext / studioUiPreferences `timelineHeight`).
     public var timelineHeight: Double?
+    /// What the Grade scopes read (`clip` | `program`); nothing saved is `clip`.
+    public var scopeSource: ColorScopes.Source?
     public init() {}
 }
 

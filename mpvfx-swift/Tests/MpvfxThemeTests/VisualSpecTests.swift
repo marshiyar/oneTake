@@ -31,6 +31,8 @@ final class VisualSpecTests: XCTestCase {
         "viewport": T.viewportPair, "studioAccent": T.studioAccentPair, "mint": T.mintPair, "accentEdge": T.accentEdgePair,
         "clipVideo": T.clipVideoPair, "clipVideoHover": T.clipVideoHoverPair, "clipAudio": T.clipAudioPair,
         "clipAudioHover": T.clipAudioHoverPair, "waveform": T.waveformPair,
+        "trackControlIdle": T.trackControlIdlePair, "trackControlHover": T.trackControlHoverPair,
+        "trackTagText": T.trackTagTextPair, "trackTagOutline": T.trackTagOutlinePair,
     ]
 
     /// `| \`name\` | \`#RRGGBB\` | ... |` rows of the colour table.

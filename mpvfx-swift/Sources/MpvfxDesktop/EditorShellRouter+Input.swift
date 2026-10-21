@@ -19,8 +19,17 @@ import MpvfxTimeline
 // MARK: Draw
 
 extension EditorShellRouter {
-    func draw(_ c: CanvasContext, size: CanvasSize) {
-        if size != self.size { self.size = size }
+    func draw(_ c: CanvasContext, size window: CanvasSize) {
+        resized(window)
+        let k = interfaceScale
+        guard k != 1 else { drawLayout(c); return }
+        c.save()
+        c.scale(k, k)
+        drawLayout(c)
+        c.restore()
+    }
+
+    private func drawLayout(_ c: CanvasContext) {
         let f = relayout()
         if isFullscreen() {
             c.fillRect(f.preview, PanelTheme.neutral950)
@@ -86,6 +95,7 @@ extension EditorShellRouter {
     func pointerUp(x: Double, y: Double) { pointerUp(x: x, y: y, button: PointerButton.primary) }
 
     func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
+        let (x, y) = toLayout(x, y)
         let p = CanvasPoint(x, y)
         if modalOpen, captured == nil {
             if button == PointerButton.primary { _ = modal?.pointerDown(p) }
@@ -104,6 +114,7 @@ extension EditorShellRouter {
     }
 
     func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
+        let (x, y) = toLayout(x, y)
         let p = CanvasPoint(x, y)
         if movedOverOverlay(p, modifiers) { return }
         if let region = captured { movedWhileCaptured(region, x, y, modifiers); return }
@@ -146,6 +157,7 @@ extension EditorShellRouter {
     }
 
     func pointerUp(x: Double, y: Double, button: Int) {
+        let (x, y) = toLayout(x, y)
         if dockCaptured, button == PointerButton.primary {
             dockCaptured = false
             dock.pointerUp(CanvasPoint(x, y))
@@ -166,6 +178,7 @@ extension EditorShellRouter {
 
     /// On a tab bar: the group's ⋯ menu. In a pane: the pane's own context menu.
     func secondaryClick(x: Double, y: Double) {
+        let (x, y) = toLayout(x, y)
         if modalOpen || dockMenu.isOpen { return }
         if !isFullscreen(), let m = dock.menuAnchor(at: CanvasPoint(x, y)) { openDockMenu(m.group, anchor: m.anchor); return }
         guard let region = region(at: x, y) else { return }

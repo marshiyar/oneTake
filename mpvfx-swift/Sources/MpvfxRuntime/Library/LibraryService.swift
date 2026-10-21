@@ -319,6 +319,25 @@ public final class LibraryService: @unchecked Sendable {
         let l = try get(libraryId)
         _ = try await queue.run(l.root) { [self] in try command(l, "event", [newUUID(), try libraryTitle(name)]); return true }
     }
+    /// Renames an event in the catalog. Only the name changes: the id, its projects and assets stay as they are.
+    public func renameEvent(_ libraryId: String, _ eventId: String, _ name: String) async throws {
+        let l = try get(libraryId), title = try libraryTitle(name), id = try checkLibraryId(eventId)
+        _ = try await queue.run(l.root) { [self] in
+            guard catalog(l).events.contains(where: { $0.id == id }) else { throw LibraryError("Library event not found") }
+            try command(l, "renameEvent", [id, title])
+            return true
+        }
+    }
+    /// Renames a project in the catalog, which is where the navigator and the project list read its name; its folder,
+    /// id and `project.json` are unchanged, so an open editor and its saves are unaffected.
+    public func renameProject(_ libraryId: String, _ projectId: String, _ name: String) async throws {
+        let l = try get(libraryId), title = try libraryTitle(name), id = try checkLibraryId(projectId)
+        _ = try await queue.run(l.root) { [self] in
+            _ = try Self.catalogProject(catalog(l), id)
+            try command(l, "renameProject", [id, title])
+            return true
+        }
+    }
     /// :382 initializeProject: a new project is just its native document, the starter document every project starts from.
     private func initializeProject(_ l: OpenLibrary, _ projectId: String) throws {
         let root = PosixPath.join(l.root, "Projects", try checkLibraryId(projectId))
@@ -564,6 +583,17 @@ public final class LibraryService: @unchecked Sendable {
         }
         let source = try ProjectFS.realpath(try libraryWithin(l.root, job.output))
         _ = try libraryWithin(try ProjectFS.realpath(PosixPath.join(l.root, "renders")), source)
+        do { try publishSavedOutput(source, destination, replaceApproved: replaceApproved) }
+        catch let e as ProjectFSError where e.code == "EEXIST" {
+            let name = PosixPath.basename(destination)
+            throw LibraryError("A file named \(name) already exists there. It was left unchanged; choose another name.")
+        } catch let e as ProjectFSError {
+            throw LibraryError("Could not save the export as \(PosixPath.basename(destination)): \(e.message)")
+        }
+    }
+    /// Copies `source` beside `destination` (fsynced), then renames it into place when replacing was approved, else
+    /// links it there without replacing anything (EEXIST when a file is there). The staged copy is always removed.
+    private func publishSavedOutput(_ source: String, _ destination: String, replaceApproved: Bool) throws {
         let staged = PosixPath.join(PosixPath.dirname(destination), ".mpvfx-output-\(newUUID())")
         defer { rmForce(staged) }
         try copyFileExclusiveStreaming(source, staged)
