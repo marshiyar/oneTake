@@ -1,0 +1,44 @@
+name: pr-hygiene
+
+# An advisory report on each pull request's shape (.github/ci/pr_hygiene.py): over 400 changed lines outside tests,
+# fixtures and generated files, over 15 files, more than one owner area under mpvfx-swift/Sources, or a `bug` issue
+# closed with no change under mpvfx-swift/Tests. Job summary and warning annotations only: it never fails and is never
+# a required check. It reads the pull request through the API's file list and never checks out its code: the script
+# comes from the base commit (a pull request that changes the script is judged by the old one; quality-ratchets runs
+# the new one's tests). Read-only token.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: pr-hygiene-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: .github/ci
+          persist-credentials: false
+      - name: Slice size, owner areas and bug-fix tests (advisory)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ ! -f .github/ci/pr_hygiene.py ]; then
+            echo "::notice title=PR hygiene::the base commit has no .github/ci/pr_hygiene.py yet; nothing to report"
+            exit 0
+          fi
+          python3 -I -B .github/ci/pr_hygiene.py --repo "$REPO" --pr "$PR"

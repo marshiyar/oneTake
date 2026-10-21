@@ -1,0 +1,260 @@
+{
+  "about": "Crash constructs per Swift file under mpvfx-swift/Sources (.github/ci/crash_constructs.py). Counts only go down: run `python3 -I -B .github/ci/crash_constructs.py --update` after removing some.",
+  "totals": {
+    "force-unwrap": 279,
+    "try!": 12,
+    "as!": 7,
+    "fatalError": 16,
+    "precondition": 7
+  },
+  "counts": {
+    "mpvfx-swift/Sources/MpvfxAudio/AudioGraphFixtures.swift": {
+      "try!": 6
+    },
+    "mpvfx-swift/Sources/MpvfxAudio/CoreAudioOutput.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxAudio/GraphAudioSource.swift": {
+      "precondition": 1
+    },
+    "mpvfx-swift/Sources/MpvfxAudioBench/main.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxAudioGraph/AudioGraph.swift": {
+      "force-unwrap": 5
+    },
+    "mpvfx-swift/Sources/MpvfxAudioGraph/Automation.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxAudioGraph/Carve.swift": {
+      "force-unwrap": 2,
+      "try!": 3
+    },
+    "mpvfx-swift/Sources/MpvfxAudioGraph/FxChainProcessor.swift": {
+      "force-unwrap": 2,
+      "fatalError": 2
+    },
+    "mpvfx-swift/Sources/MpvfxAudioGraph/JSSupport.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxAudioGraph/Leveller.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxCanvas/CairoCanvas.swift": {
+      "force-unwrap": 8
+    },
+    "mpvfx-swift/Sources/MpvfxCanvas/Canvas.swift": {
+      "precondition": 1
+    },
+    "mpvfx-swift/Sources/MpvfxCanvas/CoreGraphicsCanvas.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxColor/ColorGradeParams.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxColor/ColorGradeRenderer.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxColor/CubeLUT.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxColor/GradeShader.swift": {
+      "precondition": 3
+    },
+    "mpvfx-swift/Sources/MpvfxColorBench/main.swift": {
+      "fatalError": 2
+    },
+    "mpvfx-swift/Sources/MpvfxDesktop/AudioFxStress.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxDesktop/EditorSession+Panels.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxDesktop/GtkCanvasHost.swift": {
+      "force-unwrap": 22
+    },
+    "mpvfx-swift/Sources/MpvfxDesktop/GtkDialogs.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxDesktop/LinuxShell.swift": {
+      "force-unwrap": 2,
+      "precondition": 1
+    },
+    "mpvfx-swift/Sources/MpvfxDesktop/MacCanvasHost.swift": {
+      "fatalError": 1
+    },
+    "mpvfx-swift/Sources/MpvfxDesktop/MainThread.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxDesktop/WindowsCanvasHost.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxDesktopCore/DurableWriteImpl.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxDesktopCore/LibraryCommands.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxMetal/MetalGradePipeline.swift": {
+      "force-unwrap": 20
+    },
+    "mpvfx-swift/Sources/MpvfxPanels/InspectorPanel+AudioFx.swift": {
+      "force-unwrap": 4
+    },
+    "mpvfx-swift/Sources/MpvfxPanels/InspectorPanel.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxPanels/LeftSidebarPanel.swift": {
+      "force-unwrap": 4
+    },
+    "mpvfx-swift/Sources/MpvfxPanels/PanelPath.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxPanels/PanelTheme.swift": {
+      "force-unwrap": 11
+    },
+    "mpvfx-swift/Sources/MpvfxPanels/RightPanel.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxPanels/TimelineEditor+Style.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxPlayer/GestureRecording.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxPlayer/PlayerView.swift": {
+      "force-unwrap": 7
+    },
+    "mpvfx-swift/Sources/MpvfxPlayer/PreviewFrameCache.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxPlayer/PreviewGrader.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxPlayer/PreviewPreferences.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxPlayer/SnapEngine.swift": {
+      "force-unwrap": 3
+    },
+    "mpvfx-swift/Sources/MpvfxRuntime/Media/LocalImport.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxRuntime/Projects/FileMoves.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxRuntime/Projects/FileTransaction.swift": {
+      "force-unwrap": 12
+    },
+    "mpvfx-swift/Sources/MpvfxRuntime/Projects/NativeFile.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxRuntime/Projects/NativeFilePOSIX.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxRuntime/Projects/NativeFileWin32.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxRuntime/Projects/ProjectMediaCatalog.swift": {
+      "force-unwrap": 3
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Export/ExportPolicy.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Media/JSStringParity.swift": {
+      "force-unwrap": 1,
+      "try!": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Media/MediaUrl.swift": {
+      "try!": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Media/SilenceDetection.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeGestureRecording.swift": {
+      "force-unwrap": 6
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeJSONValue.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeJSONValueDecoder.swift": {
+      "force-unwrap": 1,
+      "as!": 4
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeJSONValueEncoder.swift": {
+      "as!": 3,
+      "fatalError": 10
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeKeyframeTypes.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeOrderedMap.swift": {
+      "force-unwrap": 6
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectDocument.swift": {
+      "force-unwrap": 6
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectDocumentValidation.swift": {
+      "force-unwrap": 30
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectDocumentValidationHelpers.swift": {
+      "force-unwrap": 36
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectKeyframeCommands.swift": {
+      "force-unwrap": 6,
+      "fatalError": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectKeyframePositionCommands.swift": {
+      "force-unwrap": 2,
+      "precondition": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectPropertyCommands.swift": {
+      "force-unwrap": 5
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativePropertyEditPlan.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeTimelineAssetInsertPlan.swift": {
+      "force-unwrap": 9
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeTimelineDeletePlan.swift": {
+      "try!": 1
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeTimelineMultiMovePlan.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxShared/Project/NativeTimelineMultiRangeEditPlan.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxTheme/FxRackTokens.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxTheme/ThemeTokens.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxTimeline/TimelineClipSwap.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxTimeline/TimelineEditor+Audio.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxTimeline/TimelineEditor+Clipboard.swift": {
+      "force-unwrap": 4
+    },
+    "mpvfx-swift/Sources/MpvfxTimeline/TimelineKeyframeNavigation.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxTimeline/TimelineKeyframeSelection.swift": {
+      "force-unwrap": 1
+    },
+    "mpvfx-swift/Sources/MpvfxTimeline/TimelineTrackMove.swift": {
+      "force-unwrap": 4
+    },
+    "mpvfx-swift/Sources/MpvfxTimeline/TimelineView.swift": {
+      "force-unwrap": 2
+    },
+    "mpvfx-swift/Sources/MpvfxTimeline/TimelineZoom.swift": {
+      "force-unwrap": 1
+    }
+  }
+}
