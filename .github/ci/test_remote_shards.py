@@ -88,7 +88,9 @@ class Plan(unittest.TestCase):
             script = f.read()
         self.assertIn("installed=false", script)
         self.assertIn('echo "installed=$installed"', script)
-        self.assertIn('[ "$code" = 200 ] && installed=true', script)
+        # Installed and able to set statuses and upload here: the token it asks for is granted (201).
+        self.assertIn('[ "$code" = 201 ] && installed=true', script)
+        self.assertIn('"permissions":{"statuses":"write","contents":"write"}', script)
         self.assertNotIn("set -e", script)
 
     def test_the_installation_check_writes_only_its_output_line_to_stdout(self):
