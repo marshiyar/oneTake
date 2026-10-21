@@ -117,6 +117,22 @@ final class ScopeSourceTests: XCTestCase {
         XCTAssertNotNil(analyzer.bitmap(.waveform, of: Self.ramp(30)), "the newest frame is the analysed one")
     }
 
+    /// A refresh (or closing the scopes) while a frame is being analysed: that analysis is dropped, not shown after
+    /// the reset, and the same frame is analysed again on the next request.
+    func testAResetDropsTheAnalysisInFlight() {
+        let analyzer = ScopeAnalyzer()
+        analyzer.beforePublish = { [unowned analyzer] in analyzer.reset() }   // the reset lands mid-analysis
+        XCTAssertNil(analyzer.bitmap(.waveform, of: Self.ramp()))
+        analyzer.wait()
+        XCTAssertNil(analyzer.last(.waveform), "the bitmap analysed before the reset is not published")
+        XCTAssertEqual(analyzer.analysed, 0)
+        analyzer.beforePublish = nil
+        XCTAssertNil(analyzer.bitmap(.waveform, of: Self.ramp()), "the same frame is queued again")
+        analyzer.wait()
+        XCTAssertNotNil(analyzer.bitmap(.waveform, of: Self.ramp()))
+        XCTAssertEqual(analyzer.analysed, 1)
+    }
+
     #if os(Linux)   // Cairo pixels
     override func tearDown() { Theme.setMode(.dark) }
 

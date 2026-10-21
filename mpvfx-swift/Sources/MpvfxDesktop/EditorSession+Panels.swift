@@ -45,7 +45,7 @@ final class SessionPanels {
     var renders = RenderQueueState()
     /// Grade preset tile thumbnails, and the composition time they show.
     private(set) var presetPreviews: PresetPreviewRenderer?
-    private var presetPreviewTime = 0.0
+    private(set) var presetPreviewTime = 0.0
     private var panelsAnimating = false
 
     init(session: EditorSession, layout: PanelLayoutState, userData: String) {
@@ -456,36 +456,6 @@ final class SessionPanels {
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { renderer.reset() }
         wireScopes(inspector, clip: renderer)
-    }
-
-    /// Grade scopes: Clip reads the selected clip's own graded frame (PresetPreviewRenderer), Program the composited
-    /// program frame (ProgramScopeRenderer), both at the preset tiles' time while playing and at the playhead
-    /// otherwise. Frames and scope bitmaps are made off the UI thread; each finished one redraws.
-    private func wireScopes(_ inspector: InspectorPanel, clip renderer: PresetPreviewRenderer) {
-        let program = ProgramScopeRenderer(compositor: session.compositor)
-        program.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
-        inspector.scopeAnalyzer.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
-        inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
-            guard let self, let inspector else { return .unavailable }
-            return Self.panelState(renderer.gradedFrame(clipId: clipId, time: self.scopeTime(inspector), pixelWidth: w, pixelHeight: h))
-        }
-        inspector.programScopeFrame = { [weak self, weak inspector] w, h in
-            guard let self, let inspector else { return .unavailable }
-            return Self.panelState(program.frame(at: self.scopeTime(inspector), pixelWidth: w, pixelHeight: h))
-        }
-    }
-
-    /// The composition time the scopes show: the preset tiles' frame while playing, else the playhead.
-    private func scopeTime(_ inspector: InspectorPanel) -> Double {
-        session.playback.isPlaying ? presetPreviewTime : inspector.time
-    }
-
-    private static func panelState(_ state: PresetPreviewRenderer.State) -> PresetPreviewState {
-        switch state {
-        case .ready(let img): return .ready(img)
-        case .rendering: return .rendering
-        case .unavailable: return .unavailable
-        }
     }
 
     /// LUT "+": choose .cube files; they are copied into the project and become selectable LUTs.

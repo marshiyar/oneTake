@@ -33,6 +33,10 @@ public final class ScopeAnalyzer: @unchecked Sendable {
     var scheduled = false
     var finished: (key: Key, image: CanvasImage)?
     var analysedCount = 0
+    /// Bumped by `reset`; an analysis started under an older generation is not published.
+    var generation = 0
+    /// Runs on the analysis queue between analysing a frame and publishing it (tests: a reset while in flight).
+    var beforePublish: (() -> Void)?
 
     public init() {}
 
@@ -59,8 +63,11 @@ public final class ScopeAnalyzer: @unchecked Sendable {
         return finished?.key.mode == mode ? finished?.image : nil
     }
 
-    /// Forgets the finished bitmap and any queued request (the refresh button, closing the scopes).
-    public func reset() { lock.lock(); finished = nil; pending = nil; lock.unlock() }
+    /// Forgets the finished bitmap, any queued request and the analysis in flight, whose result is then dropped
+    /// (the refresh button, closing the scopes): nothing analysed before a reset is shown after it.
+    public func reset() {
+        lock.lock(); finished = nil; pending = nil; running = nil; generation &+= 1; lock.unlock()
+    }
 
     /// Blocks until queued analyses have run (tests).
     public func wait() { queue.sync {} }
@@ -70,12 +77,15 @@ public final class ScopeAnalyzer: @unchecked Sendable {
             lock.lock()
             guard let job = pending else { scheduled = false; running = nil; lock.unlock(); return }
             pending = nil; running = job.key
+            let started = generation
             lock.unlock()
             let image = ColorScopes.render(job.key.mode, ColorScopes.analyze(job.frame))
+            beforePublish?()
             lock.lock()
-            finished = (job.key, image); analysedCount += 1; running = nil
+            let current = started == generation
+            if current { finished = (job.key, image); analysedCount += 1; running = nil }
             lock.unlock()
-            onReady?()
+            if current { onReady?() }
         }
     }
 
