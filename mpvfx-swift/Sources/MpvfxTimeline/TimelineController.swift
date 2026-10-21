@@ -42,6 +42,10 @@ public final class TimelineController {
     public static let splitEpsilon = 1e-3
     /// The last ⌘C / ⌘X. It outlives a project switch in the window, so clips paste into the other project.
     public internal(set) var clipboard: TimelineClipboard?
+    /// The last grade copied with ⌥⌘C. It is intentionally separate from the ordinary clip clipboard.
+    public internal(set) var gradeClipboard: TimelineGradeClipboard?
+    /// Actionable status for menus, tooltips, and the host status line.
+    public private(set) var gradePasteStatus = "Copy a grade before pasting"
     /// Timeline snapping (clip edges, playhead, beats) for moves and trims; N toggles it.
     public var snapEnabled = true { didSet { if snapEnabled != oldValue { onSnapChange?(snapEnabled) } } }
     /// Magnet toggled (N / toolbar); hosts persist it (studioUiPreferences timelineSnapEnabled).
@@ -402,6 +406,7 @@ public final class TimelineController {
     // MARK: Keyboard (timeline-owned edit shortcuts; playback keys fall through to PlaybackState)
 
     @discardableResult public func keyDown(_ k: EditorKey) -> Bool {
+        if case .function(9) = k.code { return easyEaseSelectedKeyframes(k) }
         if k.command, case .char(let ch) = k.code {
             switch Character(ch.lowercased()) {
             case "z":
@@ -411,6 +416,8 @@ public final class TimelineController {
             case "=", "+", "-", "0": return zoomKey(Character(ch.lowercased()))
             case "a" where !k.shift && !k.alt: return selectAll()
             case "d" where !k.shift && !k.alt: return duplicateSelection()
+            case "c" where k.alt: return copyGradeSelection()
+            case "v" where k.alt: return pasteGradeSelection()
             case "c": return copySelection()
             case "x": guard copySelection() else { return false }; return deleteSelection()
             case "v": return pasteClipboard()
@@ -480,6 +487,35 @@ public final class TimelineController {
     @discardableResult public func copySelection() -> Bool {
         guard let editor, !view.selection.isEmpty, let board = editor.copyClips(view.selection) else { return false }
         clipboard = board; return true
+    }
+
+    @discardableResult public func copyGradeSelection() -> Bool {
+        guard let editor, let id = view.selection.first, let board = editor.copyGrade(id) else {
+            gradePasteStatus = "Select a video or image clip with a grade to copy"; return false
+        }
+        gradeClipboard = board; gradePasteStatus = "Grade copied"; needsDisplay?(); return true
+    }
+
+    @discardableResult public func pasteGradeSelection() -> Bool {
+        guard let editor, let board = gradeClipboard else { gradePasteStatus = "Copy a grade before pasting"; return false }
+        guard !view.selection.isEmpty else { gradePasteStatus = "Select at least one video or image clip to paste a grade"; return false }
+        let selection = view.selection
+        let files = editor.filesToImport(board)
+        guard let importForPaste, !files.isEmpty else { return finishGradePaste(board, onto: selection) }
+        let projectId = editor.document.id, dir = editor.projectDirectory
+        importForPaste(files) { [weak self] copies in
+            guard let self, let copies, let editor = self.editor, editor.document.id == projectId, editor.projectDirectory == dir else { return }
+            _ = self.finishGradePaste(board.rebased(copies), onto: selection)
+        }
+        return true
+    }
+
+    @discardableResult private func finishGradePaste(_ board: TimelineGradeClipboard, onto ids: Set<String>) -> Bool {
+        guard let editor else { return false }
+        guard let result = editor.pasteGrade(board, onto: ids) else {
+            gradePasteStatus = editor.lastFailure?.message ?? "The grade could not be pasted"; needsDisplay?(); return false
+        }
+        gradePasteStatus = result.message; needsDisplay?(); return true
     }
 
     /// Pastes at the playhead onto `trackId`; nil = onto the track of the topmost selected clip, or with nothing

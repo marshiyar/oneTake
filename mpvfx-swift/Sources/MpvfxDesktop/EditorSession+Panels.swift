@@ -424,7 +424,11 @@ final class SessionPanels {
             guard let self else { return }
             self.session.timeline.view.selection = []; self.session.syncStage(); self.redraw()
         }
+        inspector.onCopyGrade = { [weak self] in self?.session.timeline.copyGradeSelection() ?? false }
+        inspector.onPasteGrade = { [weak self] in self?.session.timeline.pasteGradeSelection() ?? false }
         inspector.onOpenGroupChanged = { [weak self] _ in self?.redraw() }
+        right.easing.editor = session.editor
+        right.easing.onEdited = inspector.onEdited   // the same save, duration and stage refresh as an inspector edit
         inspector.onAudition = { [weak self] request in self?.session.audition(request) }
         right.onAnimate = { [weak self] in self?.animatePanels() }
         rendersPanel.onChange = { [weak self] in self?.redraw() }
@@ -462,7 +466,7 @@ final class SessionPanels {
             guard let self, let inspector else { return .unavailable }
             if !self.session.playback.isPlaying { self.presetPreviewTime = inspector.time }
             switch renderer.preview(clipId: req.clipId, presetId: req.presetId, lutSrc: req.lutSrc, lutIntensity: req.lutIntensity,
-                                    time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight) {
+                                    time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight, version: req.version) {
             case .ready(let img): return .ready(img)
             // Media that gave up decoding never sends a frame: answer "no picture" so the tile shows the sample.
             case .rendering: return renderer.decodeGaveUp(clipId: req.clipId) ? .unavailable : .rendering
@@ -547,9 +551,14 @@ final class SessionPanels {
         let inspector = right.inspector
         let sel = session.timeline.view.selection.sorted()
         if inspector.selection != sel { inspector.selection = sel }
+        inspector.gradeClipboardAvailable = session.timeline.gradeClipboard != nil
         let keys = session.timeline.view.selectedKeyframes
         if inspector.selectedKeyframes != keys { inspector.selectedKeyframes = keys }
         inspector.time = session.playback.currentTime
+        let easing = right.easing   // the Keyframe Easing panel follows the same clip, keys and playhead
+        if easing.clipId != sel.first { easing.clipId = sel.first }
+        if easing.selectedKeyframes != keys { easing.selectedKeyframes = keys }
+        easing.time = session.playback.currentTime
         right.canvasSize = CanvasSize(session.editor.document.canvas.width, session.editor.document.canvas.height)
         rendersPanel.canvasSize = right.canvasSize
     }
@@ -586,7 +595,8 @@ final class RightPanelInput: CanvasInput {
     func secondaryClick(x: Double, y: Double) {}
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false) }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {
-        if panel.scroll(.init(x, last.y), dy: dy, precise: precise) { panels.redraw() }
+        // ctrl: the host's zoom modifier (as the timeline reads it) zooms the Easing tab's graph.
+        if panel.scroll(.init(x, last.y), dy: dy, precise: precise, zoom: ctrl) { panels.redraw() }
     }
     func keyDown(_ k: EditorKey) -> Bool {
         // Typing into a field stays in the panel; everything else falls through to the timeline/playback shortcuts.
@@ -635,9 +645,7 @@ extension EditorSession {
             if let old = project { backend.closeProject(id: old.id) }
             compositor.releaseAll()   // the closed project's decoders, frames and graded pictures
             try adoptProject(opened)
-            do {
-                try backend.watchProject(id: opened.id) { [weak self] text in self?.postToUI { self?.externalChange(text) } }
-            } catch { FileHandle.standardError.write(Data("[MpVFX] not watching the project file: \(error)\n".utf8)) }
+            watchOpenProject()
             timeline.view.selection = []
             playback.seek(0); timeline.syncFromPlayback()
             panels?.projectSwitched()

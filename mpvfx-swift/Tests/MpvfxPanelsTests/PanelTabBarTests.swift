@@ -111,7 +111,7 @@ final class PanelTabBarTests: XCTestCase {
         func redraw() { c.reset(); r.draw(c, size: CanvasSize(409, 900)) }
         XCTAssertTrue(r.keyDown(Self.key(.tab))); redraw()
         XCTAssertEqual(r.focus.current, .design, "the selected tab is the first stop")
-        XCTAssertTrue(r.keyDown(Self.key(.tab))); XCTAssertEqual(r.focus.current, .hide, "the unselected Renders tab is skipped")
+        XCTAssertTrue(r.keyDown(Self.key(.tab))); XCTAssertEqual(r.focus.current, .hide, "the unselected Easing and Renders tabs are skipped")
         XCTAssertTrue(r.keyDown(Self.key(.tab))); XCTAssertEqual(r.focus.current, .panelMenu)
         XCTAssertTrue(r.keyDown(Self.key(.tab))); redraw()
         XCTAssertFalse(r.focus.visible); XCTAssertTrue(r.inspector.focus.visible, "Tab goes on into the inspector")
@@ -119,6 +119,8 @@ final class PanelTabBarTests: XCTestCase {
         XCTAssertEqual(r.focus.current, .panelMenu, "Shift+Tab from the inspector's first stop comes back to the header")
         XCTAssertTrue(r.keyDown(Self.key(.tab, shift: true))); XCTAssertTrue(r.keyDown(Self.key(.tab, shift: true)))
         XCTAssertEqual(r.focus.current, .design)
+        XCTAssertTrue(r.keyDown(Self.key(.right))); redraw()
+        XCTAssertEqual(r.layout.rightPanelTab, .easing); XCTAssertEqual(r.focus.current, .easing)
         XCTAssertTrue(r.keyDown(Self.key(.right))); redraw()
         XCTAssertEqual(r.layout.rightPanelTab, .renders); XCTAssertEqual(r.focus.current, .renders)
         XCTAssertEqual(r.focus.ringRect(r.hits), r.hits.rect { $0 == .renders })

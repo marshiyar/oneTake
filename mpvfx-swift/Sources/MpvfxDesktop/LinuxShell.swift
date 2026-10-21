@@ -163,6 +163,9 @@ final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
             answer(mpvfx_choice_box(nil, "The project file changed on disk",
                 "It was changed outside MpVFX while you have unsaved edits.", "Keep My Edits", "Use the File on Disk") == 1)
         }
+        session.onProjectMoved = { message, answer in
+            answer(mpvfx_choice_box(nil, "The project folder is missing", message, "Locate Folder…", "Keep Editing") == 1)
+        }
         session.onImportRequested = { [weak self, weak session] in
             guard let self else { return }
             Task {

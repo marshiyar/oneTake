@@ -289,7 +289,13 @@ func nativeExportRenderDocument(_ project: NativeProjectDocument, _ media: [Stri
         } }
         out.sequence.audioGroups = out.sequence.audioGroups?.filter { !dropped.contains($0.id) }
     }
-    return nativeDocumentWithNaturalLayouts(out) { $0.naturalSize ?? media[$0.id]?.natural }
+    var rendered = nativeDocumentWithNaturalLayouts(out) { $0.naturalSize ?? media[$0.id]?.natural }
+    // The probed size travels on the asset, as the preview's probed sizes do, so the painter knows a Fill or Stretch
+    // picture's aspect and decodes it at the size it is drawn (PreviewLayer.mediaAspect).
+    for i in rendered.assets.indices where rendered.assets[i].naturalSize == nil {
+        rendered.assets[i].naturalSize = media[rendered.assets[i].id]?.natural
+    }
+    return rendered
 }
 
 /// The document export paints and mixes once its media is probed: visible tracks only, then the render document.

@@ -84,6 +84,8 @@ public final class PlayerView {
     public var keepAnimating: (() -> Bool)?
     /// Pointer trail of the gesture being recorded, in view pixels.
     public var recordingTrail: [CanvasPoint] = []
+    /// Record motion's stage outline and banner (nil: Record is off). Set by the controller.
+    public var recordOverlay: RecordOverlay?
     /// Sibling stepped over by the last bring-forward / send-backward, and when.
     public var zOrderFlash: (id: String, start: Double)?
     static let zOrderFlashSeconds = 0.6
@@ -265,6 +267,7 @@ public final class PlayerView {
                 c.drawText(after, at: .init(frame.maxX - tw - 10, frame.y + 10), font: CanvasFont(size: 11, weight: .semibold), color: PanelTheme.stageInk)
             }
             drawStageFeedback(c, size: size, frame: frame)
+            drawRecordOverlay(c, size: size, frame: frame)
             drawZoomChrome(c, size: size)
         }
         if !isFullscreen { toolbar.draw(c, width: size.width, cropAvailable: cropAvailable, cropActive: cropActive) }

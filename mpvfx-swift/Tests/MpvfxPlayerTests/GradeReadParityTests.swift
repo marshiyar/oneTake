@@ -42,6 +42,8 @@ final class GradeReadParityTests: XCTestCase {
         #"{"intensity":null,"adjust":{"contrast":0.3}}"#,
         #"{"wheels":{"shadows":{"hue":-30,"amount":3,"level":-2},"midtones":{"hue":"725","amount":"0.5","level":true},"highlights":{"hue":[0]}}}"#,
         #"{"preset":"no-such-preset","adjust":{"exposure":0.2}}"#,
+        #"{"preset":"vhs-playback"}"#,
+        #"{"preset":"editorial-halftone","effects":{"halftone":null,"bloom":9,"bloomRadius":"0","asciiStyle":true,"blur":"0.3","pixelate":-1,"tapeNoise":[1]}}"#,
     ]
 
     func testInspectorReadsEveryStoredValueAsTheRendererDoes() throws {
@@ -55,6 +57,7 @@ final class GradeReadParityTests: XCTestCase {
                 let s = shown.wheel(k), d = try XCTUnwrap(drawn.wheels[k])
                 XCTAssertEqual([s.hue, s.amount, s.level], [d.hue, d.amount, d.level], "\(text) wheels.\(k)")
             }
+            for k in GradeValues.effectKeys { XCTAssertEqual(shown.effect(k), drawn.effect(k), "\(text) effects.\(k)") }
             XCTAssertEqual(shown.intensity, drawn.intensity, "\(text) intensity")
         }
     }
@@ -66,6 +69,7 @@ final class GradeReadParityTests: XCTestCase {
             let reloaded = try XCTUnwrap(ColorGradeParams(json: shown.json), text)
             for k in GradeValues.adjustKeys { XCTAssertEqual(reloaded.adjust(k), shown.adjustValue(k), "\(text) adjust.\(k)") }
             for k in GradeValues.detailKeys { XCTAssertEqual(reloaded.detail(k), shown.detail(k), "\(text) details.\(k)") }
+            for k in GradeValues.effectKeys { XCTAssertEqual(reloaded.effect(k), shown.effect(k), "\(text) effects.\(k)") }
             XCTAssertEqual(reloaded.intensity, shown.intensity, "\(text) intensity")
         }
     }

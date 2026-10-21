@@ -55,7 +55,7 @@ RULES = [
         ),
         {"linux", "windows"},
     ),
-    (r"\.github/ci/metal-toolchain\.sh", {"macos"}),
+    (r"\.github/ci/(metal-toolchain\.sh|macos_gate\.py)", {"macos"}),
     # This file decides what the pull request that changes it runs, so a change to it runs everything.
     (r"\.github/ci/platforms\.py", ALL),
     # Workflows and scripts no build job uses: their own tests run in the checks job (or their own workflow).
