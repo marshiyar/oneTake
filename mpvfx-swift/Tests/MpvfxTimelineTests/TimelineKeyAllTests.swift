@@ -193,6 +193,47 @@ final class TimelineKeyAllTests: XCTestCase {
         XCTAssertEqual(try keys(e, "clip:a", "grade.adjust.exposure").map(\.value), [.number(0.4)])
     }
 
+    // MARK: Review findings (PR #218)
+
+    func testCmdKKeysTheOpacityParameterThatAlreadyAnimates() throws {
+        let (c, e) = try make()
+        let a = try XCTUnwrap(e.parameterAddress(clipId: "clip:a", "visual.autoAlpha"))
+        XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.upsert(address: a, valueType: .number, frame: 0, value: .number(0.3), baselineValue: .number(0.3))))))
+        XCTAssertTrue(c.keyDown(Self.cmdK))
+        XCTAssertEqual(try keys(e, "clip:a", "visual.autoAlpha").map(\.frame), [0, 60], "the legacy track the clip animates is keyed")
+        XCTAssertTrue(try keys(e, "clip:a", TimelineEditor.opacityId).isEmpty, "no visual.opacity track that would override it at 1")
+    }
+
+    func testCmdKKeysStaticScalarPositionAtItsValue() throws {
+        let (c, e) = try make()
+        try setStatic(e, "clip:a", POSITION_X_PARAMETER_ID, .number(50))
+        try setStatic(e, "clip:a", POSITION_Y_PARAMETER_ID, .number(60))
+        XCTAssertTrue(c.keyDown(Self.cmdK))
+        XCTAssertEqual(try keys(e, "clip:a", POSITION_X_PARAMETER_ID).map(\.value), [.number(50)])
+        XCTAssertEqual(try keys(e, "clip:a", POSITION_Y_PARAMETER_ID).map(\.value), [.number(60)])
+        XCTAssertTrue(try keys(e, "clip:a", TimelineEditor.positionId).isEmpty, "the scalar position preview and export read is the one keyed")
+    }
+
+    func testCmdKLeavesTheVolumeOfAVideoWhoseAudioIsDetached() throws {
+        let json = TimelineEditor.demoJSON.replacingOccurrences(of: #""name":"clip_001.mp4","#, with: #""name":"clip_001.mp4","source":"a.mp4","#)
+        let e = try TimelineEditor(json: json, engine: KeyframeRuntime())
+        XCTAssertTrue(e.detachAudio(clipId: "clip:a"))
+        let detached = try XCTUnwrap(e.document.sequence.tracks.flatMap(\.clips).first { $0.audioDetachedFrom == "clip:a" })
+        let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
+        c.view.selection = ["clip:a", detached.id]; c.playback.seek(2); c.syncFromPlayback()
+        XCTAssertTrue(c.keyDown(Self.cmdK))
+        XCTAssertTrue(try keys(e, "clip:a", TimelineEditor.volumeId).isEmpty, "the video carries no volume once its audio is detached")
+        XCTAssertEqual(try keys(e, detached.id, TimelineEditor.volumeId).map(\.frame), [60])
+        XCTAssertTrue(e.reattachAudio(clipId: detached.id), "reattaching still works after ⌘K")
+    }
+
+    func testCmdKSkipsSelectedClipsThePlayheadIsNotOver() throws {
+        let (c, e) = try make(select: ["clip:a", "clip:b"])
+        XCTAssertTrue(c.keyDown(Self.cmdK))
+        XCTAssertFalse(try keyedIds(e, "clip:a", frame: 60).isEmpty)
+        XCTAssertTrue(try XCTUnwrap(e.clip("clip:b")).clip.parameterTracks.isEmpty, "clip:b (6.5 s on) is not under the playhead at 2 s")
+    }
+
     // MARK: Lanes and kinds
 
     func testEveryKeyedPropertyGetsItsOwnLaneOfItsKind() throws {
