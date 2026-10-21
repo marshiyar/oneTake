@@ -133,6 +133,15 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// Host hook: the composited program frame at the playhead for the Grade scopes' Program mode, at most w x h.
+    public var programScopeFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// What the Grade scopes read (the Scopes row's Clip / Program switch). Every change is saved as
+    /// `PanelPreferences.scopeSource`; `RightPanel.init` restores it.
+    public var scopeSource: ColorScopes.Source = .clip {
+        didSet { if scopeSource != oldValue, let layout { layout.update { $0.scopeSource = scopeSource } } }
+    }
+    /// Analyses scope frames off the main thread (latest wins); the host sets its `onReady` to redraw.
+    public let scopeAnalyzer = ScopeAnalyzer()
     public var lutAssets: () -> [String] = { [] }
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,

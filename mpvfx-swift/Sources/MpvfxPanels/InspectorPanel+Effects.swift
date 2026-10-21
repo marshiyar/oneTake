@@ -34,7 +34,7 @@ extension InspectorPanel {
     func masterSlider(_ editor: TimelineEditor, _ s: Selected, _ sel: EffectSpecs.Spec,
                       commit: @escaping (ColorGrading) -> Void) -> InspectorRow {
         let g = editor.gradeShown(clipId: s.id, time: time)   // the grade the group's other rows show
-        let v = (g.effects[sel.key] ?? 0) * 100
+        let v = g.effect(sel.key) * 100
         let fmt: (Double) -> String = { x in sel.masterFormat?(x / 100) ?? "\(Int(x.rounded()))%" }
         let kf = NativeGradeParameter.effectKeys.contains(sel.key) ? gradeKeyframe(editor, s, [NativeGradeParameter.effectId(sel.key)], shown: g) : nil
         return .init(.slider(.init(key: "fx:\(sel.key)", label: sel.masterLabel, position: v, min: 0, max: sel.max,

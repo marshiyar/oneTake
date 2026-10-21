@@ -42,11 +42,11 @@ final class ExportPreviewMatchTests: XCTestCase {
     }
     var root: String { Self.root }
 
+    /// The base clip's grade parameters in `document()` unless a test passes its own.
+    static let exposureGrade = #"{"adjust":{"exposure":0.6}}"#
     /// The base clip's grade keyed (issue #179): exposure 0 at its first frame to +1 at its last, linear.
     static let keyedExposure = #"[{"schemaVersion":1,"id":"param:exposure","parameterId":"grade.adjust.exposure","valueType":"number","frameRate":{"numerator":10,"denominator":1},"keyframes":[{"id":"k0","frame":0,"value":0,"outgoing":{"type":"linear"}},{"id":"k1","frame":19,"value":1,"outgoing":{"type":"linear"}}]}]"#
 
-    /// The video clip's grade parameters in `document()`.
-    static let exposureGrade = #"{"adjust":{"exposure":0.6}}"#
     /// Curves on all seven tabs: a steep RGB rise, a master curve with its end points inside the range, and hue
     /// curves with a local bump, so export runs every curve table the preview does.
     static let curvesGrade = #"""
@@ -55,9 +55,16 @@ final class ExportPreviewMatchTests: XCTestCase {
      "hueCurves":{"hueVsHue":[[0,0],[200,30],[260,0]],"hueVsSaturation":[[180,0],[220,0.6],[280,0]],"hueVsLuma":[[20,-0.1],[140,0.1],[300,0]]}}
     """#
 
-    /// 96x48 at 10 fps, 2 s; the video clip graded with `grade`.
+    /// 96x48 at 10 fps, 2 s; the base clip graded with `grade`, or with `keyedGrade` its exposure animated (0 to +1).
     func document(grade: String = exposureGrade, keyedGrade: Bool = false) throws -> NativeProjectDocument {
-        let text = #"""
+        let text = Self.documentText.replacingOccurrences(of: "GRAY_GRADE", with: keyedGrade ? #"{"adjust":{"exposure":0}}"# : grade)
+            .replacingOccurrences(of: "GRAY_TRACKS", with: keyedGrade ? Self.keyedExposure : "[]")
+        let engine = try KeyframeRuntime()
+        installKeyframeEngine(engine)   // export evaluates parameter tracks through the installed engine
+        return try parseNativeProjectDocument(try NativeJSONValue.parse(text), engine: engine)
+    }
+
+    static let documentText = #"""
         {"schemaVersion":1,"mediaEngine":"native","id":"match","revision":0,"frameRate":{"numerator":10,"denominator":1},
          "canvas":{"width":96,"height":48,"background":"#102030"},
          "assets":[{"id":"gray","kind":"video","name":"gray","source":"gray.mov","durationFrames":20},
@@ -75,20 +82,18 @@ final class ExportPreviewMatchTests: XCTestCase {
               "effects":[],"parameterTracks":[]}]},
            {"id":"base","kind":"video","lane":{"authoredTrack":0,"displayTrack":2},"clips":[
              {"id":"gray","assetId":"gray","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,
-              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":\#(keyedGrade ? #"{"adjust":{"exposure":0}}"# : grade)}],
-              "parameterTracks":\#(keyedGrade ? Self.keyedExposure : "[]")}]},
+              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":GRAY_GRADE}],
+              "parameterTracks":GRAY_TRACKS}]},
            {"id":"music","kind":"audio","lane":{"authoredTrack":3,"displayTrack":3},"clips":[
              {"id":"tone","assetId":"tone","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,"effects":[],"parameterTracks":[]}]}]}}
         """#
-        let engine = try KeyframeRuntime()
-        installKeyframeEngine(engine)
-        return try parseNativeProjectDocument(try NativeJSONValue.parse(text), engine: engine)
-    }
 
-    func export(_ format: ExportFormat, grade: String = exposureGrade, name: String = "match", keyedGrade: Bool = false) throws -> (input: NativeTimelineRenderInput, file: Exported) {
-        let output = "\(root)/\(name).\(format.rawValue)"
+    func export(_ format: ExportFormat, grade: String = exposureGrade, keyedGrade: Bool = false, name: String? = nil) throws
+        -> (input: NativeTimelineRenderInput, file: Exported) {
+        let output = "\(root)/\(name ?? "match\(keyedGrade ? "-keyed" : "")").\(format.rawValue)"
         try? FileManager.default.removeItem(atPath: output)
-        let input = NativeTimelineRenderInput(project: try document(grade: grade, keyedGrade: keyedGrade), projectDir: root, outputPath: output, format: format, quality: .high)
+        let input = NativeTimelineRenderInput(project: try document(grade: grade, keyedGrade: keyedGrade), projectDir: root, outputPath: output,
+                                              format: format, quality: .high)
         try renderNativeTimeline(input)
         return (input, Exported(path: output))
     }

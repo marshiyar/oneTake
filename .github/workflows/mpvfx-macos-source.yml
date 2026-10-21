@@ -35,9 +35,9 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        persist-credentials: false
         repository: ${{ inputs.source_repository }}
         ref: ${{ inputs.source_ref }}
-        persist-credentials: false
     - name: Shards and their input keys
       id: keys
       run: |
@@ -78,9 +78,9 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        persist-credentials: false
         repository: ${{ inputs.source_repository }}
         ref: ${{ inputs.source_ref }}
-        persist-credentials: false
     - name: Xcode ${{ env.XCODE_VERSION }}
       run: |
         # Pinned, not "newest": the image's newest folder can hold a beta whose Metal Toolchain does not install.
@@ -127,9 +127,9 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        persist-credentials: false
         repository: ${{ inputs.source_repository }}
         ref: ${{ inputs.source_ref }}
-        persist-credentials: false
     - name: Xcode ${{ env.XCODE_VERSION }}
       run: |
         x=/Applications/Xcode_${XCODE_VERSION}.app

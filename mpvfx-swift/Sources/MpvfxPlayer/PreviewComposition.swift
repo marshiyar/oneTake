@@ -154,7 +154,8 @@ public struct PreviewComposition {
                 if asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
                     ordered.append((Entry(clip: clip, kind: .text, path: "text:\(clip.id)", layer: layer), n))
-                } else if let entry = media.entry(clip, asset: asset, layer: layer) {
+                } else if var entry = media.entry(clip, asset: asset, layer: layer) {
+                    if entry.kind != .offline { entry.gradeAnimation = PreviewGradeAnimation.forClip(entry.clip, projectDir: projectDir?.path) }
                     ordered.append((entry, n))
                 }
             }
