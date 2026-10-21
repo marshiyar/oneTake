@@ -342,6 +342,8 @@ final class ColorGradingTests: XCTestCase {
     }
     func testGradeUiWheelDragAndCurvePoint() throws {
         let editor = try demoEditor()
+        // A contract 2 grade (saved before Lift / Gamma / Gain / Offset), which keeps its tonal wheels (issue #176).
+        XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", ColorGrading(json: ["adjust": .object(["contrast": .number(0.1)])])))
         let p = InspectorPanel(); p.editor = editor; p.selection = ["clip:a"]; p.openGroupId = "grade"
         let c = PanelMeasureCanvas(); let rect = CanvasRect(x: 0, y: 0, width: 380, height: 4000)
         p.draw(c, in: rect)

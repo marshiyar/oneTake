@@ -804,6 +804,9 @@ public final class InspectorPanel {
             onEdited?(); return moved
         }
         guard var f = field else {
+            if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.keyPress {
+                if handler(part, k) { onEdited?(); return true }
+            }
             if focus.visible, let cur = focus.current, k.code == .enter || k.code == .space || k.code == .escape {
                 if k.code == .escape { focus.visible = false; onEdited?(); return true }
                 return press(cur)

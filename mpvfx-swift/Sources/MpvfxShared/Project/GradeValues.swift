@@ -24,6 +24,10 @@ public enum GradeValues {
     /// The primary adjust keys of the colour-grading contract, in panel order.
     public static let adjustKeys = ["exposure", "contrast", "highlights", "shadows", "whites", "blacks", "temperature", "tint", "vibrance", "saturation"]
     public static let wheelKeys = ["shadows", "midtones", "highlights"]
+    /// The balance wheels (`balance` in the grade JSON, issue #176), each a colour plus a level like a tonal wheel.
+    public static let balanceKeys = ["lift", "gamma", "gain", "offset"]
+    /// Where contrast pivots (`pivot`, 0…1 luma): 0.5 when absent, which is how every older grade was drawn.
+    public static let defaultPivot = 0.5
     public static let detailKeys = ["vignette", "vignetteMidpoint", "vignetteRoundness", "vignetteFeather", "grain", "grainSize", "grainRoughness"]
     public static let detailDefaults: [String: Double] = ["vignette": 0, "vignetteMidpoint": 0.5, "vignetteRoundness": 0, "vignetteFeather": 0.65,
                                                           "grain": 0, "grainSize": 0.25, "grainRoughness": 0.5]
