@@ -136,6 +136,32 @@ class Bench(unittest.TestCase):
         pr = {"metrics": {"a": {"unit": "us", "p50": 10000, "p95": 12000}}}
         self.assertEqual(bot.bench_compare(pr, main), ([], 0))
 
+    def test_a_zero_baseline_stays_visible_when_unchanged(self):
+        report = {"metrics": {"grade.max_diff": {"unit": "levels", "p50": 0, "p95": 0}}}
+        rows, flagged = bot.bench_compare(report, report)
+        self.assertEqual(flagged, 0)
+        self.assertEqual(rows, ["| `grade.max_diff` | levels | 0 → 0 | 0 → 0 | +0.0% |"])
+
+    def test_a_move_from_zero_is_flagged_without_a_percentage(self):
+        main = {"metrics": {"grade.max_diff": {"unit": "levels", "p50": 0, "p95": 0}}}
+        for value in (1, -1):
+            with self.subTest(value=value):
+                pr = {"metrics": {"grade.max_diff": {"unit": "levels", "p50": value, "p95": value}}}
+                rows, flagged = bot.bench_compare(pr, main)
+                self.assertEqual(flagged, 1)
+                self.assertEqual(rows, [f"| `grade.max_diff` | levels | 0 → {value} | 0 → {value} | from zero **⚑** |"])
+
+    def test_a_missing_baseline_value_is_not_compared(self):
+        pr = {"metrics": {"a": {"unit": "ms", "p50": 1, "p95": 2}}}
+        for baseline in ({"unit": "ms", "p95": 2}, {"unit": "ms", "p50": None, "p95": 2}):
+            with self.subTest(baseline=baseline):
+                self.assertEqual(bot.bench_compare(pr, {"metrics": {"a": baseline}}), ([], 0))
+
+    def test_a_move_to_zero_keeps_its_percentage(self):
+        main = {"metrics": {"a": {"unit": "ms", "p50": 1, "p95": 2}}}
+        pr = {"metrics": {"a": {"unit": "ms", "p50": 0, "p95": 0}}}
+        self.assertEqual(bot.bench_compare(pr, main), (["| `a` | ms | 1 → 0 | 2 → 0 | -100.0% **⚑** |"], 1))
+
 
 class Flakes(unittest.TestCase):
     def test_a_failure_is_scanned_once_across_reruns(self):

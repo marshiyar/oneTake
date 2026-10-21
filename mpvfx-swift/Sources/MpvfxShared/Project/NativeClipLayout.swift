@@ -42,8 +42,9 @@ public struct NativeClipLayoutBox: Equatable, Sendable {
     }
 }
 
-/// `fitTimelineAssetGeometry`: "CapCut-style placement: natural size when it fits, scaled-to-fit when
-/// oversized, always centered. Unknown natural size → full-frame." Same JS Math.round on every value.
+/// `fitTimelineAssetGeometry`: places a new clip at its natural size when it fits the composition, scaled down to
+/// fit when it is larger, and always centred; an unknown natural size fills the frame. Every value is rounded the
+/// way JavaScript's Math.round rounds.
 public func fitTimelineAssetGeometry(_ natural: NativeMediaNaturalSize?, compWidth: Double, compHeight: Double) -> NativeClipLayoutBox {
     guard let natural, natural.width > 0, natural.height > 0 else {
         return NativeClipLayoutBox(left: 0, top: 0, width: compWidth, height: compHeight)

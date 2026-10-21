@@ -34,6 +34,12 @@ public struct MenuItem: Equatable, Sendable {
         /// View > appearance (native addition): System / Light / Dark.
         case appearanceSystem, appearanceLight, appearanceDark
         case minimize, zoom, bringAllToFront
+        /// Window > Panels: a submenu the shell fills from the dock each time it opens (every panel, a checkmark on the
+        /// open ones; choosing one opens it at its last place or closes it). Linux and Windows have the same list in
+        /// every panel group's ⋯ menu.
+        case panels
+        /// Window > Close Panel (⌘⇧W): closes the focused panel (Preview and Timeline stay).
+        case closePanel
     }
     public var label: String, command: Command
     /// Key equivalent without modifiers ("q"); modifier set below.
@@ -89,6 +95,8 @@ public enum MenuModel {
                 Menu(label: "Window", items: [
                     MenuItem(label: "Minimize", command: .minimize, key: "m", modifiers: [.command]),
                     MenuItem(label: "Zoom", command: .zoom),
+                    MenuItem(label: "Panels", command: .panels, separatorBefore: true),
+                    MenuItem(label: "Close Panel", command: .closePanel, key: "w", modifiers: [.command, .shift]),
                     MenuItem(label: "Bring All to Front", command: .bringAllToFront, separatorBefore: true),
                 ]),
             ]

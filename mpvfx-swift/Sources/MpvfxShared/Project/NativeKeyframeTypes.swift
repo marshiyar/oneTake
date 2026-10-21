@@ -17,7 +17,7 @@ import Foundation
 public let NATIVE_KEYFRAME_SCHEMA_VERSION = 1
 
 /// Copied with its unknown keys for the document frame rate (`{ ...document.frameRate }`).
-public struct RationalFrameRate: Codable, Equatable, Hashable {
+public struct RationalFrameRate: Codable, Equatable, Hashable, Sendable {
     public var numerator: Double
     public var denominator: Double
     public var spread = NativeSpreadKeys()
@@ -37,7 +37,7 @@ public struct RationalFrameRate: Codable, Equatable, Hashable {
 
 /// Copied with its unknown keys for crop-pivot offsetFraction (`{ ...segment.offsetFraction }`).
 /// Static-parameter vec2 values are rebuilt as {x, y} (cloneStaticParameterValue) and never carry them.
-public struct Vec2Value: Codable, Equatable { public var x: Double; public var y: Double
+public struct Vec2Value: Codable, Equatable, Sendable { public var x: Double; public var y: Double
     public var spread = NativeSpreadKeys()
     static let known = ["x", "y"]
     public init(x: Double, y: Double, spread: NativeSpreadKeys = .init()) { self.x = x; self.y = y; self.spread = spread }
@@ -52,7 +52,7 @@ public struct Vec2Value: Codable, Equatable { public var x: Double; public var y
 }
 
 /// Keyframe rgba values keep unknown keys (`{ ...value }`); static values never do.
-public struct RgbaValue: Codable, Equatable { public var red, green, blue, alpha: Double
+public struct RgbaValue: Codable, Equatable, Sendable { public var red, green, blue, alpha: Double
     public var spread = NativeSpreadKeys()
     static let known = ["red", "green", "blue", "alpha"]
     public init(red: Double, green: Double, blue: Double, alpha: Double, spread: NativeSpreadKeys = .init()) {
@@ -69,14 +69,14 @@ public struct RgbaValue: Codable, Equatable { public var red, green, blue, alpha
     }
 }
 
-public enum NativeValueType: String, Codable { case number, vec2, rgba }
+public enum NativeValueType: String, Codable, Sendable { case number, vec2, rgba }
 
 /// number | Vec2Value | RgbaValue. Same checks as cloneStaticParameterValue and the engine's
 /// packing): JSON number first; then an object with numeric "x" and "y" is vec2 (even if it also
 /// has rgba keys); otherwise an object with numeric red/green/blue/alpha is rgba. Unknown keys are kept in
 /// the value's `spread` (keyframe values keep them); parse strips them from static values
 /// (cloneStaticParameterValue). Strings, booleans, null and arrays are rejected (`typeof === "number"`).
-public enum NativeParameterValue: Codable, Equatable {
+public enum NativeParameterValue: Codable, Equatable, Sendable {
     case number(Double), vec2(Vec2Value), rgba(RgbaValue)
     private struct AnyKey: CodingKey {
         var stringValue: String; var intValue: Int? { nil }
@@ -105,7 +105,7 @@ public enum NativeParameterValue: Codable, Equatable {
 }
 
 /// Unknown keys are kept: cloneInterpolation copies controlPoints with `{ ...controlPoints }`.
-public struct CubicBezierControlPoints: Codable, Equatable {
+public struct CubicBezierControlPoints: Codable, Equatable, Sendable {
     public var x1, y1, x2, y2: Double
     public var spread = NativeSpreadKeys()
     static let known = ["x1", "y1", "x2", "y2"]
@@ -121,7 +121,7 @@ public struct CubicBezierControlPoints: Codable, Equatable {
     }
 }
 
-public enum NativeInterpolation: Codable, Equatable {
+public enum NativeInterpolation: Codable, Equatable, Sendable {
     case hold, linear, cubicBezier(CubicBezierControlPoints)
     private enum K: String, CodingKey { case type, controlPoints }
     public init(from decoder: Decoder) throws {
@@ -143,7 +143,7 @@ public enum NativeInterpolation: Codable, Equatable {
     }
 }
 
-public enum NativeMotionPath: Codable, Equatable {
+public enum NativeMotionPath: Codable, Equatable, Sendable {
     case curve(curviness: Double), bezier(cp1: Vec2Value, cp2: Vec2Value)
     private enum K: String, CodingKey { case type, curviness, cp1, cp2 }
     public init(from decoder: Decoder) throws {
@@ -170,7 +170,7 @@ public enum NativeMotionPath: Codable, Equatable {
 ///   keeps those objects as they are; assigning a new interpolation or path (cloneInterpolation /
 ///   cloneMotionPath / a new object) drops them, so the setters clear them.
 /// Nested controlPoints, cp1/cp2 and vec2/rgba values carry their own `spread`.
-public struct NativeKeyframe: Codable, Equatable {
+public struct NativeKeyframe: Codable, Equatable, Sendable {
     public var id: String
     public var frame: Double
     public var value: NativeParameterValue
@@ -209,7 +209,7 @@ public struct NativeKeyframe: Codable, Equatable {
     }
 }
 
-public struct NativeParameterTrack: Codable, Equatable {
+public struct NativeParameterTrack: Codable, Equatable, Sendable {
     public var schemaVersion: Int = NATIVE_KEYFRAME_SCHEMA_VERSION
     public var id: String
     public var parameterId: String
@@ -252,7 +252,7 @@ public struct NativeParameterTrackInput {
     }
 }
 
-public enum NativeKeyframeValidationCode: String {
+public enum NativeKeyframeValidationCode: String, Sendable {
     case invalidFrameRate = "invalid-frame-rate", invalidTrackId = "invalid-track-id", invalidParameterId = "invalid-parameter-id"
     case emptyTrack = "empty-track", invalidKeyframeId = "invalid-keyframe-id", duplicateKeyframeId = "duplicate-keyframe-id"
     case duplicateKeyframeFrame = "duplicate-keyframe-frame", invalidKeyframeFrame = "invalid-keyframe-frame"

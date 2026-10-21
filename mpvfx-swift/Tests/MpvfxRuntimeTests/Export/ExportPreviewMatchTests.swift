@@ -42,7 +42,7 @@ final class ExportPreviewMatchTests: XCTestCase {
     var root: String { Self.root }
 
     /// 96x48 at 10 fps, 2 s.
-    func document() throws -> NativeProjectDocument {
+    func document(grade: String = #"{"adjust":{"exposure":0.6}}"#) throws -> NativeProjectDocument {
         try parseNativeProjectDocument(try NativeJSONValue.parse(#"""
         {"schemaVersion":1,"mediaEngine":"native","id":"match","revision":0,"frameRate":{"numerator":10,"denominator":1},
          "canvas":{"width":96,"height":48,"background":"#102030"},
@@ -61,17 +61,18 @@ final class ExportPreviewMatchTests: XCTestCase {
               "effects":[],"parameterTracks":[]}]},
            {"id":"base","kind":"video","lane":{"authoredTrack":0,"displayTrack":2},"clips":[
              {"id":"gray","assetId":"gray","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,
-              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":{"adjust":{"exposure":0.6}}}],
+              "effects":[{"id":"grade","effectId":"color-grading","enabled":true,"parameters":\#(grade)}],
               "parameterTracks":[]}]},
            {"id":"music","kind":"audio","lane":{"authoredTrack":3,"displayTrack":3},"clips":[
              {"id":"tone","assetId":"tone","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,"effects":[],"parameterTracks":[]}]}]}}
         """#))
     }
 
-    func export(_ format: ExportFormat) throws -> (input: NativeTimelineRenderInput, file: Exported) {
-        let output = "\(root)/match.\(format.rawValue)"
+    func export(_ format: ExportFormat, grade: String? = nil, name: String = "match") throws -> (input: NativeTimelineRenderInput, file: Exported) {
+        let output = "\(root)/\(name).\(format.rawValue)"
         try? FileManager.default.removeItem(atPath: output)
-        let input = NativeTimelineRenderInput(project: try document(), projectDir: root, outputPath: output, format: format, quality: .high)
+        let project = try grade.map { try document(grade: $0) } ?? document()
+        let input = NativeTimelineRenderInput(project: project, projectDir: root, outputPath: output, format: format, quality: .high)
         try renderNativeTimeline(input)
         return (input, Exported(path: output))
     }
@@ -103,6 +104,17 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertGreaterThan(Int(still[2]) - Int(still[0]), 40, "blue over the video: \(still)")
         XCTAssertGreaterThan(Int(video[1]), 150, "the +0.6 exposure grade lifts the video: \(video)")
         XCTAssertTrue(stride(from: 24, to: 44, by: 1).contains { y in (4..<64).contains { x in f.rgba[(y * 96 + x) * 4] > 240 } }, "white text ink")
+    }
+
+    /// Contract 3 Warmth and Tint (channel gains, issue #172) on the graded video: export is the preview at the first,
+    /// a middle and the last frame, and the warm grade shows.
+    func testContract3WarmthExportIsThePreviewFrameForFrame() throws {
+        let mov = try export(.mov, grade: #"{"version":3,"adjust":{"temperature":0.8,"tint":-0.3,"exposure":0.2}}"#, name: "warm")
+        let diffs = try pairs(mov, [0, 1.0, 1.9]).map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let f = try mov.file.rgba(1.0)
+        let video = Array(f.rgba[(36 * 96 + 80) * 4..<(36 * 96 + 80) * 4 + 3])
+        XCTAssertGreaterThan(Int(video[0]) - Int(video[2]), 20, "Warmth +80 warms the video: \(video)")
     }
 
     func testMp4ExportMatchesThePreviewWithinTheEncoderLoss() throws {
