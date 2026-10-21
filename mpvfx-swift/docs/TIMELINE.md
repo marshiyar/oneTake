@@ -24,10 +24,10 @@ Seen on a 41 s project at the default zoom (owner screenshots, 2026-10-21):
 
 ## Zoom
 
-- **Fit** shows the whole sequence: `[0, end + margin]` fills the track area, where `margin = max(1 s, 5% of end)`
-  and an empty sequence spans at least 5 s. Half the fit (50%) is the zoom-out limit: room to drag a clip past the
-  end, never the minutes of empty lanes a tenth of the fit showed. The zoom-in limit is unchanged: 48 px per frame at
-  30 fps.
+- **Fit** shows the whole sequence: `[0, span]` fills the track area, where
+  `span = max(5 s, end + max(1 s, 5% of end))`. The ruler and horizontal scrolling stop at the same span. Half the fit
+  (50%) is the zoom-out limit: room to drag a clip past the end, never the minutes of empty lanes a tenth of the fit
+  showed. The zoom-in limit is unchanged: 48 px per frame at 30 fps.
 - **Zoom to fit:** ⇧Z, ⌘0 (Ctrl+0), the Fit button, or a double-click on the zoom slider. It scrolls back to 0.
 - **Zoom in / out:** ⌘+ / ⌘− (Ctrl on Linux and Windows) and the + / − buttons double or halve the zoom about the
   playhead when it is in view, else about the middle of the visible lanes. Dragging the slider anchors the same way.
@@ -97,3 +97,5 @@ the main keys: "Space play · S split · I / O in and out · ⇧Z fit".
 
 Every change here is captured at 1440 × 900 and 1280 × 800 in dark and light (`TimelineControlsSnapshotTests`, PNGs
 under `$MPVFX_SNAPSHOT_DIR`) and looked at before review.
+
+<!-- markdownlint-disable-file MD043 -- the required-headings rule has no heading list configured, so any heading fails it -->
