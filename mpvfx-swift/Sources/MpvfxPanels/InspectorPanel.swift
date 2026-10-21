@@ -174,6 +174,9 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// A clip's graded frame at an explicit composition time, used by reference look matching.
+    public var matchLookFrame: ((_ clipId: String, _ time: Double, _ width: Int, _ height: Int) -> PresetPreviewState)?
+    var lookMatch = LookMatchUIState()
     /// Host hook: the composited program frame at the playhead for the Grade scopes' Program mode, at most w x h.
     public var programScopeFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
     /// What the Grade scopes read (the Scopes row's Clip / Program switch). Every change is saved as
