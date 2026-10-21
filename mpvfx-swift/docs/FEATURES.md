@@ -135,7 +135,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Move / resize / rotate handles, crop handles, marquee, shift multi-select, group move | done (player) |
 | Snap guides & toolbar, grid overlay (thirds/quarters/center, snap to grid) | done (player) |
 | Arrow-key nudge (1 / 10 px, one commit per burst), Esc cancels a drag | done (player) |
-| Gesture recording (position, rotation, 3D rotation, opacity, scale, depth) with trail, auto-stop, one undo step | done (player; `GestureRecording.swift`) |
+| Record motion (position, rotation, 3D rotation, opacity, scale, depth): Record or R arms; a press on the selected layer or a handle starts a take that plays from the playhead, the layer keeps its grab offset, release commits one "Record motion" undo step, Esc cancels or disarms; locked and hidden layers refused; one sample per frame, simplified | done (player; `PlayerController+Record.swift`, `GestureRecording.swift`; `RecordMotionTests`, `RecordMotionShellTests`) |
 | Canvas context menu (z-order, delete) with the crossed-sibling flash | partial: z-order and delete work; copy and paste are missing |
 | Asset drop on the stage (insert at playhead) | done: bin cards drag into it (`EditorSession+AssetDrag.swift`) |
 | Preview zoom / pan (wheel, pinch, middle-button drag), zoom readout, fit button | done (player, hosts forward the middle button) |
@@ -224,9 +224,9 @@ The timeline lane's 314d72a added its own filmstrip cache; 71fdbd6 moved strips 
 
 | Ability | Swift status |
 | --- | --- |
-| Gesture recording (Record button, trail, auto-stop, one undo step) | done (preview) |
+| Record motion (Record arms; a press on the selected layer records; trail, auto-stop, one undo step) | done (preview) |
 | Captions: caption track in the document, SRT import and export (backend) | partial: no menu entry yet (see `STATUS.md`) |
-| Captions: overlay, caption timeline, caption editing, caption property panel, Edit captions entry in the preview | missing |
+| Captions: overlay, caption timeline, caption editing, caption property panel, Edit captions entry in the preview | missing (unowned) |
 | Telemetry, crash prompt, feedback card | not part of the product |
 | Packaging and installers | partial: macOS disk image, Windows per-user setup.exe and Linux .deb; CI has built, installed and launched all three, and their smoke checks passed (see `STATUS.md`) |
 
