@@ -223,6 +223,30 @@ final class LibraryServiceTests: XCTestCase {
         XCTAssertEqual(String(decoding: try read(destination), as: UTF8.self), "keep me")
     }
 
+    /// "Save to…" (#40): a file already at the destination is kept and named in the error, unless the dialog approved
+    /// replacing it; a folder that cannot be written is a typed error that names the file; no staged copy is left behind.
+    func testSaveOutputKeepsAnExistingFileUnlessApprovedAndReportsAnUnwritableFolder() async throws {
+        let f = try await fixture()
+        let snapshot = try await f.engine.snapshot(f.first)!
+        let output = PosixPath.join(try f.engine.outputDirectory(f.first)!, "output.mp4")
+        try FileManager.default.createDirectory(atPath: PosixPath.join(f.library, "renders", f.first), withIntermediateDirectories: true)
+        try write(output, "encoded-fixture")
+        f.engine.trackExport(snapshot, { LibraryExportStatus(status: "complete", outputPath: output) })
+        await f.engine.exportTrackingFinished()
+        let destination = PosixPath.join(f.root, "saved.mp4")
+        try write(destination, "keep me")
+        await assertThrows({ try await f.engine.saveOutput(f.libraryId, snapshot.id, destination) },
+                           "A file named saved.mp4 already exists there. It was left unchanged; choose another name.")
+        XCTAssertEqual(String(decoding: try read(destination), as: UTF8.self), "keep me")
+        try await f.engine.saveOutput(f.libraryId, snapshot.id, destination, replaceApproved: true)
+        XCTAssertEqual(String(decoding: try read(destination), as: UTF8.self), "encoded-fixture")
+        let missing = PosixPath.join(f.root, "no-such-folder", "saved.mp4")
+        await assertThrows({ try await f.engine.saveOutput(f.libraryId, snapshot.id, missing) }, "Could not save the export as saved.mp4: ENOENT")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missing))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: f.root).filter { $0.hasPrefix(".mpvfx-output-") }, [])
+        XCTAssertEqual(String(decoding: try read(output), as: UTF8.self), "encoded-fixture", "the library's render is untouched")
+    }
+
     func testRejectsProjectAndAssetIdentitiesFromAnotherLibrary() async throws {
         let f = try await fixture()
         let otherId = try await f.engine.create(PosixPath.join(f.root, "Other.mpvfxlibrary"))

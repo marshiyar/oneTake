@@ -52,7 +52,7 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Library / Event / Project pickers, New event, New project, switch project | done | close |
 | Import into event (copy into library / link originals), attach asset, relink | done | close |
 | Collapsible "Library media (N)" and "Library exports (N)" | done | close |
-| Export records "Save to…" | missing (panels) | n/a |
+| Export records "Save to…" | done: completed exports only; the export's extension is added to a name typed without it, and a file the dialog did not ask about is never replaced | close |
 | Show library in Finder; Open existing standalone project | done | close |
 | Tab bar Media / Scenes / Elements (Scenes only with sub-compositions, Elements only with blocks) | done (Elements never shows: blocks dropped) | exact |
 | Tab persisted, ←/→ and ⌘1/⌘2 tab switching | done | n/a |

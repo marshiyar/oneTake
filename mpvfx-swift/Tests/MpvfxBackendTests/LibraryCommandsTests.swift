@@ -15,6 +15,7 @@ import Foundation
 import XCTest
 import MpvfxBackend
 import MpvfxDesktopCore
+import MpvfxRuntime
 
 /// Answers dialogs from a script and records what was opened in the file manager.
 private final class ScriptedDialogs: NativeDialogs, @unchecked Sendable {
@@ -81,5 +82,57 @@ final class LibraryCommandsTests: XCTestCase {
         XCTAssertTrue([projectId, second].contains(try XCTUnwrap(r["projectId"]?.string)))
         XCTAssertEqual(dialogs.openRequests.last, OpenDialogOptions(title: "Open Library", directory: true, multiple: false))
         try await other.close()
+    }
+
+    /// "Save to…" end to end (#40): a completed library export is copied to the path the save dialog returns; a
+    /// cancelled dialog writes nothing; a name typed without the extension gets it and never replaces a file there;
+    /// a path the dialog approved is replaced.
+    func testSaveToCopiesACompletedLibraryExportWhereTheUserChose() async throws {
+        let b = RuntimeDesktopBackend(userData: root + "/userData")
+        let dialogs = ScriptedDialogs()
+        dialogs.saves = [root + "/Films"]
+        let created = try await run(b, dialogs, ["type": .string("create")])
+        let projectId = try XCTUnwrap(created["projectId"]?.string)
+        let views = try await b.libraryViews()
+        let library = try XCTUnwrap(views.first)
+        try await b.close()
+        // A finished export as a library render records it: the file under renders/<project>/ and its catalog job.
+        let jobId = UUID().uuidString.lowercased(), renders = library.path + "/renders/" + projectId
+        try FileManager.default.createDirectory(atPath: renders, withIntermediateDirectories: true)
+        try Data("encoded-fixture".utf8).write(to: URL(fileURLWithPath: renders + "/render-1.mp4"))
+        let catalog = library.path + "/Catalog.sqlite"
+        _ = try LibraryCatalog.command(catalog, "job", [jobId, projectId, "Snapshots/" + jobId])
+        _ = try LibraryCatalog.command(catalog, "jobFinish", [jobId, "complete", "renders/\(projectId)/render-1.mp4", ""])
+
+        let reopened = RuntimeDesktopBackend(userData: root + "/reopened")
+        dialogs.opens = [[library.path]]
+        _ = try await run(reopened, dialogs, ["type": .string("open")])
+        let save: JSONObject = ["type": .string("saveOutput"), "libraryId": .string(library.id), "jobId": .string(jobId)]
+        let out = root + "/Out", saved = out + "/Final cut.mp4"
+        try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
+        dialogs.saves = [nil]
+        _ = try await run(reopened, dialogs, save)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: out), [], "cancelled: nothing written")
+        XCTAssertEqual(dialogs.saveRequests.last?.defaultPath, "render-1.mp4")
+        XCTAssertEqual(dialogs.saveRequests.last?.filters.first?.extensions, ["mp4"])
+
+        dialogs.saves = [out + "/Final cut"]
+        _ = try await run(reopened, dialogs, save)
+        XCTAssertEqual(try String(contentsOfFile: saved, encoding: .utf8), "encoded-fixture")
+
+        try Data("keep me".utf8).write(to: URL(fileURLWithPath: saved))
+        dialogs.saves = [out + "/Final cut"]
+        do { _ = try await run(reopened, dialogs, save); XCTFail("expected an error") }
+        catch {
+            XCTAssertEqual((error as? DesktopError)?.message,
+                           "A file named Final cut.mp4 already exists there. It was left unchanged; choose another name.")
+        }
+        XCTAssertEqual(try String(contentsOfFile: saved, encoding: .utf8), "keep me")
+
+        dialogs.saves = [saved]
+        _ = try await run(reopened, dialogs, save)
+        XCTAssertEqual(try String(contentsOfFile: saved, encoding: .utf8), "encoded-fixture")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: out), ["Final cut.mp4"], "no staged copy left")
+        try await reopened.close()
     }
 }

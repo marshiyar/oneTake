@@ -564,6 +564,17 @@ public final class LibraryService: @unchecked Sendable {
         }
         let source = try ProjectFS.realpath(try libraryWithin(l.root, job.output))
         _ = try libraryWithin(try ProjectFS.realpath(PosixPath.join(l.root, "renders")), source)
+        do { try publishSavedOutput(source, destination, replaceApproved: replaceApproved) }
+        catch let e as ProjectFSError where e.code == "EEXIST" {
+            let name = PosixPath.basename(destination)
+            throw LibraryError("A file named \(name) already exists there. It was left unchanged; choose another name.")
+        } catch let e as ProjectFSError {
+            throw LibraryError("Could not save the export as \(PosixPath.basename(destination)): \(e.message)")
+        }
+    }
+    /// Copies `source` beside `destination` (fsynced), then renames it into place when replacing was approved, else
+    /// links it there without replacing anything (EEXIST when a file is there). The staged copy is always removed.
+    private func publishSavedOutput(_ source: String, _ destination: String, replaceApproved: Bool) throws {
         let staged = PosixPath.join(PosixPath.dirname(destination), ".mpvfx-output-\(newUUID())")
         defer { rmForce(staged) }
         try copyFileExclusiveStreaming(source, staged)

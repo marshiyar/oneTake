@@ -85,16 +85,7 @@ public enum LibraryCommands {
         case "reveal":
             await dialogs?.openPath(try service.root(libraryId: str("libraryId")))
         case "saveOutput":
-            let job = try await service.views().array?.first { $0["id"]?.string == str("libraryId") }?["jobs"]?.array?
-                .first { $0["id"]?.string == str("jobId") }
-            guard let job, job["status"]?.string == "complete", let output = job["output"]?.string else {
-                throw DesktopError("Export is not complete")
-            }
-            let ext = (output as NSString).pathExtension
-            if let selected = await dialogs?.showSave(.init(title: "Save Export As", defaultPath: (output as NSString).lastPathComponent,
-                    buttonLabel: nil, filters: [.init(name: "Rendered media", extensions: [ext])])), !selected.isEmpty {
-                try await service.saveOutput(libraryId: str("libraryId"), jobId: str("jobId"), destination: selected, overwrite: true)
-            }
+            try await saveOutput(service: service, dialogs: dialogs, libraryId: str("libraryId"), jobId: str("jobId"))
         default: throw DesktopError("Unknown library command")
         }
         // Key order { libraries, projectId, path, errors }.

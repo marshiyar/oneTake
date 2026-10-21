@@ -295,7 +295,7 @@ public final class LeftSidebarPanel {
                     if exportsOpen {
                         for e in lib.exports.prefix(40) {
                             var right = x + w
-                            if e.status == "complete" { right = button("Save as…", .saveOutput(e.id), right: right, at: y) - 8 }
+                            if e.status == "complete" { right = button("Save to…", .saveOutput(e.id), right: right, at: y, enabled: !library.busy) - 8 }
                             PanelDraw.text(c, "\(e.label): \(e.status)", in: CanvasRect(x: x, y: y, width: right - x, height: lineH), font: font, color: PanelTheme.neutral300)
                             y += lineH + gap
                         }

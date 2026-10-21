@@ -475,6 +475,34 @@ final class MediaBinTests: XCTestCase {
         XCTAssertEqual(cmds, [.reveal(libraryId: "L"), .createEvent(libraryId: "L", name: "Day 2")])
     }
 
+    /// "Library exports": a completed export offers "Save to…", which asks the host to save that export; a failed or
+    /// running one offers nothing, and while a library command runs the button is disabled (#40).
+    func testLibraryExportsOfferSaveToForCompletedExportsOnly() throws {
+        let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
+        s.library.available = true
+        s.library.libraries = [.init(id: "L", name: "test", events: [.init(id: "E", name: "Media")], projects: [.init(id: "P", name: "jk", eventId: "E")],
+                                     exports: [.init(id: "J1", label: "render-1.mp4", status: "complete"),
+                                               .init(id: "J2", label: "render-2.mp4", status: "failed"),
+                                               .init(id: "J3", label: "J3", status: "rendering")])]
+        s.library.currentProjectId = "P"
+        var cmds: [LibraryNavCommand] = []
+        s.onLibrary = { cmds.append($0) }
+        let c = PanelMeasureCanvas()
+        s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertNil(s.hits.rect { $0 == .saveOutput("J1") }, "the exports list starts closed")
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .toggleExports })))
+        c.reset(); s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertTrue(c.drawnStrings.contains("Save to…"))
+        XCTAssertTrue(c.drawnStrings.contains("render-2.mp4: failed"))
+        XCTAssertNil(s.hits.rect { $0 == .saveOutput("J2") })
+        XCTAssertNil(s.hits.rect { $0 == .saveOutput("J3") })
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .saveOutput("J1") })))
+        XCTAssertEqual(cmds, [.saveOutput(libraryId: "L", jobId: "J1")])
+        s.library.busy = true
+        c.reset(); s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertNil(s.hits.rect { $0 == .saveOutput("J1") }, "disabled while a library command runs")
+    }
+
     /// "Open project…" asks for a folder; "Recent" lists the projects opened before and opens the one picked.
     func testOpenProjectAndRecentProjects() throws {
         let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))

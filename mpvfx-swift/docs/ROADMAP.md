@@ -32,7 +32,7 @@ Also in the beta:
 | [#35](https://github.com/marshiyar/oneTake/issues/35) | Visual refresh 4: compact track headers | buildable |
 | [#36](https://github.com/marshiyar/oneTake/issues/36) | Visual refresh 5: inspector values and keyframe controls | buildable |
 | [#37](https://github.com/marshiyar/oneTake/issues/37) | Visual refresh 6: markers, playhead timecode, audio meters | blocked on #61 |
-| [#40](https://github.com/marshiyar/oneTake/issues/40) | Finish the library ("Save to…") | buildable |
+| [#40](https://github.com/marshiyar/oneTake/issues/40) | Finish the library: "Save to…" in review; rename and delete events and projects next | buildable |
 | [#82](https://github.com/marshiyar/oneTake/issues/82) | Export never replaces a file on Windows | buildable |
 | [#46](https://github.com/marshiyar/oneTake/issues/46) | Signed Windows installer | needs-owner |
 
