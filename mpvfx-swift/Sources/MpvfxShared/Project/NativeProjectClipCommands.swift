@@ -170,9 +170,10 @@ private func applyTrimIn(_ d: NativeProjectDocument, _ a: NativeProjectClipAddre
     do {
         // Overflow mapping: a 64-bit overflow is a NativeSourceTimeRangeError and lands in this catch like the other
         // range errors; both become an invalid-trim rejection.
-        if let ramp = clip.speedRamp, ramp.isSupported, delta > 0, kind.map({ nativeAssetConsumesSourceFrames($0) }) == true {
+        if let ramp = clip.speedRamp, ramp.isSupported, delta != 0, kind.map({ nativeAssetConsumesSourceFrames($0) }) == true {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-                                                 playbackRate: rationalFromNumber(ramp.sourcePosition(atClipFrame: delta) / delta), timelineFrames: delta)
+                                                 playbackRate: rationalFromNumber(delta > 0 ? ramp.sourcePosition(atClipFrame: delta) / delta : ramp.speed(atClipFrame: 0)),
+                                                 timelineFrames: delta)
         } else {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
                 playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeAssetConsumesSourceFrames($0) } == true ? 0 : delta)
@@ -199,8 +200,14 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     if nativeAssetConsumesSourceFrames(asset.kind) {
         let fits: Bool
         do {
-            fits = try sourceRangeFits(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-                                       playbackRate: clip.playbackRate, durationFrames: nextDuration, sourceDurationFrames: asset.durationFrames)
+            if let ramp = clip.speedRamp, ramp.isSupported {
+                // A ramped clip consumes the integral of its speed, not duration times the constant rate.
+                let start = sourceFrameValue(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction))
+                fits = start + ramp.sourcePosition(atClipFrame: nextDuration) <= asset.durationFrames
+            } else {
+                fits = try sourceRangeFits(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
+                                           playbackRate: clip.playbackRate, durationFrames: nextDuration, sourceDurationFrames: asset.durationFrames)
+            }
         } catch {
             // Overflow mapping: an end point beyond 64 bits is far past any real asset, so it is
             // treated like an out-of-range answer (`fits == false`): the same invalid-trim rejection.

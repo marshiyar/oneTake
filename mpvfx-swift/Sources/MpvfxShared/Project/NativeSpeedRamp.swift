@@ -15,16 +15,19 @@ import Foundation
 
 /// A versioned clip-local time map. Unknown versions and kinds deliberately decode and re-encode unchanged; callers
 /// only evaluate `isSupported` ramps. `t` is a clip frame and `speed` is source frames per timeline frame.
-public struct NativeSpeedRamp: Codable, Equatable, Sendable {
+public struct NativeSpeedRamp: Codable, Equatable, Hashable, Sendable {
     public static let version = 1
     public static let supportedKind = "speed-ramp"
 
-    public struct Point: Codable, Equatable, Sendable {
+    public struct Point: Codable, Equatable, Hashable, Sendable {
         public var t: Double
         public var speed: Double
         public var ease: NativeInterpolation
         public var spread = NativeSpreadKeys()
         static let known = ["t", "speed", "ease"]
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(t); hasher.combine(speed); hasher.combine(String(describing: ease))
+        }
 
         public init(t: Double, speed: Double, ease: NativeInterpolation = .linear) {
             self.t = t; self.speed = speed; self.ease = ease
@@ -47,6 +50,9 @@ public struct NativeSpeedRamp: Codable, Equatable, Sendable {
     public var points: [Point]
     public var spread = NativeSpreadKeys()
     static let known = ["v", "kind", "points"]
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(v); hasher.combine(kind); hasher.combine(points)
+    }
 
     public init(v: Int = version, kind: String = supportedKind, points: [Point]) {
         self.v = v; self.kind = kind; self.points = points
@@ -55,11 +61,13 @@ public struct NativeSpeedRamp: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: NativeAnyCodingKey.self)
         v = try c.req(Int.self, "v"); kind = try c.req(String.self, "kind")
-        points = try c.opt([Point].self, "points") ?? []
-        spread = try decodeSpread(decoder, known: Self.known)
+        // An object of another version or kind is kept verbatim in `spread` and never interpreted, whatever its shape.
+        let supported = v == Self.version && kind == Self.supportedKind
+        points = supported ? try c.opt([Point].self, "points") ?? [] : []
+        spread = try decodeSpread(decoder, known: supported ? Self.known : ["v", "kind"])
     }
     public func encode(to encoder: Encoder) throws {
-        try encodeSpread(encoder, spread, known: Self.known) { key, c in
+        try encodeSpread(encoder, spread, known: isSupported ? Self.known : ["v", "kind"]) { key, c in
             switch key { case "v": try c.put(v, key); case "kind": try c.put(kind, key); default: try c.put(points, key) }
         }
     }
@@ -155,11 +163,70 @@ private func integrate(from: Double, to: Double, segmentStart: Double, segmentEn
 }
 
 public extension NativeSpeedRamp {
-    /// The same time map restricted to `[from, until)`, rebased so the new clip begins at zero.
+    /// The same time map restricted to `[from, until)`, rebased so the new clip begins at zero. The speed curve is
+    /// preserved exactly: a cut inside an eased segment keeps the matching part of that segment's ease (a hold or
+    /// linear ease as is, a cubic Bezier as the sub-curve of the same Bezier), and a point is added at the new end so
+    /// the speed keeps ramping up to the cut instead of freezing at the last point inside it.
     func sliced(from: Double, until: Double) -> NativeSpeedRamp {
-        guard isSupported else { return self }
-        var result = [Point(t: 0, speed: speed(atClipFrame: from))]
-        result += points.filter { $0.t > from && $0.t < until }.map { Point(t: $0.t - from, speed: $0.speed, ease: $0.ease) }
+        guard isSupported, until > from else { return self }
+        func segment(containing t: Double) -> Int? {
+            for i in 0..<max(0, points.count - 1) where points[i].t <= t && t < points[i + 1].t { return i }
+            return nil
+        }
+        /// The ease of segment `i` between its normalised positions `x0` and `x1`.
+        func piece(_ i: Int, _ x0: Double, _ x1: Double) -> NativeInterpolation {
+            switch points[i].ease {
+            case .hold: return .hold
+            case .linear: return .linear
+            case .cubicBezier(let c): return subBezier(c, x0, x1).map { .cubicBezier($0) } ?? .linear
+            }
+        }
+        func normalised(_ i: Int, _ t: Double) -> Double { (t - points[i].t) / (points[i + 1].t - points[i].t) }
+        func outgoing(at t: Double, upTo end: Double) -> NativeInterpolation {
+            guard let i = segment(containing: t) else { return .linear }
+            return piece(i, normalised(i, t), min(1, normalised(i, end)))
+        }
+        var result = [Point(t: 0, speed: speed(atClipFrame: from), ease: outgoing(at: from, upTo: until))]
+        for p in points where p.t > from && p.t < until {
+            result.append(Point(t: p.t - from, speed: p.speed, ease: outgoing(at: p.t, upTo: until)))
+        }
+        if let last = result.last, last.t < until - from {
+            result.append(Point(t: until - from, speed: speed(atClipFrame: until)))
+        }
         return NativeSpeedRamp(points: result)
     }
+}
+
+/// The part of the Bezier ease `c` between normalised x positions `x0` and `x1`, rescaled to a full 0...1 ease
+/// (de Casteljau subdivision at the parameters where the curve reaches those x values). Nil when the part is flat.
+private func subBezier(_ c: CubicBezierControlPoints, _ x0: Double, _ x1: Double) -> CubicBezierControlPoints? {
+    typealias P = (x: Double, y: Double)
+    func lerp(_ a: P, _ b: P, _ t: Double) -> P { (a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t) }
+    func parameter(_ x: Double) -> Double {
+        func bx(_ t: Double) -> Double { let u = 1 - t; return 3 * u * u * t * c.x1 + 3 * u * t * t * c.x2 + t * t * t }
+        var lo = 0.0, hi = 1.0
+        for _ in 0..<50 { let m = (lo + hi) / 2; if bx(m) < x { lo = m } else { hi = m } }
+        return (lo + hi) / 2
+    }
+    /// The curve's right part from parameter `t` on.
+    func right(_ q: [P], _ t: Double) -> [P] {
+        let a = lerp(q[0], q[1], t), b = lerp(q[1], q[2], t), d = lerp(q[2], q[3], t)
+        let e = lerp(a, b, t), f = lerp(b, d, t)
+        return [lerp(e, f, t), f, d, q[3]]
+    }
+    func left(_ q: [P], _ t: Double) -> [P] {
+        let a = lerp(q[0], q[1], t), b = lerp(q[1], q[2], t), d = lerp(q[2], q[3], t)
+        let e = lerp(a, b, t), f = lerp(b, d, t)
+        return [q[0], a, e, lerp(e, f, t)]
+    }
+    let u0 = parameter(x0), u1 = parameter(x1)
+    guard u1 > u0 else { return nil }
+    let whole: [P] = [(0, 0), (c.x1, c.y1), (c.x2, c.y2), (1, 1)]
+    var q = u1 < 1 ? left(whole, u1) : whole
+    if u0 > 0 { q = right(q, u0 / max(u1, 1e-12)) }
+    let dx = q[3].x - q[0].x, dy = q[3].y - q[0].y
+    guard dx > 1e-9, abs(dy) > 1e-9 else { return nil }
+    func n(_ p: P) -> P { ((p.x - q[0].x) / dx, (p.y - q[0].y) / dy) }
+    let a = n(q[1]), b = n(q[2])
+    return CubicBezierControlPoints(x1: a.x, y1: a.y, x2: b.x, y2: b.y)
 }

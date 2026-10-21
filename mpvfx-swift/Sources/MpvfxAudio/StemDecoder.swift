@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import OneTakeMedia
+import MpvfxShared
 
 /// A stem the media engine refuses: the user-facing reason from the probe (a later format), shown as the clip's
 /// audio issue while the clip plays silent.
@@ -62,16 +63,25 @@ public enum StemDecoder {
         return [left, right]
     }
 
+    /// The pitch-keeping stretcher runs from 0.25x to 4x; a ramp speed outside that plays at the nearest limit.
+    private static func tempo(_ speed: Double) -> Double { min(4, max(0.25, speed)) }
+
     private static func decodeRamp(_ key: DocumentAudioGraph.StemKey, ramp: NativeSpeedRamp, sampleRate: Int) throws -> [[Float]] {
         let outputCount = max(0, Int((key.duration * Double(sampleRate)).rounded(.up)))
         let reader = try AudioSampleReader(path: key.path, sampleRate: sampleRate, channels: 2)
+        if key.preservesPitch {
+            // The first chunk must already run at the ramp's opening speed, so the tempo is set before the seek.
+            try reader.setTempo(Self.tempo(ramp.speed(atClipFrame: 0)))
+        }
         try reader.seek(to: max(0, key.sourceIn))
         if key.preservesPitch {
             var left = [Float](), right = [Float]()
+            var tempo = Self.tempo(ramp.speed(atClipFrame: 0))
             left.reserveCapacity(outputCount); right.reserveCapacity(outputCount)
             while left.count < outputCount {
                 let frame = Double(left.count) / Double(sampleRate) * key.timelineFPS
-                try reader.setTempo(ramp.speed(atClipFrame: frame))
+                let wanted = Self.tempo(ramp.speed(atClipFrame: frame))
+                if abs(wanted - tempo) > 0.002 { try reader.setTempo(wanted); tempo = wanted }
                 let chunk = try reader.read(frames: min(1_024, outputCount - left.count))
                 if chunk.isEmpty { break }
                 for i in 0..<(chunk.count / 2) { left.append(chunk[2 * i]); right.append(chunk[2 * i + 1]) }

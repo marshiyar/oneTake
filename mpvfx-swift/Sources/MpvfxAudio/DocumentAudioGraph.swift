@@ -41,7 +41,7 @@ public enum DocumentAudioGraph {
         public func hash(into hasher: inout Hasher) {
             hasher.combine(path); hasher.combine(sourceIn); hasher.combine(duration); hasher.combine(rate)
             hasher.combine(preservesPitch); hasher.combine(timelineFPS)
-            hasher.combine((try? NativeJSONValue.from(speedRamp)).map { jsJSONStringify(canonicalizeNativeJSON($0)) } ?? "none")
+            hasher.combine(speedRamp)
         }
     }
 
