@@ -111,7 +111,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
     }
 
     var trackIds = Set<String>(), authoredLaneIds = Set<String>(), displayLaneIds = Set<Double>()
-    var clipIds = Set<String>(), bindingIdentities = Set<String>()
+    var clipIds = Set<String>(), bindingIdentities = Set<String>(), transitionIds = Set<String>()
     for (trackIndex, track) in tracks.enumerated() {
         let trackPath = "sequence.tracks[\(trackIndex)]"
         guard track.isRecord else { pushIssue(&issues, .invalidTrack, trackPath, "Track must be an object"); continue }
@@ -275,6 +275,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                                     isPositiveInteger(clip["durationFrames"]) ? clip["durationFrames"]!.numberValue! : nil,
                                     "\(clipPath).parameterTracks", &issues, engine: engine)
         }
+        validateNativeTrackTransitions(track, trackPath, &transitionIds, &issues)
     }
     return issues
 }

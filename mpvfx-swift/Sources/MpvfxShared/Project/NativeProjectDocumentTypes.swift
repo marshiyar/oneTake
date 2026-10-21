@@ -214,9 +214,14 @@ public struct NativeProjectTrack: Codable, Equatable, Sendable {
     public var hidden: Bool?
     /// A locked track refuses clip edits (move, trim, split, delete, paste). Absent means unlocked.
     public var locked: Bool?
+    /// Cut transitions between adjacent clips of this track (`NativeCutTransition`). Absent means every cut is hard;
+    /// edits leave it absent rather than empty.
+    public var transitions: [NativeCutTransition]? = nil
 
-    public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil, locked: Bool? = nil) {
+    public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil,
+                locked: Bool? = nil, transitions: [NativeCutTransition]? = nil) {
         self.id = id; self.kind = kind; self.lane = lane; self.clips = clips; self.hidden = hidden; self.locked = locked
+        self.transitions = transitions
     }
 }
 
@@ -285,6 +290,8 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidPlaybackRate = "invalid-playback-rate", invalidBinding = "invalid-binding", duplicateBinding = "duplicate-binding"
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
+    case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
+    case duplicateTransition = "duplicate-transition"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {

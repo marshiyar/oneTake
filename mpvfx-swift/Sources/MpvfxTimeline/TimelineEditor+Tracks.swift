@@ -105,7 +105,9 @@ public extension TimelineEditor {
     /// Validate and commit a whole-document edit as one undo step.
     internal func commit(_ d: NativeProjectDocument, _ label: String) -> Bool {
         guard d != document else { return false }
-        return withHistory(label) { apply(.restoreDocument(d)) }
+        // Transitions follow the clips the edit moved, trimmed or removed, in the same step.
+        let fitted = reconcileNativeCutTransitions(d)
+        return withHistory(label) { apply(.restoreDocument(fitted)) }
     }
 
     /// Adds an empty track of `kind` to `d` at display position `index` of `order` (nil = bottom) and renumbers the

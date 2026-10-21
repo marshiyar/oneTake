@@ -39,6 +39,9 @@ public enum DocumentAudioGraph {
         public struct Track: Equatable {
             public var id: String, stem: StemKey, start: Double, end: Double, volume: Double, muted: Bool
             public var fxChain: String?, automation: String?, groupId: String?
+            /// The clip's cut transition fades (nil: none); `start`/`end` and the stem already include the handle
+            /// media a dissolve plays past the clip's own edges.
+            public var transitionGain: AudioTransitionGain? = nil
         }
     }
 
@@ -49,6 +52,7 @@ public enum DocumentAudioGraph {
         let clips = doc.sequence.tracks.flatMap(\.clips)
         let detached = Set(clips.compactMap { $0.audioDetachedFrom?.isEmpty == false ? $0.audioDetachedFrom : nil })
         var tracks: [Inputs.Track] = []
+        let transitions = audioTransitions(doc, clips: clips)
         for c in clips {
             guard let a = assets[c.assetId], a.kind == .audio || a.kind == .video, let src = a.source else { continue }
             if a.kind == .video && detached.contains(c.id) { continue }
@@ -60,11 +64,38 @@ public enum DocumentAudioGraph {
             if case .number(let v)? = c.staticParameters?["audio.volume"] { volume = max(0, v) }
             let stem = StemKey(path: path, sourceIn: c.sourceInFrame / fps, duration: end - start, rate: rate,
                                preservesPitch: c.preservesPitch ?? true)
-            tracks.append(.init(id: c.id, stem: stem,
-                                start: start, end: end, volume: volume, muted: c.muted,
-                                fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty))
+            var track = Inputs.Track(id: c.id, stem: stem,
+                                     start: start, end: end, volume: volume, muted: c.muted,
+                                     fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty)
+            if let t = transitions[c.id] { applyTransitions(t, to: &track, fps: fps) }
+            tracks.append(track)
         }
         return Inputs(duration: duration, tracks: tracks, groups: doc.sequence.audioGroups ?? [])
+    }
+
+    /// The cut transitions each sounding clip follows: its own, or (detached audio) its linked video's at the edges
+    /// where the two still line up.
+    static func audioTransitions(_ doc: NativeProjectDocument, clips: [NativeProjectClip]) -> [String: NativeClipTransitions] {
+        var spans = nativeCutTransitionSpans(doc)
+        let byId = Dictionary(clips.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for c in clips where spans[c.id] == nil {
+            guard let videoId = c.audioDetachedFrom, let video = byId[videoId], let t = spans[videoId] else { continue }
+            var follows = NativeClipTransitions()
+            if c.startFrame == video.startFrame { follows.incoming = t.incoming }
+            if c.startFrame + c.durationFrames == video.startFrame + video.durationFrames { follows.outgoing = t.outgoing }
+            if follows.incoming != nil || follows.outgoing != nil { spans[c.id] = follows }
+        }
+        return spans
+    }
+
+    /// Widens the track over the handle media its transitions play and adds their equal-power fades.
+    static func applyTransitions(_ t: NativeClipTransitions, to track: inout Inputs.Track, fps: Double) {
+        let lead = t.lead / fps, tail = t.tail / fps
+        track.start -= lead; track.end += tail
+        track.stem.sourceIn -= lead * track.stem.rate; track.stem.duration = track.end - track.start
+        track.transitionGain = AudioTransitionGain(
+            fadeIn: t.incoming.map { AudioGainRamp(start: ($0.kind == .dissolve ? $0.startFrame : $0.cutFrame) / fps, end: $0.endFrame / fps, fadeIn: true) },
+            fadeOut: t.outgoing.map { AudioGainRamp(start: $0.startFrame / fps, end: ($0.kind == .dissolve ? $0.endFrame : $0.cutFrame) / fps, fadeIn: false) })
     }
 
     /// Unparseable FX chains / automation are dropped (reported through `issues`), never fatal to playback. A stem
@@ -81,8 +112,10 @@ public enum DocumentAudioGraph {
         let tracks = inputs.tracks.compactMap { t -> AudioGraphTrack? in
             let stem: [[Float]]
             do { stem = try loadStem(t.stem) } catch { issues.append("clip \(t.id): audio not decodable (\(error))"); return nil }
-            return AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: t.volume, muted: t.muted,
-                                   fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
+            var track = AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: t.volume, muted: t.muted,
+                                        fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
+            track.transitionGain = t.transitionGain
+            return track
         }
         let groups = inputs.groups.map { g in
             AudioGraphGroup(id: g.id, volume: g.volume ?? 1, muted: g.muted ?? false,

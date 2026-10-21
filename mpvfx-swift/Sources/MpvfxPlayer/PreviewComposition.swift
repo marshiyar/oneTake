@@ -54,6 +54,9 @@ public struct PreviewLayer: Equatable, Sendable {
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
+    /// A dip transition's colour laid over the picture (nil: none), and how much of it (0…1).
+    public var transitionColor: CanvasColor?
+    public var transitionColorAmount = 0.0
 
     public init(clipId: String, source: String, kind: Kind, start: Double, end: Double, sourceIn: Double, rate: Double = 1,
                 startFrame: Int = 0, endFrame: Int = Int.max, box: CanvasRect, scaleX: Double = 1, scaleY: Double = 1,
@@ -94,7 +97,17 @@ public struct PreviewComposition {
         public var layer: Double
         /// The clip's active grade, built once per document.
         public var grade: ColorGradeRenderer? = nil
+        /// The cut transitions the clip takes part in (`nativeCutTransitionSpans`): the frames it is drawn before its
+        /// start and after its end from its handles, and how it mixes during each transition.
+        public var transitions = NativeClipTransitions()
+        /// Timeline frames the clip is drawn over, transitions included, [drawStart, drawEnd).
+        public var drawStart: Double { clip.startFrame - transitions.lead }
+        public var drawEnd: Double { clip.startFrame + clip.durationFrames + transitions.tail }
     }
+
+    /// Pre-roll horizon, in seconds, for a clip that comes on screen through a transition: both of its decoders run
+    /// at once, so the incoming one starts this far ahead and the first frame of the transition is ready.
+    public static let transitionPreroll = 1.0
 
     public let canvas: CanvasSize
     public let background: CanvasColor
@@ -143,6 +156,8 @@ public struct PreviewComposition {
                 ordered.append((Entry(clip: clip, kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade), n))
             }
         }
+        let spans = nativeCutTransitionSpans(document)
+        for i in ordered.indices { ordered[i].0.transitions = spans[ordered[i].0.clip.id] ?? NativeClipTransitions() }
         entries = ordered.sorted { a, b in
             if a.0.layer != b.0.layer { return a.0.layer < b.0.layer }
             if a.0.clip.startFrame != b.0.clip.startFrame { return a.0.clip.startFrame < b.0.clip.startFrame }
@@ -161,7 +176,7 @@ public struct PreviewComposition {
     public func layers(at time: Double) -> [PreviewLayer] {
         let f = Double(frameIndex(at: time))
         return entries.compactMap { e in
-            guard e.clip.startFrame <= f, f < e.clip.startFrame + e.clip.durationFrames else { return nil }
+            guard e.drawStart <= f, f < e.drawEnd else { return nil }
             return layer(e, at: time)
         }
     }
@@ -170,8 +185,9 @@ public struct PreviewComposition {
     public func upcoming(after time: Double, within horizon: Double) -> [PreviewLayer] {
         let f = Double(frameIndex(at: time))
         return entries.compactMap { e in
-            let start = e.clip.startFrame / fps
-            guard e.clip.startFrame > f, start <= time + horizon else { return nil }
+            let start = e.drawStart / fps
+            let reach = e.transitions.lead > 0 ? max(horizon, Self.transitionPreroll) : horizon
+            guard e.drawStart > f, start <= time + reach else { return nil }
             return layer(e, at: start)
         }
     }
@@ -180,7 +196,7 @@ public struct PreviewComposition {
     public func upcomingReverse(before time: Double, within horizon: Double) -> [PreviewLayer] {
         let f = Double(frameIndex(at: time))
         return entries.compactMap { e in
-            let endFrame = e.clip.startFrame + e.clip.durationFrames
+            let endFrame = e.drawEnd
             guard endFrame <= f, endFrame / fps >= time - horizon, e.clip.durationFrames > 0 else { return nil }
             return layer(e, at: (endFrame - 1) / fps)
         }
@@ -228,7 +244,24 @@ public struct PreviewComposition {
         out.text = e.kind == .text ? c.text : nil
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
+        applyTransitions(e.transitions, to: &out, atFrame: Double(frameIndex(at: time)))
         return out
+    }
+
+    /// Widens the layer over its transitions' handle frames (one decode lane covers the whole range) and mixes it
+    /// for the transition at `frame`: a dissolve scales the incoming clip's opacity, a dip lays its colour over
+    /// either clip.
+    func applyTransitions(_ t: NativeClipTransitions, to layer: inout PreviewLayer, atFrame frame: Double) {
+        if t.lead > 0 {
+            layer.start -= t.lead / fps; layer.sourceIn -= t.lead * layer.rate / fps; layer.startFrame -= Int(t.lead)
+        }
+        if t.tail > 0 { layer.end += t.tail / fps; layer.endFrame += Int(t.tail) }
+        let mix: NativeTransitionMix, span: NativeCutTransitionSpan
+        if let s = t.incoming, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.incomingMix(atFrame: frame) }
+        else if let s = t.outgoing, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.outgoingMix(atFrame: frame) }
+        else { return }
+        layer.opacity *= mix.opacity
+        if mix.colorAmount > 0 { layer.transitionColor = CanvasColor(hex: span.color); layer.transitionColorAmount = mix.colorAmount }
     }
 }
 
@@ -304,12 +337,15 @@ public enum PreviewPainter {
             if let fill = layer.style?.fill.flatMap(CanvasColor.init(hex:)), fill.a > 0 {
                 var p = CanvasPath(); p.addRect(box); c.fill(p, fill.withAlpha(fill.a * layer.opacity))
             }
+            var covered = box
             if let image {
                 let picture = toView(mediaRect(imageWidth: image.width, imageHeight: image.height, in: layer.box), frame: frame, scale: s)
                 c.drawImage(image, in: picture, opacity: layer.opacity)
+                covered = picture
             } else if let text = layer.text {
                 TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
             }
+            drawTransitionColor(layer, over: covered, on: c)
             if let style = layer.style, style.visibleStrokeWidth > 0, let color = CanvasColor(hex: style.resolvedStrokeColor) {
                 // Inside the box edge, like export's drawbox.
                 let w = min(style.visibleStrokeWidth * s, min(box.width, box.height) / 2)
@@ -317,6 +353,13 @@ public enum PreviewPainter {
                 c.stroke(p, color.withAlpha(color.a * layer.opacity), StrokeStyle(width: w))
             }
         }
+    }
+
+    /// A dip transition's colour over the layer's picture (or its box for text), at the dip's amount.
+    static func drawTransitionColor(_ layer: PreviewLayer, over rect: CanvasRect, on c: CanvasContext) {
+        guard layer.transitionColorAmount > 0, let color = layer.transitionColor else { return }
+        var p = CanvasPath(); p.addRect(rect)
+        c.fill(p, color.withAlpha(color.a * min(1, layer.transitionColorAmount) * layer.opacity))
     }
 
     /// Mesh cells per side for a lens-projected layer: each cell is two triangles drawn with their own affine map.

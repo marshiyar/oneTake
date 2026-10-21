@@ -102,10 +102,12 @@ func applyKeyframedVolume(_ track: inout AudioGraphTrack, _ clip: NativeProjectC
     var gains = [Double](repeating: 1, count: frames)
     for f in 0..<frames { gains[f] = Swift.max(0, try sampler.number("audio.volume", at: Double(f)) ?? 1) }
     let samplesPerFrame = Double(EXPORT_AUDIO_SAMPLE_RATE) / fps
+    // A transition's handle media before the clip's start holds the first key's value.
+    let lead = Swift.max(0, clip.startFrame - (track.start * fps).rounded())
     for c in track.stem.indices {
         track.stem[c].withUnsafeMutableBufferPointer { buffer in
             for k in 0..<buffer.count {
-                let pos = Double(k) / samplesPerFrame
+                let pos = Swift.max(0, Double(k) / samplesPerFrame - lead)
                 let lo = Swift.min(frames - 1, Int(pos)), hi = Swift.min(frames - 1, lo + 1)
                 buffer[k] *= Float(gains[lo] + (gains[hi] - gains[lo]) * (pos - Double(lo)))
             }

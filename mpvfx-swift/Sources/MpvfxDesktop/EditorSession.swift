@@ -124,6 +124,7 @@ final class EditorSession {
         syncStage()
         let previousOnChange = editor.onChange
         editor.onChange = { [weak self] in previousOnChange?(); self?.documentChanged(); self?.rebuildAudioGraphIfNeeded() }
+        editor.onNotice = { [weak self] in self?.player.view.showToast($0); self?.redraw() }
         if let backend, let project {
             do {
                 try backend.watchProject(id: project.id) { [weak self] text in
@@ -269,7 +270,8 @@ final class EditorSession {
         composedDocument = nil; graphInputs = nil
         try loadContent(opened.content)
         player.view.canvasSize = CanvasSize(editor.document.canvas.width, editor.document.canvas.height)
-        if let notice = editor.document.undrawnElementLayersNotice { player.view.showToast(notice) }
+        let notices = editor.document.openNotices
+        if !notices.isEmpty { player.view.showToast(notices.joined(separator: " ")) }
     }
 
     // MARK: Media in the project

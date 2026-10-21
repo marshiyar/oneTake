@@ -176,6 +176,8 @@ public func nativeExportVisibleProject(_ project: NativeProjectDocument) -> Nati
     var out = project
     out.sequence.durationFrames = sequenceEndFrame(project)
     out.sequence.tracks = tracks.filter { $0.hidden != true }.map { var t = $0; t.clips.removeAll(where: skipped); return t }
+    // A transition to a clip left out is a hard cut, as the preview draws it.
+    out = reconcileNativeCutTransitions(out)
     return out
 }
 
