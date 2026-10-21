@@ -59,12 +59,15 @@ extension InspectorPanel {
     private func buildAllGroups() -> [InspectorGroup] {
         if let editor, let g = selectedBus() { return [busFxGroup(editor, g)] }
         if let editor, showsComposition { return [compositionGroup(editor)] }
+        if let editor, selection.count > 1, hasUserLookSelection { return [userLooksGroup(editor)] }
         guard let editor, let s = selected() else { return [] }
         var groups: [InspectorGroup] = []
+        if let generator = generatorGroup(editor, s) { groups.append(generator) }
         if let text = textGroup(editor, s) { groups.append(text) }
         if s.isVisual { groups.append(transformGroup(editor, s)); groups.append(styleGroup(editor, s)) }
         if s.kind == .video || s.kind == .image {
             groups.append(gradeGroup(editor, s))
+            if userLookStore != nil { groups.append(userLooksGroup(editor)) }
             groups.append(stylizeGroup(editor, s))
         }
         if s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId }) { groups.append(effectsGroup(editor, s)) }
@@ -235,7 +238,7 @@ extension InspectorPanel {
             reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.opacityId)) },
             keyframe: keyframe(editor, s, TimelineEditor.opacityId, fallback: .number(op)))
         return InspectorGroup(id: "style", title: "Style", summary: Self.styleSummary(s.clip.style, opacityPercent: pct),
-                              rows: styleRows(editor, s) + [.init(.slider(slider))])
+                              rows: styleRows(editor, s) + [.init(.slider(slider)), blendRow(editor, s)])
     }
 
     // MARK: Effects
