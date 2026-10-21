@@ -2,7 +2,7 @@ name: mpvfx-ci
 
 # The app on Linux and Windows (a build, package and install + launch job per OS beside its test shards) and on macOS
 # through mpvfx-macos.yml (job macos). Runs on every pull request into main, every push to main, every night and every
-# push of a v* tag; when every platform is green, one publish job releases all installers together
+# push of a v* tag; Linux and Windows publish as soon as they pass and macOS joins the same release later
 # (.github/ci/publish.sh): a run of main as the prerelease nightly-<commit>, a v* tag as the official release of that
 # tag, marked latest. Pull requests and other branches never publish.
 #
@@ -570,16 +570,16 @@ jobs:
           done
 
   publish:
-    needs: [plan, checks, linux, linux-test, windows, windows-test, macos]
-    # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
-    # Owner ruling 2026-10-21: no OS holds another back. The release carries the installers of every OS whose build
-    # (and, for Linux and Windows, test shards) passed; an OS that failed or never got a runner is left out, not waited
-    # for. It needs the shared checks and at least one OS; a stable v<X.Y.Z> tag fails in Release unless every OS passed.
+    needs: [plan, checks, linux, linux-test, windows, windows-test]
+    # Only main (nightly prerelease) and v* tags publish; publish.sh decides which release.
+    # Owner ruling 2026-10-21: no OS holds another back. Linux and Windows publish as soon as they pass, without waiting
+    # for a macOS runner; publish-macos adds the disk image to the same release when the macOS job finishes. A stable
+    # v<X.Y.Z> tag is the public launch and ships every OS or none, so publish-macos publishes it alone.
     if: >-
       always() && github.event_name != 'pull_request'
-      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && (github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-')))
       && needs.plan.result == 'success' && needs.checks.result == 'success'
-      && (needs.linux.result == 'success' || needs.windows.result == 'success' || needs.macos.result == 'success')
+      && (needs.linux.result == 'success' || needs.windows.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -591,7 +591,6 @@ jobs:
       WINDOWS_OK: >-
         ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
         || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]')) }}
-      MACOS_OK: ${{ needs.macos.result == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -610,25 +609,75 @@ jobs:
         with:
           path: dist
           name: windows
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: env.MACOS_OK == 'true'
-        with:
-          path: dist
-          name: macos
-      - name: Release
+      - name: Release (Linux and Windows)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          # A stable v<X.Y.Z> tag is the public launch: it ships every OS or none. Prereleases and nightlies leave out
-          # an OS that did not pass.
-          stable=false
-          case "$GITHUB_REF" in refs/tags/v*-*) ;; refs/tags/v*) stable=true ;; esac
-          for os in LINUX WINDOWS MACOS; do
-            ok="${os}_OK"; [ "${!ok}" = true ] && continue
-            if [ "$stable" = true ]; then echo "::error::${os,,} did not pass; a stable release ships every OS"; exit 1; fi
-            echo "::warning::${os,,} did not pass; this release leaves it out"
+          for os in LINUX WINDOWS; do
+            ok="${os}_OK"; [ "${!ok}" = true ] || echo "::warning::${os,,} did not pass; this release leaves it out"
           done
+          shopt -s nullglob
+          files=(dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png)
+          [ "${#files[@]}" -gt 0 ] || { echo "::error::no installer to publish"; exit 1; }
+          bash .github/ci/publish.sh "${files[@]}"
+
+  publish-macos:
+    # After publish (so the two never race to create the release), whatever publish's result: on main and prerelease
+    # tags it uploads the macOS disk image into the same release; on a stable v<X.Y.Z> tag it publishes every OS at
+    # once and fails unless all of them passed.
+    needs: [plan, checks, linux, linux-test, windows, windows-test, macos, publish]
+    if: >-
+      always() && github.event_name != 'pull_request'
+      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && needs.plan.result == 'success' && needs.checks.result == 'success'
+      && (needs.macos.result == 'success' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      STABLE: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+      LINUX_OK: >-
+        ${{ needs.linux.result == 'success' && (needs.linux-test.result == 'success'
+        || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]')) }}
+      WINDOWS_OK: >-
+        ${{ needs.windows.result == 'success' && (needs.windows-test.result == 'success'
+        || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]')) }}
+      MACOS_OK: ${{ needs.macos.result == 'success' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            mpvfx-swift/packaging
+      - name: Every OS passed (stable tag)
+        if: env.STABLE == 'true'
+        run: |
+          for os in LINUX WINDOWS MACOS; do
+            ok="${os}_OK"
+            [ "${!ok}" = true ] || { echo "::error::${os,,} did not pass; a stable release ships every OS"; exit 1; }
+          done
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.STABLE == 'true'
+        with:
+          path: dist
+          name: linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.STABLE == 'true'
+        with:
+          path: dist
+          name: windows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          name: macos
+      - name: Release (macOS, or every OS on a stable tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
           shopt -s nullglob
           files=(dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png)
           [ "${#files[@]}" -gt 0 ] || { echo "::error::no installer to publish"; exit 1; }
