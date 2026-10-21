@@ -43,8 +43,10 @@ extension InspectorPanel {
         switch status {
         case .loaded(let size):
             return "\(size)³ grid"
+
         case .failed(let reason):
             return "LUT '\(lutName(src))' could not be read: \(reason)"
+
         case nil:
             return nil
         }
@@ -117,9 +119,10 @@ extension InspectorPanel {
             InspectorRow.Button(
                 key: "lut.pick.\(option.value)",
                 label: option.label,
-                style: option.value == current ? .chipActive : .chip,
-                action: { [weak self] in self?.pickLut(option.value, grading, commit: commit) }
-            )
+                style: option.value == current ? .chipActive : .chip
+            ) { [weak self] in
+                self?.pickLut(option.value, grading, commit: commit)
+            }
         }
         let remove: InspectorRow.Button = InspectorRow.Button(
             key: "lut.remove",
@@ -139,15 +142,15 @@ extension InspectorPanel {
         InspectorRow.Slider(
             key: "lut:strength",
             label: "LUT strength",
-            position: lut.intensity * 100,
+            position: lut.intensity * LutLayout.percent,
             min: 0,
-            max: 100,
-            display: "\(Int((lut.intensity * 100).rounded()))%",
+            max: LutLayout.percent,
+            display: "\(Int((lut.intensity * LutLayout.percent).rounded()))%",
             format: { "\(Int($0.rounded()))%" },
             tier: lut.intensity == 1 ? .default : .explicitCustom,
             commit: { value in
                 var next: ColorGrading = grading
-                next.lut?.intensity = value / 100
+                next.lut?.intensity = value / LutLayout.percent
                 commit(next)
             },
             reset: {
@@ -164,7 +167,7 @@ extension InspectorPanel {
         let open: Bool = lutSectionOpen(grading)
         return InspectorCustomRow(
             id: "lut:toggle",
-            height: 37,
+            height: LutLayout.toggleHeight,
             draw: { canvas, rect, panel in panel.drawLutToggle(canvas, rect, open: open) },
             pointer: { [weak self] _, _, phase in
                 if phase == 0 {
@@ -177,17 +180,33 @@ extension InspectorPanel {
     internal func drawLutToggle(_ canvas: CanvasContext, _ rect: CanvasRect, open: Bool) {
         let rule: CanvasRect = CanvasRect(x: rect.x, y: rect.y, width: rect.width, height: 1)
         canvas.fillRect(rule.snapped, PanelTheme.panelHairline)
-        let row: CanvasRect = CanvasRect(x: rect.x, y: rect.y + 7, width: rect.width, height: 30)
-        let label: CanvasRect = CanvasRect(x: row.x, y: row.midY - 8.25, width: row.width - 16, height: 16.5)
-        PanelDraw.text(canvas, "Custom LUT", in: label, font: PanelTheme.font(11), color: PanelTheme.text2)
-        let caret: CanvasRect = CanvasRect(x: row.maxX - 10, y: row.midY - 5, width: 10, height: 10)
+        let row: CanvasRect = CanvasRect(
+            x: rect.x,
+            y: rect.y + LutLayout.ruleGap,
+            width: rect.width,
+            height: LutLayout.rowHeight
+        )
+        let label: CanvasRect = CanvasRect(
+            x: row.x,
+            y: row.midY - LutLayout.textHalf,
+            width: row.width - LutLayout.padding,
+            height: LutLayout.textHeight
+        )
+        let font: CanvasFont = PanelTheme.font(LutLayout.fontSize)
+        PanelDraw.text(canvas, "Custom LUT", in: label, font: font, color: PanelTheme.text2)
+        let caret: CanvasRect = CanvasRect(
+            x: row.maxX - LutLayout.caretSize,
+            y: row.midY - LutLayout.caretHalf,
+            width: LutLayout.caretSize,
+            height: LutLayout.caretSize
+        )
         canvas.withState {
             if open {
                 canvas.translate(caret.midX, caret.midY)
-                canvas.rotate(.pi / 2)
+                canvas.rotate(LutLayout.quarterTurn)
                 canvas.translate(-caret.midX, -caret.midY)
             }
-            canvas.fillSVG(["M2 3l3 4 3-4z"], viewBox: 10, in: caret, PanelTheme.text5)
+            canvas.fillSVG(["M2 3l3 4 3-4z"], viewBox: LutLayout.caretSize, in: caret, PanelTheme.text5)
         }
         addHit(row, .custom("lut:toggle", 0))
     }
@@ -199,38 +218,52 @@ extension InspectorPanel {
         let removable: Bool = grading.lut != nil
         return InspectorCustomRow(
             id: Self.lutRowId,
-            height: 30,
+            height: LutLayout.rowHeight,
             draw: { canvas, rect, panel in panel.drawLutPick(canvas, rect, name: name, removable: removable) },
             pointer: { [weak self] part, _, phase in
                 guard phase == 0, let self else {
                     return
                 }
                 if part == 1 {
-                    self.pickLut(Self.lutNone, grading, commit: commit)
+                    pickLut(Self.lutNone, grading, commit: commit)
                 } else {
-                    self.openLutDropdown(grading, commit: commit)
+                    openLutDropdown(grading, commit: commit)
                 }
             }
         )
     }
 
     internal func drawLutPick(_ canvas: CanvasContext, _ rect: CanvasRect, name: String, removable: Bool) {
-        let label: CanvasRect = CanvasRect(x: rect.x, y: rect.midY - 8.25, width: 86, height: 16.5)
-        PanelDraw.text(canvas, "LUT", in: label, font: PanelTheme.font(11), color: PanelTheme.rowLabel)
+        let label: CanvasRect = CanvasRect(
+            x: rect.x,
+            y: rect.midY - LutLayout.textHalf,
+            width: LutLayout.labelWidth,
+            height: LutLayout.textHeight
+        )
+        PanelDraw.text(canvas, "LUT", in: label, font: PanelTheme.font(LutLayout.fontSize), color: PanelTheme.rowLabel)
         var right: Double = rect.maxX
         if removable {
-            let font: CanvasFont = PanelTheme.font(11)
-            let width: Double = canvas.measureText("Remove", font: font).width + 16
-            let button: CanvasRect = CanvasRect(x: right - width, y: rect.midY - 12, width: width, height: 24)
+            let font: CanvasFont = PanelTheme.font(LutLayout.fontSize)
+            let width: Double = canvas.measureText("Remove", font: font).width + LutLayout.padding
+            let button: CanvasRect = CanvasRect(
+                x: right - width,
+                y: rect.midY - LutLayout.buttonHalf,
+                width: width,
+                height: LutLayout.buttonHeight
+            )
             let hot: Bool = hovered == .custom(Self.lutRowId, 1)
             let fill: CanvasColor = hot ? PanelTheme.panelHover : PanelTheme.panelSurface
             canvas.fillRoundedRect(button, radius: PanelTheme.radiusMd, fill)
             PanelDraw.text(canvas, "Remove", in: button, font: font, color: PanelTheme.text1, align: .center)
             addHit(button, .custom(Self.lutRowId, 1))
-            right = button.x - 6
+            right = button.x - LutLayout.gap
         }
-        let fieldWidth: Double = max(0, right - rect.x - 96)
-        let field: CanvasRect = CanvasRect(x: rect.x + 96, y: rect.midY - 14, width: fieldWidth, height: 28)
+        let field: CanvasRect = CanvasRect(
+            x: rect.x + LutLayout.fieldInset,
+            y: rect.midY - LutLayout.fieldHalf,
+            width: max(0, right - rect.x - LutLayout.fieldInset),
+            height: LutLayout.fieldHeight
+        )
         PanelSelect.draw(canvas, field, text: name, hovered: hovered == .custom(Self.lutRowId, 0))
         addHit(field, .custom(Self.lutRowId, 0))
     }
@@ -247,16 +280,45 @@ extension InspectorPanel {
 
     /// The status or hint under the select, 11px, wrapped: in the label grey, a load failure in the error red.
     internal func lutStatusRow(_ text: String, failed: Bool) -> InspectorCustomRow {
-        let lines: [String] = Self.wrap(text, perLine: 40)
+        let lines: [String] = Self.wrap(text, perLine: LutLayout.statusLineCharacters)
         let height: Double = PanelGrid.lineHeight * Double(max(1, lines.count))
         return InspectorCustomRow(id: "lut:status", height: height) { canvas, rect, _ in
             let color: CanvasColor = failed ? PanelTheme.red400 : PanelTheme.rowLabel
             for (index, line) in lines.enumerated() {
                 let top: Double = rect.y + Double(index) * PanelGrid.lineHeight
-                let width: Double = rect.width - 96
-                let box: CanvasRect = CanvasRect(x: rect.x + 96, y: top, width: width, height: PanelGrid.lineHeight)
-                PanelDraw.text(canvas, line, in: box, font: PanelTheme.font(11), color: color)
+                let box: CanvasRect = CanvasRect(
+                    x: rect.x + LutLayout.fieldInset,
+                    y: top,
+                    width: rect.width - LutLayout.fieldInset,
+                    height: PanelGrid.lineHeight
+                )
+                PanelDraw.text(canvas, line, in: box, font: PanelTheme.font(LutLayout.fontSize), color: color)
             }
         }
     }
+}
+
+/// The Custom LUT section's geometry in points: 30 pt rows, an 86 pt label column, fields 96 pt in, 11 px text.
+private enum LutLayout {
+    /// The 1 pt rule, 6 pt of space, then the 30 pt disclosure row.
+    static let toggleHeight: Double = 37
+    static let ruleGap: Double = 7
+    static let rowHeight: Double = 30
+    static let labelWidth: Double = 86
+    static let fieldInset: Double = 96
+    static let fieldHeight: Double = 28
+    static let fieldHalf: Double = 14
+    static let buttonHeight: Double = 24
+    static let buttonHalf: Double = 12
+    static let textHeight: Double = 16.5
+    static let textHalf: Double = 8.25
+    static let caretSize: Double = 10
+    static let caretHalf: Double = 5
+    static let quarterTurn: Double = .pi / 2
+    static let padding: Double = 16
+    static let gap: Double = 6
+    static let fontSize: Double = 11
+    static let statusLineCharacters: Int = 40
+    /// The strength slider runs 0…100 % for an intensity of 0…1.
+    static let percent: Double = 100
 }

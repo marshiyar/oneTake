@@ -24,8 +24,6 @@ internal final class InspectorLutTests: XCTestCase {
     private static let log: String = "/p/luts/log.cube"
     private let size: CanvasSize = CanvasSize(409, 4_000)
 
-    deinit {}
-
     // A1: None, every .cube by name, Import LUT…; each pick is one undo step; Remove clears it; undo restores.
     internal func testPickRemoveAndUndo() throws {
         let (rightPanel, editor): (RightPanel, TimelineEditor) = try panel()
@@ -91,7 +89,7 @@ internal final class InspectorLutTests: XCTestCase {
         rightPanel.draw(PanelMeasureCanvas(), size: size)
         let toggle: CanvasRect = try XCTUnwrap(rightPanel.inspector.hits.rect { $0 == .custom("lut:toggle", 0) })
         XCTAssertTrue(rightPanel.pointerDown(CanvasPoint(toggle.midX, toggle.midY)))
-        XCTAssertEqual(rightPanel.inspector.grade.lutOpen, false)
+        XCTAssertFalse(try XCTUnwrap(rightPanel.inspector.grade.lutOpen), "closed by the user's click")
         XCTAssertNil(button(rightPanel.inspector, "lut.remove"), "closed by the user")
     }
 
@@ -163,5 +161,9 @@ internal final class InspectorLutTests: XCTestCase {
 
     private func hit(_ rightPanel: RightPanel, _ part: Int) -> CanvasRect? {
         rightPanel.inspector.hits.rect { $0 == .custom(InspectorPanel.lutRowId, part) }
+    }
+
+    deinit {
+        // Nothing to release: each test builds its own panel, editor and files.
     }
 }

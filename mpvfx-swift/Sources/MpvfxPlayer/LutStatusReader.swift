@@ -34,6 +34,7 @@ public enum LutStatusReader {
         switch cache.load(path) {
         case .success(let lut):
             return .loaded(size: lut.size)
+
         case .failure(let error):
             return .failed(error.description)
         }

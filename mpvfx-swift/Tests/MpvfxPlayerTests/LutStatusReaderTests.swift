@@ -22,8 +22,6 @@ import XCTest
 internal final class LutStatusReaderTests: XCTestCase {
     private var dir: String = ""
 
-    deinit {}
-
     override internal func setUpWithError() throws {
         dir = NSTemporaryDirectory() + "mpvfx-lut-status-\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: dir + "/luts", withIntermediateDirectories: true)
@@ -52,5 +50,9 @@ internal final class LutStatusReaderTests: XCTestCase {
 
     private func write(_ name: String, _ text: String) throws {
         try text.write(toFile: "\(dir)/luts/\(name)", atomically: true, encoding: .utf8)
+    }
+
+    deinit {
+        // Nothing to release: each test builds its own panel, editor and files.
     }
 }
