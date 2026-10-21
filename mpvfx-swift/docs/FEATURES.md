@@ -110,7 +110,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
 | Grade: copy grade to current file media / all project media | done | close |
-| Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma histogram, luma waveform, RGB parade and vectorscope work for the selected clip; program scopes, RGB histogram, RGB overlay waveform, CIE diagram, false colour and full-size view are missing | close |
+| Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma histogram, luma waveform, RGB parade and vectorscope work for the selected clip or the composited program (Clip / Program switch); RGB histogram, RGB overlay waveform, CIE diagram, false colour and full-size view are missing | close |
 | Grade: hold to show original; captured-frame preset preview thumbnails | missing (panels) | n/a |
 | Effects: amount per stylize effect (18), reset effects | done; renders in preview and export (Metal kernels on macOS, incl. blur/bloom/Kuwahara passes) (schema in `docs/EFFECTS.md`) | close |
 | Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | missing (panels; the renderer already reads every setting and the palette) | n/a |

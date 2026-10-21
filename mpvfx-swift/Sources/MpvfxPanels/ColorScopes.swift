@@ -23,8 +23,16 @@ public enum ColorScopes {
         }
     }
 
+    /// What the scopes read: the selected clip's graded frame, or the composited program at the playhead (every
+    /// visible track, graded and blended as export paints it). Saved as `PanelPreferences.scopeSource`.
+    public enum Source: String, Codable, CaseIterable, Sendable { case clip, program
+        public var label: String { self == .clip ? "Clip" : "Program" }
+    }
+
     /// The scope `<canvas width=320 height=144>`.
     public static let bitmapWidth = 320, bitmapHeight = 144
+    /// Longest side, in pixels, of the frame the scopes analyse (both sources are fitted inside it).
+    public static let analysisSide = 320
 
     public struct Analysis: Sendable {
         public var width: Int
