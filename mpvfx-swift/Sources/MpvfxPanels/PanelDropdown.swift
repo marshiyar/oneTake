@@ -129,6 +129,10 @@ public final class PanelDropdown {
     public func scrollBy(_ dy: Double) { scroll = max(0, min(max(0, contentHeight - rect.height), scroll + dy)) }   // host points, 1:1 like the native list
     public func key(_ k: EditorKey) -> Bool {
         guard isOpen else { return false }
+        if options.isEmpty {   // nothing to highlight: the arrows do nothing, Enter closes without a pick
+            if k.code == .escape || k.code == .enter { close() }
+            return true
+        }
         switch k.code {
         case .escape: close(); return true
         case .down: hovered = min(options.count - 1, (hovered ?? -1) + 1); revealHovered(); return true

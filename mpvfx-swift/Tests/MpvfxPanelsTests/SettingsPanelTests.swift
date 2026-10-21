@@ -380,6 +380,34 @@ final class PanelDropdownKeyboardTests: XCTestCase {
         XCTAssertEqual(d.hovered, 0)
         XCTAssertEqual(d.scroll, 0)
     }
+
+    /// An empty list (no devices on this machine) never indexes past its end: the arrows do nothing, Enter closes
+    /// it without a pick, and on the Settings card Tab still leaves it.
+    func testAnEmptyListTakesKeysWithoutPicking() {
+        let d = PanelDropdown()
+        var picks = 0
+        let anchor = CanvasRect(x: 100, y: 100, width: 300, height: 28)
+        let bounds = CanvasRect(x: 0, y: 0, width: 1440, height: 900)
+        d.open(key: "audio", options: [], selected: "", anchor: anchor, bounds: bounds) { _ in picks += 1 }
+        d.highlightSelected()
+        for code: EditorKey.Code in [.down, .up, .down] { XCTAssertTrue(d.key(EditorKey(code))) }
+        XCTAssertNil(d.hovered)
+        XCTAssertTrue(d.isOpen)
+        XCTAssertTrue(d.key(EditorKey(.enter)))
+        XCTAssertFalse(d.isOpen)
+        XCTAssertEqual(picks, 0)
+
+        let s = SettingsPanel()
+        s.open()
+        let c = PanelMeasureCanvas()
+        s.draw(c, size: CanvasSize(1440, 900))
+        s.dropdown.open(key: "audio", options: [], selected: "", anchor: anchor, bounds: bounds) { _ in picks += 1 }
+        XCTAssertTrue(s.keyDown(EditorKey(.down)))
+        XCTAssertTrue(s.keyDown(EditorKey(.tab)))
+        XCTAssertFalse(s.dropdown.isOpen)
+        XCTAssertEqual(s.focus.current, .cache, "Tab leaves the empty list and moves on (audio is disabled here)")
+        XCTAssertEqual(picks, 0)
+    }
 }
 
 #if os(Linux)   // Cairo is the Linux canvas; these draw real pixels.
