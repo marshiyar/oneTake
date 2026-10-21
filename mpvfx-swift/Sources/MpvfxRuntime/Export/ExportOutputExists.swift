@@ -29,8 +29,10 @@ public struct ExportOutputExistsError: Error, Equatable, CustomStringConvertible
 
 /// Moves the finished export from `staged` to `outputPath` without replacing a file there: ExportOutputExistsError
 /// when one exists, MediaToolError for any other failure. The caller removes `staged` (it sits in the staging folder).
-func publishExport(_ staged: String, to outputPath: String) throws {
-    do { try publishFileExclusive(staged, outputPath) }
+/// `link` is the hard-link call; tests pass one that fails like a filesystem without hard links (issue #82).
+func publishExport(_ staged: String, to outputPath: String,
+                   link: (String, String) throws -> Void = ProjectFS.link) throws {
+    do { try publishFileExclusive(staged, outputPath, link: link) }
     catch let e as ProjectFSError where e.code == "EEXIST" { throw ExportOutputExistsError(path: outputPath) }
     catch { throw MediaToolError("Could not move the export into place: \(exportErrorMessage(error))") }
 }

@@ -28,6 +28,9 @@ concurrency:
 
 jobs:
   scripts-and-workflows:
+    # Every CodeQL job is paused (owner ruling 2026-10-21) to free the runners; the repository variable
+    # CODEQL_PAUSED=false brings them back. Nothing is deleted.
+    if: vars.CODEQL_PAUSED == 'false'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -55,8 +58,9 @@ jobs:
     # skipped: the analysis runs in exactly one place. Without both RUNNERS_APP_* secrets (a fork, or before they are
     # set) nothing is sent and swift runs here, as it does for the weekly run and a dispatch.
     if: >-
+      vars.CODEQL_PAUSED == 'false' && (
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -123,7 +127,7 @@ jobs:
     # OneTake-actionRunners-1 runs this same job from codeql-swift-source.yml, which .github/ci/source_workflows.py
     # generates from it (no upload there: the runners repository uploads the SARIF file with its App).
     needs: swift-runners
-    if: ${{ !cancelled() && needs.swift-runners.outputs.sent != 'true' }}
+    if: ${{ !cancelled() && vars.CODEQL_PAUSED == 'false' && needs.swift-runners.outputs.sent != 'true' }}
     # CodeQL's Swift extractor runs only on macOS (the action and the extractor both refuse Linux) and supports Swift up
     # to 6.3.x. The xcode-27 image only has Xcode 27 (Swift 6.4), so this job uses the macos-26 image, whose Xcode 26.x
     # carries Swift 6.3; the step below fails loudly if the selected Xcode is not on 6.3.

@@ -218,7 +218,12 @@ private final class MacCanvasAccessibilitySwitch: NSAccessibilityElement {
     private let action: () -> Void
     init(parent: Any, label: String, value: Bool, frame: NSRect, press: @escaping () -> Void) {
         action = press
-        super.init(accessibilityRole: .checkBox, frame: frame, label: label, parent: parent)
+        super.init()
+        // NSAccessibilityElement's role/frame/label/parent constructor is a class method, not an init.
+        setAccessibilityRole(.checkBox)
+        setAccessibilityLabel(label)
+        setAccessibilityParent(parent)
+        setAccessibilityFrameInParentSpace(frame)
         setAccessibilityValue(value)
     }
     override func accessibilityPerformPress() -> Bool { action(); return true }

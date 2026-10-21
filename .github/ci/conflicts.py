@@ -175,7 +175,7 @@ class GitHub:
         return out.strip()
 
     def comment_bodies(self, n):
-        return [str(b) for b in self._lines(f"repos/{self.repo}/issues/{n}/comments?per_page=100", jq=".[].body")]
+        return [str(b) for b in self._lines(f"repos/{self.repo}/issues/{n}/comments?per_page=100", jq=".[].body | tojson")]   # gh --jq prints strings raw; tojson keeps one JSON value per line
 
     def comment(self, n, body):
         self._api(f"repos/{self.repo}/issues/{n}/comments", method="POST", fields=[("body", body)])
@@ -343,6 +343,8 @@ def run_round(gh, git):
             log.append(handle(gh, git, pr))
         except Error as e:
             log.append(f"#{pr.number}: skipped ({e})")
+        except Exception as e:   # an unexpected fault on one pull request never stops the round
+            log.append(f"#{pr.number}: skipped ({type(e).__name__}: {e})")
     return log
 
 
