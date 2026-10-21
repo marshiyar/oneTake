@@ -345,13 +345,14 @@ public final class FxChainProcessor {
     }
 
     /// Process one DSP block (≤128 frames) whose first frame is context frame `frame`.
-    /// A NaN or infinite input sample enters as silence: a filter or delay that took one would hold it in its state
-    /// and output NaN for the rest of the render.
+    /// A NaN or infinite sample, at the input or out of any unit (a +12 dB gain of a near-maximal float overflows),
+    /// goes on as silence: a filter or delay that took one would hold it in its state and output NaN for the rest of
+    /// the render.
     public func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         var tail = finiteSamples(x)
         for run in runs {
             let entry = tail
-            for u in run.units { tail = u.process(tail, frame: frame) }
+            for u in run.units { tail = finiteSamples(u.process(tail, frame: frame)) }
             if let wet = run.wet, let dry = run.dry {
                 tail = sum(wet.process(tail, frame: frame), dry.process(entry, frame: frame))
             }

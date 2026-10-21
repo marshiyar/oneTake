@@ -38,6 +38,20 @@ final class NonFiniteSampleTests: XCTestCase {
         }
     }
 
+    /// A finite input can still overflow inside the chain: +12 dB of a near-maximal float is infinite. The next effect
+    /// must not take it into its state.
+    func testAnOverflowInsideTheChainDoesNotPoisonTheNextEffect() throws {
+        let chain = try AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"gain","id":"g","params":{"gain":12}},{"type":"peaking","id":"p","params":{"gain":6}}]}"#)
+        let proc = FxChainProcessor(chain, sampleRate: Self.sr)
+        var loud = Self.sine(dspBlockSize)
+        loud[7] = .greatestFiniteMagnitude
+        XCTAssertTrue(proc.process([loud, loud], frame: 0).allSatisfy { $0.allSatisfy(\.isFinite) })
+        var out: [Float] = []
+        for q in 1..<40 { out += proc.process([Self.sine(dspBlockSize), Self.sine(dspBlockSize)], frame: q * dspBlockSize)[0] }
+        XCTAssertTrue(out.allSatisfy(\.isFinite), "the bell holds the overflow in its state")
+        XCTAssertGreaterThan(out.suffix(1024).map { abs($0) }.max() ?? 0, 0.01)
+    }
+
     func testTheMixNeverOutputsANonFiniteSample() {
         var stem = Self.sine(48000)
         stem[100] = .nan; stem[200] = .infinity

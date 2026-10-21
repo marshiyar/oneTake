@@ -53,6 +53,23 @@ final class LiveDeclickTests: XCTestCase {
         XCTAssertLessThan(maxStep(Array(before.suffix(2)) + after), 1.2 * Self.sineStep, "bypass switches the graph at one sample (a click)")
     }
 
+    /// Edits faster than the fade: a second rebuild 128 frames into the first fade crossfades from the blend that is
+    /// being heard, not from the graph that was only partly faded in.
+    func testASecondRebuildMidFadeFadesFromWhatIsHeard() throws {
+        let src = GraphAudioSource(project: try Self.project(bypassed: false))
+        src.seek(0.5)
+        var heard = src.render(frames: 1280)
+        src.replace(try Self.project(bypassed: true))
+        heard += src.render(frames: 128)
+        src.replace(try Self.project(bypassed: false))
+        XCTAssertEqual(src.lastReplace, .rebuilt)
+        heard += src.render(frames: 3 * src.declickFrames)
+        XCTAssertLessThan(maxStep(heard), 1.2 * Self.sineStep, "the second swap drops the fade in flight (a click)")
+        let at = src.position
+        XCTAssertTrue(src.render(frames: 1280) == slice(AudioGraphRenderer.renderOffline(try Self.project(bypassed: false)), frame: at, frames: 1280),
+                      "both fades done: the last edit plays alone, as export renders it")
+    }
+
     func testAfterTheCrossfadeLiveIsTheExportRenderExactly() throws {
         let edited = try Self.project(bypassed: true)
         let src = GraphAudioSource(project: try Self.project(bypassed: false))

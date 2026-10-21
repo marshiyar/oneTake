@@ -84,7 +84,8 @@ public enum DocumentAudioGraph {
     /// Unparseable FX chains / automation are dropped (reported through `issues`), never fatal to playback. A stem
     /// `loadStem` cannot decode drops its clip (silent) and reports the decoder's reason. Keyframed clip volume is
     /// evaluated through `engine` (the installed keyframe engine when nil) at `sampleRate`, the rate `loadStem`
-    /// decodes at; keyframes that cannot be evaluated keep the static volume and are reported.
+    /// decodes at and the returned project runs at; keyframes that cannot be evaluated keep the static volume and are
+    /// reported.
     public static func project(_ inputs: Inputs, loadStem: (StemKey) throws -> [[Float]], issues: inout [String],
                                sampleRate: Double = 48_000, engine: KeyframeEngine? = nil) -> AudioGraphProject {
         func chain(_ s: String?, _ who: String) -> FxChain? {
@@ -110,7 +111,7 @@ public enum DocumentAudioGraph {
             AudioGraphGroup(id: g.id, volume: g.volume ?? 1, muted: g.muted ?? false,
                             fxChain: chain(g.fxChain?.nonEmpty, "group \(g.id)"), automation: auto(g.automation?.nonEmpty, "group \(g.id)"))
         }
-        return AudioGraphProject(duration: inputs.duration, tracks: tracks, groups: groups)
+        return AudioGraphProject(duration: inputs.duration, sampleRate: sampleRate, tracks: tracks, groups: groups)
     }
 
     /// The project with every stem decoded by the media engine at `sampleRate` (stereo): what live playback builds,
@@ -130,7 +131,8 @@ public enum DocumentAudioGraph {
 
 /// Keyframed clip volume as a per-sample gain: the track is evaluated at every clip-local project frame (clamped into
 /// the clip, fractional frames linear between the two integer frames the engine evaluates), negative values held at
-/// 0, and the stem is scaled by the linear interpolation of those per-frame gains.
+/// 0, and the stem is scaled by the linear interpolation of those per-frame gains. A value that is not a number is a
+/// `KeyframedVolumeError`: live playback keeps the static volume and reports it, export fails with it.
 struct KeyframedVolume {
     private var engine: KeyframeEngine?
     let sampleRate: Double
@@ -169,7 +171,11 @@ struct KeyframedVolume {
         return try (0..<(Int(k.durationFrames.rounded(.up)) + 1)).map { i in
             let f = Swift.min(last, Double(i))
             let lo = f.rounded(.down), hi = f.rounded(.up)
-            return Swift.max(0, Self.number(try value(lo), hi == lo ? nil : try value(hi), f - lo) ?? 1)
+            let a = try value(lo)
+            guard let v = Self.number(a, hi == lo ? nil : try value(hi), f - lo) else {
+                throw KeyframedVolumeError(message: "audio.volume keyframes evaluate to \(a) at frame \(Int(lo)), not a number")
+            }
+            return Swift.max(0, v)
         }
     }
 

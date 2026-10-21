@@ -170,7 +170,8 @@ public final class GraphAudioSource: AudioRenderSource {
                 var left = target - fresh.position
                 while left > 0 { let n = min(left, Self.preRollChunk); _ = fresh.render(n); left -= n }
                 project = newProject
-                if renderedSinceSeek { fadingOut = SwapFade(renderer: renderer, frames: declickFrames) }
+                // Mid-fade, what is heard is still a blend: the new graph fades in over that blend, not over the old one.
+                if renderedSinceSeek { fadingOut = SwapFade(outgoing: OutgoingGraph(renderer, under: fadingOut), frames: declickFrames) }
                 renderer = fresh
                 projectVersion += 1
                 lastReplace = .rebuilt
@@ -204,17 +205,44 @@ public final class GraphAudioSource: AudioRenderSource {
 
     /// Frames a rebuilt graph crossfades in over, and a transport gain or mute change ramps over (20 ms at 48 kHz).
     public var declickFrames: Int { LiveEdit.glideFrames(Double(format.sampleRate)) }
-    /// The graph a rebuild replaced, still rendering at the same position while the new one fades in.
+    /// What a rebuild replaced, still rendering at the same position while the new graph fades in.
     var fadingOut: SwapFade?
     var renderedSinceSeek = false
     /// The transport gain the last rendered frame had, and the ramp toward a new one (`gainLock`).
     var appliedGain: Float?
     var gainRamp: LiveGlide?
 
+    /// A crossfade in flight: the newer graph's weight over `outgoing` rises from 0 to 1.
     struct SwapFade {
-        let renderer: AudioGraphRenderer
+        let outgoing: OutgoingGraph
         var glide: LiveGlide
-        init(renderer: AudioGraphRenderer, frames: Int) { self.renderer = renderer; glide = LiveGlide(from: 0, to: 1, frames: frames) }
+        init(outgoing: OutgoingGraph, frames: Int) { self.outgoing = outgoing; glide = LiveGlide(from: 0, to: 1, frames: frames) }
+
+        /// Blends `out` (the newer graph's block) over the outgoing sound, in place; false once the fade is done.
+        mutating func blend(_ out: inout [Float], _ frames: Int) -> Bool {
+            let old = outgoing.render(frames)
+            for k in 0..<frames {
+                let w = glide.next()
+                out[2 * k] = old[2 * k] + (out[2 * k] - old[2 * k]) * w
+                out[2 * k + 1] = old[2 * k + 1] + (out[2 * k + 1] - old[2 * k + 1]) * w
+            }
+            return !glide.finished
+        }
+    }
+
+    /// The sound a swap replaced: a renderer, itself still fading in over an older sound when the swap came mid-fade.
+    final class OutgoingGraph {
+        let renderer: AudioGraphRenderer
+        var under: SwapFade?
+        init(_ renderer: AudioGraphRenderer, under: SwapFade?) { self.renderer = renderer; self.under = under }
+
+        /// `frames` interleaved stereo frames (silence past the end), blended over `under` while its fade lasts.
+        func render(_ frames: Int) -> [Float] {
+            var out = renderer.render(frames)
+            if out.count < frames * 2 { out += [Float](repeating: 0, count: frames * 2 - out.count) }
+            if var u = under { under = u.blend(&out, frames) ? u : nil }
+            return out
+        }
     }
 
     public func render(frames: Int) -> [Float] {
@@ -233,14 +261,7 @@ public final class GraphAudioSource: AudioRenderSource {
     /// the new one, which is then heard alone, sample-identical to the export render. Under `lock`.
     private func crossfadeFromOldGraph(_ out: inout [Float], _ frames: Int) {
         guard var fade = fadingOut else { return }
-        let old = fade.renderer.render(frames)
-        for k in 0..<frames {
-            let w = fade.glide.next()
-            let o0 = 2 * k < old.count ? old[2 * k] : 0, o1 = 2 * k + 1 < old.count ? old[2 * k + 1] : 0
-            out[2 * k] = o0 + (out[2 * k] - o0) * w
-            out[2 * k + 1] = o1 + (out[2 * k + 1] - o1) * w
-        }
-        fadingOut = fade.glide.finished ? nil : fade
+        fadingOut = fade.blend(&out, frames) ? fade : nil
     }
 
     /// Transport gain and mute: a change ramps linearly over `declickFrames` from the gain the stream had; the first

@@ -74,6 +74,32 @@ final class KeyframedVolumeParityTests: XCTestCase {
         XCTAssertTrue(got == Array(offline[(2 * at)..<(2 * (at + 128 * 40))]))
     }
 
+    /// Volume keyframes that do not evaluate to a number are an error: the live graph keeps the clip's static volume
+    /// and reports it (export fails with the same reason), never a silent gain of 1.
+    func testVolumeKeyframesThatAreNotNumbersKeepTheStaticVolumeAndAreReported() throws {
+        let track = try createNativeParameterTrack(NativeParameterTrackInput(
+            id: "t:v", parameterId: "audio.volume", valueType: .vec2, frameRate: RationalFrameRate(numerator: 10, denominator: 1),
+            keyframes: [NativeKeyframe(id: "k0", frame: 0, value: .vec2(Vec2Value(x: 1, y: 1)), outgoing: .linear)]))
+        var inputs = DocumentAudioGraph.inputs(try Self.document(keys: []), duration: 2, projectDir: nil, fileExists: { _ in true })
+        inputs.tracks[0].volumeKeyframes = DocumentAudioGraph.VolumeKeyframes(track: track, durationFrames: 20, fps: 10)
+        var issues: [String] = []
+        let p = DocumentAudioGraph.project(inputs, loadStem: { sineStem(seconds: $0.duration) }, issues: &issues)
+        XCTAssertEqual(issues.count, 1)
+        XCTAssertTrue(issues.first?.contains("not a number") ?? false, "\(issues)")
+        XCTAssertEqual(p.tracks.first?.volume, 0.8, "the static volume stays")
+    }
+
+    /// The project runs at the rate it was built for (the rate the keyframed gain was laid out at).
+    func testTheProjectRunsAtTheRateItWasBuiltFor() throws {
+        let inputs = DocumentAudioGraph.inputs(try Self.document(keys: [(0, 0), (10, 1)]), duration: 2, projectDir: nil, fileExists: { _ in true })
+        var issues: [String] = []
+        let p = DocumentAudioGraph.project(inputs, loadStem: { k in [[Float](repeating: 0.1, count: Int(k.duration * 44100))] }, issues: &issues,
+                                           sampleRate: 44100)
+        XCTAssertEqual(issues, [])
+        XCTAssertEqual(p.sampleRate, 44100)
+        XCTAssertEqual(p.totalFrames, 88200)
+    }
+
     func testAKeyframeEditRebuildsTheLiveGraph() throws {
         let a = DocumentAudioGraph.inputs(try Self.document(keys: [(0, 0), (10, 1)]), duration: 2, projectDir: nil, fileExists: { _ in true })
         let b = DocumentAudioGraph.inputs(try Self.document(keys: [(0, 0), (10, 0.5)]), duration: 2, projectDir: nil, fileExists: { _ in true })
