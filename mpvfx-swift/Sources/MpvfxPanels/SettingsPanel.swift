@@ -17,7 +17,7 @@ import MpvfxTheme
 import MpvfxTimeline   // EditorKey
 
 /// The Settings window (Cmd/Ctrl+,): a modal card over the editor with the per-user settings kept in
-/// `<userData>/preferences.json`: appearance, audio output device, preview cache size and the default export folder.
+/// `<userData>/preferences.json`: appearance, interface size, audio output device, preview cache size and the default export folder.
 /// The host owns persistence: every change goes out through `onChange` with the new values, and "Choose…" asks the
 /// host for a folder (`onChooseExportFolder`), which answers by setting `values.exportFolder`.
 public final class SettingsPanel {
@@ -29,16 +29,23 @@ public final class SettingsPanel {
         public var previewCacheMB: Int?
         /// Default export folder; nil is the app's renders folder.
         public var exportFolder: String?
-        public init(appearance: ThemeAppearance = .system, audioDevice: String? = nil, previewCacheMB: Int? = nil, exportFolder: String? = nil) {
+        /// How much larger the whole editor draws, in percent (one of `interfaceSizeChoices`; 100 is normal).
+        public var interfaceScalePercent: Int
+        public init(appearance: ThemeAppearance = .system, audioDevice: String? = nil, previewCacheMB: Int? = nil, exportFolder: String? = nil,
+                    interfaceScalePercent: Int = 100) {
             self.appearance = appearance; self.audioDevice = audioDevice; self.previewCacheMB = previewCacheMB; self.exportFolder = exportFolder
+            self.interfaceScalePercent = interfaceScalePercent
         }
     }
     public struct Device: Equatable { public var id, name: String
         public init(id: String, name: String) { self.id = id; self.name = name } }
-    public enum Hit: Hashable { case close, appearance(ThemeAppearance), audio, cache, chooseFolder, resetFolder, card }
+    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, cache, chooseFolder, resetFolder, card }
 
     /// The cache sizes offered (MB); nil is automatic.
     public static let cacheChoicesMB: [Int?] = [nil, 512, 1024, 2048, 4096, 8192]
+    /// The interface sizes offered, in percent (issue #106; the same list as `DesktopPreferences.interfaceScaleChoices`).
+    public static let interfaceSizeChoices = [100, 125, 150, 175, 200]
+    public static func interfaceSizeLabel(_ percent: Int) -> String { "\(percent)%" }
     public static let width = 520.0
 
     public private(set) var isOpen = false
@@ -99,9 +106,11 @@ public final class SettingsPanel {
     private static var body: CanvasFont { PanelTheme.font(11) }
     private static var note: CanvasFont { PanelTheme.font(10) }
     static let rowH = 28.0, rowGap = 18.0, pad = 20.0, labelW = 132.0, header = 48.0
+    /// Appearance, interface size, audio output, preview cache, export folder.
+    static let rowCount = 5
 
     public func cardRect(in size: CanvasSize) -> CanvasRect {
-        let h = Self.header + 12 + 4 * (Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
+        let h = Self.header + 12 + Double(Self.rowCount) * (Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
         let w = min(Self.width, max(0, size.width - 32))
         return CanvasRect(x: ((size.width - w) / 2).rounded(), y: max(16, ((size.height - h) / 2).rounded()), width: w, height: h)
     }
@@ -130,7 +139,7 @@ public final class SettingsPanel {
         PanelDraw.hline(c, x0: card.x + 1, x1: card.maxX - 1, y: card.y + Self.header, PanelTheme.panelBorderInput)
 
         var row = Row(x: x, cx: x + Self.labelW, cw: max(0, w - Self.labelW), y: card.y + Self.header + 12)
-        for drawRow in [drawAppearance, drawAudio, drawCache, drawFolder] {
+        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder] {
             drawRow(c, row)
             row.y += Self.rowH + Self.rowGap
         }
@@ -172,6 +181,16 @@ public final class SettingsPanel {
             PanelDraw.text(c, a.label, in: inner, font: Self.body, color: on ? PanelTheme.onAccent : (hov ? PanelTheme.text0 : PanelTheme.text2), align: .center)
             hits.add(r, .appearance(a))
         }
+    }
+
+    /// 100–200 %: every panel, the timeline and the status line draw that much larger.
+    private func drawInterfaceSize(_ c: CanvasContext, _ row: Row) {
+        rowLabel(c, row, "Interface size")
+        let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
+        field(c, r)
+        PanelSelect.draw(c, r.insetBy(1), text: Self.interfaceSizeLabel(values.interfaceScalePercent), hovered: hovered == .interfaceSize)
+        hits.add(r, .interfaceSize)
+        noteLine(c, row, "Enlarges every panel, the timeline and the status line.")
     }
 
     private func drawAudio(_ c: CanvasContext, _ row: Row) {
@@ -219,16 +238,21 @@ public final class SettingsPanel {
         guard isOpen else { return false }
         if dropdown.isOpen { _ = dropdown.pointerDown(p); return true }
         guard let hit = hits.hit(p) else { close(); return true }
+        press(hit)
+        return true
+    }
+
+    private func press(_ hit: Hit) {
         switch hit {
         case .close: close()
         case .appearance(let a): change(\.appearance, a)
+        case .interfaceSize: openInterfaceSizeList()
         case .audio: openAudioList()
         case .cache: openCacheList()
         case .chooseFolder: onChooseExportFolder?()
         case .resetFolder: change(\.exportFolder, nil)
         case .card: break
         }
-        return true
     }
 
     /// Sets one value and reports the new values, when it changed.
@@ -241,6 +265,14 @@ public final class SettingsPanel {
     private func openAudioList() {
         let options = [PanelDropdown.Option(value: "", label: "System default")] + devices.map { .init(value: $0.id, label: $0.name) }
         openDropdown(.audio, options, values.audioDevice ?? "") { [weak self] v in self?.change(\.audioDevice, v.isEmpty ? nil : v) }
+    }
+
+    private func openInterfaceSizeList() {
+        let options = Self.interfaceSizeChoices.map { PanelDropdown.Option(value: String($0), label: Self.interfaceSizeLabel($0)) }
+        openDropdown(.interfaceSize, options, String(values.interfaceScalePercent)) { [weak self] v in
+            guard let percent = Int(v) else { return }
+            self?.change(\.interfaceScalePercent, percent)
+        }
     }
 
     private func openCacheList() {

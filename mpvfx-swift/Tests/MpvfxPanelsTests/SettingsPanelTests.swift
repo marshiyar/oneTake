@@ -85,6 +85,39 @@ final class SettingsPanelTests: XCTestCase {
         XCTAssertFalse(s.isOpen)
     }
 
+    /// Issue #106: an "Interface size" row offers 100–200 % and reports the pick like every other row.
+    func testInterfaceSizeRowOffersOneHundredToTwoHundredPercent() throws {
+        let s = SettingsPanel()
+        var changes: [SettingsPanel.Values] = []
+        s.onChange = { changes.append($0) }
+        let c = PanelMeasureCanvas(), size = CanvasSize(1440, 900)
+        s.open(); s.draw(c, size: size)
+        XCTAssertTrue(c.drawnStrings.contains("Interface size"))
+        XCTAssertTrue(c.drawnStrings.contains("100%"), "the default is shown")
+        let row = try XCTUnwrap(s.hits.rect { $0 == .interfaceSize })
+        XCTAssertGreaterThanOrEqual(row.height, 24, "a 24 pt target at 100 %")
+        XCTAssertTrue(s.pointerDown(center(row)))
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["100%", "125%", "150%", "175%", "200%"])
+        s.dropdown.pick("150")
+        XCTAssertEqual(changes.map(\.interfaceScalePercent), [150])
+        c.reset(); s.draw(c, size: size)
+        XCTAssertTrue(c.drawnStrings.contains("150%"))
+        XCTAssertEqual(SettingsPanel.interfaceSizeLabel(175), "175%")
+    }
+
+    /// At 200 % the editor lays out in half the window: the card with every row still fits a 1280 × 800 window.
+    func testCardFitsTheLayoutOfA1280By800WindowAt200Percent() throws {
+        let s = SettingsPanel()
+        s.saveError = "Could not save settings"
+        s.open()
+        let c = PanelMeasureCanvas(), size = CanvasSize(640, 400)
+        s.draw(c, size: size)
+        let card = s.cardRect(in: size)
+        XCTAssertLessThanOrEqual(card.maxY, size.height, "\(card)")
+        let folder = try XCTUnwrap(s.hits.rect { $0 == .chooseFolder })
+        XCTAssertLessThanOrEqual(folder.maxY, card.maxY)
+    }
+
     func testAChosenDeviceThatIsGoneStaysVisible() {
         let s = SettingsPanel()
         s.values.audioDevice = "sink.unplugged"

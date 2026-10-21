@@ -18,7 +18,8 @@ import MpvfxTimeline
 
 /// What a frame source may need beyond the time: the display's pixel density and the transport state.
 public struct FrameDrawContext: Equatable, Sendable {
-    /// Device pixels per view point (2 on Retina). Decoders size frames to `rect × backingScale`.
+    /// Device pixels per view point (2 on Retina), times the interface size (issue #106: the shell's `scale(k, k)`
+    /// reaches it through `CanvasContext.deviceScale`). Decoders size frames to `rect × backingScale`.
     public var backingScale: Double
     public var isPlaying: Bool
     /// Signed playback speed (negative while playing backward).

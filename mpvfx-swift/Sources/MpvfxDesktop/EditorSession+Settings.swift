@@ -17,11 +17,11 @@ import MpvfxDesktopCore
 import MpvfxPanels
 import MpvfxShared
 
-// Settings (Cmd/Ctrl+,): appearance, audio output device, preview cache size and default export folder, each kept in
-// `<userData>/preferences.json` and applied as soon as it changes.
+// Settings (Cmd/Ctrl+,): appearance, interface size, audio output device, preview cache size and default export
+// folder, each kept in `<userData>/preferences.json` and applied as soon as it changes.
 extension EditorSession {
-    /// Reads the stored settings, applies the ones the session owns (audio device, preview cache) and puts the card
-    /// on the window router.
+    /// Reads the stored settings, applies the ones the session owns (interface size, audio device, preview cache) and
+    /// puts the card on the window router.
     func installSettings(_ router: EditorShellRouter, userData: String) {
         let prefs = preferences(userData: userData)
         let panel = settingsPanel
@@ -35,13 +35,18 @@ extension EditorSession {
         }
         panel.onChange = { [weak self] values in self?.applySettings(values, prefs) }
         panel.onChooseExportFolder = { [weak self] in self?.chooseExportFolder() }
+        router.interfaceScale = Self.interfaceScale(prefs.interfaceScalePercent)
         applyAudioDevice(prefs.audioOutputDevice)
         applyPreviewCache(prefs.previewCacheMB)
     }
 
+    /// The router's scale for an interface size in percent.
+    static func interfaceScale(_ percent: Int) -> Double { EditorShellRouter.validScale(Double(percent) / 100) }
+
     func currentSettings(_ prefs: DesktopPreferences) -> SettingsPanel.Values {
         SettingsPanel.Values(appearance: appearance?.appearance ?? .system, audioDevice: prefs.audioOutputDevice,
-                             previewCacheMB: prefs.previewCacheMB, exportFolder: prefs.defaultExportFolder)
+                             previewCacheMB: prefs.previewCacheMB, exportFolder: prefs.defaultExportFolder,
+                             interfaceScalePercent: prefs.interfaceScalePercent)
     }
 
     func showSettings() { settingsPanel.open(); redraw() }
@@ -50,6 +55,10 @@ extension EditorSession {
     /// A change on the card: persist it and apply it now.
     func applySettings(_ v: SettingsPanel.Values, _ prefs: DesktopPreferences) {
         if v.appearance != appearance?.appearance { setAppearance(v.appearance) }
+        if v.interfaceScalePercent != prefs.interfaceScalePercent {
+            prefs.interfaceScalePercent = v.interfaceScalePercent
+            shell?.interfaceScale = Self.interfaceScale(prefs.interfaceScalePercent)
+        }
         if v.audioDevice != prefs.audioOutputDevice { prefs.audioOutputDevice = v.audioDevice; applyAudioDevice(v.audioDevice) }
         if v.previewCacheMB != prefs.previewCacheMB { prefs.previewCacheMB = v.previewCacheMB; applyPreviewCache(v.previewCacheMB) }
         if v.exportFolder != prefs.defaultExportFolder { prefs.defaultExportFolder = v.exportFolder; panels?.refreshRenders() }

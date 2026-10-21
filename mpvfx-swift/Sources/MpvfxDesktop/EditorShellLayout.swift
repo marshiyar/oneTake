@@ -121,6 +121,23 @@ final class EditorShellRouter: CanvasInput {
     private var modalOpen: Bool { modal?.isOpen == true }
     enum Drag: Equatable { case leftSeam, rightSeam, timelineDivider(startY: Double, startH: Double) }
 
+    /// Settings > Interface size (issue #106), 1...2: the shell draws with `scale(k, k)` and lays out in the window
+    /// size divided by k, and every window point a host passes in (pointer, wheel, cursor, file drop) is divided by k,
+    /// so panes lay out and hit-test in the same points at any size. Out-of-range or non-finite values read as 1.
+    var interfaceScale = 1.0 {
+        didSet {
+            interfaceScale = Self.validScale(interfaceScale)
+            if interfaceScale != oldValue { size = layoutSize(windowSize); _ = relayout() }
+        }
+    }
+    static func validScale(_ k: Double) -> Double { k.isFinite && k >= 1 && k <= 2 ? k : 1 }
+    /// The host's canvas size in window points; `size` is it divided by `interfaceScale`.
+    private var windowSize = CanvasSize(0, 0)
+    private func layoutSize(_ window: CanvasSize) -> CanvasSize {
+        CanvasSize(window.width / interfaceScale, window.height / interfaceScale)
+    }
+    /// A window point in layout points.
+    private func toLayout(_ x: Double, _ y: Double) -> (Double, Double) { (x / interfaceScale, y / interfaceScale) }
     let layout: PanelLayoutState
     var panes: [Region: ShellPane] = [:]
     /// User intent for the timeline height (persisted by `onTimelineHeightCommit`).
@@ -162,8 +179,20 @@ final class EditorShellRouter: CanvasInput {
 
     // MARK: Draw
 
-    func draw(_ c: CanvasContext, size: CanvasSize) {
-        if size != self.size { self.size = size }
+    /// Draws the window; `size` is the host's canvas in window points.
+    func draw(_ c: CanvasContext, size window: CanvasSize) {
+        windowSize = window
+        size = layoutSize(window)
+        let k = interfaceScale
+        guard k != 1 else { drawLayout(c); return }
+        c.save()
+        c.scale(k, k)
+        drawLayout(c)
+        c.restore()
+    }
+
+    /// Everything in layout points (`size`).
+    private func drawLayout(_ c: CanvasContext) {
         let f = relayout()
         // The shell is black; it shows only through the seams between the panels.
         c.fillRect(CanvasRect(x: 0, y: 0, width: size.width, height: size.height), PanelTheme.studioBg)
@@ -227,7 +256,7 @@ final class EditorShellRouter: CanvasInput {
         return panes[region]?.hint() ?? Self.regionHints[region]
     }
 
-    // MARK: Hit testing
+    // MARK: Hit testing (`region(at:)` and `handle(at:)` take layout points; `cursor(at:)` and `hit` window points)
 
     func region(at x: Double, _ y: Double) -> Region? {
         guard let f = frames ?? Optional(relayout()) else { return nil }
@@ -245,15 +274,17 @@ final class EditorShellRouter: CanvasInput {
         return nil
     }
 
-    /// The cursor a host should show at a point: column resize over a seam, row resize over the divider.
+    /// The cursor a host should show at a window point: column resize over a seam, row resize over the divider.
     enum Cursor { case arrow, columnResize, rowResize }
     func cursor(at x: Double, _ y: Double) -> Cursor {
+        let (x, y) = toLayout(x, y)
         if let d = drag ?? handle(at: x, y) { if case .timelineDivider = d { return .rowResize }; return .columnResize }
         return .arrow
     }
 
     /// The region under a window point and the point in that region's coordinates (file drops from the desktop).
     func hit(_ x: Double, _ y: Double) -> (region: Region, local: CanvasPoint)? {
+        let (x, y) = toLayout(x, y)
         guard let r = region(at: x, y) else { return nil }
         let (lx, ly) = local(r, x, y)
         return (r, CanvasPoint(lx, ly))
@@ -265,13 +296,14 @@ final class EditorShellRouter: CanvasInput {
         return (x - r.x, y - r.y)
     }
 
-    // MARK: CanvasInput (window coordinates in, region-local coordinates out)
+    // MARK: CanvasInput (window points in, region-local layout points out)
 
     func pointerDown(x: Double, y: Double, shift: Bool) { pointerDown(x: x, y: y, button: PointerButton.primary, modifiers: shift ? .shift : []) }
     func pointerMove(x: Double, y: Double) { pointerMove(x: x, y: y, modifiers: []) }
     func pointerUp(x: Double, y: Double) { pointerUp(x: x, y: y, button: PointerButton.primary) }
 
     func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
+        let (x, y) = toLayout(x, y)
         if modalOpen, drag == nil, captured == nil {
             if button == PointerButton.primary { _ = modal?.pointerDown(CanvasPoint(x, y)) }
             needsDisplay(); return
@@ -294,34 +326,43 @@ final class EditorShellRouter: CanvasInput {
     }
 
     func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
+        let (x, y) = toLayout(x, y)
         if modalOpen, drag == nil, captured == nil {
             if modal?.pointerMove(CanvasPoint(x, y)) == true { needsDisplay() }
             return
         }
-        if let d = drag {
-            switch d {
-            case .leftSeam, .rightSeam: layout.moveResize(x: x)
-            case .timelineDivider:
-                // TimelineResizeDivider: height = container height - pointer y, through fitTimelineHeight.
-                let container = EditorShellFrames.timelineContainerHeight(size.height)
-                timelineHeight = PanelFit.fitTimelineHeight(container, container - y)
-            }
-            needsDisplay(); return
-        }
+        if let d = drag { moveDrag(d, x: x, y: y); return }
         let h = handle(at: x, y)
         if h != hoveredHandle { hoveredHandle = h; needsDisplay() }
-        if let region = captured {
-            let (lx, ly) = local(region, x, y)
-            panes[region]?.input?.pointerMove(x: lx, y: ly, modifiers: modifiers)
-            if let d = crossPaneDrag, d.isDragging(from: region) {
-                let target = self.region(at: x, y)
-                let (tx, ty) = target.map { local($0, x, y) } ?? (x, y)
-                d.dragMoved(over: target, local: CanvasPoint(tx, ty), window: CanvasPoint(x, y))
-                needsDisplay()
-            }
-            return
+        if let region = captured { moveCaptured(region, x: x, y: y, modifiers: modifiers); return }
+        moveHover(to: h == nil ? region(at: x, y) : nil, x: x, y: y, modifiers: modifiers)
+    }
+
+    /// A seam or the timeline divider follows the pointer (layout points).
+    private func moveDrag(_ d: Drag, x: Double, y: Double) {
+        switch d {
+        case .leftSeam, .rightSeam: layout.moveResize(x: x)
+        case .timelineDivider:
+            // TimelineResizeDivider: height = container height - pointer y, through fitTimelineHeight.
+            let container = EditorShellFrames.timelineContainerHeight(size.height)
+            timelineHeight = PanelFit.fitTimelineHeight(container, container - y)
         }
-        let region = h == nil ? region(at: x, y) : nil
+        needsDisplay()
+    }
+
+    /// The pane that got the press keeps the moves; a drag out of it also reports the pane under the pointer.
+    private func moveCaptured(_ region: Region, x: Double, y: Double, modifiers: PointerModifiers) {
+        let (lx, ly) = local(region, x, y)
+        panes[region]?.input?.pointerMove(x: lx, y: ly, modifiers: modifiers)
+        guard let d = crossPaneDrag, d.isDragging(from: region) else { return }
+        let target = self.region(at: x, y)
+        let (tx, ty) = target.map { local($0, x, y) } ?? (x, y)
+        d.dragMoved(over: target, local: CanvasPoint(tx, ty), window: CanvasPoint(x, y))
+        needsDisplay()
+    }
+
+    /// Hover moves to `region` (nil: a handle or outside every pane).
+    private func moveHover(to region: Region?, x: Double, y: Double, modifiers: PointerModifiers) {
         if region != hovered { needsDisplay() }   // the status line follows the pointer
         if let prev = hovered, prev != region {
             // Leaving a pane: one move outside its bounds clears its hover state.
@@ -336,6 +377,7 @@ final class EditorShellRouter: CanvasInput {
     }
 
     func pointerUp(x: Double, y: Double, button: Int) {
+        let (x, y) = toLayout(x, y)
         if button == PointerButton.primary, let d = drag {
             drag = nil
             switch d {
@@ -359,6 +401,7 @@ final class EditorShellRouter: CanvasInput {
 
     func secondaryClick(x: Double, y: Double) {
         if modalOpen { return }
+        let (x, y) = toLayout(x, y)
         guard let region = region(at: x, y) else { return }
         focused = region
         let (lx, ly) = local(region, x, y)
@@ -368,7 +411,9 @@ final class EditorShellRouter: CanvasInput {
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) {
         scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false)
     }
+    /// Window-point deltas become layout points too, so a touchpad keeps the content under the fingers at any size.
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {
+        let k = interfaceScale, (dx, dy, x) = (dx / k, dy / k, x / k)
         if modalOpen { if modal?.scroll(dy: dy) == true { needsDisplay() }; return }
         // Wheel goes to the pane under the pointer; `y` is tracked from the last move.
         guard let region = hovered ?? captured else { return }
@@ -386,7 +431,7 @@ final class EditorShellRouter: CanvasInput {
 
     func keyUp(_ k: EditorKey) { (panes[focused]?.input ?? panes[.timeline]?.input)?.keyUp(k) }
 
-    func resized(_ size: CanvasSize) { self.size = size; _ = relayout() }
+    func resized(_ window: CanvasSize) { windowSize = window; size = layoutSize(window); _ = relayout() }
 }
 
 extension EditorSession {

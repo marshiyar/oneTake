@@ -14,8 +14,8 @@
 // What the app keeps in
 // `<userData>/preferences.json`: the export dialog's last render settings ("hf-studio-render-settings") and,
 // per project, the renders the user removed from the Renders list ("hf-studio-hidden-renders:<projectId>",
-// at most the 200 newest ids), the appearance ("mpvfx-appearance") and the Settings window's audio output device,
-// preview cache size and default export folder. Unreadable or malformed files fall back to nothing stored;
+// at most the 200 newest ids), the appearance ("mpvfx-appearance") and the Settings window's interface size,
+// audio output device, preview cache size and default export folder. Unreadable or malformed files fall back to nothing stored;
 // values are opaque JSON that the reading feature validates. Every change rewrites the whole file through
 // `NativeDurableWrite` (temp file, fsync, rename, folder fsync), the same path a project save takes, so a crash
 // mid-write leaves the previous file, never a torn one.
@@ -118,6 +118,24 @@ public final class DesktopPreferences: @unchecked Sendable {
         let absolute = s.hasPrefix("/")
         #endif
         return absolute ? s : nil
+    }
+
+    public static let interfaceScaleKey = "mpvfx-interface-scale-percent"
+    /// The interface sizes the Settings window offers, in percent (issue #106).
+    public static let interfaceScaleChoices = [100, 125, 150, 175, 200]
+
+    /// How much larger than normal the editor draws, in percent: one of `interfaceScaleChoices`. Anything else
+    /// stored reads as 100 and is never written; 100 is kept as no key.
+    public var interfaceScalePercent: Int {
+        get {
+            guard let n = value(Self.interfaceScaleKey)?.number, n.isFinite, n == n.rounded(),
+                  let percent = Self.interfaceScaleChoices.first(where: { Double($0) == n }) else { return 100 }
+            return percent
+        }
+        set {
+            let keep = newValue != 100 && Self.interfaceScaleChoices.contains(newValue)
+            set(Self.interfaceScaleKey, keep ? .number(Double(newValue)) : nil)
+        }
     }
 
     public var renderSettings: JSONValue? {
