@@ -43,8 +43,11 @@ extension InspectorPanel {
         let isEnd = target > (fxHeaderButtons.values.max() ?? index)
         if target == index || (isEnd && index == fxHeaderButtons.values.max()) {
             let line = CanvasRect(
-                x: rect.x, y: (isEnd ? rect.maxY : rect.y) - Self.fxInsertionLineThickness / 2,
-                width: rect.width, height: Self.fxInsertionLineThickness)
+                x: rect.x,
+                y: (isEnd ? rect.maxY : rect.y) - Self.fxInsertionLineThickness / 2,
+                width: rect.width,
+                height: Self.fxInsertionLineThickness
+            )
             canvas.fillRect(line, PanelTheme.accent)
         }
     }
