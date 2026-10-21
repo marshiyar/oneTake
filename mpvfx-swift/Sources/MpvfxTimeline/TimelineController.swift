@@ -127,7 +127,9 @@ public final class TimelineController {
             return (g.id, before)
         }
         view.tracks = visible; view.allTracks = all
-        view.beats = all.flatMap(\.clips).flatMap(\.beatTimes).map { TimelineBeat(time: $0) }
+        view.beats = all.flatMap(\.clips).flatMap { clip in
+            clip.beatTimes.map { TimelineBeat(time: $0, clipId: clip.id) }
+        }
         // A keyed clip starts with its one summary row; expanded rows and folded kinds are kept per clip while it exists.
         let clipIds = Set(all.flatMap(\.clips).map(\.id))
         view.expandedClips.formIntersection(clipIds)
@@ -254,7 +256,6 @@ public final class TimelineController {
     /// and ⇧ on an edge rolls the cut (`clipPointerDown`).
     public func pointerDown(x: Double, y: Double, keys: TimelineGestureKeys) {
         if menuPointerDown(x: x, y: y) { return }
-        if beatPointerDown(x: x, y: y, alt: keys.alt) { return }
         let shift = keys.shift || keys.command
         let hit = hitTest(x: x, y: y)
         if tool == .razor, x >= TimelineLayout.contentOrigin, y >= TimelineLayout.rulerHeight {
@@ -262,6 +263,7 @@ public final class TimelineController {
         }
         // Diamonds sit above the clip body and trim handles (TimelineClipDiamonds z-index 5, pointerdown stops there).
         if let kh = view.keyframeHit(x: x, y: y) { keyframePointerDown(kh, x: x, y: y, shift: shift); return }
+        if tool == .select, beatPointerDown(x: x, y: y, alt: keys.alt) { return }
         hitPointerDown(hit, x: x, y: y, keys: keys)
         needsDisplay?()
     }
@@ -333,7 +335,7 @@ public final class TimelineController {
             lastMovePoint = (x, y)
             guard let lead = ids.compactMap({ clip($0) }).min(by: { $0.clip.start < $1.clip.start }) else { return }
             let raw = lead.clip.start + (x - x0) / view.pixelsPerSecond
-            let targets = snapEnabled ? TimelineSnapping.targets(clips: snapClips, playhead: playback.currentTime, beats: view.beats.map(\.time), excluding: Set(ids)) : []
+            let targets = snapEnabled ? TimelineSnapping.targets(clips: snapClips, playhead: playback.currentTime, beats: beatSnapTimes(excluding: Set(ids)), excluding: Set(ids)) : []
             let groupEnd = ids.compactMap { clip($0)?.clip.end }.max() ?? lead.clip.end
             let snapped = TimelineSnapping.snapMove(start: raw, duration: groupEnd - lead.clip.start, targets, pps: view.pixelsPerSecond,
                                                     timelineDuration: .greatestFiniteMagnitude)
@@ -456,7 +458,10 @@ public final class TimelineController {
                 else { view.selection = []; view.selectedKeyframes = [] }
                 needsDisplay?(); return true
             case .char(let ch) where (ch == "b" || ch == "B") && !k.shift:
-                if selectedBeatClipId != nil { _ = addSelectedBeat(); return true }
+                if selectedBeatClipId != nil {
+                    if !k.isRepeat { _ = addSelectedBeat() }
+                    return true
+                }
                 tool = tool == .razor ? .select : .razor; return true
             case .char(let ch) where (ch == "v" || ch == "V") && !k.shift:
                 tool = .select; return true

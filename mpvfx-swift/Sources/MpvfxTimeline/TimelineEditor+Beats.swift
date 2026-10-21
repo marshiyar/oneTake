@@ -15,41 +15,86 @@
 import Foundation
 import MpvfxShared
 
-public extension TimelineEditor {
-    func canAddBeat(clipId: String, at time: Double) -> Bool {
-        guard time.isFinite, !isClipLocked(clipId), let (_, c) = clip(clipId),
-              document.assets.first(where: { $0.id == c.assetId })?.kind == .audio,
-              c.beats?.isSupported != false, c.speedRamp?.isSupported != false, time * fps >= c.startFrame, time * fps < c.startFrame + c.durationFrames else { return false }
-        let source = c.beatSourceFrame(atTimelineFrame: time * fps).rounded()
-        guard let length = document.assets.first(where: { $0.id == c.assetId })?.durationFrames, source < length, c.beatTimelineFrame(sourceFrame: source) != nil else { return false }
-        return !(c.beats?.frames ?? []).contains(source)
-    }
-    @discardableResult func addBeat(clipId: String, at time: Double) -> Bool {
-        guard canAddBeat(clipId: clipId, at: time), let (_, c) = clip(clipId) else { return false }
-        let source = c.beatSourceFrame(atTimelineFrame: time * fps).rounded()
-        return updateAudioClip(clipId, "Add beat") { clip in
-            var beats = clip.beats ?? NativeClipBeats(frames: [])
-            beats.frames = ((beats.frames ?? []) + [source]).sorted(); clip.beats = beats
+extension TimelineEditor {
+    /// Whether a source-frame mark can be added at this composition time.
+    public func canAddBeat(clipId: String, at time: Double) -> Bool {
+        guard let clip = editableBeatClip(clipId), let source = beatSourceFrame(clip, at: time) else {
+            return false
         }
+        return !(clip.beats?.frames ?? []).contains(source)
     }
-    @discardableResult func editBeat(clipId: String, sourceFrame: Double, to time: Double?) -> Bool {
-        guard let (_, c) = clip(clipId), c.beats?.isSupported == true,
-              var beats = c.beats, beats.isSupported, let frames = beats.frames, frames.contains(sourceFrame) else { return false }
-        var replacement: Double?
-        if let time {
-            guard time.isFinite, time * fps >= c.startFrame, time * fps < c.startFrame + c.durationFrames else { return false }
-            let target = c.beatSourceFrame(atTimelineFrame: time * fps).rounded()
-            guard let length = document.assets.first(where: { $0.id == c.assetId })?.durationFrames,
-                  target < length, c.beatTimelineFrame(sourceFrame: target) != nil,
-                  target == sourceFrame || !frames.contains(target) else { return false }
-            replacement = target
+
+    /// Add a mark through the document's validated, undoable audio edit path.
+    @discardableResult
+    public func addBeat(clipId: String, at time: Double) -> Bool {
+        guard let clip = editableBeatClip(clipId), let source = beatSourceFrame(clip, at: time) else {
+            return false
         }
-        guard replacement != sourceFrame else { return false }
-        var updated = frames.filter { $0 != sourceFrame }
-        if let replacement { updated.append(replacement); updated.sort() }
-        beats.frames = updated
-        return updateAudioClip(clipId, time == nil ? "Delete beat" : "Move beat") { clip in
-            clip.beats = updated.isEmpty ? nil : beats
+        var beats: NativeClipBeats = clip.beats ?? NativeClipBeats(frames: [])
+        let frames: [Double] = beats.frames
+        guard !frames.contains(source) else {
+            return false
+        }
+        beats.frames = (frames + [source]).sorted()
+        return storeBeats(beats, clipId: clipId, label: "Add beat")
+    }
+
+    /// Move a source-frame mark, or delete it when the composition time is absent.
+    @discardableResult
+    public func editBeat(clipId: String, sourceFrame: Double, to time: Double?) -> Bool {
+        guard let clip = editableBeatClip(clipId), var beats = clip.beats,
+            framesContain(beats, sourceFrame: sourceFrame)
+        else {
+            return false
+        }
+        let frames: [Double] = beats.frames
+
+        guard let time else {
+            beats.frames = frames.filter { $0 != sourceFrame }
+            return storeBeats(beats, clipId: clipId, label: "Delete beat")
+        }
+        guard let target = beatSourceFrame(clip, at: time), target != sourceFrame,
+            !frames.contains(target)
+        else {
+            return false
+        }
+        beats.frames = (frames.filter { $0 != sourceFrame } + [target]).sorted()
+        return storeBeats(beats, clipId: clipId, label: "Move beat")
+    }
+}
+
+extension TimelineEditor {
+    private func framesContain(_ beats: NativeClipBeats, sourceFrame: Double) -> Bool {
+        beats.frames.contains(sourceFrame)
+    }
+
+    private func editableBeatClip(_ clipId: String) -> NativeProjectClip? {
+        guard !isClipLocked(clipId), let (_, clip) = clip(clipId),
+            document.assets.first(where: { $0.id == clip.assetId })?.kind == .audio,
+            clip.beats?.isSupported != false, clip.speedRamp?.isSupported != false
+        else {
+            return nil
+        }
+        return clip
+    }
+
+    private func beatSourceFrame(_ clip: NativeProjectClip, at time: Double) -> Double? {
+        let frame: Double = time * fps
+        guard time.isFinite, frame >= clip.startFrame, frame < clip.startFrame + clip.durationFrames else {
+            return nil
+        }
+        let source: Double = clip.beatSourceFrame(atTimelineFrame: frame).rounded()
+        guard let length = document.assets.first(where: { $0.id == clip.assetId })?.durationFrames,
+            source < length, clip.beatTimelineFrame(sourceFrame: source) != nil
+        else {
+            return nil
+        }
+        return source
+    }
+
+    private func storeBeats(_ beats: NativeClipBeats, clipId: String, label: String) -> Bool {
+        updateAudioClip(clipId, label) { clip in
+            clip.beats = !beats.frames.isEmpty ? beats : nil
         }
     }
 }

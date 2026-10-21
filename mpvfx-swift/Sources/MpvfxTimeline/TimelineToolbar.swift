@@ -37,7 +37,7 @@ public final class TimelineToolbar {
     public var isRemovingSilence = false
     /// Legacy analysis selection retained for hosts; hand-placed beats use the selected audio clip.
     public var beatMusicClipId: String?
-    /// Optional host callback; without it the controller persists a source-time mark on the selected audio clip.
+    /// Notification after a beat was persisted on the selected audio clip; never replaces the document edit.
     public var onAddBeat: ((_ time: Double) -> Void)?
     public var hovered: Item?
     var draggingSlider: Item?
@@ -219,7 +219,7 @@ public final class TimelineToolbar {
         case .removeSilence: if let id = selectedClip?.id { onRemoveSilence?(id) }
         case .addBeat:
             let t = controller.beatEventTime
-            if let onAddBeat { onAddBeat(t) } else { controller.addBeat(at: t) }
+            if controller.addBeat(at: t) { onAddBeat?(t) }
         case .zoomOut: controller.zoom(in: false)
         case .zoomIn: controller.zoom(in: true)
         case .trackHeight, .zoomSlider, .zoomPercent: break
