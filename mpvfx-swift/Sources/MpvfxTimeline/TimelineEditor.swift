@@ -42,6 +42,10 @@ public final class TimelineEditor {
     public internal(set) var lastPropertyFailure: NativeProjectKeyframeFailure?
     public let engine: KeyframeEngine?
     public var onChange: (() -> Void)?
+    /// What the last clip edit did to cut transitions ("Removed the transition between …"), nil when it changed none;
+    /// `onNotice` hands it to the host's toast.
+    public internal(set) var lastNotice: String?
+    public var onNotice: ((String) -> Void)?
     /// The undo/redo stacks changed (an edit, undo, redo, a reload); hosts persist them (usePersistentEditHistory).
     public var onHistoryChange: (() -> Void)?
     /// A media file's natural pixel size (default: the size cached on the asset); sizes untouched clips
@@ -76,7 +80,8 @@ public final class TimelineEditor {
                                               effectCount: c.effects.count)
                     m.lanes = Self.lanes(c, fps: f)
                     m.channels = c.parameterTracks.filter { !$0.keyframes.isEmpty }.map {
-                        TimelineKeyframeChannel(parameterId: $0.parameterId, group: Self.propertyGroup($0.parameterId).group, frames: $0.keyframes.map(\.frame).sorted())
+                        TimelineKeyframeChannel(parameterId: $0.parameterId, group: Self.propertyGroup($0.parameterId).group, frames: $0.keyframes.map(\.frame).sorted(),
+                                                eases: Dictionary($0.keyframes.map { ($0.frame, TimelineKeyframeEase($0.outgoing)) }, uniquingKeysWith: { a, _ in a }))
                     }
                     m.effects = c.effects.filter(\.enabled).map { TimelineEffectModel(id: "native:\($0.id)", label: Self.titleCase($0.effectId)) }
                     m.muted = c.muted
@@ -205,6 +210,7 @@ public final class TimelineEditor {
             // Content past the composition end extends it (extendRootDurationIfNeeded); undo then restores both.
             if let extended = Self.extendingDuration(doc) { document = extended; pushHistory(.restoreDocument(before), defaultLabel: Self.label(for: command)) }
             else { document = doc; pushHistory(inverse, defaultLabel: Self.label(for: command)) }
+            reportTransitionChanges(from: before)
             lastFailure = nil
             onChange?(); return true
         } catch { lastFailure = NativeProjectClipFailure(code: .documentMismatch, message: "\(error)"); return false }
@@ -260,6 +266,8 @@ public final class TimelineEditor {
         case .split: "Split clip"
         case .delete: "Delete clip"
         case .deleteMany: "Delete clips"
+        case .slip: "Slip clip"
+        case .roll: "Roll edit"
         case .restoreDocument: "Edit"
         }
     }

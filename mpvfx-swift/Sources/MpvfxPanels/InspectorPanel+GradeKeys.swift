@@ -27,7 +27,7 @@ extension InspectorPanel {
         let fallbacks = ids.map { (id: $0, fallback: NativeParameterValue.number(g.value($0) ?? 0)) }
         let prev = animated.compactMap { editor.adjacentKeyframeTime(clipId: s.id, $0, time: t, forward: false) }.max()
         let next = animated.compactMap { editor.adjacentKeyframeTime(clipId: s.id, $0, time: t, forward: true) }.min()
-        return InspectorRow.Keyframe(
+        var kf = InspectorRow.Keyframe(
             state: !here.isEmpty ? .onKey : (animated.isEmpty ? .none : .animated),
             // ◆ on a key removes the keys there; elsewhere it keys every value of the row at the playhead.
             toggle: { [weak self] in
@@ -42,6 +42,9 @@ extension InspectorPanel {
             },
             prev: prev.map { v in { [weak self] in self?.onSeek?(v) } },
             next: next.map { v in { [weak self] in self?.onSeek?(v) } })
+        kf.kind = TimelineKeyframeCatalog.property(ids.first ?? NativeGradeParameter.intensityId).kind
+        kf.ease = TimelineKeyframeEase(here.first.flatMap { editor.interpolation(clipId: s.id, $0, time: t) })
+        return kf
     }
 
     /// Under the wheels: each wheel's stopwatch and ‹ ◆ ›, centred in its column.

@@ -110,7 +110,9 @@ final class DockShellTests: XCTestCase {
         click(router, CanvasPoint(DockTabBar.menuRect(strip).cx, DockTabBar.menuRect(strip).cy))
         XCTAssertTrue(router.dockMenu.isOpen)
         let values = router.dockMenu.options.map(\.value)
-        XCTAssertEqual(values, ["toggle:media", "toggle:preview", "toggle:inspector", "toggle:renders", "toggle:timeline", "toggle:history", "toggle:info"],
+        XCTAssertEqual(values, ["toggle:media", "toggle:preview", "toggle:inspector", "toggle:renders", "toggle:timeline", "toggle:history", "toggle:info",
+                                 "toggle:design.transform", "toggle:design.style", "toggle:design.grade", "toggle:design.effects",
+                                 "toggle:design.audio-fx", "toggle:design.media"],
                        "the Preview cannot be closed, so its menu starts with the panel list")
         XCTAssertEqual(Set(router.dockMenu.checked), ["toggle:media", "toggle:preview", "toggle:inspector", "toggle:timeline", "toggle:history", "toggle:info"])
         router.dockMenu.pick("toggle:renders")
@@ -235,12 +237,14 @@ final class DockShellTests: XCTestCase {
         router.dock.focus("easing")
         draw(router)
         XCTAssertGreaterThan(painted, 0)
-        XCTAssertEqual(router.windowMenuPanels.map(\.title), ["Media", "Preview", "Design", "Renders", "Timeline", "History", "Info", "Easing"])
+        XCTAssertEqual(router.windowMenuPanels.map(\.title), ["Media", "Preview", "Design", "Renders", "Timeline", "History", "Info",
+                        "Transform", "Style", "Grade", "Effects", "Audio FX", "Media", "Easing"])
     }
 
     func testTheWindowMenuListsEveryPanelWithACheckmarkAndTogglesIt() throws {
         let (_, router) = try session(try userData())
-        XCTAssertTrue(router.windowMenuPanels.allSatisfy(\.checked))
+        // The Design groups start in the Design tab, so their panels are listed unchecked.
+        XCTAssertTrue(router.windowMenuPanels.filter { !DesignGroups.isDesignPanel($0.id) }.allSatisfy(\.checked))
         router.togglePanelFromMenu("media")
         XCTAssertEqual(router.windowMenuPanels.first { $0.id == "media" }?.checked, false)
         router.togglePanelFromMenu("media")

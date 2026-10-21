@@ -15,7 +15,7 @@
 // `<userData>/preferences.json`: the export dialog's last render settings ("hf-studio-render-settings") and,
 // per project, the renders the user removed from the Renders list ("hf-studio-hidden-renders:<projectId>",
 // at most the 200 newest ids), the appearance ("mpvfx-appearance") and the Settings window's interface size,
-// audio output device, preview cache size and default export folder. Unreadable or malformed files fall back to nothing stored;
+// audio output device, preview cache size default export folder and default hold length. Unreadable or malformed files fall back to nothing stored;
 // values are opaque JSON that the reading feature validates. Every change rewrites the whole file through
 // `NativeDurableWrite` (temp file, fsync, rename, folder fsync), the same path a project save takes, so a crash
 // mid-write leaves the previous file, never a torn one.
@@ -80,6 +80,9 @@ public final class DesktopPreferences: @unchecked Sendable {
     public static let audioOutputDeviceKey = "mpvfx-audio-output-device"
     public static let previewCacheKey = "mpvfx-preview-cache-mb"
     public static let exportFolderKey = "mpvfx-default-export-folder"
+    public static let holdSecondsKey = "mpvfx-hold-length-seconds"
+    /// The hold lengths kept, in seconds (a stored value outside it reads as the default).
+    public static let holdSecondsRange = 0.04...600.0
     /// The preview frame cache sizes the Settings window accepts, in MB (a stored value outside it reads as automatic).
     public static let previewCacheRangeMB = 128...65_536
 
@@ -98,6 +101,15 @@ public final class DesktopPreferences: @unchecked Sendable {
             return Int(n)
         }
         set { set(Self.previewCacheKey, newValue.flatMap { Self.previewCacheRangeMB.contains($0) ? .number(Double($0)) : nil }) }
+    }
+
+    /// How long ⇧H holds a frame, in seconds; nil is the default (two seconds).
+    public var holdSeconds: Double? {
+        get {
+            guard let s = value(Self.holdSecondsKey)?.number, s.isFinite, Self.holdSecondsRange.contains(s) else { return nil }
+            return s
+        }
+        set { set(Self.holdSecondsKey, newValue.flatMap { $0.isFinite && Self.holdSecondsRange.contains($0) ? .number($0) : nil }) }
     }
 
     /// Where exports of projects outside a library go (and are listed from); nil is `<userData>/renders`. Only an

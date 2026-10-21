@@ -112,7 +112,7 @@ public enum DockDefaults {
 
     /// One zone's panels stacked in one group with a fixed id per zone (`g1` left, `g2` centre, `g3` right, `g4` bottom).
     static func group(_ registry: DockRegistry, _ zone: DockZone) -> DockNode? {
-        let ids = registry.specs.filter { $0.defaultDock == zone }.map(\.id)
+        let ids = registry.specs.filter { $0.defaultDock == zone && !$0.startsClosed }.map(\.id)
         guard !ids.isEmpty else { return nil }
         let n: Int
         switch zone { case .left: n = 1; case .center: n = 2; case .right: n = 3; case .bottom: n = 4 }
@@ -121,7 +121,7 @@ public enum DockDefaults {
 
     /// The largest preferred extent among a zone's panels (0: none prefers one).
     static func preferred(_ registry: DockRegistry, _ zone: DockZone, _ axis: KeyPath<CanvasSize, Double>) -> Double {
-        registry.specs.filter { $0.defaultDock == zone }.map { $0.preferredSize[keyPath: axis] }.max() ?? 0
+        registry.specs.filter { $0.defaultDock == zone && !$0.startsClosed }.map { $0.preferredSize[keyPath: axis] }.max() ?? 0
     }
 
     /// A point length as a share of `total`, 0.1…0.6 (0 or unknown: a quarter).

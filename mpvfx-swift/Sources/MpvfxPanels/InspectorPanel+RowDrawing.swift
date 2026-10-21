@@ -13,6 +13,8 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
+import MpvfxTimeline
 
 /// The inspector's row kinds drawn on the `PanelGrid` columns: every label in the label column, every field, track
 /// and segmented control from the control column's left edge to one shared value edge, then the reset cell and the
@@ -289,7 +291,7 @@ extension InspectorPanel {
         PanelIcon.phosphor(.timer).draw(c, in: CanvasRect(x: watch.midX - 6, y: midY - 6, width: 12, height: 12), color: watchColor)
         addHit(watch, .stopwatch(key))
         drawStepper(c, prev, path: "M5 1L1 5L5 9", live: kf.prev != nil, hit: .kfPrev(key))
-        drawDiamond(c, dia, key: key, state: kf.state)
+        drawDiamond(c, dia, key: key, kf)
         drawStepper(c, next, path: "M1 1L5 5L1 9", live: kf.next != nil, hit: .kfNext(key))
         return watch.x
     }
@@ -302,13 +304,20 @@ extension InspectorPanel {
         if live { addHit(cell, hit) }
     }
 
-    func drawDiamond(_ c: CanvasContext, _ cell: CanvasRect, key: String, state: InspectorRow.KeyframeState) {
-        let box = CanvasRect(x: cell.midX - 4.5, y: cell.midY - 4.5, width: 9, height: 9)
-        switch state {
-        case .onKey: c.fill(Self.keyframeDiamond(box), PanelTheme.mint)
-        case .animated, .none:
-            let o = hovered == .keyframe(key) ? 1 : (state == .animated ? 0.6 : 0.25)
-            c.stroke(Self.keyframeDiamond(box), PanelTheme.neutral400.over(PanelTheme.panelBgInset, opacity: o), StrokeStyle(width: 1.2 * 0.9))
+    /// The ◆ of a property row, as the timeline draws the property's keys (TimelineKeyframeGlyph): on a key the kind's
+    /// mark filled in the kind's colour (with the key's interpolation variant); animated, its outline in the kind's
+    /// colour at .75; not animated, a ghost outline at .3. Hover brings the outline to full opacity.
+    func drawDiamond(_ c: CanvasContext, _ cell: CanvasRect, key: String, _ kf: InspectorRow.Keyframe) {
+        let at = CanvasPoint(cell.midX, cell.midY), shape = kf.kind.shape
+        let hov = hovered == .keyframe(key)
+        switch kf.state {
+        case .onKey:
+            TimelineKeyframeGlyph.draw(c, .init(kf.kind, ease: kf.ease), at: at, r: 5)
+        case .animated:
+            TimelineKeyframeGlyph.drawOutline(c, .init(shape: shape, color: kf.kind.color.withAlpha(hov ? 1 : 0.75)), at: at, r: 5)
+        case .none:
+            let ghost = PanelTheme.neutral400.over(PanelTheme.panelBgInset, opacity: hov ? 1 : 0.3)
+            TimelineKeyframeGlyph.drawOutline(c, .init(shape: shape, color: ghost), at: at, r: 5)
         }
         addHit(cell, .keyframe(key))
     }

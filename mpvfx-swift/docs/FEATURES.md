@@ -111,6 +111,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
 | Grade: copy grade to current file media / all project media | done | close |
+| Grade: Auto balance (Exposure, Warmth and Tint from the frame's statistics; one undo step; Tab + Enter) | done (`AutoBalanceTests`) | close |
 | Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma waveform, RGB overlay, RGB parade, vectorscope with targets, skin line and zoom, luma + RGB histogram and false colour work for the selected clip or the composited program (Clip / Program switch), up to four at once (`docs/SCOPES.md`); CIE diagram and a full-size view are missing | close |
 | Grade: hold to show original; captured-frame preset preview thumbnails | missing (panels) | n/a |
 | Effects: amount per stylize effect (18), reset effects | done; renders in preview and export (Metal kernels on macOS, incl. blur/bloom/Kuwahara passes) (schema in `docs/EFFECTS.md`) | close |
@@ -167,6 +168,7 @@ their shape (`PlayerView+Outlines.swift`).
 | Ability | Swift status |
 | --- | --- |
 | Move, trim, split, multi-select, marquee, razor (⇧ splits all tracks), delete | done |
+| Slip (Y tool, ⌘/Ctrl+⌥ drag) and roll (roll tool, ⇧ drag on a shared edge) | done (one track; no two-up source monitor during the slip) |
 | Ripple edits, close gap / close all gaps, track add/remove/reorder, snapping, copy/paste | done |
 | Toolbar: tools, snap, keyframe, auto-keyframe, split, remove silence, add beat, track height 32–96, zoom slider/in/out/percent (1e3a90f) | partial: everything works except Add beat, which stays disabled until beat analysis exists |
 | Remove silence (backend silence detection → one undo step, result toast) | done (de10f47) |
