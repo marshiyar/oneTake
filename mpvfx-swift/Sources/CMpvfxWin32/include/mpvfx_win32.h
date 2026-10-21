@@ -168,6 +168,31 @@ mpvfx_hresult mpvfx_wasapi_capture_read(MpvfxWasapiCapture *c, float *out, uint3
 mpvfx_hresult mpvfx_wasapi_capture_discontinuities(MpvfxWasapiCapture *c, uint64_t *count);
 void mpvfx_wasapi_capture_close(MpvfxWasapiCapture *c);
 
+// MARK: Speech recognition (SAPI 5, in-process, from a WAV file)
+
+/// Whether an installed desktop speech recognizer handles `lcid` (a Windows locale id): an exact match, else the
+/// same primary language. Only the registry of recognizer tokens is read; no recognizer is created.
+mpvfx_hresult mpvfx_speech_recognizer_installed(uint32_t lcid, int32_t *installed);
+/// Called once per installed recognizer language with its locale name (BCP 47, UTF-16, NUL-terminated; valid during the call).
+typedef void (*mpvfx_speech_language_callback)(void *context, const uint16_t *locale_name);
+mpvfx_hresult mpvfx_speech_languages(mpvfx_speech_language_callback cb, void *context);
+/// The locale id of a BCP 47 name (UTF-16, NUL-terminated); fails when Windows does not know the name.
+mpvfx_hresult mpvfx_speech_locale_lcid(const uint16_t *locale_name, uint32_t *lcid);
+/// One recognised word: UTF-16 `text` (`length` code units), `start_100ns` from the start of the file and its length.
+typedef void (*mpvfx_speech_word_callback)(void *context, const uint16_t *text, int32_t length, int64_t start_100ns,
+                                           int64_t duration_100ns);
+/// Polled between recognizer events; non-zero stops the recognition.
+typedef int32_t (*mpvfx_speech_cancel_callback)(void *context);
+/// Recognises the speech in the 16-bit mono WAV file at `path` (UTF-16, NUL-terminated) with the in-process
+/// recognizer for `lcid`, reporting each word through `word`. `bytes_per_second` is the file's PCM rate (the phrase
+/// position is in bytes). Returns S_OK at the end of the stream, E_ABORT when `cancelled` asked to stop, else the
+/// failing HRESULT. Every COM object it makes is released before it returns.
+mpvfx_hresult mpvfx_speech_recognize(const uint16_t *path, uint32_t lcid, uint32_t bytes_per_second,
+                                     mpvfx_speech_word_callback word, void *word_context,
+                                     mpvfx_speech_cancel_callback cancelled, void *cancel_context);
+/// COM objects the speech functions hold right now (acquired minus released); 0 when none is running.
+int64_t mpvfx_speech_live_objects(void);
+
 // MARK: Shell dialogs (IFileOpenDialog / IFileSaveDialog)
 
 /// Called once per chosen path (UTF-16, NUL-terminated) with `context`.

@@ -40,7 +40,7 @@ final class TimelineLaneNavigationTests: XCTestCase {
         XCTAssertTrue(e.togglePositionKeyframe(clipId: "clip:a", time: 0))
         XCTAssertTrue(e.togglePositionKeyframe(clipId: "clip:a", time: 2))
         XCTAssertTrue(e.togglePositionKeyframe(clipId: "clip:a", time: 4))
-        XCTAssertTrue(c.view.expandedClips.contains("clip:a"), "auto-expanded when it gained lanes")
+        XCTAssertFalse(c.view.expandedClips.contains("clip:a"), "#201: starts with its summary row, not one row per property")
         let lane = c.view.tracks[1].clips[0].lanes.firstIndex { $0.group == "position" }!
 
         c.playback.seek(3)
@@ -110,10 +110,15 @@ final class TimelineLaneNavigationTests: XCTestCase {
         let (c, e) = try make()
         XCTAssertTrue(e.togglePositionKeyframe(clipId: "clip:a", time: 1))
         c.playback.seek(1); c.syncFromPlayback()
+        // The summary row's ◆ is the accent mark (every kind); filled on a key, outlined elsewhere.
+        let top = try XCTUnwrap(c.view.laneHit(track: 1, y: c.view.rowTop(1) + c.view.trackHeight + 1)).laneTop
+        let toggle = try XCTUnwrap(TimelineView.laneControlRects(laneTop: top).first { $0.0 == .toggle }).1
         var r = RecordingCanvas(); c.view.draw(r, size: CanvasSize(1266, 400))
-        XCTAssertTrue(r.texts.contains("‹")); XCTAssertTrue(r.texts.contains("›")); XCTAssertTrue(r.texts.contains("◆"))
+        XCTAssertTrue(r.texts.contains("‹")); XCTAssertTrue(r.texts.contains("›"))
+        XCTAssertTrue(r.painted(c.view.theme.accent, at: CanvasPoint(toggle.centerX, toggle.centerY)), "filled on a keyframe")
         c.playback.seek(3); c.syncFromPlayback()
         r = RecordingCanvas(); c.view.draw(r, size: CanvasSize(1266, 400))
-        XCTAssertTrue(r.texts.contains("◇"), "hollow away from a keyframe")
+        XCTAssertFalse(r.painted(c.view.theme.accent, at: CanvasPoint(toggle.centerX, toggle.centerY)))
+        XCTAssertTrue(r.painted(c.view.theme.accent, at: CanvasPoint(toggle.centerX, toggle.centerY), stroke: true), "hollow away from a keyframe")
     }
 }

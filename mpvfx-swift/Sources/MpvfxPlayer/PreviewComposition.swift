@@ -514,8 +514,13 @@ public enum PreviewPainter {
                 covered = picture
             } else if let text = layer.text {
                 if layer.masks.isEmpty {
-                    TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                    if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale) {
+                        c.drawImage(look.image, in: look.rect, opacity: layer.opacity)
+                    } else {
+                        TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                    }
                 } else if let image = maskedText(text, masks: layer.masks, box: box, scale: s) {
+                    // A masked text layer draws its fill only: the look reaches outside the box the mask is cut from.
                     c.drawImage(image, in: box, opacity: layer.opacity)
                 }
             }

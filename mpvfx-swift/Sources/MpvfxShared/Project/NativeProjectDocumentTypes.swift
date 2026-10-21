@@ -197,6 +197,9 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var fadeOutFrames: Double? = nil
     /// Parametric layer masks; absent means unmasked.
     public var masks: [NativeClipMask]? = nil
+    /// The text, voice, rate and pitch an audio clip made from text was spoken with (`NativeClipNarration`); absent
+    /// on every other clip.
+    public var narration: NativeClipNarrationRecord? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -341,7 +344,8 @@ public extension NativeProjectDocument {
 
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
-        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice].compactMap { $0 }
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
+         unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice].compactMap { $0 }
     }
 }
 
@@ -357,6 +361,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case duplicateTransition = "duplicate-transition"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
     case invalidSpeedRamp = "invalid-speed-ramp", invalidMove = "invalid-move"
+    case invalidNarration = "invalid-narration"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {

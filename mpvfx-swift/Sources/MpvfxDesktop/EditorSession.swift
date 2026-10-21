@@ -62,6 +62,8 @@ final class EditorSession {
     private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
+    /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
+    var clipInfoFeed: ClipInfoFeed?
     var desktopPreferences: DesktopPreferences?
     /// System / Light / Dark setting (EditorSession+Appearance); set by the shell via installAppearance.
     var appearance: AppearanceSettings?
@@ -337,6 +339,7 @@ final class EditorSession {
         try loadContent(opened.content)
         player.view.canvasSize = CanvasSize(editor.document.canvas.width, editor.document.canvas.height)
         for notice in editor.document.undrawnContentNotices { player.view.showToast(notice) }
+        if let notice = editor.document.unreadNarrationNotice { player.view.showToast(notice) }
     }
 
     /// The open project's folder was found at `moved.directory` (Locate Folder…): media resolves against it from now on.

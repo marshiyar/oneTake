@@ -33,10 +33,13 @@ public enum NativeTextRendering {
 
     /// Straight-alpha RGBA8 (`width` × `height`) of the text drawn in a box of that size at `scale` px per canvas px;
     /// nil when this platform has no offscreen text backend or (Windows) the Direct2D target failed, which is logged.
-    public static func rasterize(_ t: NativeClipText, width: Int, height: Int, scale: Double) -> [UInt8]? {
-        guard width > 0, height > 0 else { return nil }
+    /// `inset` extra px on every side (the box stays `width` × `height`, the bitmap grows to hold glyph effects that
+    /// reach outside it).
+    public static func rasterize(_ t: NativeClipText, width boxWidth: Int, height boxHeight: Int, scale: Double, inset: Int = 0) -> [UInt8]? {
+        guard boxWidth > 0, boxHeight > 0, inset >= 0 else { return nil }
+        let width = boxWidth + 2 * inset, height = boxHeight + 2 * inset
         let b = block(t, scale: scale)
-        let box = CanvasRect(x: 0, y: 0, width: Double(width), height: Double(height))
+        let box = CanvasRect(x: Double(inset), y: Double(inset), width: Double(boxWidth), height: Double(boxHeight))
         #if os(Linux)
         let target = CairoImageTarget(width: width, height: height)
         TextLayout.draw(b, in: box, on: target.canvas)
@@ -53,7 +56,7 @@ public enum NativeTextRendering {
         }
         #elseif canImport(CoreGraphics) && canImport(CoreText)
         // CoreGraphicsCanvas caches fonts in a main-thread dictionary: draw there.
-        if !Thread.isMainThread { return DispatchQueue.main.sync { rasterize(t, width: width, height: height, scale: scale) } }
+        if !Thread.isMainThread { return DispatchQueue.main.sync { rasterize(t, width: boxWidth, height: boxHeight, scale: scale, inset: inset) } }
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
               let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }

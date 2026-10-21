@@ -14,6 +14,8 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxPanels
+import MpvfxRuntime
+import MpvfxShared
 import MpvfxTimeline
 
 /// CanvasInput adapter for a docked panel's pane (region-local coordinates): events go to the panel, and the window
@@ -52,5 +54,66 @@ extension EditorSession {
         let history = HistoryPanel()
         history.editor = editor
         installDockedPanel(router, id: DockPanels.history, panel: history)
+        let feed = ClipInfoFeed(self)
+        feed.panel.onCopy = { [weak self] text in self?.panels?.copyToClipboard?(text) }
+        installDockedPanel(router, id: DockPanels.info, panel: feed.panel) { [weak feed] in feed?.refresh() }
+        clipInfoFeed = feed
     }
 }
+
+/// Resolves the timeline selection to a source file and reads its facts off the UI thread (once per file).
+final class ClipInfoFeed {
+    unowned let session: EditorSession
+    let panel = ClipInfoPanel()
+    private var cache: [String: Result<ClipInfo, ClipInfoFailure>] = [:]
+    private var inflight: Set<String> = []
+
+    init(_ session: EditorSession) { self.session = session }
+
+    /// The first selected clip (document order) with its asset's name and source.
+    func selected() -> (name: String, source: String?)? {
+        let ids = session.timeline.view.selection
+        guard !ids.isEmpty else { return nil }
+        let doc = session.editor.document
+        let assets = Dictionary(doc.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for track in doc.sequence.tracks {
+            for clip in track.clips where ids.contains(clip.id) {
+                let asset = assets[clip.assetId]
+                return (asset?.name ?? clip.assetId, asset?.source)
+            }
+        }
+        return nil
+    }
+
+    /// Called before each paint: sets `panel.content` for the current selection.
+    func refresh() {
+        guard let (name, source) = selected() else { panel.content = .none; return }
+        guard let source, !source.isEmpty else {
+            panel.content = .failed(name: name, message: "This clip has no source file."); return
+        }
+        let dir = session.projectDir?.path ?? ""
+        if let known = cache[source] {
+            switch known {
+            case .failure(let f): panel.content = .failed(name: name, message: f.message); return
+            case .success(let info):
+                // A file that was offline is checked again, so restoring it shows up without reselecting.
+                if !(info.offline && FileManager.default.fileExists(atPath: info.path)) { panel.content = .info(name: name, info); return }
+                cache[source] = nil
+            }
+        }
+        panel.content = .loading(name: name)
+        guard inflight.insert(source).inserted else { return }
+        let post = { [weak session] (body: @escaping () -> Void) in session?.postToUI(body) }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { try readProjectClipInfo(dir, source) }
+            post {
+                guard let self else { return }
+                self.inflight.remove(source)
+                self.cache[source] = result.mapError { ClipInfoFailure(message: "\($0)") }
+                self.session.redraw()
+            }
+        }
+    }
+}
+
+struct ClipInfoFailure: Error, Equatable { let message: String }

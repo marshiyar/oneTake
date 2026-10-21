@@ -447,6 +447,7 @@ final class SessionPanels {
         rendersPanel.onAnimate = { [weak self] in self?.animatePanels() }
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
+        inspector.lutStatus = { [weak self] src in LutStatusReader.status(src, projectDir: self?.session.projectDir?.path) }
         wirePresetPreviews(inspector)
         wireCrop(inspector)
         wireEffectPreviews(inspector)

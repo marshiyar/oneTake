@@ -244,6 +244,10 @@ public enum ThemeTokens {
     public static let clipNameAlpha = 0.92, clipTimecodeAlpha = 0.72
     /// Height of the kind-coloured strip that keeps the name readable over thumbnails.
     public static let clipHeaderHeight = 18.0
+    /// Timeline sequence end (docs/TIMELINE.md "Ruler and sequence end"): the end marker line and flag (3:1 on the
+    /// lanes and the ruler, a control-weight line), and the shade over the ruler and lanes after the end.
+    public static let timelineEndMarkerPair = ThemePair(0x8C8C8C, 0x6E6E73)
+    public static let timelineOutOfRangePair = ThemePair(ThemeColor(0x000000, alpha: 0.28), ThemeColor(0x000000, alpha: 0.06))
     /// Timeline clip while dragged (opaque so the lanes under it do not show through), audio and visual.
     public static let clipDragAudioPair = ThemePair(ThemeColor(0x3C3454, alpha: 0.96), ThemeColor(0xE4DDFB, alpha: 0.96))
     public static let clipDragPair = ThemePair(ThemeColor(0x262A34, alpha: 0.96), ThemeColor(0xDDE1EA, alpha: 0.96))
@@ -266,6 +270,17 @@ public enum ThemeTokens {
     public static let curveHueLumaPair = ThemePair(0xF8FAFC, 0x27272A)
     /// Preview viewport around the stage.
     public static let viewportPair = ThemePair(0x141414, 0xE7E7EA)
+    /// Keyframe marks by property kind (timeline lanes and inspector). Each kind also has its own shape, which carries
+    /// the meaning; the colour reinforces it. Hues follow the Okabe-Ito colour-vision-safe set (yellow, reddish purple,
+    /// orange, bluish green, blue) with a neutral for opacity, lightened for the dark lanes and darkened for the
+    /// light ones. Each is at least 3:1 on the lane, row and gutter backgrounds in its mode, and every pair stays apart
+    /// under simulated protan, deutan and tritan vision (`KeyframeKindTokenTests`).
+    public static let keyframeTransformPair = ThemePair(0xF0E042, 0x6E5C00)
+    public static let keyframe3DPair = ThemePair(0xE0A4C8, 0xA42F80)
+    public static let keyframeOpacityPair = ThemePair(0xD4D4D8, 0x52525B)
+    public static let keyframeColorPair = ThemePair(0xE6A100, 0xCC5C00)
+    public static let keyframeEffectPair = ThemePair(0x2BC29A, 0x008056)
+    public static let keyframeAudioPair = ThemePair(0x56B4E9, 0x0072B2)
 
     // MARK: Fixed (the same in both modes)
     /// Media/stage canvas surface: the stage stays neutral so pictures are judged on the same grey.

@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import Foundation
 
 // Voice room: ducking automation for a bed (music or ambience) from the speech regions of a voice clip.

@@ -21,7 +21,8 @@ import MpvfxCanvas
 ///     try registry.register(DockPanelSpec(id: "scopes", title: "Scopes", defaultDock: .right,
 ///                                         minSize: CanvasSize(240, 180)).preferring(CanvasSize(360, 0)))
 public struct DockPanelSpec: Equatable, Sendable {
-    /// Stable id, `^[a-z][a-z0-9-]{0,31}$`: saved layouts refer to it, so never rename a shipped one.
+    /// Stable id, `^[a-z][a-z0-9-]{0,31}$` with single dots allowed inside (`design.style`): saved layouts refer to
+    /// it, so never rename a shipped one.
     public var id: DockPanelID
     /// The tab label and the Window menu entry.
     public var title: String
@@ -33,6 +34,8 @@ public struct DockPanelSpec: Equatable, Sendable {
     public var preferredSize = CanvasSize(0, 0)
     /// Preview and Timeline are not (docs: dock decision); every other panel is.
     public var closable = true
+    /// The default layout leaves it closed (a Design group lives in the Design tab until it is dragged out).
+    public var startsClosed = false
     public init(id: DockPanelID, title: String, defaultDock: DockZone, minSize: CanvasSize) {
         self.id = id; self.title = title; self.defaultDock = defaultDock; self.minSize = minSize
     }
@@ -41,6 +44,8 @@ public struct DockPanelSpec: Equatable, Sendable {
     public func preferring(_ size: CanvasSize) -> DockPanelSpec { var s = self; s.preferredSize = size; return s }
     /// This spec, not closable.
     public func alwaysOpen() -> DockPanelSpec { var s = self; s.closable = false; return s }
+    /// This spec, closed in the default layout (it still opens from the Window menu).
+    public func closedByDefault() -> DockPanelSpec { var s = self; s.startsClosed = true; return s }
 }
 
 public enum DockRegistryError: Error, Equatable, CustomStringConvertible {
@@ -65,10 +70,10 @@ public struct DockRegistry: Equatable, Sendable {
     public static let maxExtent = 4096.0
     public init() {}
 
-    /// The built-in editor panels: Media, Preview, Design, Renders, Timeline, History.
+    /// The built-in editor panels: Media, Preview, Design, Renders, Timeline, History, Info.
     public static var editor: DockRegistry {
         var r = DockRegistry()
-        for spec in DockPanels.builtIn { r.specs.append(spec) }
+        for spec in DockPanels.builtIn + DesignGroups.specs { r.specs.append(spec) }
         return r
     }
 
@@ -85,8 +90,12 @@ public struct DockRegistry: Equatable, Sendable {
 
     public static func isValidID(_ id: String) -> Bool {
         let scalars = Array(id.unicodeScalars)
-        guard (1...32).contains(scalars.count), let first = scalars.first, ("a"..."z").contains(first) else { return false }
-        return scalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" }
+        guard (1...32).contains(scalars.count), let first = scalars.first, ("a"..."z").contains(first), scalars.last != "." else { return false }
+        for (i, ch) in scalars.enumerated() {
+            let plain = ("a"..."z").contains(ch) || ("0"..."9").contains(ch) || ch == "-"
+            if !plain && !(ch == "." && scalars[i - 1] != ".") { return false }
+        }
+        return true
     }
 
     static func validate(_ spec: DockPanelSpec) throws {
@@ -106,6 +115,7 @@ public enum DockPanels {
     public static let renders: DockPanelID = "renders"
     public static let timeline: DockPanelID = "timeline"
     public static let history: DockPanelID = "history"
+    public static let info: DockPanelID = "info"
 
     /// Minimums follow `PanelFit` (the preview's 360 × 200 floor, the 200 / 280 pt side panels, the 100 pt timeline).
     public static let builtIn: [DockPanelSpec] = [
@@ -120,5 +130,6 @@ public enum DockPanels {
         DockPanelSpec(id: timeline, title: "Timeline", defaultDock: .bottom, minSize: CanvasSize(320, PanelFit.minTimelineHeight))
             .preferring(CanvasSize(0, 360)).alwaysOpen(),
         DockPanelSpec(id: history, title: "History", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
+        DockPanelSpec(id: info, title: "Info", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
     ]
 }

@@ -42,6 +42,8 @@ public struct TimelineKeyframeMenu: Equatable, Sendable {
     /// The diamond's scope for "Delete All Keyframes": its clip, and its lane's property group (nil: the clip bar).
     public var clipId: String, group: String?
     public var entries: [Entry]
+    /// The lane row's property groups when the mark is on a summary or kind row (nil: `group` decides).
+    public var scope: Set<String>? = nil
     public var hovered: Action?
 
     public var height: Double {
@@ -108,6 +110,7 @@ extension TimelineController {
         let entries = TimelineKeyframeMenu.entries(count: Set(refs.map(\.frame)).count, canMoveToPlayhead: playheadMoveDelta(refs) != nil,
                                                    current: current, canEditEasing: onEditKeyframeEasing != nil && refs.contains { TimelineEditor.keyframeEasingGroup($0.parameterId) != nil })
         var m = TimelineKeyframeMenu(x: x, y: y, refs: refs, clipId: hit.clipId, group: group, entries: entries)
+        if let row = hit.laneRow, let (_, c) = clip(hit.clipId) { m.scope = view.rowScope(row, c) }
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
         if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }
         view.keyframeMenu = m
@@ -155,7 +158,7 @@ extension TimelineController {
         case .deleteAll:
             guard let (_, c) = clip(m.clipId) else { return false }
             var all = Set<TimelineKeyframeRef>()
-            for ch in view.keyframeChannels(c, group: m.group) {
+            for ch in view.keyframeChannels(c, scope: m.scope ?? m.group.map { [$0] }) {
                 for f in ch.frames { all.insert(TimelineKeyframeRef(clipId: c.id, parameterId: ch.parameterId, frame: f)) }
             }
             return deleteKeyframes(all, label: "Delete all keyframes")
