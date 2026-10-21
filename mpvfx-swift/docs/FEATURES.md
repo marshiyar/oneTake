@@ -49,9 +49,9 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Ability | Swift status | Visual |
 | --- | --- | --- |
 | Media-first header row: the library ▸ event switcher (one menu of libraries and events), Import (the primary button) and "…" | done (panels UI over `DesktopBackend` libraries; `LeftSidebarPanel+Header.swift`, `MediaPanelTests`) | n/a |
-| "…" menu: New library, Open library, New event, Import into the event (copy into library / link originals), Show library in Finder (Files, File Explorer), the event's projects (switch), New project, Open project…, Open existing standalone project, Recent projects | done (`LeftSidebarPanel+Menus.swift`, `testMoreMenuRunsEveryLibraryAndProjectAction`) | n/a |
-| Library media (files of the event not yet in this project) and Exports as grid sections and filter choices; add to the timeline, relink and Save as… on the tile (hover button, context menu, Enter) | done (`MediaSections.swift`, `testLibraryMediaAndExportsAreSectionsWithoutDuplicates`, `testTileHoverActionAddsAttachesAndSaves`) | n/a |
-| Export records "Save to…" | partial: Save as… on a finished export's tile | n/a |
+| "…" menu: New library, Open library, New event, Import into the event (copy into library / link originals), Show library in Finder (Files, File Explorer), Rename event, the event's projects (switch), Rename project, New project, Open project…, Open existing standalone project, Recent projects | done (`LeftSidebarPanel+Menus.swift`, `testMoreMenuRunsEveryLibraryAndProjectAction`) | n/a |
+| Library media (files of the event not yet in this project) and Exports as grid sections and filter choices; add to the timeline, relink and Save to… on the tile (hover button, context menu, Enter) | done (`MediaSections.swift`, `testLibraryMediaAndExportsAreSectionsWithoutDuplicates`, `testTileHoverActionAddsAttachesAndSaves`) | n/a |
+| Export records "Save to…" | done: a finished export's tile saves with the export extension and reports errors without replacing an unapproved destination (`LibrarySaveToTests`, `LibraryServiceTests`) | n/a |
 | The standalone project status | done: the switcher's tooltip and status-line hint | n/a |
 | Tab bar Media / Scenes / Elements (Scenes only with sub-compositions, Elements only with blocks) | done (Elements never shows: blocks dropped) | exact |
 | Tab persisted, ←/→ and ⌘1/⌘2 tab switching | done | n/a |
