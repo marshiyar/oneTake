@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxPlayer
+import MpvfxRuntime
 import MpvfxShared
 #if os(Windows)
 import WinSDK
@@ -35,7 +36,10 @@ import CoreGraphics
 //   MpvfxPreviewBench <scenario> <fixtures dir> <results file> [frames] [--no-realtime]
 //   MpvfxPreviewBench --make-clips <fixtures dir>   (writes the clips with the media engine's encoder; Clips.swift)
 //   (--no-realtime: playback only, for allocation counts under valgrind --tool=dhat)
-//   scenarios: 1080p, 4k, stacked, graded, scrub
+//   scenarios: 1080p, 4k, stacked, graded, scrub, export, export-serial
+//   (export: 10 s of 1080p30 exported to MP4 through renderNativeTimeline, frames painted by PreviewExportFrames as
+//   the app installs it; export_fps, paint_ms and encode_ms per frame, peak RSS. export-serial: the same export
+//   painting and encoding in turn on one thread, the baseline measured on the same machine in the same run)
 
 func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
 
@@ -83,11 +87,13 @@ final class Screen {
 
 struct Clip { var file: String; var track: Int; var opacity = 1.0; var grade: String? = nil }
 
-/// A 1920x1080 30 fps project with `clips` stacked bottom first, each covering `seconds` from frame 0.
-func document(_ clips: [Clip], dir: String, seconds: Double) throws -> NativeProjectDocument {
+/// A 1920x1080 30 fps project with `clips` stacked bottom first, each covering `seconds` from frame 0. The sources
+/// are `<dir>/<file>`, or just `<file>` when `relative` (export reads project-relative media only, `dir` the project).
+func document(_ clips: [Clip], dir: String, seconds: Double, relative: Bool = false) throws -> NativeProjectDocument {
     let frames = Int(seconds * 30)
+    let prefix = relative ? "" : dir + "/"
     let assets = clips.enumerated().map { i, c in
-        #"{"id":"a\#(i)","kind":"video","name":"\#(c.file)","source":"\#(dir)/\#(c.file)","durationFrames":\#(frames)}"#
+        #"{"id":"a\#(i)","kind":"video","name":"\#(c.file)","source":"\#(prefix)\#(c.file)","durationFrames":\#(frames)}"#
     }
     let tracks = clips.enumerated().reversed().map { i, c in
         let fx = c.grade.map { #"{"id":"g","effectId":"color-grading","enabled":true,"parameters":\#($0)}"# } ?? ""
@@ -216,6 +222,27 @@ func scrub(_ run: Run, seeks: Int, duration: Double) -> [String: String] {
             "seeks": "\(seeks)", "stalls": "\(run.stalls)"]
 }
 
+/// Exports the 1080p clip (10 s, 30 fps) to MP4 at standard quality, the app's default, and times it: frames per
+/// second of the whole render (plan, paint, encode, finish), and ms per frame painting and encoding.
+func export(dir: String, ahead: Bool) throws -> [String: String] {
+    NativeExportFrames.defaultRenderer = PreviewExportFrames.factory
+    let doc = try document([Clip(file: "clip1080.mp4", track: 0)], dir: dir, seconds: 10, relative: true)
+    let output = "\(dir)/export-bench-\(ProcessInfo.processInfo.processIdentifier).mp4"
+    try? FileManager.default.removeItem(atPath: output)
+    defer { try? FileManager.default.removeItem(atPath: output) }
+    var input = NativeTimelineRenderInput(project: doc, projectDir: dir, outputPath: output, format: .mp4, quality: .standard)
+    input.encodeAhead = ahead
+    let times = NativeExportStageTimes()
+    input.stageTimes = times
+    let t0 = now()
+    try renderNativeTimeline(input)
+    let wall = now() - t0
+    let frames = times.framesEncoded
+    let n = Double(max(1, frames))
+    return ["export_fps": fmt(Double(frames) / wall), "export_wall_s": fmt(wall), "frames": "\(frames)",
+            "paint_ms": fmt(times.paintSeconds / n * 1000), "encode_ms": fmt(times.encodeSeconds / n * 1000)]
+}
+
 func scenario(_ name: String) -> (clips: [Clip], seconds: Double)? {
     switch name {
     case "1080p": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
@@ -223,6 +250,7 @@ func scenario(_ name: String) -> (clips: [Clip], seconds: Double)? {
     case "stacked": return ([Clip(file: "clip1080.mp4", track: 0), Clip(file: "clip1080b.mp4", track: 1, opacity: 0.6)], 10)
     case "graded": return ([Clip(file: "clip1080.mp4", track: 0, grade: typicalGrade)], 10)
     case "scrub": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
+    case "export", "export-serial": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
     default: return nil
     }
 }
@@ -231,10 +259,16 @@ func main() throws {
     let args = CommandLine.arguments
     if args.count == 3 && args[1] == "--make-clips" { try makeClips(args[2]); return }
     guard args.count >= 4, let sc = scenario(args[1]) else {
-        print("usage: MpvfxPreviewBench <1080p|4k|stacked|graded|scrub> <fixtures dir> <results file> [frames]")
+        print("usage: MpvfxPreviewBench <1080p|4k|stacked|graded|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
         print("       MpvfxPreviewBench --make-clips <fixtures dir>"); exit(2)
     }
     let (width, height) = (1280, 720)
+    if args[1].hasPrefix("export") {
+        var result = try export(dir: args[2], ahead: args[1] == "export")
+        result["scenario"] = args[1]; result["output"] = "1920x1080 mp4"
+        result["peak_rss_mib"] = fmt(peakMiB())
+        return record(result, to: args[3])
+    }
     let doc = try document(sc.clips, dir: args[2], seconds: sc.seconds)
     let frames = args.count > 4 ? Int(args[4]) ?? 120 : Int(sc.seconds * 30) - 2
     var result: [String: String] = ["scenario": args[1], "display": "\(width)x\(height)"]
@@ -247,11 +281,16 @@ func main() throws {
     run.compositor.stopAll()
     if args[1] != "scrub" && !args.contains("--no-realtime") { result.merge(realtime(doc, width: width, height: height, seconds: min(5, sc.seconds - 0.5))) { $1 } }
     result["peak_rss_mib"] = fmt(peakMiB())
+    record(result, to: args[3])
+}
+
+/// Prints `result` as one JSON line and appends it to `path`.
+func record(_ result: [String: String], to path: String) {
     let line = result.keys.sorted().map { "\"\($0)\":\"\(result[$0] ?? "")\"" }.joined(separator: ",")
     print("{\(line)}")
-    let handle = FileHandle(forWritingAtPath: args[3]) ?? {
-        _ = FileManager.default.createFile(atPath: args[3], contents: nil)
-        return FileHandle(forWritingAtPath: args[3])
+    let handle = FileHandle(forWritingAtPath: path) ?? {
+        _ = FileManager.default.createFile(atPath: path, contents: nil)
+        return FileHandle(forWritingAtPath: path)
     }()
     handle?.seekToEndOfFile(); handle?.write(Data("{\(line)}\n".utf8)); handle?.closeFile()
 }

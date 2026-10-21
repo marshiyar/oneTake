@@ -87,7 +87,7 @@ RULES = {
     "gate-coverage": "ci-ok waits for every job of the required workflow and always runs",
 }
 # The required workflow, its aggregate job and the jobs that run after the gate (they publish; they gate nothing).
-REQUIRED = {"mpvfx-ci.yml": ("ci-ok", {"publish"})}
+REQUIRED = {"mpvfx-ci.yml": ("ci-ok", {"publish", "publish-macos"})}
 PRIVILEGED = {"pull_request_target", "workflow_run", "issue_comment"}
 PINNED = re.compile(r"^[\w.-]+/[\w.-]+(?:/[^@\s]+)?@[0-9a-f]{40}$")
 DOCKER_PINNED = re.compile(r"^docker://[^@\s]+@sha256:[0-9a-f]{64}$")

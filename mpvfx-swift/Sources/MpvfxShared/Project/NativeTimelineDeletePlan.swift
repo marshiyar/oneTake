@@ -24,7 +24,7 @@ public struct NativeTimelineDeletePlannedTarget: Equatable {
     public var address: NativeProjectClipAddress; public var sourceFile: String?; public var binding: NativeClipDomBinding?
 }
 
-public enum NativeTimelineDeletePlanFailureCode: String {
+public enum NativeTimelineDeletePlanFailureCode: String, Sendable {
     case emptyTargetSet = "empty-target-set", protectedRoot = "protected-root", missingSelectionId = "missing-selection-id"
     case clipNotFound = "clip-not-found", ambiguousClip = "ambiguous-clip", duplicateClip = "duplicate-clip"
     case bindingSourceMismatch = "binding-source-mismatch", nativeCommandRejected = "native-command-rejected"
