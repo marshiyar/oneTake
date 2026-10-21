@@ -319,6 +319,25 @@ public final class LibraryService: @unchecked Sendable {
         let l = try get(libraryId)
         _ = try await queue.run(l.root) { [self] in try command(l, "event", [newUUID(), try libraryTitle(name)]); return true }
     }
+    /// Renames an event in the catalog. Only the name changes: the id, its projects and assets stay as they are.
+    public func renameEvent(_ libraryId: String, _ eventId: String, _ name: String) async throws {
+        let l = try get(libraryId), title = try libraryTitle(name), id = try checkLibraryId(eventId)
+        _ = try await queue.run(l.root) { [self] in
+            guard catalog(l).events.contains(where: { $0.id == id }) else { throw LibraryError("Library event not found") }
+            try command(l, "renameEvent", [id, title])
+            return true
+        }
+    }
+    /// Renames a project in the catalog, which is where the navigator and the project list read its name; its folder,
+    /// id and `project.json` are unchanged, so an open editor and its saves are unaffected.
+    public func renameProject(_ libraryId: String, _ projectId: String, _ name: String) async throws {
+        let l = try get(libraryId), title = try libraryTitle(name), id = try checkLibraryId(projectId)
+        _ = try await queue.run(l.root) { [self] in
+            _ = try Self.catalogProject(catalog(l), id)
+            try command(l, "renameProject", [id, title])
+            return true
+        }
+    }
     /// :382 initializeProject: a new project is just its native document, the starter document every project starts from.
     private func initializeProject(_ l: OpenLibrary, _ projectId: String) throws {
         let root = PosixPath.join(l.root, "Projects", try checkLibraryId(projectId))

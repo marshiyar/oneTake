@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-// Library commands (create, open, import, attach, relink, save output) with dialogs behind NativeDialogs.
+// Library commands (create, open, import, attach, relink, rename, save output) with dialogs behind NativeDialogs.
 import Foundation
 
 public struct FileFilter: Equatable, Sendable { public var name: String; public var extensions: [String] }
@@ -84,6 +84,7 @@ public enum LibraryCommands {
             }
         case "reveal":
             await dialogs?.openPath(try service.root(libraryId: str("libraryId")))
+        case "renameEvent", "renameProject": try await rename(service: service, command: command)
         case "saveOutput":
             try await saveOutput(service: service, dialogs: dialogs, libraryId: str("libraryId"), jobId: str("jobId"))
         default: throw DesktopError("Unknown library command")

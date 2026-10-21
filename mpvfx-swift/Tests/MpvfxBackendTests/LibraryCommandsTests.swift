@@ -162,4 +162,42 @@ final class LibraryCommandsTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root + "/Out"), ["Late.mp4"], "no staged copy left")
         try await reopened.close()
     }
+
+    private func assertRefused(_ b: RuntimeDesktopBackend, _ command: JSONObject, _ message: String, line: UInt = #line) async {
+        do { _ = try await run(b, nil, command); XCTFail("expected an error", line: line) }
+        catch { XCTAssertEqual((error as? DesktopError)?.message, message, line: line) }
+    }
+
+    /// Rename (#40): the navigator's renameEvent / renameProject commands change the names the library lists, open no
+    /// dialog, keep the project openable at the same folder, and refuse an empty name or a missing field.
+    func testRenameEventAndProjectThroughTheNavigatorCommands() async throws {
+        let b = RuntimeDesktopBackend(userData: root + "/userData")
+        let dialogs = ScriptedDialogs()
+        dialogs.saves = [root + "/Films"]
+        let created = try await run(b, dialogs, ["type": .string("create")])
+        let projectId = try XCTUnwrap(created["projectId"]?.string)
+        var views = try await b.libraryViews()
+        let library = try XCTUnwrap(views.first), eventId = try XCTUnwrap(library.events.first?.id)
+        let directory = try XCTUnwrap(library.projects.first { $0.id == projectId }).directory
+        let renamed = try await run(b, dialogs, ["type": .string("renameEvent"), "libraryId": .string(library.id),
+                                                 "eventId": .string(eventId), "name": .string(" Day 2 ")])
+        XCTAssertEqual(renamed["errors"], .array([]))
+        _ = try await run(b, dialogs, ["type": .string("renameProject"), "libraryId": .string(library.id),
+                                       "projectId": .string(projectId), "name": .string("Final cut")])
+        views = try await b.libraryViews()
+        XCTAssertEqual(views.first?.events.first { $0.id == eventId }?.name, "Day 2")
+        XCTAssertEqual(views.first?.projects.first { $0.id == projectId }?.name, "Final cut")
+        XCTAssertEqual(views.first?.projects.first { $0.id == projectId }?.directory, directory)
+        XCTAssertNoThrow(try b.openProject(path: directory))
+        XCTAssertEqual(dialogs.saveRequests.count, 1, "only the Create Library dialog")
+        XCTAssertEqual(dialogs.openRequests, [])
+
+        await assertRefused(b, ["type": .string("renameProject"), "libraryId": .string(library.id),
+                                "projectId": .string(projectId), "name": .string("  ")], "Enter a name (1–200 characters)")
+        await assertRefused(b, ["type": .string("renameEvent"), "libraryId": .string(library.id), "name": .string("X")],
+                            "Invalid library command")
+        views = try await b.libraryViews()
+        XCTAssertEqual(views.first?.projects.first { $0.id == projectId }?.name, "Final cut")
+        try await b.close()
+    }
 }

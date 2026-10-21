@@ -503,6 +503,58 @@ final class MediaBinTests: XCTestCase {
         XCTAssertNil(s.hits.rect { $0 == .saveOutput("J1") }, "disabled while a library command runs")
     }
 
+    private func keys(_ text: String) -> [EditorKey] { text.map { $0 == " " ? EditorKey(.space) : EditorKey(.char($0)) } }
+    private func typeKeys(_ s: LeftSidebarPanel, _ keys: [EditorKey]) { keys.forEach { _ = s.keyDown($0) } }
+
+    private func renameNavigator(_ cmds: @escaping (LibraryNavCommand) -> Void) -> LeftSidebarPanel {
+        let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))
+        s.library.available = true
+        s.library.libraries = [.init(id: "L", name: "test", events: [.init(id: "E", name: "Media")],
+                                     projects: [.init(id: "P", name: "jk", eventId: "E")])]
+        s.library.currentProjectId = "P"
+        s.onLibrary = cmds
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        return s
+    }
+
+    /// "Rename" beside the event and project pickers opens the name row on the current name; Enter sends the rename of
+    /// the shown event or the current project with the trimmed name, and Escape sends nothing (#40).
+    func testLibraryNavigatorRenamesTheShownEventAndTheCurrentProject() throws {
+        var cmds: [LibraryNavCommand] = []
+        let s = renameNavigator { cmds.append($0) }
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .rename("renameEvent") })))
+        let c = PanelMeasureCanvas()
+        s.draw(c, size: CanvasSize(370, 900))
+        XCTAssertEqual(c.drawnStrings.filter { $0 == "Rename" }.count, 3, "both Rename buttons and the name row's confirm")
+        XCTAssertNotNil(s.hits.rect { $0 == .createField })
+        XCTAssertTrue(s.isEditingText)
+        typeKeys(s, Array(repeating: EditorKey(.backspace), count: 5) + keys("Day 2 ") + [EditorKey(.enter)])
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .rename("renameProject") })))
+        typeKeys(s, keys(" v2") + [EditorKey(.enter)])
+        XCTAssertEqual(cmds, [.renameEvent(libraryId: "L", eventId: "E", name: "Day 2"),
+                              .renameProject(libraryId: "L", projectId: "P", name: "jk v2")])
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .rename("renameProject") })))
+        _ = s.keyDown(EditorKey(.escape))
+        XCTAssertFalse(s.isEditingText)
+        XCTAssertEqual(cmds.count, 2, "Escape renames nothing")
+    }
+
+    /// Rename is offered only for something shown: no project rename without a current project in the shown event,
+    /// and neither while a library command runs.
+    func testLibraryNavigatorRenameNeedsATargetAndAnIdleLibrary() throws {
+        let s = renameNavigator { _ in }
+        s.library.currentProjectId = nil
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        XCTAssertNotNil(s.hits.rect { $0 == .rename("renameEvent") })
+        XCTAssertNil(s.hits.rect { $0 == .rename("renameProject") })
+        s.library.currentProjectId = "P"
+        s.library.busy = true
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        XCTAssertNil(s.hits.rect { $0 == .rename("renameEvent") })
+        XCTAssertNil(s.hits.rect { $0 == .rename("renameProject") })
+    }
+
     /// "Open project…" asks for a folder; "Recent" lists the projects opened before and opens the one picked.
     func testOpenProjectAndRecentProjects() throws {
         let s = LeftSidebarPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1440))

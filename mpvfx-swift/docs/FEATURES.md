@@ -49,7 +49,7 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Ability | Swift status | Visual |
 | --- | --- | --- |
 | Libraries header with New library / Open | done (panels UI over `DesktopBackend` libraries) | close |
-| Library / Event / Project pickers, New event, New project, switch project | done | close |
+| Library / Event / Project pickers, New event, New project, Rename event / project, switch project | done (rename: catalog name only) | close |
 | Import into event (copy into library / link originals), attach asset, relink | done | close |
 | Collapsible "Library media (N)" and "Library exports (N)" | done | close |
 | Export records "Save to…" | done: completed exports only; the export's extension is added to a name typed without it, and a file the dialog did not ask about is never replaced | close |

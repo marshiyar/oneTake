@@ -72,6 +72,8 @@ public enum LibraryNavCommand: Equatable {
     case createLibrary, openLibrary
     case createEvent(libraryId: String, name: String)
     case createProject(libraryId: String, eventId: String, name: String)
+    case renameEvent(libraryId: String, eventId: String, name: String)
+    case renameProject(libraryId: String, projectId: String, name: String)
     case switchProject(String)
     case importIntoEvent(libraryId: String, eventId: String, linked: Bool)
     case attach(libraryId: String, assetId: String)
@@ -91,6 +93,8 @@ public final class LeftSidebarPanel {
         case showSidebar, hideSidebar, importMedia, panelMenu, search, clearSearch
         case tab(LeftSidebarTab)
         case newLibrary, openLibrary, pickLibrary, pickEvent, newEvent, pickProject, newProject
+        /// "Rename" beside the event or project picker: `renameEvent` or `renameProject`.
+        case rename(String)
         case toggleMedia, toggleExports, storageMode, importIntoEvent, attach(String), relink(String), saveOutput(String)
         case reveal, openStandalone, openProject, pickRecent, createConfirm, createCancel, createField
         case asset(String)
@@ -256,22 +260,22 @@ public final class LeftSidebarPanel {
             if let lib = activeLibrary {
                 select(lib.name, .pickLibrary, CanvasRect(x: x, y: y, width: w, height: rowH)); y += rowH + gap
                 let ev = activeEvent
-                let evBtnW = c.measureText("New event", font: font).width
-                select(ev?.name ?? "No events", .pickEvent, CanvasRect(x: x, y: y, width: w - evBtnW - 8, height: rowH))
+                let evBtnW = c.measureText("New event", font: font).width, renameW = c.measureText("Rename", font: font).width
+                select(ev?.name ?? "No events", .pickEvent, CanvasRect(x: x, y: y, width: w - evBtnW - renameW - 16, height: rowH))
+                _ = button("Rename", .rename("renameEvent"), right: x + w - evBtnW - 8, at: y, height: rowH, enabled: canRename("renameEvent"))
                 _ = button("New event", .newEvent, right: x + w, at: y, height: rowH, enabled: !library.busy); y += rowH + gap
-                let projects = lib.projects.filter { $0.eventId == ev?.id }
-                let cur = projects.first { $0.id == library.currentProjectId }
-                let pBtnW = c.measureText("New project", font: font).width
-                select(cur?.name ?? "Select project", .pickProject, CanvasRect(x: x, y: y, width: w - pBtnW - 8, height: rowH))
+                let cur = currentProject, pBtnW = c.measureText("New project", font: font).width
+                select(cur?.name ?? "Select project", .pickProject, CanvasRect(x: x, y: y, width: w - pBtnW - renameW - 16, height: rowH))
+                _ = button("Rename", .rename("renameProject"), right: x + w - pBtnW - 8, at: y, height: rowH, enabled: canRename("renameProject"))
                 _ = button("New project", .newProject, right: x + w, at: y, height: rowH, enabled: !library.busy && ev != nil); y += rowH + gap
                 if let cr = creating {
                     let fr = CanvasRect(x: x, y: y, width: w - 100, height: rowH)
                     c.fillRoundedRect(fr, radius: PanelTheme.radius, PanelTheme.panelInput)
-                    let text = cr.field.draft.isEmpty ? (cr.kind == "event" ? "Event name" : "Project name") : cr.field.draft
+                    let labels = Self.nameRowLabels(cr.kind), text = cr.field.draft.isEmpty ? labels.placeholder : cr.field.draft
                     PanelDraw.text(c, text, in: fr.insetBy(8), font: font, color: cr.field.draft.isEmpty ? PanelTheme.neutral500 : PanelTheme.neutral200)
                     hits.add(fr, .createField)
                     let cancel = button("Cancel", .createCancel, right: x + w, at: y, height: rowH)
-                    _ = button("Create", .createConfirm, right: cancel - 8, at: y, height: rowH, enabled: !cr.field.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    _ = button(labels.confirm, .createConfirm, right: cancel - 8, at: y, height: rowH, enabled: !cr.field.draft.trimmingCharacters(in: .whitespaces).isEmpty)
                     y += rowH + gap
                 }
                 // ▶ Library media (N)
@@ -677,8 +681,7 @@ public final class LeftSidebarPanel {
             let ps = (activeLibrary?.projects ?? []).filter { $0.eventId == activeEvent?.id }
             openDropdown(hit, ps.map { .init(value: $0.id, label: $0.name) }, library.currentProjectId) { [weak self] v in self?.onLibrary?(.switchProject(v)) }
             return true
-        case .newEvent: creating = ("event", PanelTextField(key: "create", value: ""))
-        case .newProject: creating = ("project", PanelTextField(key: "create", value: ""))
+        case .newEvent, .newProject, .rename: openNameRow(for: hit)
         case .createField: break
         case .createCancel: creating = nil
         case .createConfirm: confirmCreate()
@@ -769,9 +772,56 @@ public final class LeftSidebarPanel {
         guard let cr = creating, let l = activeLibrary else { return }
         let name = cr.field.draft.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        if cr.kind == "event" { onLibrary?(.createEvent(libraryId: l.id, name: name)) }
-        else if let e = activeEvent { onLibrary?(.createProject(libraryId: l.id, eventId: e.id, name: name)) }
+        if let command = nameCommand(cr.kind, libraryId: l.id, name: name) { onLibrary?(command) }
         creating = nil
+    }
+
+    /// The command the name row sends: create an event or project, or rename the shown event or current project.
+    private func nameCommand(_ kind: String, libraryId: String, name: String) -> LibraryNavCommand? {
+        switch kind {
+        case "event": return .createEvent(libraryId: libraryId, name: name)
+        case "project": return activeEvent.map { .createProject(libraryId: libraryId, eventId: $0.id, name: name) }
+        case "renameEvent": return activeEvent.map { .renameEvent(libraryId: libraryId, eventId: $0.id, name: name) }
+        case "renameProject": return currentProject.map { .renameProject(libraryId: libraryId, projectId: $0.id, name: name) }
+        default: return nil
+        }
+    }
+
+    /// Placeholder and confirm button of the name row for each kind.
+    static func nameRowLabels(_ kind: String) -> (placeholder: String, confirm: String) {
+        switch kind {
+        case "event": return ("Event name", "Create")
+        case "renameEvent": return ("Event name", "Rename")
+        case "renameProject": return ("Project name", "Rename")
+        default: return ("Project name", "Create")
+        }
+    }
+
+    /// The current project when it belongs to the event shown (the one the project picker shows).
+    var currentProject: LibraryNavModel.Project? {
+        activeLibrary?.projects.first { $0.id == library.currentProjectId && $0.eventId == activeEvent?.id }
+    }
+
+    /// Rename needs something to rename and no library command running.
+    func canRename(_ kind: String) -> Bool {
+        guard !library.busy else { return false }
+        return kind == "renameEvent" ? activeEvent != nil : currentProject != nil
+    }
+
+    /// Opens the name row: empty for a new event or project, on the current name for a rename.
+    func openNameRow(for hit: Hit) {
+        switch hit {
+        case .newEvent: creating = ("event", PanelTextField(key: "create", value: ""))
+        case .newProject: creating = ("project", PanelTextField(key: "create", value: ""))
+        case .rename(let kind): startRename(kind)
+        default: break
+        }
+    }
+
+    /// Opens the name row on the current name of the shown event or current project.
+    func startRename(_ kind: String) {
+        guard canRename(kind), let current = kind == "renameEvent" ? activeEvent?.name : currentProject?.name else { return }
+        creating = (kind, PanelTextField(key: "create", value: current))
     }
     func commitRename() {
         guard let m = menu, let f = m.rename else { return }

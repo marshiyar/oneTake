@@ -48,6 +48,13 @@ final class LibraryBridge: MpvfxDesktopCore.LibraryService, @unchecked Sendable 
         try await map { try await service.saveOutput(libraryId, jobId, destination, replaceApproved: overwrite) }
     }
 
+    func renameEvent(libraryId: String, eventId: String, name: String) async throws {
+        try await map { try await service.renameEvent(libraryId, eventId, name) }
+    }
+    func renameProject(libraryId: String, projectId: String, name: String) async throws {
+        try await map { try await service.renameProject(libraryId, projectId, name) }
+    }
+
     private func map<T>(_ body: () async throws -> T) async throws -> T {
         do { return try await body() } catch { throw RuntimeDesktopBackend.desktopError(error) }
     }
