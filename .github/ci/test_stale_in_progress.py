@@ -41,10 +41,14 @@ class FakeGitHub:
 
     def __init__(self, issues, pulls=(), changes=None):
         self.repo, self.issues, self.pulls = REPO, list(issues), list(pulls)
-        self.changes, self.applied = changes or {}, []
+        self.changes, self.applied, self.rechecked = changes or {}, [], []
 
     def in_progress_issues(self):
         return self.issues
+
+    def get_issue(self, n):
+        self.rechecked.append(n)
+        return next((i for i in self.issues if i.number == n), None)
 
     def open_pulls(self):
         return self.pulls
@@ -142,7 +146,33 @@ class Running(unittest.TestCase):
     def test_live_run_applies_each_change_once(self):
         lines = sip.run(self.gh, NOW, dry_run=False)
         self.assertEqual([(a.issue, a.add) for a in self.gh.applied], [(1, sip.BUILDABLE), (3, "")])
+        self.assertEqual(self.gh.rechecked, [1, 3])
         self.assertNotIn("would", "\n".join(lines))
+
+    def test_issue_linked_between_read_and_write_is_left_alone(self):
+        gh = self.gh
+        first = gh.open_pulls
+
+        def pulls_after_first_read():
+            gh.open_pulls = lambda: first() + [sip.Pull(60, body="Closes #1")]
+            return first()
+        gh.open_pulls = pulls_after_first_read
+        lines = sip.run(gh, NOW, dry_run=False)
+        self.assertEqual([a.issue for a in gh.applied], [3])
+        self.assertIn("#1: changed since it was read; left alone", lines)
+
+    def test_issue_closed_or_relabelled_before_the_write_is_left_alone(self):
+        reads = []
+
+        def last_label_change(n):    # #3 gets a label change after the first read
+            reads.append(n)
+            return RECENT if reads.count(n) > 1 else OLD
+        self.gh.get_issue = lambda n: None if n == 1 else issue(3, sip.BLOCKED)    # #1 was closed
+        self.gh.last_label_change = last_label_change
+        lines = sip.run(self.gh, NOW, dry_run=False)
+        self.assertEqual(self.gh.applied, [])
+        self.assertEqual([ln for ln in lines if "left alone" in ln], ["#1: changed since it was read; left alone",
+                                                                     "#3: changed since it was read; left alone"])
 
     def test_nothing_in_progress(self):
         self.assertEqual(len(sip.run(FakeGitHub([issue(4, "needs-owner")]), NOW, dry_run=False)), 1)
@@ -165,26 +195,31 @@ class GitHubCalls(unittest.TestCase):
         return sip.GitHub(REPO, send), calls
 
     def test_reads_follow_pages(self):
-        nxt = '<https://api.github.com/repositories/1/issues?page=2>; rel="next", <https://x>; rel="last"'
+        nxt = '<https://api.github.com/repositories/1/issues?labels=x&page=2>; rel="next", <https://x>; rel="last"'
         issues = [{"number": 7, "created_at": OLD, "labels": [{"name": "in-progress"}]},
                   {"number": 8, "created_at": OLD, "labels": [], "pull_request": {}}]
         page2 = [{"number": 9, "created_at": RECENT, "labels": [{"name": "in-progress"}]}]
         events = [{"event": "labeled", "created_at": OLD}, {"event": "unlabeled", "created_at": RECENT},
                   {"event": "commented", "created_at": "2026-10-21T00:00:00Z"}]
         pulls = [{"number": 1, "title": "t", "body": None, "head": {"ref": "ci/7-x"}}]
-        gh, calls = self.make({"state=open&labels": (json.dumps(issues), nxt), "page=2": (json.dumps(page2), ""),
+        gh, calls = self.make({"page=2": (json.dumps(page2), ""), "state=open&labels": (json.dumps(issues), nxt),
                                "/events": (json.dumps(events), ""), "/pulls?": (json.dumps(pulls), "")})
         self.assertEqual(gh.in_progress_issues(), [sip.Issue(7, {"in-progress"}, OLD),
                                                    sip.Issue(9, {"in-progress"}, RECENT)])
-        self.assertEqual(calls[1][1], "/repositories/1/issues?page=2")
+        self.assertEqual(calls[1][1], f"/repos/{REPO}/issues?state=open&labels=in-progress&per_page=100&page=2")
         self.assertEqual(gh.last_label_change(7), RECENT)
         self.assertEqual(gh.open_pulls(), [sip.Pull(1, "t", "", "ci/7-x")])
         self.assertTrue(all(c[0] == "GET" and c[2] is None for c in calls))
 
     def test_next_page_only_follows_the_api_host(self):
-        self.assertEqual(sip.next_page('<https://evil.example/x?page=2>; rel="next"'), "")
-        self.assertEqual(sip.next_page('<http://api.github.com/x>; rel="next"'), "")
-        self.assertEqual(sip.next_page(""), "")
+        here = "/repos/o/r/pulls?per_page=100&page=2"
+        self.assertEqual(sip.next_page('<https://evil.example/x?page=3>; rel="next"', here), "")
+        self.assertEqual(sip.next_page('<http://api.github.com/x?page=3>; rel="next"', here), "")
+        self.assertEqual(sip.next_page('<https://api.github.com/x?page=abc>; rel="next"', here), "")
+        self.assertEqual(sip.next_page('<https://api.github.com/x?page=1>; rel="prev"', here), "")
+        self.assertEqual(sip.next_page("", here), "")
+        self.assertEqual(sip.next_page('<https://api.github.com/repositories/9/pulls?page=3>; rel="next"', here),
+                         "/repos/o/r/pulls?per_page=100&page=3")
 
     def test_apply_adds_comments_then_removes_in_progress_last(self):
         gh, calls = self.make()
@@ -204,6 +239,15 @@ class GitHubCalls(unittest.TestCase):
         with self.assertRaises(sip.Error):
             gh.apply(sip.Action(7, (sip.IN_PROGRESS,), sip.BUILDABLE, "why"))
         self.assertNotIn("DELETE", [c[0] for c in calls])
+
+    def test_get_issue_returns_none_for_closed_issues_and_pull_requests(self):
+        for row in ({"number": 7, "state": "closed", "created_at": OLD},
+                    {"number": 7, "state": "open", "created_at": OLD, "pull_request": {}}):
+            gh, _ = self.make({"/issues/7": (json.dumps(row), "")})
+            self.assertIsNone(gh.get_issue(7))
+        gh, _ = self.make({"/issues/7": (json.dumps({"number": 7, "state": "open", "created_at": OLD,
+                                                     "labels": [{"name": "blocked"}]}), "")})
+        self.assertEqual(gh.get_issue(7), sip.Issue(7, {"blocked"}, OLD))
 
     def test_failed_call_raises(self):
         gh, _ = self.make(fail=lambda method, path: True)

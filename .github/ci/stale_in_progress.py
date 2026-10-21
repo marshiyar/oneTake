@@ -25,24 +25,26 @@ labelled `launch-blocker` or `needs-owner` are never touched. With --dry-run (or
 would change and writes nothing.
 
 Standard library only; it talks to the GitHub REST API at api.github.com (token in GH_TOKEN or GITHUB_TOKEN) through
-`Transport`, which tests replace. No subprocess is run.
+`Transport` (urllib), which tests replace. No subprocess is run.
 """
 import argparse
 import dataclasses
 import datetime
-import http.client
 import json
 import os
 import re
 import ssl
 import sys
+import urllib.error
 import urllib.parse
+import urllib.request
 
 IN_PROGRESS, BUILDABLE, BLOCKED = "in-progress", "buildable", "blocked"
 SKIP = frozenset({"launch-blocker", "needs-owner"})
 HOURS = 48
 MARKER = "<!-- stale-in-progress -->"
 API_HOST = "api.github.com"
+API_ROOT = f"https://{API_HOST}"
 REPO_RE = re.compile(r"[A-Za-z0-9-]+/(?!\.\.?$)[A-Za-z0-9_.-]+")   # owner/name; never . or ..
 
 
@@ -137,44 +139,40 @@ def plan(issues, pulls, last_change, now, hours=HOURS, repo=""):
 # ---- GitHub ----------------------------------------------------------------------------------------------------
 
 class Transport:
-    """One HTTPS request to api.github.com (through HTTPS_PROXY when it is set); returns (status, text, Link).
+    """One HTTPS request to api.github.com (urllib honours HTTPS_PROXY); returns (status, text, Link).
     Tests pass their own callable instead."""
 
     def __init__(self, token):
         self.token = token
-
-    def _connect(self):
-        ctx = ssl.create_default_context()
-        proxy = urllib.parse.urlsplit(os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or "")
-        if not proxy.hostname:
-            return http.client.HTTPSConnection(API_HOST, 443, timeout=60, context=ctx)
-        conn = http.client.HTTPSConnection(proxy.hostname, proxy.port or 80, timeout=60, context=ctx)
-        conn.set_tunnel(API_HOST, 443)
-        return conn
+        self.opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl.create_default_context()))
 
     def __call__(self, method, path, payload=None):
+        if not path.startswith("/"):
+            raise Error(f"not an API path: {path!r}")
         headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {self.token}",
                    "User-Agent": "stale-in-progress", "X-GitHub-Api-Version": "2022-11-28"}
         body = None if payload is None else json.dumps(payload).encode()
         if body is not None:
             headers["Content-Type"] = "application/json"
-        conn = self._connect()
+        req = urllib.request.Request(API_ROOT + path, data=body, headers=headers, method=method)
         try:
-            conn.request(method, path, body=body, headers=headers)
-            r = conn.getresponse()
-            return r.status, r.read().decode("utf-8", "replace"), r.getheader("Link") or ""
-        finally:
-            conn.close()
+            with self.opener.open(req, timeout=60) as r:
+                return r.status, r.read().decode("utf-8", "replace"), r.headers.get("Link") or ""
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode("utf-8", "replace"), ""
 
 
-def next_page(link):
-    """The path of the rel="next" page in a Link header, or "" (only api.github.com pages are followed)."""
+def next_page(link, path):
+    """`path` with the page number of the Link header's rel="next" entry, or "" on the last page. Only the page
+    number is taken from the header (GitHub's link names the repository by id), and only from an api.github.com link."""
     for part in link.split(","):
         m = re.fullmatch(r'\s*<([^>]+)>\s*;\s*rel="next"\s*', part)
-        if m:
-            u = urllib.parse.urlsplit(m.group(1))
-            if u.scheme == "https" and u.hostname == API_HOST:
-                return u.path + (f"?{u.query}" if u.query else "")
+        u = urllib.parse.urlsplit(m.group(1)) if m else None
+        page = urllib.parse.parse_qs(u.query).get("page", [""])[0] if u else ""
+        if u and u.scheme == "https" and u.hostname == API_HOST and page.isdigit():
+            base, _, query = path.partition("?")
+            keep = [(k, v) for k, v in urllib.parse.parse_qsl(query) if k != "page"]
+            return f"{base}?{urllib.parse.urlencode(keep + [('page', page)])}"
     return ""
 
 
@@ -195,13 +193,19 @@ class GitHub:
         while path:
             page, link = self._call("GET", path)
             rows += page or []
-            path = next_page(link)
+            path = next_page(link, path)
         return rows
 
     def in_progress_issues(self):
         rows = self._pages(f"/repos/{self.repo}/issues?state=open&labels={IN_PROGRESS}&per_page=100")
         return [Issue(r["number"], {lb["name"] for lb in r.get("labels", [])}, r["created_at"])
                 for r in rows if "pull_request" not in r]
+
+    def get_issue(self, number):
+        r, _ = self._call("GET", f"/repos/{self.repo}/issues/{int(number)}")
+        if r.get("state") != "open" or "pull_request" in r:
+            return None
+        return Issue(r["number"], {lb["name"] for lb in r.get("labels", [])}, r["created_at"])
 
     def open_pulls(self):
         rows = self._pages(f"/repos/{self.repo}/pulls?state=open&per_page=100")
@@ -227,6 +231,15 @@ def describe(action):
     return f"#{action.issue}: {added}comment, remove {', '.join(action.remove)}"
 
 
+def recheck(gh, number, now, hours):
+    """Read the issue, its label events and the open pull requests again just before writing: the fresh Action,
+    or None when it is no longer stale (closed, relabelled, or linked since the first read)."""
+    issue = gh.get_issue(number)
+    if issue is None:
+        return None
+    return plan_one(issue, gh.open_pulls(), gh.last_label_change(number), now, hours, gh.repo)
+
+
 def run(gh, now, hours=HOURS, dry_run=True):
     """One pass; returns the report lines."""
     issues = [i for i in gh.in_progress_issues() if not i.labels & SKIP]
@@ -238,9 +251,15 @@ def run(gh, now, hours=HOURS, dry_run=True):
     summary = f"{len(issues)} in-progress issue(s) checked, {len(pulls)} open pull request(s), {len(actions)} stale"
     lines = [summary]
     for a in actions:
-        if not dry_run:
-            gh.apply(a)
-        lines.append(("would " if dry_run else "") + describe(a))
+        if dry_run:
+            lines.append("would " + describe(a))
+            continue
+        fresh = recheck(gh, a.issue, now, hours)
+        if fresh is None:
+            lines.append(f"#{a.issue}: changed since it was read; left alone")
+            continue
+        gh.apply(fresh)
+        lines.append(describe(fresh))
     return lines
 
 
