@@ -12,7 +12,7 @@ name: mpvfx-ci
 #
 # Work already done on identical inputs is not repeated: a test shard runs only when its key (.github/ci/test-shards.py:
 # the files its tests are built from, binaries.lock included) has no pass recorded on that OS. The nightly run and a
-# dispatch with full_tests run everything.
+# dispatch with full_tests run everything. A pull request runs only the platforms its files can affect (job changes).
 
 on:
   # No paths filter on pull requests: ci-ok is the required check, and a workflow skipped by a paths filter leaves it
@@ -52,9 +52,12 @@ permissions:
 
 jobs:
   changes:
-    # A pull request that changes only documentation (Markdown anywhere, mpvfx-swift/docs/, the licence files) needs no
-    # build or test: every job below is skipped on purpose and ci-ok passes in about a minute. No test or build step
-    # reads those files (checked 2026-10-19). Any other event, or any other file, runs everything.
+    # Which jobs a pull request needs, from the files it changes (.github/ci/platforms.py maps each file to the
+    # platforms whose build it can change; anything shared runs all three). Documentation only (Markdown anywhere,
+    # mpvfx-swift/docs/ except DESIGN.md, the licence files, .gitignore, issue templates, CODEOWNERS, FUNDING.yml):
+    # every job is skipped and ci-ok passes in about a minute. CI scripts and workflows no build uses: only the checks
+    # job runs. A platform's build, package and test jobs run only when one of its files changed; the ones skipped are
+    # skipped on purpose and ci-ok accepts that. Any other event runs everything.
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
@@ -62,10 +65,18 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.files.outputs.code }}
+      linux: ${{ steps.files.outputs.linux }}
+      windows: ${{ steps.files.outputs.windows }}
+      macos: ${{ steps.files.outputs.macos }}
       # true: the pull request changes the test jobs OneTake-actionRunners-1 runs from main (mpvfx-ci.yml, its generated
       # mpvfx-ci-tests-source.yml or source_workflows.py), so every shard runs here, with its own definition.
       workflow: ${{ steps.files.outputs.workflow }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          sparse-checkout: .github/ci
+          persist-credentials: false
       - name: Changed files
         id: files
         env:
@@ -73,25 +84,24 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           EVENT: ${{ github.event_name }}
+        shell: bash
         run: |
-          if [ "$EVENT" != pull_request ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$EVENT" != pull_request ]; then
+            printf 'code=true\nlinux=true\nwindows=true\nmacos=true\n' >> "$GITHUB_OUTPUT"; echo "$EVENT: every job runs"; exit 0
+          fi
           # Both sides of a rename count: code renamed to a .md name is still a code change.
           gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
           n=$(wc -l < "$RUNNER_TEMP/files.txt")
           if [ "$n" -ge 3000 ] || grep -qE '^\.github/(workflows/mpvfx-ci(-tests-source)?\.yml|ci/source_workflows\.py)$' "$RUNNER_TEMP/files.txt"; then
             echo "workflow=true" >> "$GITHUB_OUTPUT"
           fi
-          other=$(grep -vE '\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$' "$RUNNER_TEMP/files.txt" || true)
-          if [ "$n" -gt 0 ] && [ "$n" -lt 3000 ] && [ -z "$other" ]; then
-            echo "code=false" >> "$GITHUB_OUTPUT"; echo "documentation only ($n files): build and tests skipped"
-          else
-            echo "code=true" >> "$GITHUB_OUTPUT"; printf 'code changes:\n%s\n' "$other" | head -20
-          fi
+          echo "$n files changed"
+          python3 -I -B .github/ci/platforms.py "$RUNNER_TEMP/files.txt" | tee -a "$GITHUB_OUTPUT"
 
   plan:
     # Which Linux and Windows test shards this run needs: those with no pass recorded for their inputs.
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.linux == 'true' || needs.changes.outputs.windows == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -227,7 +237,8 @@ jobs:
           PY
 
   checks:
-    # Fast checks that need no Swift build: the fetch script's tests and copyright blocks.
+    # Fast checks that need no Swift build: the tests of the CI and fetch scripts, and copyright blocks. The macOS jobs
+    # wait for it, so a pull request that fails here never asks for a Mac.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
@@ -238,6 +249,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: CI script tests
+        run: for t in ../.github/ci/test_*.py; do python3 -I -B "$t"; done
       - name: fetch-binaries tests
         run: python3 -I -B scripts/test_fetch_binaries.py
       - name: Copyright blocks
@@ -247,7 +260,7 @@ jobs:
   linux:
     # Build, package and install smoke; the tests run in linux-test beside it.
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.linux == 'true'
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
     timeout-minutes: 30
@@ -355,8 +368,8 @@ jobs:
 
   linux-test:
     # One test shard (.github/ci/test-shards.py) per job, only those the plan job found no pass for.
-    needs: plan
-    if: needs.plan.outputs.linux_shards != '[]'
+    needs: [changes, plan]
+    if: needs.changes.outputs.linux == 'true' && needs.plan.outputs.linux_shards != '[]'
     strategy:
       fail-fast: false
       matrix:
@@ -414,7 +427,7 @@ jobs:
 
   windows:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.windows == 'true'
     runs-on: windows-2022
     timeout-minutes: 30
     defaults:
@@ -519,8 +532,8 @@ jobs:
           if-no-files-found: ignore
 
   windows-test:
-    needs: plan
-    if: needs.plan.outputs.windows_shards != '[]'
+    needs: [changes, plan]
+    if: needs.changes.outputs.windows == 'true' && needs.plan.outputs.windows_shards != '[]'
     strategy:
       fail-fast: false
       matrix:
@@ -656,7 +669,7 @@ jobs:
     # their head commit is not in this repository, and OneTake-actionRunners-1 builds only marshiyar/oneTake.
     needs: [changes, plan]
     if: >-
-      needs.changes.outputs.code == 'true' && needs.plan.outputs.runners_ok == 'true'
+      needs.changes.outputs.macos == 'true' && needs.plan.outputs.runners_ok == 'true'
       && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule'
       || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')
       && github.event.pull_request.head.repo.full_name == github.repository))
@@ -706,9 +719,11 @@ jobs:
     # queued jobs sat for an hour before being cancelled, so a pull request builds macOS only when it carries the
     # `macos` label. Main and labelled pull requests go to OneTake-actionRunners-1 (macos-runners) and build here only
     # when that hand-off was not sent, and so does the nightly run; tags and a dispatch always build here.
-    needs: [changes, macos-runners]
+    # It also waits for the checks job, so a pull request that fails a check in seconds on Linux does not wait for a
+    # Mac, and runs only when the pull request's files can affect macOS (job changes).
+    needs: [changes, checks, macos-runners]
     if: >-
-      always() && needs.changes.outputs.code == 'true'
+      always() && needs.changes.outputs.macos == 'true' && needs.checks.result == 'success'
       && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos'))
       && needs.macos-runners.outputs.sent != 'true'
     uses: ./.github/workflows/mpvfx-macos.yml
