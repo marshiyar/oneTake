@@ -1,6 +1,3 @@
-import MpvfxCanvas
-import MpvfxShared
-import OneTakeKeyframes
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of MpVFX.
@@ -14,6 +11,10 @@ import OneTakeKeyframes
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 //===----------------------------------------------------------------------===//
+import MpvfxCanvas
+import MpvfxShared
+import OneTakeKeyframes
+
 import XCTest
 
 @testable import MpvfxPanels
@@ -31,7 +32,7 @@ final class InspectorBlendTests: XCTestCase {
         return (r, editor)
     }
 
-    func testCompositingComesBeforeAppearanceAndOpacityEasingStaysInStyle() throws {
+    internal func testCompositingComesBeforeAppearanceAndOpacityEasingStaysInStyle() throws {
         let (r, editor) = try panel()
         let opacity = TimelineEditor.opacityId
         XCTAssertTrue(editor.keyableParameters(clipId: "clip:a", time: 0).contains { $0.parameterId == opacity })
@@ -43,13 +44,24 @@ final class InspectorBlendTests: XCTestCase {
                 .atomic(
                     .keyframe(
                         .upsert(
-                            address: address, valueType: .number,
-                            frame: 0, value: .number(0.5), baselineValue: .number(1))))))
+                            address: address,
+                            valueType: .number,
+                            frame: 0,
+                            value: .number(0.5),
+                            baselineValue: .number(1)
+                        )
+                    )
+                )
+            )
+        )
         let style = try XCTUnwrap(r.inspector.groups.first { $0.id == "style" })
         guard case .heading("Compositing", _) = style.rows[0].kind,
             case .slider(let row) = style.rows[1].kind,
             case .custom(let blend) = style.rows[2].kind
-        else { return XCTFail("Compositing must lead Style") }
+        else {
+            XCTFail("Compositing must lead Style")
+            return
+        }
         XCTAssertEqual(row.key, "opacity")
         XCTAssertEqual(blend.id, "blend")
         XCTAssertEqual(TimelineEditor.keyframeEasingGroup(opacity), "style")
@@ -63,10 +75,11 @@ final class InspectorBlendTests: XCTestCase {
             style.rows.contains {
                 if case .buttons(let bs) = $0.kind { return bs.contains { $0.key == "openEasing" } }
                 return false
-            })
+            }
+        )
     }
 
-    func testStackedAndUnstackedValuesShareTheReservedEdge() throws {
+    internal func testStackedAndUnstackedValuesShareTheReservedEdge() throws {
         let (r, _) = try panel()
         let p = r.inspector
         for width in [360.0, 409.0, 560.0] {
@@ -75,32 +88,59 @@ final class InspectorBlendTests: XCTestCase {
             for stacked in [false, true] {
                 let c = PanelMeasureCanvas()
                 p.drawNumber(
-                    c, rect, .init(key: "plain", label: "Layer order", text: "0", tier: .default, commit: { _ in }),
-                    compact: false, stacked: stacked)
+                    c,
+                    rect,
+                    .init(key: "plain", label: "Layer order", text: "0", tier: .default, commit: { _ in }),
+                    compact: false,
+                    stacked: stacked
+                )
                 XCTAssertEqual(try XCTUnwrap(p.hits.rect { $0 == .field("plain") }).maxX, edge)
                 p.drawSlider(
-                    c, rect,
+                    c,
+                    rect,
                     .init(
-                        key: "opacity", label: "Opacity", position: 100, min: 0, max: 100,
-                        display: "100%", format: { _ in "100%" }, tier: .default, commit: { _ in }), stacked: stacked)
+                        key: "opacity",
+                        label: "Opacity",
+                        position: 100,
+                        min: 0,
+                        max: 100,
+                        display: "100%",
+                        format: { _ in "100%" },
+                        tier: .default,
+                        commit: { _ in }
+                    ),
+                    stacked: stacked
+                )
                 let value = try XCTUnwrap(c.texts.last { $0.0 == "100%" })
                 XCTAssertEqual(value.1.x + c.measureText(value.0, font: value.2).width, edge, accuracy: 0.001)
             }
             for stacked in [false, true] {
                 let a = InspectorRow.Number(
-                    key: "x", label: "X", text: "12px", tier: .explicitCustom,
-                    commit: { _ in }, reset: {})
+                    key: "x",
+                    label: "X",
+                    text: "12px",
+                    tier: .explicitCustom,
+                    commit: { _ in },
+                    reset: {}
+                )
                 let b = InspectorRow.Number(
-                    key: "y", label: "Y", text: "24px", tier: .explicitCustom,
-                    commit: { _ in }, reset: {})
+                    key: "y",
+                    label: "Y",
+                    text: "24px",
+                    tier: .explicitCustom,
+                    commit: { _ in },
+                    reset: {}
+                )
                 p.drawPair(PanelMeasureCanvas(), rect, label: "Position", a, b, stacked: stacked)
                 XCTAssertEqual(try XCTUnwrap(p.hits.rect { $0 == .field("y") }).maxX, edge)
                 XCTAssertNotNil(p.hits.rect { $0 == .reset("x") })
             }
             let options = InspectorRow.Segmented(
-                key: "alignment", label: "Alignment",
+                key: "alignment",
+                label: "Alignment",
                 options: [(key: "a", label: "Start", active: true), (key: "b", label: "End", active: false)],
-                select: { _ in })
+                select: { _ in }
+            )
             for stacked in [false, true] {
                 p.drawSegmented(PanelMeasureCanvas(), rect, options, stacked: stacked)
                 XCTAssertEqual(try XCTUnwrap(p.hits.rect { $0 == .segment("alignment", "b") }).maxX, edge)
@@ -112,7 +152,7 @@ final class InspectorBlendTests: XCTestCase {
         }
     }
 
-    func testTransformStyleAndMediaKeepTheirValueEdgeWithAndWithoutKeys() throws {
+    internal func testTransformStyleAndMediaKeepTheirValueEdgeWithAndWithoutKeys() throws {
         for keyed in [false, true] {
             let (r, editor) = try panel()
             if keyed { XCTAssertTrue(editor.keyProperties(clipIds: ["clip:a"], time: 0, animatedOnly: false)) }
@@ -158,17 +198,18 @@ final class InspectorBlendTests: XCTestCase {
         return edges
     }
 
-    func testTheStyleGroupHasABlendRowWithEveryMode() throws {
+    internal func testTheStyleGroupHasABlendRowWithEveryMode() throws {
         let (r, _) = try panel()
         XCTAssertNotNil(r.inspector.customRow(InspectorPanel.blendRowId))
         XCTAssertEqual(
             InspectorPanel.blendOptions().map(\.label),
-            ["Normal", "Multiply", "Screen", "Overlay", "Add", "Soft light", "Darken", "Lighten"])
+            ["Normal", "Multiply", "Screen", "Overlay", "Add", "Soft light", "Darken", "Lighten"]
+        )
         XCTAssertEqual(InspectorPanel.blendTier(.normal), .default)
         XCTAssertEqual(InspectorPanel.blendTier(.screen), .explicitCustom)
     }
 
-    func testEachPickIsOneUndoStepSavedInTheStyleAndResetRemovesTheKey() throws {
+    internal func testEachPickIsOneUndoStepSavedInTheStyleAndResetRemovesTheKey() throws {
         let (r, editor) = try panel()
         let depth = editor.undoStack.count
         XCTAssertTrue(editor.setClipBlend(clipId: "clip:a", .multiply))
@@ -188,17 +229,20 @@ final class InspectorBlendTests: XCTestCase {
         _ = r
     }
 
-    func testTheSelectOpensTheDropdownAndThePickAndResetEdit() throws {
+    internal func testTheSelectOpensTheDropdownAndThePickAndResetEdit() throws {
         let (r, editor) = try panel()
         r.draw(PanelMeasureCanvas(), size: CanvasSize(409, 1400))
         let field = try XCTUnwrap(r.inspector.hits.rect(where: { $0 == .custom(InspectorPanel.blendRowId, 0) }))
         XCTAssertNil(
-            r.inspector.hits.rect(where: { $0 == .custom(InspectorPanel.blendRowId, 1) }), "no reset at Normal")
+            r.inspector.hits.rect(where: { $0 == .custom(InspectorPanel.blendRowId, 1) }),
+            "no reset at Normal"
+        )
         XCTAssertTrue(r.pointerDown(CanvasPoint(field.midX, field.midY)))
         XCTAssertTrue(r.dropdown.isOpen)
         XCTAssertEqual(
             r.dropdown.options.map(\.value),
-            ["normal", "multiply", "screen", "overlay", "add", "soft-light", "darken", "lighten"])
+            ["normal", "multiply", "screen", "overlay", "add", "soft-light", "darken", "lighten"]
+        )
         XCTAssertEqual(r.dropdown.selected, "normal", "the current mode is highlighted")
         r.dropdown.pick("screen")
         XCTAssertFalse(r.dropdown.isOpen)
@@ -207,7 +251,8 @@ final class InspectorBlendTests: XCTestCase {
         r.draw(PanelMeasureCanvas(), size: CanvasSize(409, 1400))
         let reset = try XCTUnwrap(
             r.inspector.hits.rect(where: { $0 == .custom(InspectorPanel.blendRowId, 1) }),
-            "reset shows once a mode is set")
+            "reset shows once a mode is set"
+        )
         XCTAssertTrue(r.pointerDown(CanvasPoint(reset.midX, reset.midY)))
         XCTAssertNil(editor.clipStyle(clipId: "clip:a").blend)
     }

@@ -22,49 +22,57 @@ import XCTest
 
 @testable import MpvfxPlayer
 
-
-
 #if os(macOS)
-    import CoreGraphics
-    import ImageIO
-    import UniformTypeIdentifiers
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 #endif
 
 internal final class InspectorCompositingCaptureTests: XCTestCase {
     private var initialTheme: ThemeMode = .dark
 
-    internal override func setUp() {
+    override internal func setUp() {
         super.setUp()
         initialTheme = Theme.mode
     }
 
-    internal override func tearDown() {
+    override internal func tearDown() {
         Theme.setMode(initialTheme)
         super.tearDown()
     }
 
     private func save(_ image: CanvasImage, name: String) throws {
         #if os(macOS)
-            guard let dir = ProcessInfo.processInfo.environment["MPVFX_SNAPSHOT_DIR"] else {
-                return
-            }
-            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            let provider = try XCTUnwrap(CGDataProvider(data: Data(image.rgba) as CFData))
-            let graphicsImage = try XCTUnwrap(
-                CGImage(
-                    width: image.width, height: image.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                    bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider,
-                    decode: nil, shouldInterpolate: false, intent: .defaultIntent))
-            let url = URL(fileURLWithPath: dir).appendingPathComponent(name + ".png")
-            let dest = try XCTUnwrap(
-                CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
-            CGImageDestinationAddImage(dest, graphicsImage, nil)
-            XCTAssertTrue(CGImageDestinationFinalize(dest))
+        guard let dir = ProcessInfo.processInfo.environment["MPVFX_SNAPSHOT_DIR"] else {
+            return
+        }
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(image.rgba) as CFData))
+        let graphicsImage = try XCTUnwrap(
+            CGImage(
+                width: image.width,
+                height: image.height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: image.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+            )
+        )
+        let url = URL(fileURLWithPath: dir).appendingPathComponent(name + ".png")
+        let dest = try XCTUnwrap(
+            CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
+        )
+        CGImageDestinationAddImage(dest, graphicsImage, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
         #endif
     }
 
-    func testDesignCapturesWithAndWithoutKeysInBothAppearances() throws {
+    internal func testDesignCapturesWithAndWithoutKeysInBothAppearances() throws {
         for light in [false, true] {
             Theme.setMode(light ? .light : .dark)
             for keyed in [false, true] {
@@ -81,10 +89,14 @@ internal final class InspectorCompositingCaptureTests: XCTestCase {
                         panel.selection = ["clip:a"]
                         panel.openGroupId = group
                         panel.draw(
-                            canvas, in: CanvasRect(x: Double(index) * 409, y: 36, width: 409, height: size.height - 36))
+                            canvas,
+                            in: CanvasRect(x: Double(index) * 409, y: 36, width: 409, height: size.height - 36)
+                        )
                     }
                     let toolbar = PreviewToolbar()
-                    toolbar.onToggleRecording = { /* Captures require no recording side effect. */  }
+                    toolbar.onToggleRecording = {
+                        // Captures require no recording side effect.
+                    }
                     toolbar.draw(canvas, width: size.width, cropAvailable: true, cropActive: false)
                     XCTAssertNil(canvas.drawError)
                     try save(
@@ -97,13 +109,15 @@ internal final class InspectorCompositingCaptureTests: XCTestCase {
         }
     }
 
-    func testRecordLabelAndDotUseTheSameLineAtBothScales() throws {
+    internal func testRecordLabelAndDotUseTheSameLineAtBothScales() throws {
         for scale in [1.0, 2.0] {
             let canvas = try RasterCanvas(width: Int(180 * scale), height: Int(36 * scale))
             canvas.clear(.opaqueBlack)
             canvas.scale(scale, scale)
             let toolbar = PreviewToolbar()
-            toolbar.onToggleRecording = { /* Captures require no recording side effect. */  }
+            toolbar.onToggleRecording = {
+                // Captures require no recording side effect.
+            }
             let rect = toolbar.recordRect(canvas)
             toolbar.drawRecord(canvas, rect)
             XCTAssertNil(canvas.drawError)
@@ -111,15 +125,17 @@ internal final class InspectorCompositingCaptureTests: XCTestCase {
             // Read actual text ink separately from the red dot and neutral button fill.
             var dotYs: [Int] = []
             var textYs: [Int] = []
-            for y in 0..<image.height {
-                for x in 0..<image.width {
-                    let i = (y * image.width + x) * 4
-                    let r = Int(image.rgba[i])
-                    let g = Int(image.rgba[i + 1])
-                    let b = Int(image.rgba[i + 2])
-                    if Double(x) < 25 * scale && r > 150 && r > g * 2 { dotYs.append(y) }
+            for pixelY in 0..<image.height {
+                for pixelX in 0..<image.width {
+                    let byteOffset = (pixelY * image.width + pixelX) * 4
+                    let red = Int(image.rgba[byteOffset])
+                    let green = Int(image.rgba[byteOffset + 1])
+                    let blue = Int(image.rgba[byteOffset + 2])
+                    if Double(pixelX) < 25 * scale && red > 150 && red > green * 2 { dotYs.append(pixelY) }
                     // The lower-case e/c/o run measures the x-height, omitting R and the d ascender.
-                    if Double(x) >= 38 * scale && Double(x) < 58 * scale && min(r, min(g, b)) > 140 { textYs.append(y) }
+                    if Double(pixelX) >= 38 * scale && Double(pixelX) < 58 * scale && min(red, min(green, blue)) > 140 {
+                        textYs.append(pixelY)
+                    }
                 }
             }
             let dotMin = try XCTUnwrap(dotYs.min())
@@ -127,7 +143,10 @@ internal final class InspectorCompositingCaptureTests: XCTestCase {
             let textMin = try XCTUnwrap(textYs.min())
             let textMax = try XCTUnwrap(textYs.max())
             XCTAssertEqual(
-                Double(dotMin + dotMax) / (2 * scale), Double(textMin + textMax) / (2 * scale), accuracy: 0.5)
+                Double(dotMin + dotMax) / (2 * scale),
+                Double(textMin + textMax) / (2 * scale),
+                accuracy: 0.5
+            )
             try save(image, name: "record-\(Int(scale))x")
         }
     }
