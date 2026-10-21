@@ -259,7 +259,6 @@ public final class PlayerView {
             Self.strokeSquare(c, frame, CanvasColor(ThemeTokens.white.alpha(0.10)), width: 1)   // border-white/10, square
             drawOverlays(c, size: size, frame: frame)
             drawStageFeedback(c, size: size, frame: frame)
-            drawRecordOverlay(c, size: size, frame: frame)
             drawZoomChrome(c, size: size)
         }
         if !isFullscreen { toolbar.draw(c, width: size.width, cropAvailable: cropAvailable, cropActive: cropActive) }
