@@ -1,0 +1,36 @@
+name: doc-links
+
+# Dead external links in the README and the docs (.github/ci/doc_links.py): every https:// link in the tracked *.md
+# files, HEAD then GET, 10 s timeout, retried before it counts as dead. The result goes into the issue "Dead
+# documentation links", edited in place and closed when no link is dead. Weekly and by hand only: never on pull
+# requests or pushes, since an outside server's bad day must not turn a pull request red; never a required check.
+
+on:
+  schedule:
+    - cron: '29 5 * * 1'   # Mondays, 05:29 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: doc-links
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The checker's own tests
+        run: python3 -I -B .github/ci/test_doc_links.py
+      - name: External links of the tracked Markdown files
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          python3 -I -B .github/ci/doc_links.py --issue | tee -a "$GITHUB_STEP_SUMMARY"
