@@ -74,14 +74,31 @@ class Handoff(unittest.TestCase):
     def test_the_local_swift_job_is_skipped_when_the_analysis_was_sent(self):
         swift = self.jobs["swift"]
         self.assertEqual(swift["needs"], "swift-runners")
-        self.assertTrue(swift["if"].strip().startswith("always()"))
-        self.assertIn("needs.swift-runners.outputs.sent != 'true'", swift["if"])
+        self.assertEqual(swift["if"], "${{ !cancelled() && needs.swift-runners.outputs.sent != 'true' }}")
         self.assertEqual(swift["runs-on"], "macos-26")
 
     def test_python_and_actions_stay_local_on_every_event(self):
         job = self.jobs["scripts-and-workflows"]
         self.assertNotIn("if", job)
         self.assertEqual(job["strategy"]["matrix"]["language"], ["python", "actions"])
+
+
+class Generator(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("source_workflows", os.path.join(HERE, "source_workflows.py"))
+        self.gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.gen)
+
+    def test_every_cache_action_form_is_dropped(self):
+        for uses in ("actions/cache@0000000000000000000000000000000000000000", "actions/cache/restore@1", "actions/cache/save@1"):
+            self.assertIsNone(self.gen._step({"uses": uses}), uses)
+        self.assertIsNotNone(self.gen._step({"uses": "actions/cached-thing@1"}))
+
+    def test_dot_and_bracket_secrets_are_emptied(self):
+        step = self.gen._step({"run": "x", "env": {"A": "${{ secrets.A }}", "B": "${{ secrets['B'] }}", "C": "${{ secrets [ 'C' ] }}",
+                                                   "D": "${{ github.sha }}"}, "with": {"token": "${{ secrets.T }}"}})
+        self.assertEqual(step["env"], {"A": "", "B": "", "C": "", "D": "${{ github.sha }}"})
+        self.assertEqual(step["with"], {"token": ""})
 
 
 class Generated(unittest.TestCase):

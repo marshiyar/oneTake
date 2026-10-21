@@ -119,10 +119,11 @@ jobs:
 
   swift:
     # Runs here only when nothing was sent above (skipped, failed, or no App secrets): the analysis runs in one place.
+    # !cancelled(), not always(): a newer run's cancel-in-progress still cancels it.
     # OneTake-actionRunners-1 runs this same job from codeql-swift-source.yml, which .github/ci/source_workflows.py
     # generates from it (no upload there: the runners repository uploads the SARIF file with its App).
     needs: swift-runners
-    if: always() && needs.swift-runners.outputs.sent != 'true'
+    if: ${{ !cancelled() && needs.swift-runners.outputs.sent != 'true' }}
     # CodeQL's Swift extractor runs only on macOS (the action and the extractor both refuse Linux) and supports Swift up
     # to 6.3.x. The xcode-27 image only has Xcode 27 (Swift 6.4), so this job uses the macos-26 image, whose Xcode 26.x
     # carries Swift 6.3; the step below fails loudly if the selected Xcode is not on 6.3.
