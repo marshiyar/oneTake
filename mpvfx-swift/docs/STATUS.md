@@ -63,3 +63,13 @@ through the real runtime. Only publishing is refused on purpose ("Publishing is 
 | Linux | works: GTK 3 shell, Cairo canvas, PulseAudio output | `Sources/MpvfxDesktop/LinuxShell.swift`, `Sources/MpvfxCanvas/CairoCanvas.swift` |
 | macOS | partial: the AppKit shell runs the same editor as Linux (Core Graphics canvas, Core Audio output); built and tested in CI, little hands-on use yet | `Sources/MpvfxDesktop/MacShell.swift`, `MacCanvasHost.swift`, `Sources/MpvfxCanvas/CoreGraphicsCanvas.swift`, `Sources/MpvfxAudio/CoreAudioOutput.swift` |
 | Windows | partial: builds and passes its tests on Windows in CI; the green `windows` job builds both packages and installs, launches and uninstalls setup.exe. What is written: Win32 shell with a full-window Direct2D canvas (`WindowsCanvasHost`: DPI, mouse, wheel, keys, cursors, dropped files), item dialogs, clipboard, Explorer, system light/dark; Direct2D/DirectWrite canvas, WASAPI output; the project, library, import and durable-write filesystem layer on Win32 (`NativeFileWin32.swift`, drive-letter and UNC roots in `PosixPath`). On Linux the shared code builds and its tests pass, including the Windows path arithmetic (`WindowsPathTests`) | `Sources/MpvfxDesktop/WindowsShell.swift`, `WindowsCanvasHost.swift`, `Sources/MpvfxCanvas/Direct2DCanvas.swift`, `Sources/CMpvfxWin32`, `Sources/MpvfxRuntime/Projects/NativeFileWin32.swift`, `docs/PACKAGING.md` |
+
+### Lookahead limiter (FX sound v2, #205)
+
+Current-sound limiters hold a linked stereo sample-peak ceiling (-24 to 0 dBFS),
+with 0.5–5 ms lookahead (default 1.5 ms) and 10–1000 ms release. The v1 limiter
+and recorded render fixtures retain their original sound. Preset dry mixing
+delays its input by the run latency; clip and bus chain stages consume that
+latency before emitting timeline audio, and FX tails include the lookahead.
+The ceiling applies to a fully wet limiter; mixing dry audio can exceed it.
+True-peak oversampled detection is not included.

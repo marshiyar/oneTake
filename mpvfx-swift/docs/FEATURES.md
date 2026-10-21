@@ -287,3 +287,13 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+### Lookahead limiter (FX sound v2, #205)
+
+Current-sound limiters hold a linked stereo sample-peak ceiling (-24 to 0 dBFS),
+with 0.5–5 ms lookahead (default 1.5 ms) and 10–1000 ms release. The v1 limiter
+and recorded render fixtures retain their original sound. Preset dry mixing
+delays its input by the run latency; clip and bus chain stages consume that
+latency before emitting timeline audio, and FX tails include the lookahead.
+The ceiling applies to a fully wet limiter; mixing dry audio can exceed it.
+True-peak oversampled detection is not included.
