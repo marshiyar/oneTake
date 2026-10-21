@@ -273,14 +273,19 @@ public final class TimelineView {
     /// Assets whose media file was missing when the preview composition was last rebuilt: their clips draw hatched
     /// with "Media offline" in place of the timecode (issue #102).
     public var offlineAssetIds: Set<String> = []
-    /// Clips whose property lanes are expanded (U / auto-expand).
+    /// Clips whose property rows are shown under their summary row (U, or the summary row's disclosure). Kept per
+    /// clip for the session, across edits and undo; a keyed clip starts collapsed.
     public var expandedClips: Set<String> = []
+    /// Per clip, the kinds whose property rows are folded into their kind row.
+    public var collapsedKinds: [String: Set<TimelineKeyframeKind>] = [:]
     public var groups: [TimelineGroupModel] = []
     public var collapsedGroups: Set<String> = []
     /// Where each group header sits: before visible track index `beforeTrack`.
     public var groupAnchors: [(groupId: String, beforeTrack: Int)] = []
     /// Lane header ‹ ◆ › state for (clip id, lane index); the controller supplies it from the document.
     public var laneNavigation: ((String, Int) -> TimelineKeyframeNavigation)?
+    /// Navigation state of a lane row of a clip (summary, kind or property), for its header ‹ ◆ ›.
+    public var laneRowNavigation: ((String, TimelineLaneRow) -> TimelineKeyframeNavigation)?
     /// Instance layout (media row height).
     public var layout = TimelineLayout()
     public var trackHeight: Double {
@@ -484,7 +489,7 @@ public final class TimelineView {
 
         drawRuler(c, size: size)
         drawPlayhead(c, size: size)
-        drawOverlays(c, size: size)
+        drawOverlays(c, size: size); drawKeyframeTooltip(c, size: size)
     }
 
     var snapTime: Double? {
@@ -553,7 +558,7 @@ public final class TimelineView {
         c.withState {
             c.clip(r)
             // Keyframe diamonds (TimelineClipDiamonds), drawn when the bar is at least 20 px wide.
-            if r.width >= 20 { drawDiamonds(c, clip, group: nil, barX: r.x, cy: r.y + r.height / 2) }
+            if r.width >= 20 { drawMarks(c, clip, scope: nil, origin: CanvasPoint(r.x, r.y + r.height / 2)) }
             // Clip name: centred in the header strip, left 12, right 10, 10px/500, ellipsis, at clipNameAlpha.
             let nameY = header.y + max(0, (header.height - 10) / 2)
             if r.width >= 40 || selected {
