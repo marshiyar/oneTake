@@ -234,8 +234,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                     pushIssue(&issues, .invalidClip, "\(clipPath).crop", "Crop needs finite non-negative top, right, bottom and left insets")
                 }
             }
-            validateNativeClipStyle(clip["style"], "\(clipPath).style", &issues)
-            validateNativeClipText(clip["text"], "\(clipPath).text", &issues)
+            validateNativeClipPresentation(clip, clipPath, &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }

@@ -64,6 +64,22 @@ public extension TimelineEditor {
         }
     }
 
+    /// How the clip's picture fills its box as stored (nil: absent, which draws as Fit).
+    func mediaFit(clipId: String) -> NativeMediaFit? { clip(clipId)?.clip.fit }
+
+    /// Sets how the clip's picture fills its box (the inspector's Fit row). Fit, the default, is stored as an absent
+    /// key, as nil is, so a project that never used the option saves unchanged. One undo step; refused on a locked
+    /// track; false when nothing changed.
+    @discardableResult
+    func setMediaFit(clipId: String, _ fit: NativeMediaFit?) -> Bool {
+        let next = fit == .fit ? nil : fit
+        return editClip(clipId) { c in
+            guard c.fit != next else { return false }
+            c.fit = next
+            return true
+        }
+    }
+
     func numberValue(clipId: String, _ parameterId: String, time: Double) -> Double? {
         switch parameterValue(clipId: clipId, parameterId: parameterId, time: time) {
         case .number(let v)?: return v

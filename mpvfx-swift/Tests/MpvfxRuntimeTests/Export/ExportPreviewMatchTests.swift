@@ -113,6 +113,45 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertEqual(diffs.filter { $0 > 4 }, [], "mean channel difference per frame: \(diffs)")
     }
 
+    /// A 48x96 portrait frame at 10 fps, 2 s: the 96x48 video untouched and set to Fill, and the blue still set to
+    /// Stretch over the frame's lower half (issue #86).
+    func fitDocument() throws -> NativeProjectDocument {
+        try parseNativeProjectDocument(try NativeJSONValue.parse(#"""
+        {"schemaVersion":1,"mediaEngine":"native","id":"fit","revision":0,"frameRate":{"numerator":10,"denominator":1},
+         "canvas":{"width":48,"height":96,"background":"#102030"},
+         "assets":[{"id":"gray","kind":"video","name":"gray","source":"gray.mov","durationFrames":20},
+                   {"id":"blue","kind":"image","name":"blue","source":"blue.bmp","durationFrames":1}],
+         "sequence":{"id":"sequence","name":"Sequence","tracks":[
+           {"id":"overlay","kind":"video","lane":{"authoredTrack":1,"displayTrack":0},"clips":[
+             {"id":"blue","assetId":"blue","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":true,"fit":"stretch",
+              "staticParameters":{"layout.left":0,"layout.top":48,"layout.width":48,"layout.height":48},
+              "effects":[],"parameterTracks":[]}]},
+           {"id":"base","kind":"video","lane":{"authoredTrack":0,"displayTrack":1},"clips":[
+             {"id":"gray","assetId":"gray","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,"fit":"fill",
+              "effects":[],"parameterTracks":[]}]}]}}
+        """#))
+    }
+
+    func testFillAndStretchExportAsThePreviewDrawsThem() throws {
+        let output = "\(root)/fit.mov"
+        try? FileManager.default.removeItem(atPath: output)
+        let input = NativeTimelineRenderInput(project: try fitDocument(), projectDir: root, outputPath: output, format: .mov, quality: .high)
+        try renderNativeTimeline(input)
+        let file = Exported(path: output)
+        // The first, a middle and the last frame.
+        let diffs = try pairs((input: input, file: file), [0, 1.0, 1.9]).map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let f = try file.rgba(1.0)
+        func rgb(_ x: Int, _ y: Int) -> [Int] { let i = (y * 48 + x) * 4; return f.rgba[i..<i + 3].map { Int($0) } }
+        // Fill: the video reaches the frame's top corners, where Fit would leave the #102030 background.
+        XCTAssertGreaterThan(rgb(1, 1)[1], 100, "the video, not the background: \(rgb(1, 1))")
+        XCTAssertGreaterThan(rgb(46, 1)[1], 100, "the video, not the background: \(rgb(46, 1))")
+        // Stretch: the blue still covers the whole lower half, corner to corner.
+        for (x, y) in [(1, 49), (46, 49), (1, 94), (46, 94)] {
+            XCTAssertGreaterThan(rgb(x, y)[2] - rgb(x, y)[0], 100, "blue at \(x),\(y): \(rgb(x, y))")
+        }
+    }
+
     func testCancelledExportLeavesNoFile() throws {
         let cancellation = MediaCancellation()
         var input = NativeTimelineRenderInput(project: try document(), projectDir: root, outputPath: "\(root)/cancelled.mp4", format: .mp4)
