@@ -24,5 +24,7 @@ func exportGradeRenderer(_ clip: NativeProjectClip, projectDir: String) -> Color
 
 /// Effects the native renderer draws: the color grade (with its stylize effects). Others are still refused.
 func exportSupportsEffect(_ effect: NativeClipEffect) -> Bool {
-    effect.effectId == ColorGradeParams.effectId || effect.effectId == ColorGradeParams.colorKeyEffectId
+    if effect.effectId == ColorGradeParams.effectId { return true }
+    guard effect.effectId == ColorGradeParams.colorKeyEffectId, let parameters = effect.parameters else { return false }
+    return ColorGradeParams.supportsColorKey(parameters)
 }

@@ -858,7 +858,7 @@ struct GradeProgram: Sendable {
                 let y = lumaOf(value)
                 return V2((value.z - y) / 1.8556, (value.x - y) / 1.5748)
             }
-            let distance = length2(chroma(graded) - chroma(u.keyColor))
+            let distance = length2(chroma(V3(sampleColor.x, sampleColor.y, sampleColor.z)) - chroma(u.keyColor))
             let matte = smoothstep(u.keySimilarity, u.keySimilarity + Swift.max(u.keySmoothness, 0.000001), distance)
             alpha *= matte
             let excessGreen = Swift.max(0, graded.y - Swift.max(graded.x, graded.z))

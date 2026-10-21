@@ -60,5 +60,23 @@ final class ColorKeyTests: XCTestCase {
         XCTAssertNil(ColorGradeParams.clipGrade(clip))
         clip.effects[0].parameters = try object("{\"v\":1,\"kind\":\"future\"}")
         XCTAssertNil(ColorGradeParams.clipGrade(clip))
+        clip.effects[0].parameters = try object("{\"v\":\"1\",\"kind\":\"chroma\"}")
+        XCTAssertNil(ColorGradeParams.clipGrade(clip), "the discriminator must not coerce strings")
+    }
+
+    func testDisabledGradeParametersRemainNilWithoutAKey() throws {
+        let parameters = try XCTUnwrap(try NativeJSONValue.parse("{\"enabled\":false}").objectValue)
+        var clip = NativeProjectClip.fresh(id: "c", assetId: "a", startFrame: 0, durationFrames: 1)
+        clip.effects = [NativeClipEffect(id: "grade", effectId: "color-grading", enabled: true, parameters: parameters)]
+        XCTAssertNil(ColorGradeParams.clipGrade(clip))
+    }
+
+    func testMatteUsesSourceBeforeSaturationGrade() {
+        var params = ColorGradeParams()
+        params.adjust["saturation"] = -1
+        params.colorKey = .init(similarity: 0.08, smoothness: 0.18)
+        var pixel: [UInt8] = [0, 255, 0, 255]
+        ColorGradeRenderer(params: params).apply(&pixel, width: 1, height: 1, time: 0)
+        XCTAssertEqual(pixel[3], 0, "desaturating the output must not change the source-derived matte")
     }
 }

@@ -280,6 +280,23 @@ public extension NativeProjectDocument {
             ? "1 layer from an earlier version of the editor is kept in the project but not drawn in preview or export."
             : "\(n) layers from an earlier version of the editor are kept in the project but not drawn in preview or export."
     }
+
+    /// One notice for future colour-key contracts retained in the document but deliberately not rendered.
+    var unsupportedColorKeysNotice: String? {
+        let count = sequence.tracks.flatMap(\.clips).flatMap(\.effects).filter { effect in
+            guard effect.enabled, effect.effectId == "color-key", let parameters = effect.parameters else { return false }
+            return parameters["v"]?.numberValue != 1 || parameters["kind"]?.stringValue != "chroma"
+        }.count
+        guard count > 0 else { return nil }
+        return count == 1
+            ? "1 colour-key effect from a newer version of the editor is kept in the project but not drawn in preview or export."
+            : "\(count) colour-key effects from a newer version of the editor are kept in the project but not drawn in preview or export."
+    }
+
+    /// Notices presented once when opening or exporting content deliberately retained but not drawn.
+    var undrawnContentNotices: [String] {
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice].compactMap { $0 }
+    }
 }
 
 public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {

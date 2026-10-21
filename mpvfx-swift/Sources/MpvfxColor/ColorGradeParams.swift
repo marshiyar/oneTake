@@ -238,15 +238,15 @@ public struct ColorGradeParams: Equatable, Sendable {
         // The panels keep one grade per clip, the first `color-grading` effect (TimelineEditor.colorGrading).
         let storedGrade = clip.effects.first(where: { $0.effectId == effectId })
         let gradeEffect = storedGrade?.enabled == true ? storedGrade : nil
-        var result = gradeEffect.flatMap { ColorGradeParams(json: $0.parameters ?? NativeJSONObject()) } ?? ColorGradeParams()
+        let parsedGrade = gradeEffect.flatMap { ColorGradeParams(json: $0.parameters ?? NativeJSONObject()) }
+        var result = parsedGrade ?? ColorGradeParams()
         if let effect = clip.effects.first(where: { $0.effectId == colorKeyEffectId && $0.enabled }),
            let parameters = effect.parameters,
-           number(parameters["v"]) == 1,
-           parameters["kind"]?.stringValue == "chroma",
+           supportsColorKey(parameters),
            let key = parseColorKey(parameters) {
             result.colorKey = key
         }
-        return gradeEffect != nil || result.colorKey != nil ? result : nil
+        return parsedGrade != nil || result.colorKey != nil ? result : nil
     }
 
     static func parseColorKey(_ object: NativeJSONObject) -> ColorKey? {
@@ -258,6 +258,18 @@ public struct ColorGradeParams: Equatable, Sendable {
         }
         return ColorKey(color: color, similarity: number(object["similarity"]) ?? 0.1,
                         smoothness: number(object["smoothness"]) ?? 0.1, spill: number(object["spill"]) ?? 0)
+    }
+
+    /// Whether parameters are the complete, validated colour-key contract understood by this renderer.
+    public static func supportsColorKey(_ object: NativeJSONObject) -> Bool {
+        guard object["v"]?.numberValue == 1, object["kind"]?.stringValue == "chroma" else { return false }
+        if let color = object["color"] {
+            guard let channels = color.arrayValue, channels.count == 3,
+                  channels.allSatisfy({ $0.numberValue.map { $0.isFinite && (0...1).contains($0) } ?? false }) else { return false }
+        }
+        return ["similarity", "smoothness", "spill"].allSatisfy { name in
+            object[name].map { $0.numberValue.map { $0.isFinite && (0...1).contains($0) } ?? false } ?? true
+        }
     }
 
     // MARK: Activity (isHfColorGradingActive)
