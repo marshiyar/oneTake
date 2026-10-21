@@ -182,6 +182,10 @@ public struct ColorGradeParams: Equatable, Sendable {
         for k in Self.detailKeys { details[k] = Self.limited(rawDetails?[k], fallback: p?.details[k] ?? Self.detailDefaults[k], GradeValues.detailLimit(k)) }
         for k in Self.effectKeys { effects[k] = Self.limited(rawEffects?[k], fallback: p?.effects[k] ?? Self.effectDefaults[k], Self.effectLimit(k)) }
         if o["effectsEnabled"] == .bool(false) { for k in Self.effectKeys { effects[k] = Self.effectDefaults[k] ?? 0 } }
+        // Mask only master amounts after preset fallback; bypass never changes authored settings.
+        if case .array(let keys)? = o["bypassedEffects"] {
+            for case .string(let key) in keys where Self.activeEffectKeys.contains(key) { effects[key] = 0 }
+        }
         intensity = GradeValues.intensity(o["intensity"], fallback: p?.intensity ?? 1)
         // wheels
         let w = Self.object(o["wheels"])

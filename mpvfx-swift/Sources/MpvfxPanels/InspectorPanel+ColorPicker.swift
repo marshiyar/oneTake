@@ -77,7 +77,7 @@ extension InspectorPanel {
     func commitColorText(_ text: String, _ f: ColorFieldSpec) {
         let t = text.trimmingCharacters(in: .whitespaces).lowercased()
         let cleared = t.isEmpty || t == "transparent" || t == "none"
-        guard cleared || normalizedHexColor(t) != nil else { colorFieldError = f.key; onEdited?(); return }
+        guard cleared || normalizedHexColor(t).map({ f.allowAlpha || $0.count == 7 }) == true else { colorFieldError = f.key; onEdited?(); return }
         colorFieldError = nil
         edited(f.apply(cleared ? nil : t), label: f.historyLabel)
     }

@@ -78,11 +78,25 @@ public final class InspectorPanel {
 
     /// Header bypasses exposed to the native canvas host after layout has populated `hits`.
     public var accessibilityControls: [CanvasAccessibilityControl] {
-        buildGroups().compactMap { group in
+        let groups = buildGroups()
+        var controls: [CanvasAccessibilityControl] = groups.compactMap { group in
             guard let label = group.accessibilityLabel, let value = group.enabled,
                   let frame = hits.rect(where: { $0 == .groupEnabled(group.id) }) else { return nil }
             return CanvasAccessibilityControl(label: label, value: value, frame: frame) { group.setEnabled?(!value) }
         }
+        if groups.contains(where: { $0.id == "effects" }), let editor, let selected = selected() {
+            let grade = editor.gradeShown(clipId: selected.id, time: time)
+            for effect in EffectSpecs.ordered where EffectSpecs.isActive(grade, effect.key) {
+                guard let frame = hits.rect(where: { $0 == .custom("fx:active:\(effect.key)", 1) }) else { continue }
+                let enabled = !grade.bypassedEffects.contains(effect.key)
+                controls.append(CanvasAccessibilityControl(label: "\(effect.label) enabled", value: enabled, frame: frame) { [weak self] in
+                    var next = grade
+                    if enabled { next.bypassedEffects.insert(effect.key) } else { next.bypassedEffects.remove(effect.key) }
+                    self?.edited(editor.commitGrade(clipId: selected.id, time: self?.time ?? 0, shown: grade, next: next))
+                })
+            }
+        }
+        return controls
     }
     public var hovered: Hit?
     public private(set) var field: PanelTextField?

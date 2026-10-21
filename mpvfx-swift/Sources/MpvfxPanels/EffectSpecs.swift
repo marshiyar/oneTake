@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import MpvfxTimeline
+import MpvfxShared
 
 /// The Effects section's catalog: families, each effect's master slider and
 /// settings, and the values an effect is added with (HF_COLOR_GRADING_EFFECT_APPLY_DEFAULTS).
@@ -107,6 +109,43 @@ public enum EffectSpecs {
         ]),
     ]
     public static var all: [Spec] { families.flatMap(\.effects) }
+    /// Fixed render pipeline: preparation/coordinate effects first, then the fragment's colour effects.
+    public static let applicationOrder = ["blur", "kuwahara", "crtCurvature", "pixelate", "tapeDamage", "chromaBleed",
+        "chromaticAberration", "digitalGlitch", "filmArtifacts", "monoScreen", "engraving", "crosshatch",
+        "halftone", "twoInkPrint", "dither", "ascii", "bloom", "scanlines"]
+    public static var ordered: [Spec] { applicationOrder.compactMap(spec) }
+
+    public static func adding(_ spec: Spec, to grade: ColorGrading) -> ColorGrading {
+        var next = removing(spec, from: grade)
+        next.effects.merge(applyDefaults[spec.key] ?? [:]) { _, value in value }
+        return next
+    }
+
+    public static func removing(_ spec: Spec, from grade: ColorGrading) -> ColorGrading {
+        var next = grade
+        // Materialize preset fallbacks before deleting keys, so removing a preset effect cannot resurrect it.
+        if let preset = grade.presetValues {
+            next.adjust = preset.adjust.merging(next.adjust) { _, value in value }
+            next.details = preset.details.merging(next.details) { _, value in value }
+            next.effects = preset.effects.merging(next.effects) { _, value in value }
+            next.preset = nil
+        }
+        for key in keys(spec) { next.effects[key] = nil }
+        next.bypassedEffects.remove(spec.key)
+        return next
+    }
+
+    static func keys(_ spec: Spec) -> Set<String> {
+        Set([spec.key] + spec.settings.map(\.key) + Array((applyDefaults[spec.key] ?? [:]).keys))
+    }
+
+    /// Palette is shared across palette effects; the renderer accepts 2…6 colours.
+    public static func palette(_ grade: ColorGrading) -> [String] {
+        if let palette = grade.palette, (2...6).contains(palette.count) { return palette }
+        return ["engraving", "crosshatch"].contains { isActive(grade, $0) && !grade.bypassedEffects.contains($0) }
+            ? ["#1a1a1a", "#f5f5dc"] : ["#000000", "#ffffff"]
+    }
+
     public static func spec(_ key: String) -> Spec? { all.first { $0.key == key } }
 
     /// Values an effect is added with (and its settings reset to).
@@ -145,4 +184,28 @@ public enum EffectSpecs {
     /// A setting's reset value: the effect's add value, else the contract default.
     public static func resetValue(effect: String, _ key: String) -> Double { applyDefaults[effect]?[key] ?? contractDefaults[key] ?? 0 }
     public static func isActive(_ g: ColorGrading, _ key: String) -> Bool { g.effect(key) > 0.0001 }
+}
+
+// Removal also drops animation tracks; leaving those behind would reintroduce deleted amounts on evaluation.
+extension TimelineEditor {
+    @discardableResult
+    func removeStylizeEffect(_ spec: EffectSpecs.Spec, clipId: String) -> Bool {
+        removeStylizeEffects([spec], clipId: clipId)
+    }
+
+    @discardableResult
+    func removeStylizeEffects(_ specs: [EffectSpecs.Spec], clipId: String, resetPalette: Bool = false) -> Bool {
+        var next = colorGrading(clipId: clipId) ?? ColorGrading()
+        for spec in specs { next = EffectSpecs.removing(spec, from: next) }
+        if resetPalette { next.palette = nil }
+        let ids = Set(specs.flatMap { EffectSpecs.keys($0) }.map { NativeGradeParameter.effectId($0) })
+        return withHistory("Remove effect", coalesceKey: "remove-effect-\(UUID().uuidString)") {
+            let dropped = editClip(clipId) { clip in
+                let count = clip.parameterTracks.count
+                clip.parameterTracks.removeAll { ids.contains($0.parameterId) }
+                return count != clip.parameterTracks.count
+            }
+            return setColorGrading(clipId: clipId, next) || dropped
+        }
+    }
 }
