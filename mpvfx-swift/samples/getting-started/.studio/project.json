@@ -1,0 +1,161 @@
+{
+  "assets": [
+    {
+      "durationFrames": 120,
+      "height": 360,
+      "id": "asset:69bb5645-525a-4eb8-a39b-ec95d29c1b0c",
+      "kind": "video",
+      "name": "dawn.mp4",
+      "source": "dawn.mp4",
+      "width": 640
+    },
+    {
+      "durationFrames": 90,
+      "height": 360,
+      "id": "asset:7fd02c26-1acc-4030-a535-37ff71e9181c",
+      "kind": "video",
+      "name": "tide.mp4",
+      "source": "tide.mp4",
+      "width": 640
+    },
+    {
+      "durationFrames": 150,
+      "height": 360,
+      "id": "asset:881f55a7-43a1-4995-9920-54487ee1319f",
+      "kind": "image",
+      "name": "card.jpg",
+      "source": "card.jpg",
+      "width": 640
+    },
+    {
+      "durationFrames": 270,
+      "id": "asset:4f83d72c-1787-4162-8545-a8847561a651",
+      "kind": "audio",
+      "name": "music.wav",
+      "source": "music.wav"
+    }
+  ],
+  "canvas": {
+    "background": "#000000",
+    "height": 360,
+    "width": 640
+  },
+  "frameRate": {
+    "denominator": 1,
+    "numerator": 30
+  },
+  "id": "ca0a6cb7-910f-4d3a-b7c4-76b88b599db6",
+  "mediaEngine": "native",
+  "revision": 0,
+  "schemaVersion": 1,
+  "sequence": {
+    "durationFrames": 270,
+    "id": "sequence:main",
+    "name": "Getting started",
+    "tracks": [
+      {
+        "clips": [
+          {
+            "assetId": "asset:69bb5645-525a-4eb8-a39b-ec95d29c1b0c",
+            "durationFrames": 120,
+            "effects": [
+              {
+                "effectId": "color-grading",
+                "enabled": true,
+                "id": "effect:grade-1",
+                "parameters": {
+                  "adjust": {
+                    "contrast": 0.07,
+                    "exposure": 0.06,
+                    "highlights": -0.06,
+                    "saturation": 0.08,
+                    "shadows": 0.08,
+                    "temperature": 0.18
+                  },
+                  "colorSpace": "rec709",
+                  "details": {},
+                  "enabled": true,
+                  "intensity": 1,
+                  "lut": null,
+                  "palette": null,
+                  "preset": "warm-daylight"
+                }
+              }
+            ],
+            "id": "clip:1",
+            "muted": false,
+            "parameterTracks": [],
+            "playbackRate": {
+              "denominator": 1,
+              "numerator": 1
+            },
+            "sourceInFrame": 0,
+            "startFrame": 0,
+            "staticParameters": {}
+          },
+          {
+            "assetId": "asset:7fd02c26-1acc-4030-a535-37ff71e9181c",
+            "durationFrames": 90,
+            "effects": [],
+            "id": "clip:2",
+            "muted": false,
+            "parameterTracks": [],
+            "playbackRate": {
+              "denominator": 1,
+              "numerator": 1
+            },
+            "sourceInFrame": 0,
+            "startFrame": 120,
+            "staticParameters": {}
+          },
+          {
+            "assetId": "asset:881f55a7-43a1-4995-9920-54487ee1319f",
+            "durationFrames": 60,
+            "effects": [],
+            "id": "clip:3",
+            "muted": false,
+            "parameterTracks": [],
+            "playbackRate": {
+              "denominator": 1,
+              "numerator": 1
+            },
+            "sourceInFrame": 0,
+            "startFrame": 210,
+            "staticParameters": {}
+          }
+        ],
+        "id": "track:video1",
+        "kind": "video",
+        "lane": {
+          "authoredTrack": 1,
+          "displayTrack": 0
+        }
+      },
+      {
+        "clips": [
+          {
+            "assetId": "asset:4f83d72c-1787-4162-8545-a8847561a651",
+            "durationFrames": 270,
+            "effects": [],
+            "id": "clip:4",
+            "muted": false,
+            "parameterTracks": [],
+            "playbackRate": {
+              "denominator": 1,
+              "numerator": 1
+            },
+            "sourceInFrame": 0,
+            "startFrame": 0,
+            "staticParameters": {}
+          }
+        ],
+        "id": "track:audio1",
+        "kind": "audio",
+        "lane": {
+          "authoredTrack": 1,
+          "displayTrack": 1
+        }
+      }
+    ]
+  }
+}

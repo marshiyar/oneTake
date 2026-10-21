@@ -22,7 +22,7 @@ protocol FxUnit: AnyObject {
 }
 
 private func n(_ p: FxParams, _ k: String) -> Double { p.num(k) }
-private let dbToLinearMap: (Double) -> Double = { pow(10, $0 / 20) }
+private let dbToLinearMap: @Sendable (Double) -> Double = { pow(10, $0 / 20) }
 private func mixTargets(_ wet: ParamTimeline, _ dry: ParamTimeline) -> [ParamTarget] {
     [ParamTarget(param: wet, map: nil), ParamTarget(param: dry, map: { 1 - $0 })]
 }
@@ -77,7 +77,7 @@ final class ProcessorUnit: FxUnit {
     var automation: [String: [ParamTarget]] { [:] }
 }
 
-private let curves: [String: (Double) -> Double] = [
+private let curves: [String: @Sendable (Double) -> Double] = [
     "tanh": { tanh($0) },
     "atan": { (2 / Double.pi) * atan((Double.pi / 2) * $0) },
     "cubic": { abs($0) >= 1 ? jsSign($0) : $0 - pow($0, 3) / 3 },

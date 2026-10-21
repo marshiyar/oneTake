@@ -534,14 +534,69 @@ jobs:
           path: mpvfx-swift/.build
           key: windows-debug-${{ github.sha }}
 
-  macos:
+  macos-runners:
+    # The organization OneTake-app has its own pool of GitHub-hosted runners, with its own macOS slots. A push to main
+    # or a pull request labelled `macos` sends its macOS build there: a repository_dispatch to OneTake-actionRunners-1,
+    # which calls mpvfx-macos.yml on this commit, reports the commit status `macos (runners-1)` here and, for main,
+    # uploads the disk image into this commit's nightly release. Without the RUNNERS_APP_* secrets (a fork, or before
+    # they are set) nothing is sent and the macos job below builds here instead. Fork pull requests are never sent:
+    # their head commit is not in this repository, and OneTake-actionRunners-1 builds only marshiyar/oneTake.
     needs: changes
-    # Owner ruling 2026-10-21: macOS never holds the other platforms back. The macOS runners (xcode-27) are scarce and
-    # queued jobs sat for an hour before being cancelled, so a pull request builds macOS only when it carries the
-    # `macos` label; main, tags, the nightly run and a dispatch always build it.
     if: >-
       needs.changes.outputs.code == 'true'
+      && ((github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')
+      && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sent: ${{ steps.send.outputs.sent }}
+    steps:
+      - name: Runners App configured
+        id: have
+        env:
+          APP_ID: ${{ secrets.RUNNERS_APP_ID }}
+          APP_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+        # Both secrets, or neither is used: a half-set pair builds here instead of failing the token step.
+        run: echo "app=$([ -n "$APP_ID" ] && [ -n "$APP_KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Runners App token
+        id: token
+        if: steps.have.outputs.app == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RUNNERS_APP_ID }}
+          private-key: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+          owner: OneTake-app
+          repositories: OneTake-actionRunners-1
+          permission-contents: write   # repository_dispatch needs it
+      - name: Hand the macOS build to OneTake-actionRunners-1
+        id: send
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          KIND: ${{ github.event_name == 'pull_request' && 'pr' || 'nightly' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::RUNNERS_APP_ID is not set: macOS builds on this repository's runners"
+            echo "sent=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$SHA" --arg kind "$KIND" --arg run "$RUN_URL" \
+            '{event_type: "onetake-macos", client_payload: {repository: $repo, sha: $sha, kind: $kind, run: $run}}' |
+            gh api -X POST repos/OneTake-app/OneTake-actionRunners-1/dispatches --input -
+          echo "sent=true" >> "$GITHUB_OUTPUT"
+          echo "macOS for $SHA runs on OneTake-app/OneTake-actionRunners-1 (status: macos (runners-1))" >> "$GITHUB_STEP_SUMMARY"
+
+  macos:
+    # Owner ruling 2026-10-21: macOS never holds the other platforms back. The macOS runners (xcode-27) are scarce and
+    # queued jobs sat for an hour before being cancelled, so a pull request builds macOS only when it carries the
+    # `macos` label. Main and labelled pull requests go to OneTake-actionRunners-1 (macos-runners) and build here only
+    # when that hand-off was not sent; the nightly run, tags and a dispatch always build here.
+    needs: [changes, macos-runners]
+    if: >-
+      always() && needs.changes.outputs.code == 'true'
       && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos'))
+      && needs.macos-runners.outputs.sent != 'true'
     uses: ./.github/workflows/mpvfx-macos.yml
     secrets: inherit   # only the optional Apple signing secrets; unset, the disk image is ad-hoc signed
     with:
@@ -549,7 +604,7 @@ jobs:
 
   ci-ok:
     # The one required check: every job passed or was skipped on purpose.
-    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos]
+    needs: [changes, plan, checks, linux, linux-test, windows, windows-test, macos-runners, macos]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -559,12 +614,14 @@ jobs:
           REQUIRED: >-
             ${{ needs.changes.result }} ${{ needs.plan.result }} ${{ needs.checks.result }} ${{ needs.linux.result }}
             ${{ needs.linux-test.result }} ${{ needs.windows.result }} ${{ needs.windows-test.result }}
-          MACOS: ${{ needs.macos.result }}
+          MACOS: ${{ needs.macos-runners.result }} ${{ needs.macos.result }}
         run: |
-          echo "required job results: $REQUIRED; macos: $MACOS"
+          echo "required job results: $REQUIRED; macos-runners, macos: $MACOS"
           # macOS is reported, not required (owner ruling 2026-10-21): a macOS failure, or a job cancelled while it
           # waited for a runner, warns instead of failing the other platforms.
-          case "$MACOS" in success|skipped) ;; *) echo "::warning::macos ended $MACOS; it is not required for ci-ok" ;; esac
+          for r in $MACOS; do
+            case "$r" in success|skipped) ;; *) echo "::warning::a macos job ended $r; it is not required for ci-ok" ;; esac
+          done
           for r in $REQUIRED; do
             case "$r" in success|skipped) ;; *) echo "::error::a required job ended $r"; exit 1 ;; esac
           done

@@ -37,7 +37,7 @@ public let MAX_EXPORT_SHORT_EDGE: Double = 4320
 /// every key, so Swift returns the same value unchanged there; sites that rebuild it (`{ width, height }`
 /// and `{ ...CANVAS_DIMENSIONS[r] }`) use `init(width:height:)`, which has only those two keys.
 /// Equality ignores key order (vitest toEqual); compare `json.keys` or jsJSONStringify(`jsonValue`) for order.
-public struct ExportDimensions: Codable, Equatable {
+public struct ExportDimensions: Codable, Equatable, Sendable {
     public private(set) var json: NativeJSONObject
     public var width: Double {
         get { json["width"]?.numberValue ?? .nan }
