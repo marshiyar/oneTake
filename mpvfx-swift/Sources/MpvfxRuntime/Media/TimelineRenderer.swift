@@ -89,10 +89,7 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
         throw MediaToolError("Native canvas background must be an RGB or RGBA hex color")
     }
     for track in project.sequence.tracks { for clip in track.clips where !project.isUndrawnElementClip(clip) {
-        guard let asset = project.assets.first(where: { $0.id == clip.assetId }),
-              nativeIsTextClip(clip, project) || !(asset.source ?? "").isEmpty else {
-            throw MediaToolError("Media path is missing for asset \(clip.assetId)")
-        }
+        try assertClipHasMediaPath(clip, project)
         // The color grade (and its stylize effects) renders through MpvfxColor; other effects are not migrated yet.
         if clip.effects.contains(where: { effect in
             effect.enabled && !exportSupportsEffect(effect) && effect.effectId != ColorGradeParams.colorKeyEffectId
@@ -102,6 +99,14 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
             throw MediaToolError("Invalid crop on clip \(clip.id)")
         }
     } }
+}
+
+/// A clip's asset exists and names its media file (text clips have none). The message names the asset as the user
+/// knows it, never by its internal id.
+private func assertClipHasMediaPath(_ clip: NativeProjectClip, _ project: NativeProjectDocument) throws {
+    let asset = project.assets.first(where: { $0.id == clip.assetId })
+    if let asset, nativeIsTextClip(clip, project) || !(asset.source ?? "").isEmpty { return }
+    throw MediaToolError("Media path is missing for \(asset?.name ?? clip.assetId)")
 }
 
 private func assertClipParametersSupported(_ clip: NativeProjectClip) throws {

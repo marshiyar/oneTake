@@ -41,6 +41,10 @@ final class EditorSession {
     let compositor: PreviewCompositor
     let engine: KeyframeRuntime?
     var composedDocument: NativeProjectDocument?
+    /// When the media files were last statted for the offline marks, and how often an unchanged document re-checks
+    /// them (a file deleted or restored outside the app): every few seconds at most, never per frame.
+    var mediaCheckedAt = Date.distantPast
+    var mediaRecheckSeconds = 2.0
     /// Natural pixel sizes probed for assets that have none cached (project-relative source -> size; EditorSession+NaturalSize).
     var naturalSizes: [String: NativeMediaNaturalSize] = [:]
     var naturalSizeProbes: Set<String> = []
@@ -120,6 +124,7 @@ final class EditorSession {
         compositor.frameReady = { [weak self] in self?.postToUI { self?.redraw() } }
         player.onSelectionChange = { [weak self] ids in self?.timeline.view.selection = Set(ids); self?.redraw() }
         player.onCommit = { [weak self] e in self?.stageCommitted(e) }
+        installStageTransform()
         player.onDelete = { [weak self] ids in self?.deleteClips(ids) }
         player.onZOrder = { [weak self] ids, action in self?.applyZOrder(ids, action) }
         player.zOrderEnabled = { [weak self] id in self?.zOrderActions(id) ?? [] }
@@ -137,18 +142,53 @@ final class EditorSession {
     // MARK: Save / import (through the DesktopBackend)
 
     var isDirty: Bool { project != nil && editor.document != savedDocument }
+    var windowTitle: String { "\(editor.document.sequence.name) — MpVFX" }
+    var markedWindowTitle: String { (isDirty ? "• " : "") + windowTitle }
+    /// The shells update their title and native document-edited indicator on the UI thread.
+    var documentStateChanged: () -> Void = {}
+    private(set) var lastSaveError: DesktopError?
+    private var reportedSaveFailure = false
+    var saveFailureStatus: String? {
+        lastSaveError.map { "Not saved: \($0.saveFailure?.reason ?? $0.message)" }
+    }
+
+    private func saveStateChanged() { documentStateChanged(); redraw() }
+
+    private func clearSaveFailure() {
+        lastSaveError = nil
+        reportedSaveFailure = false
+        saveStateChanged()
+    }
+
+    private func recordSaveFailure(_ error: Error) {
+        lastSaveError = (error as? DesktopError) ?? DesktopError("\(error)")
+        saveStateChanged()
+    }
+
+    private func reportSaveFailure(_ error: Error) {
+        recordSaveFailure(error)
+        guard !reportedSaveFailure else { return }
+        reportedSaveFailure = true   // set before the modal can run a nested event loop
+        onError("Could not save the project", "\(error)")
+    }
 
     /// Writes the document through the backend (journaled, crash-safe) and waits for it. No-op when nothing changed.
     /// Explicit saves only (Cmd+S, before a render, the close barrier); edits autosave in the background.
     func save() throws {
         saveQueue.sync {}   // an autosave in flight lands first, so writes stay in order
         guard let backend, let project, isDirty else { return }
+        saveGeneration += 1   // pending autosave callbacks predate this explicit attempt
         let document = editor.document
-        let content = try serializeNativeProjectDocument(document, engine: engine)
-        try backend.saveProject(id: project.id, content: content)
-        saveGeneration += 1   // an autosave still posting its result back is older than this write
-        self.project?.content = content
-        savedDocument = document
+        do {
+            let content = try serializeNativeProjectDocument(document, engine: engine)
+            try backend.saveProject(id: project.id, content: content)
+            self.project?.content = content
+            savedDocument = document
+            clearSaveFailure()
+        } catch {
+            recordSaveFailure(error)
+            throw error
+        }
     }
 
     // MARK: Autosave and external changes
@@ -166,6 +206,7 @@ final class EditorSession {
     private var conflictOpen = false
 
     private func documentChanged() {
+        saveStateChanged()
         guard autosaveEnabled, project != nil, let schedule else { return }
         cancelAutosave?()
         cancelAutosave = schedule(Self.autosaveDelay) { [weak self] in self?.autosave() }
@@ -206,13 +247,16 @@ final class EditorSession {
 
     private func autosaveFinished(_ document: NativeProjectDocument, generation: Int, _ result: Result<String, Error>) {
         autosaveInFlight = false
-        switch result {
-        case .success(let content):
-            if generation == saveGeneration { project?.content = content; savedDocument = document }
-        case .failure(let e as DesktopError) where e.name == "ConflictError":
-            resolveConflict(diskContent: nil)
-        case .failure(let e):
-            onError("Could not save the project", "\(e)")
+        if generation == saveGeneration {
+            switch result {
+            case .success(let content):
+                project?.content = content; savedDocument = document
+                clearSaveFailure()
+            case .failure(let e as DesktopError) where e.name == "ConflictError":
+                resolveConflict(diskContent: nil)
+            case .failure(let e):
+                reportSaveFailure(e)
+            }
         }
         if autosaveAgain { autosaveAgain = false; autosave() }
     }
@@ -264,7 +308,7 @@ final class EditorSession {
     func overwriteDisk() {
         guard let backend, let project else { return }
         do { _ = try backend.reloadProject(id: project.id); try save() }
-        catch { onError("Could not save the project", "\(error)") }
+        catch { reportSaveFailure(error) }
     }
 
     /// Replaces the open document with saved text (no undo entry).
@@ -276,6 +320,8 @@ final class EditorSession {
         autosaveEnabled = wasAutosave
         self.project?.content = content
         savedDocument = doc
+        saveGeneration += 1   // ignore callbacks for the document we just replaced
+        clearSaveFailure()
         playback.duration = editor.duration
         syncStage(); redraw()
     }
@@ -333,7 +379,7 @@ final class EditorSession {
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
         case "s":
-            do { try save() } catch { if !projectFolderVanished(error, explicitSave: true) { onError("Could not save the project", "\(error)") } }
+            do { try save() } catch { if !projectFolderVanished(error, explicitSave: true) { reportSaveFailure(error) } }
             return true
         case "i":
             guard let onImportRequested, project != nil else { return false }
@@ -403,12 +449,26 @@ final class EditorSession {
         editor.setCrop(clipId: id, NativeClipCrop(top: crop.top, right: crop.right, bottom: crop.bottom, left: crop.left))
     }
 
-    /// Rebuilds the compositor's layers when the document changed (media files are checked then, not per frame).
+    /// Rebuilds the compositor's layers when the document changed, or when a media file was deleted or restored since
+    /// the last build (media files are checked then, not per frame), and marks the timeline's clips whose media is
+    /// offline; a rebuild after a file comes back clears its mark.
     func syncDecoderClips() {
-        guard editor.document != composedDocument else { return }
+        guard editor.document != composedDocument || mediaChangedOnDisk() else { return }
         composedDocument = editor.document
-        compositor.composition = PreviewComposition(document: editor.document, projectDir: projectDir, engine: engine,
-                                                    naturalSize: editor.naturalSize, sizePending: { [weak self] in self?.isSizePending($0) ?? false })
+        mediaCheckedAt = Date()
+        let composition = PreviewComposition(document: editor.document, projectDir: projectDir, engine: engine,
+                                             naturalSize: editor.naturalSize, sizePending: { [weak self] in self?.isSizePending($0) ?? false })
+        compositor.composition = composition
+        timeline.view.offlineAssetIds = composition.offlineAssetIds
+    }
+
+    /// Whether a media file appeared or disappeared since the composition was built; statted at most every
+    /// `mediaRecheckSeconds`.
+    func mediaChangedOnDisk() -> Bool {
+        let now = Date()
+        guard now.timeIntervalSince(mediaCheckedAt) >= mediaRecheckSeconds, let built = compositor.composition else { return false }
+        mediaCheckedAt = now
+        return PreviewComposition.offlineAssetIds(document: editor.document, projectDir: projectDir) != built.offlineAssetIds
     }
 
     func syncStage() {
@@ -427,7 +487,8 @@ final class EditorSession {
             let base = stageBase(e.id, kind: e.kind, time: t)
             let tr = editor.transform(clipId: e.id, time: t)
             return StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, tr), kind: e.kind,
-                                rotation: tr.rotation ?? 0, crop: savedCrop(e.id), scale: StageGeometry.uniformScale(editor: editor, clipId: e.id, time: t))
+                                rotation: tr.rotation ?? 0, crop: savedCrop(e.id), scale: StageGeometry.uniformScale(editor: editor, clipId: e.id, time: t),
+                                locked: editor.clip(e.id)?.track.locked == true)
         }
         let sel = timeline.view.selection
         player.view.selectedIds = player.view.elements.filter { sel.contains($0.id) }.map(\.id)
@@ -445,7 +506,10 @@ final class EditorSession {
         StageGeometry.baseRect(editor: editor, clipId: id, kind: kind, time: time)
     }
 
-    func stageCommitted(_ e: StageElement) {
+    func stageCommitted(_ e: StageElement) { stageCommitted([e]) }
+
+    /// Writes one stage element's crop and transform (keyframes at the playhead where a property is animated).
+    func writeStage(_ e: StageElement) {
         persistCrop(id: e.id, e.crop)
         let t = playback.currentTime
         let base = stageBase(e.id, kind: e.kind, time: t)
@@ -453,7 +517,6 @@ final class EditorSession {
                                   kind: e.kind, rotation: editor.transform(clipId: e.id, time: t).rotation ?? 0)
         let tr = StageGeometry.transform(base: base, start: before, end: e)
         if tr != ClipTransform() { editor.applyTransform(clipId: e.id, time: t, tr) }
-        syncStage(); redraw()
     }
 
     private var tickingPlayback = false

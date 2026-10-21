@@ -144,9 +144,11 @@ public final class ColorGradeRenderer: Equatable, Sendable {
         if u.rgbCurvesEnabled || u.hueCurvesEnabled || u.secondaryCount > 0 {
             let n = ColorCurves.lutSize
             let zero = [Double](repeating: 0, count: n)
-            func rgb(_ k: String) -> [Double] { ColorCurves.compile(g.curves[k] ?? ColorGradeParams.curveIdentity) ?? zero }
+            // Normalized again here (`GradeCurve`, as the curve graph draws them): `curves` and `hueCurves` are public,
+            // and a curve set on them directly that the compiler rejects used to grade its channel black.
+            func rgb(_ k: String) -> [Double] { ColorCurves.compile(GradeCurve.normalizedRGB(g.curves[k] ?? ColorGradeParams.curveIdentity)) ?? zero }
             func hue(_ k: String, _ lo: Double, _ hi: Double) -> [Double] {
-                let pts = g.hueCurves[k] ?? []
+                let pts = GradeCurve.normalizedHue(g.hueCurves[k] ?? [], limit: lo...hi)
                 return pts.count >= 3 ? (ColorCurves.compileHue(pts, outputMin: lo, outputMax: hi) ?? zero) : zero
             }
             let r = rgb("red"), gr = rgb("green"), b = rgb("blue"), m = rgb("master")

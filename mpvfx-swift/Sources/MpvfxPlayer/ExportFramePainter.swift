@@ -54,7 +54,8 @@ public final class ExportFramePainter {
     /// The layers visible at `time`, with the output pixel size each one is drawn at (what to decode).
     public func layers(at time: Double) -> [(layer: PreviewLayer, width: Int, height: Int)] {
         let s = frame.scale
-        return composition.layers(at: time).filter(\.isVisible).map { layer in
+        // Offline layers are never exported: startExport refuses missing media before it renders.
+        return composition.layers(at: time).filter { $0.isVisible && $0.kind != .offline }.map { layer in
             let px = PreviewPainter.screenPixels(layer, viewScale: s, backingScale: 1)
             return (layer, max(1, Int(px.width.rounded(.up))), max(1, Int(px.height.rounded(.up))))
         }
