@@ -63,8 +63,11 @@ jobs:
           # Fail closed: if a dependency ever pulls a header in, hide it, so the build below still tests the
           # configuration Package.swift promises, and say so.
           for h in /usr/include/vulkan/vulkan.h /usr/include/pulse/simple.h; do
-            d=$(dirname "$h")
-            if [ -e "$d" ]; then echo "::warning::$d was installed by a dependency; moved aside for this build"; mv "$d" "$d.hidden"; fi
+            if [ -e "$h" ]; then
+              d=$(dirname "$h")
+              echo "::warning::$h was installed by a dependency; moved $d aside for this build"
+              mv "$d" "$d.hidden"
+            fi
             if [ -e "$h" ]; then echo "::error::$h is still present"; exit 1; fi
             echo "absent: $h"
           done

@@ -53,7 +53,7 @@ def strip_fences(text):
 
 
 def candidates(md_dir, rel):
-    rel = rel[2:] if rel.startswith("./") else rel
+    rel = rel.removeprefix("./")
     return [os.path.normpath(os.path.join(ROOT, base, rel)) for base in ("", APP, md_dir)]
 
 
@@ -126,7 +126,7 @@ def check_file(md, basenames, findings, warnings, issues, seen):
 def known_numbers(repo):
     """Every issue and pull request number of the repository (the issues endpoint lists both)."""
     out = subprocess.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=all&per_page=100", "--jq", ".[].number"],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, check=False)
     if out.returncode != 0:
         sys.exit(f"doc_refs: could not list the issues of {repo}: {out.stderr.strip()} (use --offline to skip)")
     return {int(x) for x in out.stdout.split()}
