@@ -72,7 +72,7 @@ background loop.
   15.6 GiB RAM and 4 cores, 5 processes per scenario, 1280x720 display; p95, MiB). `budget_sum_mib` is 1854:
 
   | scenario | `peak_rss_mib` | `cache_bytes_mib` | `in_flight_mib` | `grader_bytes_mib` | `unaccounted_mib` |
-  |---|---:|---:|---:|---:|---:|
+  | --- | ---: | ---: | ---: | ---: | ---: |
   | stacked | 2243 (was 3328 p50) | 1596 | 7.0 | 0 | 647 |
   | 1080p | 1631 (was 2169 p50) | 1055 | 3.5 | 0 | 576 |
   | graded | 1627 (was 2220 p50) | 1055 | 3.5 | 3.5 | 569 |
