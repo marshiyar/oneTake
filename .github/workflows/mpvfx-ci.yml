@@ -536,7 +536,12 @@ jobs:
 
   macos:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # Owner ruling 2026-10-21: macOS never holds the other platforms back. The macOS runners (xcode-27) are scarce and
+    # queued jobs sat for an hour before being cancelled, so a pull request builds macOS only when it carries the
+    # `macos` label; main, tags, the nightly run and a dispatch always build it.
+    if: >-
+      needs.changes.outputs.code == 'true'
+      && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos'))
     uses: ./.github/workflows/mpvfx-macos.yml
     secrets: inherit   # only the optional Apple signing secrets; unset, the disk image is ad-hoc signed
     with:
@@ -549,12 +554,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Every job passed or was skipped
+      - name: Every required job passed or was skipped
         env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          REQUIRED: >-
+            ${{ needs.changes.result }} ${{ needs.plan.result }} ${{ needs.checks.result }} ${{ needs.linux.result }}
+            ${{ needs.linux-test.result }} ${{ needs.windows.result }} ${{ needs.windows-test.result }}
+          MACOS: ${{ needs.macos.result }}
         run: |
-          echo "job results: $RESULTS"
-          for r in $RESULTS; do
+          echo "required job results: $REQUIRED; macos: $MACOS"
+          # macOS is reported, not required (owner ruling 2026-10-21): a macOS failure, or a job cancelled while it
+          # waited for a runner, warns instead of failing the other platforms.
+          case "$MACOS" in success|skipped) ;; *) echo "::warning::macos ended $MACOS; it is not required for ci-ok" ;; esac
+          for r in $REQUIRED; do
             case "$r" in success|skipped) ;; *) echo "::error::a required job ended $r"; exit 1 ;; esac
           done
 
@@ -565,7 +576,7 @@ jobs:
       always() && github.event_name != 'pull_request'
       && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
       && needs.plan.result == 'success' && needs.checks.result == 'success'
-      && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.macos.result == 'success'
+      && needs.linux.result == 'success' && needs.windows.result == 'success'
       && (needs.linux-test.result == 'success' || (needs.linux-test.result == 'skipped' && needs.plan.outputs.linux_shards == '[]'))
       && (needs.windows-test.result == 'success' || (needs.windows-test.result == 'skipped' && needs.plan.outputs.windows_shards == '[]'))
     runs-on: ubuntu-24.04
@@ -588,4 +599,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: bash .github/ci/publish.sh dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png
+        # macOS is optional (owner ruling 2026-10-21): when its job did not pass, the release ships Linux and Windows
+        # and leaves out the disk image instead of waiting.
+        run: |
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png)
+          [ -n "$(compgen -G 'dist/*.dmg')" ] || echo "::warning::no macOS disk image in this run; publishing without it"
+          bash .github/ci/publish.sh "${files[@]}"
