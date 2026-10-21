@@ -14,12 +14,15 @@
 import Foundation
 import MpvfxShared
 
-/// The color-grading model (color-grading contract v2) as a native
+/// The color-grading model (color-grading contract v3) as a native
 /// value type. Stored on the clip as an effect (`effectId: "color-grading"`, parameters = this object in its
 /// JSON shape), so it rides the existing document schema, undo and save paths.
 public struct ColorGrading: Equatable, Sendable {
     public static let effectId = "color-grading"
-    public static let contractVersion = 2
+    /// Contract 3 (2026-10-21): Warmth and Tint scale the channels instead of offsetting them (issue #172). A new
+    /// grade is written as 3; a stored grade keeps the contract it was graded under (no `version` = 2), so an old
+    /// project's look does not change when one of its grades is edited. Resetting the whole grade starts a new one.
+    public static let contractVersion = 3
     public static let maxCurvePoints = 16, maxSecondaries = 4
     public static let adjustKeys = ["exposure", "contrast", "highlights", "shadows", "whites", "blacks", "temperature", "tint", "vibrance", "saturation"]
     public static let wheelKeys = ["shadows", "midtones", "highlights"]
@@ -45,6 +48,8 @@ public struct ColorGrading: Equatable, Sendable {
         public init(src: String, intensity: Double = 1) { self.src = src; self.intensity = intensity } }
 
     public var enabled = true
+    /// The contract this grade is written under (see `contractVersion`).
+    public var version = ColorGrading.contractVersion
     public var preset: String? = nil
     public var intensity = 1.0
     public var adjust: [String: Double] = [:]
@@ -101,6 +106,7 @@ public struct ColorGrading: Equatable, Sendable {
         }
         func pts(_ p: [[Double]]) -> NativeJSONValue { .array(p.map { .array($0.map { .number($0) }) }) }
         o["enabled"] = .bool(enabled)
+        o["version"] = .number(Double(version))
         o["preset"] = preset.map { .string($0) } ?? .null
         o["intensity"] = .number(intensity)
         o["adjust"] = num(adjust, keys: Self.adjustKeys)
@@ -142,6 +148,9 @@ public struct ColorGrading: Equatable, Sendable {
             return a.compactMap { p in if case .array(let xy) = p, xy.count == 2, let x = n(xy[0]), let y = n(xy[1]) { return [x, y] }; return nil }
         }
         if case .bool(let b)? = o["enabled"] { enabled = b }
+        // As the renderer reads it (ColorGradeParams): 3 or more is contract 3, anything else (or none) is 2.
+        let v = GradeValues.number(o["version"]) ?? 2
+        version = v.isFinite && v >= 3 ? 3 : 2
         preset = Self.presetId(o["preset"])
         // Numbers are read by the renderer's rules (GradeValues): coerced like JS Number(), clamped to the contract,
         // a null taking the preset's value; keys the grade leaves out stay out and read through the preset.
