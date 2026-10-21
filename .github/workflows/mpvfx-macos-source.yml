@@ -163,7 +163,7 @@ jobs:
     - name: Package (disk image with the engine libraries in Contents/Frameworks)
       id: package
       env:
-        NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}
+        NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && '1' || '0' }}
         MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
         APPLE_ID: ''
         APPLE_APP_PASSWORD: ''
