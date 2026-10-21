@@ -96,6 +96,8 @@ public final class LeftSidebarPanel {
         case search, clearSearch, filter, clearFilters
         case createField, createConfirm, createCancel
         case tile(MediaTileRef), tileAction(MediaTileRef)
+        /// The play / stop button of a tile that can be auditioned, and the progress bar of the one that is.
+        case tileAudition(MediaTileRef), auditionBar(MediaTileRef)
         case menuItem(String, Int), deleteConfirm(String), deleteCancel, removePlacements, renameField, renameOK, renameCancel
         case binArea
     }
@@ -117,6 +119,16 @@ public final class LeftSidebarPanel {
     public var onCopyPath: ((String) -> Void)?
     public var onLibrary: ((LibraryNavCommand) -> Void)?
     public var onChange: (() -> Void)?
+    /// Audition (play a file on its own): the host starts or stops it for a bin asset id (Space on a tile, the tile's play
+    /// button), seeks it to seconds (a click on the progress bar) or by seconds (← / →), and stops it (Esc).
+    public var onAuditionToggle: ((String) -> Void)?
+    public var onAuditionSeek: ((String, Double) -> Void)?
+    public var onAuditionSeekBy: ((Double) -> Void)?
+    public var onAuditionStop: (() -> Void)?
+    /// The asset being auditioned, with its position; nil when none. Filled by the host every frame.
+    public var audition: AuditionTileState?
+    /// A tile's audition failure, shown on the tile until the next try ("Can't play \"take3.wav\": the file is missing").
+    public var auditionErrors: [String: String] = [:]
 
     public internal(set) var hits = HitMap<Hit>()
     public let dropdown = PanelDropdown()
@@ -154,6 +166,8 @@ public final class LeftSidebarPanel {
     /// Every tile of the last draw in grid order, in content coordinates (unscrolled; the arrows and scrolling a
     /// tile into view use it, including tiles scrolled out of sight).
     var tileFrames: [(MediaTileRef, CanvasRect)] = []
+    /// The progress bar of the audition playing, as drawn (the seek click maps along its width).
+    var auditionBars: [MediaTileRef: CanvasRect] = [:]
 
     public init(layout: PanelLayoutState) {
         self.layout = layout
@@ -334,6 +348,7 @@ public final class LeftSidebarPanel {
             if case .media(let id) = ref { pressedAsset = (id, p) }
             if let lc = lastClick, lc.ref == ref, time - lc.at < 0.4 { runPrimary(ref); lastClick = nil } else { lastClick = (ref, time) }
         case .tileAction(let ref): selected = ref; runPrimary(ref)
+        case .tileAudition, .auditionBar: _ = pressAudition(hit, at: p)
         default: break
         }
         return false
