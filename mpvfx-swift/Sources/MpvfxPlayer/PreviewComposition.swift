@@ -54,6 +54,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
+    /// Supported masks evaluated at this timeline time.
+    public var masks: [NativeClipMask] = []
 
     public init(clipId: String, source: String, kind: Kind, start: Double, end: Double, sourceIn: Double, rate: Double = 1,
                 startFrame: Int = 0, endFrame: Int = Int.max, box: CanvasRect, scaleX: Double = 1, scaleY: Double = 1,
@@ -226,6 +228,13 @@ public struct PreviewComposition {
         out.grade = e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.text = e.kind == .text ? c.text : nil
+        out.masks = (c.masks ?? []).filter(\.isSupported).map { mask in
+            var evaluated = mask
+            if let v = num("mask.\(mask.id).feather") { evaluated.feather = v }
+            if let v = num("mask.\(mask.id).expansion") { evaluated.expansion = v }
+            if let v = num("mask.\(mask.id).opacity") { evaluated.opacity = v }
+            return evaluated
+        }
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
         return out
@@ -306,7 +315,8 @@ public enum PreviewPainter {
             }
             if let image {
                 let picture = toView(mediaRect(imageWidth: image.width, imageHeight: image.height, in: layer.box), frame: frame, scale: s)
-                c.drawImage(image, in: picture, opacity: layer.opacity)
+                let visibleImage = layer.masks.isEmpty ? image : MaskCoverageRasterizer.applying(layer.masks, to: image)
+                c.drawImage(visibleImage, in: picture, opacity: layer.opacity)
             } else if let text = layer.text {
                 TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
             }

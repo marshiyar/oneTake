@@ -182,6 +182,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var fadeInFrames: Double? = nil
     /// Fade-out length in project frames up to the clip end; absent means none.
     public var fadeOutFrames: Double? = nil
+    /// Parametric layer masks; absent means unmasked.
+    public var masks: [NativeClipMask]? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -273,6 +275,19 @@ public extension NativeProjectDocument {
     }
 
     /// The one notice shown when the document holds layers the renderer skips; nil when it has none.
+    /// Newer mask records remain serialized but are not rendered by this version.
+    public var unsupportedMaskCount: Int {
+        sequence.tracks.reduce(0) { total, track in
+            total + track.clips.reduce(0) { $0 + ($1.masks ?? []).filter { !$0.isSupported }.count }
+        }
+    }
+
+    public var unsupportedMasksNotice: String? {
+        let n = unsupportedMaskCount
+        guard n > 0 else { return nil }
+        return "\(n) mask\(n == 1 ? "" : "s") from a newer version of the editor \(n == 1 ? "is" : "are") kept in the project but not drawn in preview or export."
+    }
+
     var undrawnElementLayersNotice: String? {
         let n = undrawnElementLayerCount
         guard n > 0 else { return nil }
@@ -289,7 +304,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidPlaybackRate = "invalid-playback-rate", invalidBinding = "invalid-binding", duplicateBinding = "duplicate-binding"
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
-    case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip"
+    case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {
