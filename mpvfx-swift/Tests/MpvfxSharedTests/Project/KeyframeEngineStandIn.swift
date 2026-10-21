@@ -15,7 +15,9 @@
 // reject with a given (code, message), and NEVER computes interpolated values.
 @testable import MpvfxShared
 
-final class KeyframeEngineStandIn: KeyframeEngine {
+/// @unchecked Sendable: each test owns its stand-in and calls it on the test thread only, so the recorded calls are
+/// never touched from two threads.
+final class KeyframeEngineStandIn: KeyframeEngine, @unchecked Sendable {
     let version = "stand-in"
     var validateCalls: [KeyframeTrack] = []
     var rejectWith: KeyframeEngineError?

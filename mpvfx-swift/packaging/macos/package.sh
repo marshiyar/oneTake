@@ -19,9 +19,10 @@
 #
 # The signing mode is required and there is no fallback between the two:
 #   developer-id  sign with the "Developer ID Application" identity in the keychain (packaging/macos/import-cert.sh puts
-#                 one there in CI), notarize with Apple and staple the ticket. The identity and the notarization
-#                 credentials come from the environment the workflow sets; any of them missing, or Apple not accepting
-#                 the image, fails the run.
+#                 one there in CI), then notarize with Apple and staple the ticket. The identity and the notarization
+#                 credentials come from the environment the workflow sets. A missing identity fails the run; missing
+#                 credentials or Apple not accepting the image ship it signed but not notarized, with
+#                 <dist-dir>/.not-notarized written (owner ruling 2026-10-21), unless NOTARIZE_REQUIRED=1.
 #   adhoc         an ad-hoc signature for testing on this machine (pull requests); Gatekeeper blocks it elsewhere.
 # MPVFX_BUILD (build number, default: git short sha) and MPVFX_VERSION (default: packaging/VERSION).
 # MPVFX_SYMBOLS_DIR: when set, the binary's dSYM is written there (<name>.dSYM.tar.gz) before the binary is stripped;
@@ -33,8 +34,7 @@ mode=${2:?usage: package.sh <dist-dir> developer-id|adhoc}
 case "$mode" in
   developer-id)
     [ -n "${MACOS_SIGN_IDENTITY:-}" ] || { echo "developer-id: no signing identity in the environment" >&2; exit 1; }
-    [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] \
-      || { echo "developer-id: notarization credentials missing from the environment" >&2; exit 1; } ;;
+    ;;
   adhoc) ;;
   *) echo "unknown signing mode: $mode (developer-id or adhoc)" >&2; exit 1 ;;
 esac
@@ -124,6 +124,21 @@ for f in "$app/Contents/Frameworks/"*; do if [ -e "$f" ]; then codesign "$@" "$f
 codesign "$@" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
+# notarize <dmg>: submit to Apple's notary service and wait; succeeds only on an Accepted verdict.
+notarize() {
+  [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] \
+    || { echo "notarization credentials are not set" >&2; return 1; }
+  xcrun notarytool submit "$1" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
+    --team-id "$APPLE_TEAM_ID" --wait --timeout 30m --output-format json > "$work/notary.json" || {
+    cat "$work/notary.json"; echo; echo "notarization could not be submitted (credentials or network)" >&2; return 1; }
+  cat "$work/notary.json"; echo
+  grep -q '"status" *: *"Accepted"' "$work/notary.json" && return 0
+  id=$(sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' "$work/notary.json" | head -1)
+  [ -z "$id" ] || xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
+    --team-id "$APPLE_TEAM_ID" || true
+  echo "notarization was not accepted" >&2; return 1
+}
+
 # Disk image: the app and a link to /Applications, compressed. hdiutil on CI runners fails now and then with
 # "Resource busy"; three tries.
 dmg="$dist/MpVFX-$version-macos-$arch.dmg"
@@ -136,16 +151,18 @@ done
 
 if [ "$mode" = developer-id ]; then
   codesign --force --sign "$MACOS_SIGN_IDENTITY" --timestamp "$dmg"
-  xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
-    --team-id "$APPLE_TEAM_ID" --wait --timeout 30m --output-format json > "$work/notary.json"
-  cat "$work/notary.json"; echo
-  if ! grep -q '"status" *: *"Accepted"' "$work/notary.json"; then
-    id=$(sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' "$work/notary.json" | head -1)
-    [ -z "$id" ] || xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
-    echo "notarization was not accepted" >&2; exit 1
+  # Owner ruling 2026-10-21: a failed developer verification never stops the build. Missing credentials, a rejected
+  # login, a network failure or a verdict other than Accepted ships the image Developer ID signed and not notarized,
+  # and "$dist/.not-notarized" says so (the release labels it "Developer Stamp Unverified"); only NOTARIZE_REQUIRED=1
+  # turns those into failures.
+  if notarize "$dmg"; then
+    xcrun stapler staple "$dmg"
+    xcrun stapler validate "$dmg"
+  else
+    [ "${NOTARIZE_REQUIRED:-0}" != 1 ] || { echo "notarization failed and NOTARIZE_REQUIRED=1" >&2; exit 1; }
+    echo "::warning::developer verification failed: the disk image is signed, not notarized (Developer Stamp Unverified)"
+    : > "$dist/.not-notarized"
   fi
-  xcrun stapler staple "$dmg"
-  xcrun stapler validate "$dmg"
 fi
 rm -rf "$work"
 echo "$dmg"

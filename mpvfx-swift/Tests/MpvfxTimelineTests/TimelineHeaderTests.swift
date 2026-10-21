@@ -22,7 +22,7 @@ final class TimelineHeaderTests: XCTestCase {
     func make() throws -> (TimelineController, TimelineEditor) {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         return (c, e)
     }
     func centre(_ c: TimelineController, row: Int, _ control: TimelineHeaderControl) -> (Double, Double)? {
