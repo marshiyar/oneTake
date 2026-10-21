@@ -284,6 +284,7 @@ extension InspectorPanel {
         var rows: [InspectorRow] = []
         let t = time
         if s.kind == .video || s.kind == .image {
+            rows.append(contentsOf: mediaFitRows(editor, s))
             rows.append(contentsOf: cropRows(editor, s))
         }
         if s.hasAudio {

@@ -178,6 +178,9 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// How a media clip's picture fills its box (the inspector's Fit row); absent means Fit, the contain fit every
+    /// clip had before the option existed. Text clips ignore it.
+    public var fit: NativeMediaFit? = nil
     /// Fade-in length in project frames from the clip start (`NativeClipFade`); absent means none.
     public var fadeInFrames: Double? = nil
     /// Fade-out length in project frames up to the clip end; absent means none.
