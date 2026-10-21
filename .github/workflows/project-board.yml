@@ -1,0 +1,92 @@
+name: project-board
+
+# Keeps the GitHub Project board "oneTake launch" (its kanban columns and roadmap) in step with this repository's
+# issues and pull requests (.github/ci/project_board.py, documented in mpvfx-swift/docs/PACKAGING.md "Project board").
+# Projects v2 is reachable only through GraphQL with a token that holds the Projects permission, which the workflow's
+# own token never has, so the sync uses the repository secret PROJECT_TOKEN: a fine-grained personal access token of
+# the project's owner with Projects read and write. Without the secret the run prints a notice and passes.
+#
+# Which project: the repository variables PROJECT_OWNER (default marshiyar) and PROJECT_NUMBER (default 5,
+# https://github.com/users/marshiyar/projects/5). Every run is a full pass (open issues and pull requests, and those
+# closed in the last 14 days), so a run that is skipped or coalesced loses nothing; the hourly run catches what no
+# event reported. By hand: `full` resyncs everything, closed ones included; `dry_run` logs without writing;
+# `create_options` adds missing single-select options.
+#
+# Nothing from a pull request runs here. pull_request_target only says that a pull request changed; the sync job
+# checks out main's .github/ci and reads metadata through the API. The `test` job runs this script's tests on a pull
+# request that changes them, with no secret and a read-only token.
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, closed, reopened, milestoned]
+  pull_request_target:   # zizmor: ignore[dangerous-triggers] main's script only; the pull request's code is never checked out or run
+    types: [opened, closed, reopened, ready_for_review, converted_to_draft]
+  pull_request:
+    paths:
+      - .github/ci/project_board.py
+      - .github/ci/test_project_board.py
+      - .github/workflows/project-board.yml
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Resync every issue and pull request, closed ones included
+        type: boolean
+        default: false
+      dry_run:
+        description: Log the changes without writing them
+        type: boolean
+        default: false
+      create_options:
+        description: Create missing single-select options (Status, Priority, Area, Size, Milestone)
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/ci
+          persist-credentials: false
+      - name: The sync script's tests
+        run: python3 -I -B .github/ci/test_project_board.py
+
+  sync:
+    if: github.event_name != 'pull_request'
+    # One pass at a time; a burst of events collapses into the one pending pass, which reads everything afresh.
+    concurrency:
+      group: project-board-sync
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          sparse-checkout: .github/ci
+          persist-credentials: false
+      - name: Sync the project board
+        env:
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          PROJECT_OWNER: ${{ vars.PROJECT_OWNER || 'marshiyar' }}
+          PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER || '5' }}
+          FULL: ${{ inputs.full }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          CREATE_OPTIONS: ${{ inputs.create_options }}
+        run: |
+          args=()
+          if [ "$FULL" = true ]; then args+=(--full); fi
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          if [ "$CREATE_OPTIONS" = true ]; then args+=(--create-options); fi
+          python3 -I -B .github/ci/project_board.py "${args[@]}"
