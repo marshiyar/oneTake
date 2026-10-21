@@ -164,16 +164,17 @@ func playback(_ run: Run, frames: Int) -> [String: String] {
     return out
 }
 
-/// Sleeps until `deadline` (a `now()` value).
+/// Sleeps until `deadline` (a `now()` value), rounding the wait up a microsecond so the wake is never early.
 func sleepUntil(_ deadline: Double) {
     let wait = deadline - now()
-    if wait > 0 { usleep(UInt32(min(1, wait) * 1e6)) }
+    if wait > 0 { usleep(UInt32(min(1, wait) * 1e6) + 1) }
 }
 
 /// Real-time playback for `seconds` at 30 draws per second, as the display timer drives it: the share of draws that
 /// showed every layer's exact frame (the rest held an earlier frame), how many different pictures reached the screen
 /// per second (smoothness: 30 is every frame), how far the shown frame trailed the playhead, and the draw cadence
-/// (`DrawCadence`: draw interval and wake lateness p95 and max, draws that repeated the previous picture).
+/// (`DrawCadence`: draw interval and wake lateness p95 and max, draws that repeated the previous picture). Each draw is
+/// due in the middle of its frame, so OS wake jitter under half a frame never decides which frame a draw samples.
 func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Double) -> [String: String] {
     let run = Run(doc, width: width, height: height)
     run.show(0, playing: false)

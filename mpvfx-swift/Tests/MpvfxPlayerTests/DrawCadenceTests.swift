@@ -54,6 +54,33 @@ final class DrawCadenceTests: XCTestCase {
         XCTAssertEqual(cadence.lateness[0], 0.001, accuracy: 1e-9)
     }
 
+    /// The frame a draw at `start` seconds samples, as `PreviewComposition.frameIndex(at:)` maps time at 30 fps.
+    private func frame(at start: Double) -> Int { Int((start * 30 + 1e-6).rounded(.down)) }
+
+    /// Failed with draws due on frame boundaries (`deadline(n) == n / fps`): a wake 0.5 ms early sampled the frame
+    /// before, the draw after it the same frame again, and the frame between was never shown.
+    func testMidFrameDeadlinesSampleEveryFrameUnderWakeJitter() throws {
+        var cadence = try XCTUnwrap(DrawCadence(fps: 30))
+        let jitter = [-0.0005, 0.012, -0.002, 0.015, 0, -0.010, 0.0001, -0.015]   // seconds; all under half a frame
+        for index in 0..<150 {
+            let start = cadence.deadline(index) + jitter[index % jitter.count]
+            cadence.record(start: start, frames: [frame(at: start)])
+            XCTAssertEqual(frame(at: start), index, "draw \(index) sampled another frame")
+        }
+        XCTAssertEqual(cadence.changes, 150)
+        XCTAssertEqual(cadence.repeats, 0)
+    }
+
+    func testEachDrawIsDueInsideItsOwnFrame() throws {
+        let cadence = try XCTUnwrap(DrawCadence(fps: 30))
+        for index in [0, 1, 29, 30, 149, 10_000] {
+            let due = cadence.deadline(index)
+            XCTAssertGreaterThan(due, Double(index) / 30, "\(index)")
+            XCTAssertLessThan(due, Double(index + 1) / 30, "\(index)")
+        }
+        XCTAssertEqual(cadence.deadline(-5), cadence.deadline(0))
+    }
+
     func testNoDrawsGiveZeroesNotATrap() throws {
         let cadence = try XCTUnwrap(DrawCadence(fps: 30))
         XCTAssertEqual(cadence.metrics().values.reduce(0, +), 0)

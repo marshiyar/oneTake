@@ -14,9 +14,14 @@
 
 /// Pacing and measurement of real-time draws at one draw per frame (issue #94).
 ///
-/// Draw `n` is due on the first instant of frame `n`. The recorded intervals, lateness and repeats show what a slow
-/// run suffered from: draw intervals far over one frame (the timer), repeats with on-time draws (sampling phase), or
-/// neither with stand-in frames (decode lanes).
+/// Draw `n` is due half a frame into frame `n`, not on its first instant. A draw due on the instant frame `n` begins
+/// samples frame `n - 1` when it runs a moment before the boundary (an early wake, or a wait truncated to whole
+/// microseconds) and frame `n` after it, so jitter around the boundary makes two draws in a row sample one frame while
+/// the next frame is never sampled: the macOS hosted bench drew 30 times a second with every frame exact, yet showed
+/// about 16 new pictures a second (run 39517931817). Mid-frame deadlines keep every draw in its own frame for any
+/// jitter under half a frame either way. The recorded intervals, lateness and
+/// repeats show what a slow run suffered from: draw intervals far over one frame (the timer), repeats with on-time
+/// draws (sampling phase), or neither with stand-in frames (decode lanes).
 public struct DrawCadence {
     public let fps: Double
     /// Seconds from playback start at which each draw began, in order.
@@ -35,8 +40,8 @@ public struct DrawCadence {
         self.fps = fps
     }
 
-    /// Seconds from playback start at which draw `index` (0 first) is due: the start of frame `index`.
-    public func deadline(_ index: Int) -> Double { Double(max(0, index)) / fps }
+    /// Seconds from playback start at which draw `index` (0 first) is due: the middle of frame `index`.
+    public func deadline(_ index: Int) -> Double { (Double(max(0, index)) + 0.5) / fps }
 
     /// Records draw `starts.count`, which began at `start` seconds and showed `frames` (one per layer).
     public mutating func record(start: Double, frames: [Int?]) {
