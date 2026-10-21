@@ -131,6 +131,8 @@ public final class LeftSidebarPanel {
     var exportsOpen = false
     var linkedImport = false
     var creating: (kind: String, field: PanelTextField)?
+    /// What an open Rename row renames, fixed when it opened: a picker changed meanwhile does not retarget it.
+    var renameTarget: (libraryId: String, id: String)?
     public struct Menu: Equatable { public var assetId: String; public var at: CanvasPoint; public var mode: Int = 0; public var removePlacements = false
         public var rename: PanelTextField? }
     public private(set) var menu: Menu?
@@ -275,7 +277,7 @@ public final class LeftSidebarPanel {
                     PanelDraw.text(c, text, in: fr.insetBy(8), font: font, color: cr.field.draft.isEmpty ? PanelTheme.neutral500 : PanelTheme.neutral200)
                     hits.add(fr, .createField)
                     let cancel = button("Cancel", .createCancel, right: x + w, at: y, height: rowH)
-                    _ = button(labels.confirm, .createConfirm, right: cancel - 8, at: y, height: rowH, enabled: !cr.field.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    _ = button(labels.confirm, .createConfirm, right: cancel - 8, at: y, height: rowH, enabled: canConfirmName(cr.field))
                     y += rowH + gap
                 }
                 // ▶ Library media (N)
@@ -768,8 +770,13 @@ public final class LeftSidebarPanel {
     }
 
     func commitSearch() { if let s = search { searchQuery = s.draft; search = nil; binScroll = 0 } }
+    /// The name row can be sent: a name is typed and no library command runs (one would drop it).
+    func canConfirmName(_ field: PanelTextField) -> Bool {
+        !library.busy && !field.draft.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     func confirmCreate() {
-        guard let cr = creating, let l = activeLibrary else { return }
+        guard let cr = creating, let l = activeLibrary, !library.busy else { return }
         let name = cr.field.draft.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         if let command = nameCommand(cr.kind, libraryId: l.id, name: name) { onLibrary?(command) }
@@ -781,8 +788,8 @@ public final class LeftSidebarPanel {
         switch kind {
         case "event": return .createEvent(libraryId: libraryId, name: name)
         case "project": return activeEvent.map { .createProject(libraryId: libraryId, eventId: $0.id, name: name) }
-        case "renameEvent": return activeEvent.map { .renameEvent(libraryId: libraryId, eventId: $0.id, name: name) }
-        case "renameProject": return currentProject.map { .renameProject(libraryId: libraryId, projectId: $0.id, name: name) }
+        case "renameEvent": return renameTarget.map { .renameEvent(libraryId: $0.libraryId, eventId: $0.id, name: name) }
+        case "renameProject": return renameTarget.map { .renameProject(libraryId: $0.libraryId, projectId: $0.id, name: name) }
         default: return nil
         }
     }
@@ -820,8 +827,10 @@ public final class LeftSidebarPanel {
 
     /// Opens the name row on the current name of the shown event or current project.
     func startRename(_ kind: String) {
-        guard canRename(kind), let current = kind == "renameEvent" ? activeEvent?.name : currentProject?.name else { return }
-        creating = (kind, PanelTextField(key: "create", value: current))
+        let target = kind == "renameEvent" ? activeEvent.map { ($0.id, $0.name) } : currentProject.map { ($0.id, $0.name) }
+        guard canRename(kind), let l = activeLibrary, let target else { return }
+        renameTarget = (l.id, target.0)
+        creating = (kind, PanelTextField(key: "create", value: target.1))
     }
     func commitRename() {
         guard let m = menu, let f = m.rename else { return }

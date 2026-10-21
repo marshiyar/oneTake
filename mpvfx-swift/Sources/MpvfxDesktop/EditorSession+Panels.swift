@@ -350,20 +350,6 @@ final class SessionPanels {
         }
     }
 
-    /// The LibraryCommands request for a command that names an event or project: create one, or rename one.
-    static func namedItemCommand(_ cmd: LibraryNavCommand) -> JSONObject {
-        switch cmd {
-        case .createEvent(let l, let name): return ["type": .string("event"), "libraryId": .string(l), "name": .string(name)]
-        case .createProject(let l, let e, let name):
-            return ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
-        case .renameEvent(let l, let e, let name):
-            return ["type": .string("renameEvent"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
-        case .renameProject(let l, let p, let name):
-            return ["type": .string("renameProject"), "libraryId": .string(l), "projectId": .string(p), "name": .string(name)]
-        default: return ["type": .string("list")]
-        }
-    }
-
     private func libraryResult(_ result: JSONValue, command: LibraryNavCommand, origin: String?) {
         left.library.busy = false
         let errors = result["errors"]?.array?.compactMap(\.string) ?? []

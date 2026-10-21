@@ -540,6 +540,39 @@ final class MediaBinTests: XCTestCase {
         XCTAssertEqual(cmds.count, 2, "Escape renames nothing")
     }
 
+    /// The open Rename row keeps its target: switching the event picker before Enter still renames the event the row
+    /// was opened for (Codex review on #146).
+    func testRenameKeepsItsTargetWhenThePickerChanges() throws {
+        var cmds: [LibraryNavCommand] = []
+        let s = renameNavigator { cmds.append($0) }
+        s.library.libraries[0].events.append(.init(id: "E2", name: "B-roll"))
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .rename("renameEvent") })))
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        XCTAssertTrue(s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .pickEvent }))))
+        s.dropdown.pick("E2")
+        typeKeys(s, keys(" day") + [EditorKey(.enter)])
+        XCTAssertEqual(cmds, [.renameEvent(libraryId: "L", eventId: "E", name: "Media day")])
+    }
+
+    /// While a library command runs the open name row cannot be sent (it would be dropped): Enter keeps the row and its
+    /// draft, Rename is disabled, and once the library is idle Enter sends it (Codex review on #146).
+    func testOpenNameRowWaitsWhileTheLibraryIsBusy() throws {
+        var cmds: [LibraryNavCommand] = []
+        let s = renameNavigator { cmds.append($0) }
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .rename("renameProject") })))
+        typeKeys(s, keys(" v2"))
+        s.library.busy = true
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(370, 900))
+        XCTAssertNil(s.hits.rect { $0 == .createConfirm }, "the row's Rename is disabled")
+        typeKeys(s, [EditorKey(.enter)])
+        XCTAssertEqual(cmds, [])
+        XCTAssertTrue(s.isEditingText, "the row and its draft stay")
+        s.library.busy = false
+        typeKeys(s, [EditorKey(.enter)])
+        XCTAssertEqual(cmds, [.renameProject(libraryId: "L", projectId: "P", name: "jk v2")])
+    }
+
     /// Rename is offered only for something shown: no project rename without a current project in the shown event,
     /// and neither while a library command runs.
     func testLibraryNavigatorRenameNeedsATargetAndAnIdleLibrary() throws {
