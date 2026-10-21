@@ -435,6 +435,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         wirePresetPreviews(inspector)
+        wireCrop(inspector)
         wireEffectPreviews(inspector)
         wireRenders()
     }
