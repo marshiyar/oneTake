@@ -83,6 +83,16 @@ final class TimelineEditorAbilitiesTests: XCTestCase {
         XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
     }
 
+    func testSetClipsAutomationIsOneUndoStepAndAllOrNothing() throws {
+        let e = try editor(); let before = e.document
+        XCTAssertFalse(e.setClipsAutomation(["clip:music": "auto", "clip:logo": "auto"], label: "Duck beds"), "images carry no audio")
+        XCTAssertEqual(e.document, before)
+        XCTAssertTrue(e.setClipsAutomation(["clip:music": "auto", "clip:a": "auto"], label: "Duck beds"))
+        XCTAssertEqual(clip(e, "clip:music")?.audioAutomation, "auto"); XCTAssertEqual(clip(e, "clip:a")?.audioAutomation, "auto")
+        XCTAssertEqual(e.undoStack.count, 1); XCTAssertEqual(e.undoLabel, "Duck beds")
+        XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
+    }
+
     func testAudioGroupLifecycle() throws {
         let e = try editor(); let before = e.document
         XCTAssertNil(e.createAudioGroup(clipIds: ["clip:music"]), "needs two clips")
@@ -238,9 +248,12 @@ final class TimelineClipContentVisualTests: XCTestCase {
     func testClipHeaderStripIsKindColouredOverContent() throws {
         // docs/DESIGN.md Principle 3: the name sits on an 18 px strip of the kind colour; the content fills the body below.
         let red = CanvasImage(width: 16, height: 9, rgba: Array([UInt8]([255, 0, 0, 255]).repeated(16 * 9)))
-        let video = Int(TimelineLayout.rowTop(1) + TimelineLayout.clipY), audio = Int(TimelineLayout.rowTop(2) + TimelineLayout.clipY)
+        // A 48 px row, tall enough for the full 18 px strip (the 28 px default halves it, testCompactClipKeepsItsHeaderStripAndFilmstrip).
+        let tall = 48.0, top = TimelineLayout.rowTop(0) + TimelineLayout.clipY
+        let video = Int(top + tall), audio = Int(top + 2 * tall)
         let header = 18, x = 264 + 300   // ThemeTokens.clipHeaderHeight
         let t = try render {
+            $0.setTrackHeight(tall)
             $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)]
             $0.view.waveforms = ["asset:music": Array(repeating: 1, count: 900)]
         }
@@ -250,9 +263,9 @@ final class TimelineClipContentVisualTests: XCTestCase {
         XCTAssertEqual(rgb(t, x, audio + header / 2), [47, 74, 23], "audio header = clipAudio #2F4A17, full-height peaks stop below it")
         let bar = rgb(t, x, audio + header + 1)
         XCTAssertGreaterThan(bar[2], bar[0] + 40, "full-height waveform bar reaches the header: \(bar)")
-        let plain = try render { _ in }
+        let plain = try render { $0.setTrackHeight(tall) }
         XCTAssertEqual(rgb(plain, x, video + header / 2), [29, 74, 100], "the strip is there on a plain clip too")
-        let hovered = try render { $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)]; $0.view.hoveredClip = "clip:a" }
+        let hovered = try render { $0.setTrackHeight(tall); $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)]; $0.view.hoveredClip = "clip:a" }
         XCTAssertEqual(rgb(hovered, x, video + header / 2), [36, 90, 121], "the header carries the hover state (clipVideoHover #245A79)")
     }
 

@@ -194,7 +194,7 @@ final class SessionPanels {
             guard let assetId = existing ?? editor.addAsset(kind: kind, name: entry.name, source: path, durationFrames: frames,
                                                             naturalSize: natural) else { return }
             let t = time ?? self.session.playback.currentTime
-            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: trackId) else {
+            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: self.insertTrack(trackId, time, assetId, t)) else {
                 if existing == nil { editor.undo() }
                 return
             }
@@ -229,6 +229,13 @@ final class SessionPanels {
                 else { post { self?.session.onError("Could not add media", "\(error)") } }
             }
         }
+    }
+
+    /// Where `addToTimeline` puts its clip: the track asked for; for an add at the playhead (no `time`) the targeted
+    /// track when it is free there (the accent V / A tag); else nil, the first free lane.
+    func insertTrack(_ trackId: String?, _ time: Double?, _ assetId: String, _ t: Double) -> String? {
+        if let trackId { return trackId }
+        return time == nil ? session.timeline.targetedInsertTrack(assetId: assetId, at: t) : nil
     }
 
     /// AssetContextMenu rename: the file is renamed in place (same folder) and the document's assets follow it.
@@ -330,8 +337,7 @@ final class SessionPanels {
         switch cmd {
         case .createLibrary: command = ["type": .string("create")]
         case .openLibrary: command = ["type": .string("open")]
-        case .createEvent(let l, let name): command = ["type": .string("event"), "libraryId": .string(l), "name": .string(name)]
-        case .createProject(let l, let e, let name): command = ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
+        case .createEvent, .createProject, .renameEvent, .renameProject: command = Self.namedItemCommand(cmd)
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
             if left.library.currentProjectId != nil, let id = projectId,
@@ -436,6 +442,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         wirePresetPreviews(inspector)
+        wireCrop(inspector)
         wireEffectPreviews(inspector)
         wireRenders()
     }
@@ -475,6 +482,7 @@ final class SessionPanels {
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
+        wireStageFrame(inspector, renderer)
         wireScopes(inspector, clip: renderer)
     }
 

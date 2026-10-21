@@ -49,6 +49,11 @@ final class ScopeSourceTests: XCTestCase {
         return CanvasImage(width: 64, height: 36, rgba: px)
     }
 
+    func scopeRequest(_ r: RightPanel) -> ScopeRequest {
+        let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 0, y: 0, width: 377)
+        return InspectorPanel.scopeRequest(r.inspector.grade.scopes, tiles, scale: 1)
+    }
+
     var programPart: Int { InspectorPanel.scopeSourcePart + 1 }
 
     func testTheScopesRowHasAClipProgramSwitchSavedInPreferencesDefaultingToClip() throws {
@@ -84,9 +89,9 @@ final class ScopeSourceTests: XCTestCase {
         clipAsks = 0; programAsks = []
         r.draw(PanelMeasureCanvas(), size: size)
         XCTAssertEqual(clipAsks, 0, "Program mode does not read the clip")
-        XCTAssertEqual(programAsks, [[320, 320]], "the program frame, fitted in 320 px")
-        r.inspector.scopeAnalyzer.wait()
-        XCTAssertNotNil(r.inspector.scopeAnalyzer.bitmap(.waveform, of: Self.ramp(40)), "the scope shows the program frame")
+        XCTAssertEqual(programAsks, [[960, 960]], "the program frame, fitted in 960 px")
+        r.inspector.scopeWorker.wait()
+        XCTAssertTrue(r.inspector.scopeWorker.result(for: Self.ramp(40), request: scopeRequest(r)).current, "the scope shows the program frame")
     }
 
     /// Draws with a ready frame while the analysis queue is held: every draw returns, nothing is analysed on the
@@ -97,7 +102,7 @@ final class ScopeSourceTests: XCTestCase {
         r.inspector.programScopeFrame = { _, _ in .ready(frame) }
         r.inspector.scopeSource = .program
         try click(r, part: 0)
-        let analyzer = r.inspector.scopeAnalyzer
+        let analyzer = r.inspector.scopeWorker
         analyzer.wait(); analyzer.reset()
         let base = analyzer.analysed
         var onMain: [Bool] = []
@@ -114,7 +119,7 @@ final class ScopeSourceTests: XCTestCase {
         analyzer.wait()
         XCTAssertEqual(analyzer.analysed, base + 1, "the two older frames were replaced before they ran")
         XCTAssertEqual(onMain, [false])
-        XCTAssertNotNil(analyzer.bitmap(.waveform, of: Self.ramp(30)), "the newest frame is the analysed one")
+        XCTAssertTrue(analyzer.result(for: Self.ramp(30), request: scopeRequest(r)).current, "the newest frame is the analysed one")
     }
 
     /// A refresh (or closing the scopes) while a frame is being analysed: that analysis is dropped, not shown after
@@ -151,7 +156,7 @@ final class ScopeSourceTests: XCTestCase {
         r.inspector.scopeSource = .program
         try click(r, part: 0)
         r.draw(PanelMeasureCanvas(), size: size)   // the open scopes ask for the analysis
-        r.inspector.scopeAnalyzer.wait()
+        r.inspector.scopeWorker.wait()
         var checked: [Int] = []
         for scale in [1.0, 2.0] {
             let t = CairoImageTarget(width: Int(409 * scale), height: Int(700 * scale))

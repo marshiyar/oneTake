@@ -16,7 +16,7 @@ import MpvfxShared
 
 /// Toolbar actions on the controller, so keys, menus and the drawn toolbar share them.
 public extension TimelineController {
-    /// Media row height from the Track height slider (setTimelineTrackHeight: rounded, 32...96).
+    /// Media row height from the Track height slider (setTimelineTrackHeight: rounded, 28...96).
     func setTrackHeight(_ height: Double) {
         let before = view.trackHeight
         view.trackHeight = height
