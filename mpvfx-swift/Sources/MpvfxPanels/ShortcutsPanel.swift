@@ -31,6 +31,7 @@ public let shortcutSections: [ShortcutSection] = {
                        ("H", "Toggle hold / bezier"), ("F9", "Easy ease selected keyframes"),
                        ("⇧F9", "Easy ease in"), ("⌘⇧F9", "Easy ease out"), ("U", "Expand / collapse properties"), ("R", "Arm Record motion")]),
         s("Editing", [("⌘C", "Copy element"), ("⌘V", "Paste element"), ("⌥⌘C", "Copy grade"), ("⌥⌘V", "Paste grade"), ("⌘X", "Cut element"), ("S", "Split clip at playhead"),
+                      ("⌥⌘F", "Reveal clip in media bin"), ("⌥⇧⌘F", "Show clip in file manager"),
                       ("⇧H", "Hold frame at playhead"), ("⌥⇧H", "Hold frame, overwriting what follows"),
                       ("Shift + click/drag", "Selection tool: add clips to selection"), ("⌥ Drag clip", "Drop without swapping"), ("⇧Click", "Razor tool: split all tracks"),
                       ("Y", "Slip tool"), ("⌘⌥ Drag clip", "Slip: change which media plays"),

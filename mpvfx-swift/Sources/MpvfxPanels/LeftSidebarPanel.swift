@@ -140,6 +140,17 @@ public final class LeftSidebarPanel {
     public var filter = MediaFilter()
     /// The tile the arrows move and Enter acts on (a click selects; Escape clears).
     public internal(set) var selected: MediaTileRef?
+    var pendingReveal: MediaTileRef?
+
+    /// A timeline reveal clears filters that might hide the file, then scrolls to it after the grid lays out.
+    public func revealMedia(_ id: String) {
+        selectTab(.assets)
+        search = nil; searchQuery = ""; filter = MediaFilter()
+        menu = nil; dropdown.close()
+        selected = .media(id); pendingReveal = selected
+        focus.current = .tile(.media(id)); focus.visible = true
+        onChange?()
+    }
     /// Tab order over the header controls and the grid (the selected tile, or the first one).
     public internal(set) var focus = PanelFocus<Hit>()
     var selectedLibraryId: String?
