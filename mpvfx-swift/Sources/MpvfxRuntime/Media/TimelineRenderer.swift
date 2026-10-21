@@ -22,6 +22,7 @@
 import Foundation
 import OneTakeMedia
 import MpvfxShared
+import MpvfxColor
 
 public struct NativeTimelineRenderInput {
     public var project: NativeProjectDocument
@@ -93,7 +94,9 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
             throw MediaToolError("Media path is missing for asset \(clip.assetId)")
         }
         // The color grade (and its stylize effects) renders through MpvfxColor; other effects are not migrated yet.
-        if clip.effects.contains(where: { $0.enabled && !exportSupportsEffect($0) }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
+        if clip.effects.contains(where: { effect in
+            effect.enabled && !exportSupportsEffect(effect) && effect.effectId != ColorGradeParams.colorKeyEffectId
+        }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
         try assertClipParametersSupported(clip)
         if let crop = clip.crop, ![crop.top, crop.right, crop.bottom, crop.left].allSatisfy({ $0.isFinite }) {
             throw MediaToolError("Invalid crop on clip \(clip.id)")
@@ -286,7 +289,13 @@ func nativeExportRenderDocument(_ project: NativeProjectDocument, _ media: [Stri
         } }
         out.sequence.audioGroups = out.sequence.audioGroups?.filter { !dropped.contains($0.id) }
     }
-    return nativeDocumentWithNaturalLayouts(out) { $0.naturalSize ?? media[$0.id]?.natural }
+    var rendered = nativeDocumentWithNaturalLayouts(out) { $0.naturalSize ?? media[$0.id]?.natural }
+    // The probed size travels on the asset, as the preview's probed sizes do, so the painter knows a Fill or Stretch
+    // picture's aspect and decodes it at the size it is drawn (PreviewLayer.mediaAspect).
+    for i in rendered.assets.indices where rendered.assets[i].naturalSize == nil {
+        rendered.assets[i].naturalSize = media[rendered.assets[i].id]?.natural
+    }
+    return rendered
 }
 
 /// The document export paints and mixes once its media is probed: visible tracks only, then the render document.

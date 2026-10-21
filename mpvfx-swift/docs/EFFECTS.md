@@ -213,3 +213,20 @@ Offered for the print/art effects; stored as the grade's `palette` array.
 - Swift: `Sources/MpvfxColor/ColorGradeParams.swift` (normalization and limits), `GradeShader.swift`,
   `ColorGradeRenderer.swift`, `CubeLUT.swift`, `Sources/MpvfxPanels/ColorGrading.swift` (editing model and
   presets), `Sources/MpvfxRuntime/Export/ExportColorGrade.swift`.
+## Colour key
+
+An enabled clip effect with `effectId: "color-key"` stores this versioned object:
+
+```json
+{"v":1,"kind":"chroma","color":[0,1,0],"similarity":0.1,"smoothness":0.1,"spill":0}
+```
+
+`v` and `kind` are required. The other fields are optional and are omitted when they
+have the displayed defaults. RGB and all three amounts are finite numbers in `0...1`.
+The matte is `smoothstep(similarity, similarity + smoothness, distance)` where distance
+is Euclidean distance in BT.709 Cb/Cr coordinates. It multiplies the source alpha.
+Spill suppresses green above `max(red, blue)`; at `1` it removes all such excess without
+changing neutral pixels. Preview and export consume the same RGBA result.
+
+Objects with an unknown `v` or `kind` remain in the project unchanged but are not drawn.
+They do not change `schemaVersion`, which remains `1`.

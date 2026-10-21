@@ -50,6 +50,7 @@ public final class PlayerController {
         case crop(id: String, edge: CropEdge, start: StageElement)
         case marquee(x: Double, y: Double, additive: Bool)
         case pan(x: Double, y: Double, panX: Double, panY: Double)
+        case compare
     }
     var gesture: Gesture?
     /// Where the move / group / resize press landed (view px) and whether it has travelled past `dragThreshold`.
@@ -171,6 +172,10 @@ public final class PlayerController {
             if tb.gridPopoverOpen { tb.gridPopoverOpen = false; needsDisplay?() }
             if y < view.toolbarHeight { return }
         }
+        if view.toolbar.compareEnabled, view.selection != nil {
+            let f = view.frameRect(in: size), divider = f.x + f.width * view.toolbar.comparePosition
+            if f.contains(p), abs(p.x - divider) <= 12 { gesture = .compare; return }
+        }
         if let fit = view.fitButtonRect(in: size, measure), fit.contains(p) {
             view.zoom = .fit; view.zoomChanged(); zoomTouched(); needsDisplay?(); return
         }
@@ -262,6 +267,9 @@ public final class PlayerController {
         guard let g = gesture else { hover(p); return }
         let s = max(view.scale(in: size), 1e-9)
         switch g {
+        case .compare:
+            let f = view.frameRect(in: size)
+            view.toolbar.comparePosition = max(0, min(1, (x - f.x) / max(f.width, 1))); needsDisplay?()
         case let .pan(x0, y0, px, py):
             let f = view.fittedRect(in: size), vp = view.viewportRect(in: size)
             let (cx, cy) = PreviewZoom.clampPan(x: px + x - x0, y: py + y - y0, percent: view.zoom.percent,
@@ -291,7 +299,7 @@ public final class PlayerController {
     func drag(_ g: Gesture, _ p: CanvasPoint, scale s: Double) {
         let x = p.x, y = p.y
         switch g {
-        case .pan, .marquee: break
+        case .pan, .marquee, .compare: break
         case let .move(id, start, x0, y0):
             let d = snapped(moving: [start], dx: x - x0, dy: y - y0)
             update(id) { $0.rect.x = start.rect.x + d.dx / s; $0.rect.y = start.rect.y + d.dy / s }
@@ -401,6 +409,7 @@ public final class PlayerController {
         defer { gesture = nil; view.snapGuides = []; view.spacingGuides = [] }
         guard recorder == nil, let g = gesture else { finishTake(); return }   // release ends a take
         switch g {
+        case .compare: needsDisplay?()
         case .pan: zoomTouched(); return
         case let .marquee(_, _, additive):
             let picked = view.marqueeCandidates
@@ -492,7 +501,7 @@ public final class PlayerController {
         case .char(let ch) where ch == "c" || ch == "C":
             guard view.cropAvailable || view.cropActive else { return false }
             runCrop(view.cropActive ? .cancel : .start); return true
-        case .char(let ch) where !k.shift && (ch == "g" || ch == "G"):
+        case .char(let ch) where !k.shift && (ch == "g" || ch == "G" || ch == "\\"):
             // Bare S stays Split (the app reserves it), so only G reaches the tools bar.
             let handled = view.toolbar.key(ch); if handled { needsDisplay?() }; return handled
         case .char(let ch) where !k.shift && !k.isRepeat && (ch == "r" || ch == "R" || ch == "f" || ch == "F"):
