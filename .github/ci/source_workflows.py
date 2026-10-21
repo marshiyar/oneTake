@@ -25,7 +25,7 @@ A generated file differs from its source in exactly these ways:
   - no cache step: those runs share the runners repository's default-branch cache scope, where one pull request's run
     could otherwise plant a build cache that a later run restores;
   - no secret: any value that names one is emptied (and the file is refused if one is left);
-  - each spec's own edits (`patch`), listed with it.
+  - each spec's own edits (its step and job patches), listed with it.
 
   python3 -I -B .github/ci/source_workflows.py          rewrite every generated file
   python3 -I -B .github/ci/source_workflows.py --check  fail when one is not what this script writes
@@ -56,9 +56,58 @@ def _codeql_swift(job_name, steps):
     return out
 
 
-# target file: (source file, workflow name, jobs kept, extra workflow_call inputs, patch(job name, steps) -> steps)
+CHECKOUT_PIN = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"   # v7.0.1, as every workflow pins it
+TEST_INPUTS = {"linux_shards": {"type": "string", "default": "[]"}}
+PICK = """swift package dump-package > "$RUNNER_TEMP/package.json"
+python3 -I -B ../.github/ci/test-shards.py --os linux "$RUNNER_TEMP/package.json" > "$RUNNER_TEMP/linux.json"
+python3 -I -B - <<'PY'
+import json, os
+out = {}
+for name in ("linux",):
+    want = json.loads(os.environ[name.upper()])
+    with open(os.path.join(os.environ["RUNNER_TEMP"], f"{name}.json")) as f:
+        shards = json.load(f)
+    known = {s["shard"] for s in shards}
+    if not isinstance(want, list) or not all(isinstance(n, str) and n in known for n in want):
+        raise SystemExit(f"::error::{name}_shards {want!r} names a shard test-shards.py does not have")
+    out[name] = [s for s in shards if s["shard"] in want]
+    print(f"{name}: {[s['shard'] for s in out[name]]}")
+with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+    f.write(f"linux={json.dumps(out['linux'])}\\n")
+PY
+"""
+
+
+def _test_steps(job_name, steps):
+    """No pass is recorded there (it would need a cache); mpvfx-ci's remote-shards job records it here instead."""
+    return [s for s in steps if not s.get("name", "").startswith("Record the pass")]
+
+
+def _test_jobs(jobs):
+    """A plan job of its own: the shard objects (filter, skip) for the names asked for, from test-shards.py on that
+    commit, so the payload carries only names. The test job runs that list, when it is not empty."""
+    plan = {"runs-on": "ubuntu-24.04", "timeout-minutes": 10,
+            "outputs": {"linux_shards": "${{ steps.pick.outputs.linux }}"},
+            "defaults": {"run": {"shell": "bash", "working-directory": "mpvfx-swift"}},
+            "steps": [_step({"uses": CHECKOUT_PIN}),
+                      {"name": "The shards asked for", "id": "pick",
+                       "env": {"LINUX": "${{ inputs.linux_shards }}"},
+                       "run": PICK}]}
+    out = {"plan": plan}
+    for name, job in jobs.items():
+        os_name = name.split("-")[0]
+        out[name] = {"needs": "plan", "if": f"needs.plan.outputs.{os_name}_shards != '[]'", **job}
+    return out
+
+
+# target file: (source file, workflow name, jobs kept, extra workflow_call inputs, patch(job name, steps) -> steps[,
+# jobs patch(jobs) -> jobs])
 SPECS = {
     "codeql-swift-source.yml": ("codeql.yml", "codeql-swift-source", ["swift"], {}, _codeql_swift),
+    # The Linux test shards marked `runners` in test-shards.py (mpvfx-ci.yml job remote-shards). Not windows-test: its
+    # setup-swift pin has no version to name (workflow-lint allow list), so Windows shards stay in mpvfx-ci.
+    "mpvfx-ci-tests-source.yml": ("mpvfx-ci.yml", "mpvfx-ci-tests-source", ["linux-test"], TEST_INPUTS,
+                                  _test_steps, _test_jobs),
 }
 
 
@@ -99,6 +148,7 @@ def _pin_comments(source, text):
     """Puts back each pinned action's `# vX.Y.Z` comment, which the YAML writer drops."""
     comments = dict(m.groups() for m in map(PIN.search, source.splitlines()) if m)
     comments.setdefault(UPLOAD_ARTIFACT, "# v7.0.2")
+    comments.setdefault(CHECKOUT_PIN, "# v7.0.1")
 
     def add(match):
         return f"{match.group(0)} {comments.get(match.group(1), '')}".rstrip()
@@ -107,7 +157,7 @@ def _pin_comments(source, text):
 
 
 def generate(target, source):
-    src_name, name, keep, extra_inputs, patch = SPECS[target]
+    src_name, name, keep, extra_inputs, patch, *more = SPECS[target]
     wf = yaml.safe_load(source)
     inputs = dict(extra_inputs)
     inputs["source_repository"] = {"type": "string", "required": True}
@@ -125,6 +175,8 @@ def generate(target, source):
         steps = [s for s in (_step(s) for s in job["steps"]) if s is not None]
         job["steps"] = patch(job_name, steps) if patch else steps
         out["jobs"][job_name] = job
+    if more:
+        out["jobs"] = more[0](out["jobs"])
     text = yaml.dump(out, Dumper=_Dumper, sort_keys=False, width=10**6, allow_unicode=True)
     if "secrets." in text:
         raise ValueError(f"{target}: a secret is still referenced")

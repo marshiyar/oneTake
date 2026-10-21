@@ -21,7 +21,8 @@ versions and checksums pinned in binaries.lock, the CI files that run the
 tests on that OS, the files outside Sources/ and Tests/ that tests read, and the OS name. A shard whose key already has a pass recorded (cache entry
 <os>-pass-<shard>-<key>) built from byte-identical inputs on that OS's pinned toolchain, so the workflow skips it; the
 nightly run and a dispatch with full_tests ignore recorded passes and run every shard (toolchain and runner drift).
-Prints the shard list as JSON. Run from mpvfx-swift.
+Prints the shard list as JSON; `runners` marks the shards that OneTake-app/OneTake-actionRunners-1 runs when it can
+(RUNNERS). Run from mpvfx-swift.
 """
 import argparse, hashlib, json, subprocess
 
@@ -45,6 +46,14 @@ SHARDS = [
      "|".join([LIVE_EDIT, SEEK, DETERMINISTIC]), PRESETS),
     ("rest", None, "", "|".join([LIBRARY, LIVE_EDIT, SEEK, SEEK_SHORT, DETERMINISTIC])),  # 642 / 747 s
 ]
+# The shards that run on OneTake-app/OneTake-actionRunners-1 (mpvfx-ci.yml jobs plan and remote-shards) when its App is
+# configured; the others run here. Linux only: the Windows test job sets up Swift with compnerd/gha-setup-swift pinned
+# to an untagged commit, which a generated copy for that repository could not carry without a new workflow-lint
+# allow-list entry, so Windows shards stay here until that pin names a release. "rest" stays here: it saves the debug
+# build cache the other shards here restore. Measured in mpvfx-ci's last 10 green runs (2026-10-21, jobs API, run time
+# per job summed): Linux library 42, audio-presets 23 and audio-live 21 minutes go there; rest 46 and all four Windows
+# shards (241) stay here.
+RUNNERS = {"linux": {"library", "audio-presets", "audio-live"}, "windows": set(), "macos": set()}
 PRODUCTS = {}   # no package products: the engines are prebuilt (binaries.lock)
 # Files outside Sources/ and Tests/ that tests read are inputs too: docs/DESIGN.md (VisualSpecTests checks its table)
 # and samples/getting-started (SampleProjectTests opens and exports the sample project).
@@ -105,7 +114,8 @@ def main(argv=None):
     with open(a.package) as f:
         targets = {t["name"]: t for t in json.load(f)["targets"]}
     tests = sorted(n for n, t in targets.items() if t["type"] == "test")
-    out = [{"shard": s, "filter": f, "skip": k, "key": key(targets, names or tests, a.os_name)}
+    out = [{"shard": s, "filter": f, "skip": k, "key": key(targets, names or tests, a.os_name),
+            "runners": s in RUNNERS[a.os_name]}
            for s, names, f, k in SHARDS]
     print(json.dumps(out))
 
