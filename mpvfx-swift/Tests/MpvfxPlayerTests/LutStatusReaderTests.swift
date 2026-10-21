@@ -34,7 +34,7 @@ internal final class LutStatusReaderTests: XCTestCase {
     internal func testGridSizeErrorAndMissingFile() throws {
         try write("ok.cube", "LUT_3D_SIZE 2\n" + String(repeating: "0 0.5 1\n", count: 8))
         try write("bad.cube", "LUT_3D_SIZE 2\n0 0 0\n0 0\n")
-        let cache: CubeLUTCache = CubeLUTCache()
+        let cache = CubeLUTCache()
         XCTAssertEqual(LutStatusReader.status("luts/ok.cube", projectDir: dir, cache: cache), .loaded(size: 2))
         let absolute: LutStatus = LutStatusReader.status("\(dir)/luts/ok.cube", projectDir: nil, cache: cache)
         XCTAssertEqual(absolute, .loaded(size: 2), "absolute src")
