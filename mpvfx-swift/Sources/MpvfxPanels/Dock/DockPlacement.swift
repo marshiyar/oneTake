@@ -98,7 +98,8 @@ public enum DockDefaults {
     public static func layout(_ registry: DockRegistry, seeds: DockSeeds = DockSeeds()) -> DockLayout {
         let lw = share(seeds.leftWidth ?? preferred(registry, .left, \.width), of: referenceWidth)
         let rw = share(seeds.rightWidth ?? preferred(registry, .right, \.width), of: referenceWidth)
-        let bh = share(seeds.bottomHeight ?? preferred(registry, .bottom, \.height), of: referenceContainerHeight)
+        // A bottom panel's height is its content; its group adds the tab strip.
+        let bh = share((seeds.bottomHeight ?? preferred(registry, .bottom, \.height)) + PanelTabStrip.height, of: referenceContainerHeight)
         let left = group(registry, .left), right = group(registry, .right)
         // The centre takes what the sides leave.
         let centreShare = max(0.1, 1 - (left == nil ? 0 : lw) - (right == nil ? 0 : rw))

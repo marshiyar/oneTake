@@ -100,7 +100,8 @@ final class DockLayoutTests: XCTestCase {
         XCTAssertEqual(column.children[1].panels, ["timeline"])
         XCTAssertEqual(try group(l, "inspector").active, "inspector")
         XCTAssertEqual(row.weights[0], 370 / 1440, accuracy: 1e-9)
-        XCTAssertEqual(column.weights[1], 360 / (900 - ShellStatusLine.height - PanelTheme.seamWidth), accuracy: 1e-9)
+        XCTAssertEqual(column.weights[1], (360 + PanelTabStrip.height) / (900 - ShellStatusLine.height - PanelTheme.seamWidth), accuracy: 1e-9,
+                       "the timeline's 360 pt content plus its tab strip")
         assertDockInvariants(l, registry)
     }
 
@@ -113,7 +114,7 @@ final class DockLayoutTests: XCTestCase {
     }
 
     func testSeedsFromTheOldPanelSizesSetTheDefaultShares() throws {
-        let l = DockDefaults.layout(registry, seeds: DockSeeds(leftWidth: 288, rightWidth: 432, bottomHeight: 438.5))
+        let l = DockDefaults.layout(registry, seeds: DockSeeds(leftWidth: 288, rightWidth: 432, bottomHeight: 406.5))   // + the 32 pt strip = half of 877
         guard case .split(let column) = l.root, case .split(let row) = column.children[0] else { return XCTFail("shape") }
         XCTAssertEqual(row.weights[0], 288 / 1440, accuracy: 1e-9)
         XCTAssertEqual(row.weights[2], 432 / 1440, accuracy: 1e-9)
