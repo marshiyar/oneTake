@@ -14,14 +14,14 @@
 // Property edit plans: resolve the selected clip and turn property values into keyframe commands.
 import Foundation
 
-public enum NativeEditableProperty: String, CaseIterable {
+public enum NativeEditableProperty: String, CaseIterable, Sendable {
     case x, y, z, rotation, rotationX, rotationY, rotationZ, scale, scaleX, scaleY, scaleZ
     case perspective, transformPerspective, opacity, autoAlpha, width, height
 }
 
 /// Fields typed `string | null | undefined`: nil covers both null and undefined, which are
 /// treated identically here (only whether the value is a string matters).
-public struct NativeSelectedElementReference: Equatable {
+public struct NativeSelectedElementReference: Equatable, Sendable {
     public var id: String?, hfId: String?, sourceFile: String?, selector: String?
     public var selectorIndex: Double?
     public var attributes: [String: String?]?
@@ -33,7 +33,7 @@ public struct NativeSelectedElementReference: Equatable {
     }
 }
 
-public struct NativeSelectionBounds: Equatable { public var width: Double, height: Double
+public struct NativeSelectionBounds: Equatable, Sendable { public var width: Double, height: Double
     public init(width: Double, height: Double) { self.width = width; self.height = height } }
 
 /// Property values are untyped; non-numbers fail with "nonfinite-value".
@@ -58,7 +58,7 @@ public struct NativePropertyEditPlanRequest {
     }
 }
 
-public enum NativePropertyEditPlanFailureCode: String {
+public enum NativePropertyEditPlanFailureCode: String, Sendable {
     case missingSelectionId = "missing-selection-id", clipNotFound = "clip-not-found", ambiguousClip = "ambiguous-clip"
     case invalidPlayhead = "invalid-playhead", playheadOutsideClip = "playhead-outside-clip", emptyPropertySet = "empty-property-set"
     case unsupportedProperty = "unsupported-property", nonfiniteValue = "nonfinite-value"
