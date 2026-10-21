@@ -449,31 +449,16 @@ final class SessionPanels {
         inspector.presetPreview = { [weak self, weak inspector] req in
             guard let self, let inspector else { return .unavailable }
             if !self.session.playback.isPlaying { self.presetPreviewTime = inspector.time }
-            switch renderer.preview(clipId: req.clipId, presetId: req.presetId, lutSrc: req.lutSrc, lutIntensity: req.lutIntensity,
-                                    time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight) {
-            case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
-            case .unavailable: return .unavailable
-            }
+            return PresetPreviewState(renderer.preview(clipId: req.clipId, presetId: req.presetId, lutSrc: req.lutSrc, lutIntensity: req.lutIntensity,
+                                                       time: self.presetPreviewTime, pixelWidth: req.pixelWidth, pixelHeight: req.pixelHeight))
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { renderer.reset() }
-        inspector.stageFrame = { [weak inspector] w, h in
-            guard let inspector else { return .unavailable }
-            switch renderer.programFrame(time: inspector.time, pixelWidth: w, pixelHeight: h) {
-            case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
-            case .unavailable: return .unavailable
-            }
-        }
+        wireStageFrame(inspector, renderer)
         inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
             guard let self, let inspector else { return .unavailable }
             let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
-            switch renderer.gradedFrame(clipId: clipId, time: t, pixelWidth: w, pixelHeight: h) {
-            case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
-            case .unavailable: return .unavailable
-            }
+            return PresetPreviewState(renderer.gradedFrame(clipId: clipId, time: t, pixelWidth: w, pixelHeight: h))
         }
     }
 
