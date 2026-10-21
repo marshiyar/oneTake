@@ -180,6 +180,19 @@ final class PreviewCompositorTests: XCTestCase {
         XCTAssertTrue(cx.lanes.isEmpty, "no decoders when media decoding is off")
     }
 
+    func testCompareWipesCachedRawLeftAndGradedRightWithoutDecoder() {
+        let cx = PreviewCompositor(decodesMedia: false)
+        let layer = PreviewLayer(clipId: "selected", source: "/x", kind: .video, start: 0, end: 1, sourceIn: 0,
+                                 box: CanvasRect(x: 0, y: 0, width: 100, height: 100))
+        let c = PreviewRecordingCanvas()
+        cx.draw(layer, raw: Self.solid(1, 0, 0), shown: Self.solid(2, 0, 0), on: c,
+                frame: CanvasRect(x: 0, y: 0, width: 100, height: 100), scale: 1,
+                context: FrameDrawContext(compareClipId: "selected", comparePosition: 0.25))
+        XCTAssertEqual(c.images.map(\.tag), [1, 2])
+        XCTAssertTrue(c.ops.contains(.clip(.rect(CanvasRect(x: 0, y: 0, width: 25, height: 100)))))
+        XCTAssertTrue(c.ops.contains(.clip(.rect(CanvasRect(x: 25, y: 0, width: 75, height: 100)))))
+        XCTAssertTrue(cx.lanes.isEmpty, "compare reuses pictures and never starts a decoder")
+    }
     func testLiveStageEditOverridesBoxRotationAndCrop() throws {
         let comp = Self.composition(try Self.document())
         let frame = CanvasRect(x: 10, y: 10, width: 100, height: 50)   // scale 0.5

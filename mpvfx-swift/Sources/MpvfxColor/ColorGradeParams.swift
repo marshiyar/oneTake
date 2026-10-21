@@ -180,10 +180,12 @@ public struct ColorGradeParams: Equatable, Sendable {
         let p = Self.preset(named: presetId)
         preset = presetId
         if let v = Self.number(o["version"]), v.isFinite, v >= 3 { version = 3 }
-        let rawAdjust = Self.object(o["adjust"]), rawDetails = Self.object(o["details"]), rawEffects = Self.object(o["effects"])
+        let rawAdjust = Self.object(o["adjust"]), rawDetails = Self.object(o["details"])
+        let rawEffects = (o["effectsEnabled"] == .bool(false)) ? nil : Self.object(o["effects"])
         for k in Self.adjustKeys { adjust[k] = Self.limited(rawAdjust?[k], fallback: p?.adjust[k] ?? Self.adjustZero[k], GradeValues.adjustLimit(k)) }
         for k in Self.detailKeys { details[k] = Self.limited(rawDetails?[k], fallback: p?.details[k] ?? Self.detailDefaults[k], GradeValues.detailLimit(k)) }
         for k in Self.effectKeys { effects[k] = Self.limited(rawEffects?[k], fallback: p?.effects[k] ?? Self.effectDefaults[k], Self.effectLimit(k)) }
+        if o["effectsEnabled"] == .bool(false) { for k in Self.effectKeys { effects[k] = Self.effectDefaults[k] ?? 0 } }
         intensity = GradeValues.intensity(o["intensity"], fallback: p?.intensity ?? 1)
         // wheels
         let w = Self.object(o["wheels"])

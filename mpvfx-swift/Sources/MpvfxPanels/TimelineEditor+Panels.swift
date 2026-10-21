@@ -221,7 +221,7 @@ public extension TimelineEditor {
     func setColorGrading(clipId: String, _ grading: ColorGrading?) -> Bool {
         editClip(clipId) { c in
             let i = c.effects.firstIndex { $0.effectId == ColorGrading.effectId }
-            guard let g = grading, g.isAuthored else {
+            guard let g = grading, g.isAuthored || !g.enabled else {
                 guard let i else { return false }
                 c.effects.remove(at: i); return true
             }

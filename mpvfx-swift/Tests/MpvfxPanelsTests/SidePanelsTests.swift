@@ -124,6 +124,33 @@ final class InspectorPanelTests: XCTestCase {
         XCTAssertEqual(audio.groups.map(\.title), ["Audio FX", "Media"])
     }
 
+    func testGradeHeaderBypassIsOneUndoableEdit() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        p.openGroupId = "grade"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("grade") })
+        let before = editor.colorGrading(clipId: "clip:a")?.enabled ?? true
+        XCTAssertGreaterThanOrEqual(toggle.width, 24)
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled, !before)
+        XCTAssertEqual(editor.undoStack.count, 1)
+        XCTAssertTrue(editor.undo())
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled ?? true, before)
+    }
+
+    func testEffectsHeaderBypassPreservesAmounts() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        var grade = editor.colorGrading(clipId: "clip:a") ?? ColorGrading(); grade.effects["blur"] = 0.45
+        XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", grade))
+        p.openGroupId = "effects"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effectsEnabled, false)
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        XCTAssertTrue(p.pointerDown(center(try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") }))))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+    }
+
     /// The accordion entrance (hf-flat-group-enter, 120 ms ease-out): the toggled group and the one it closed
     /// animate while a host clock drives `tick`; nothing animates without one.
     func testAccordionEntranceRunsFor120ms() throws {

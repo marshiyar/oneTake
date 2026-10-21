@@ -135,8 +135,11 @@ extension InspectorPanel {
             guard let self else { return }
             self.edited(editor.copyColorGrading(from: s.id, toAllProjectMedia: self.grade.copyToProject) > 0)
         }))))
-        let summary = "\(g.preset ?? "neutral") · \(Int((g.intensity * 100).rounded()))%"
+        let summary = g.enabled ? "\(g.preset ?? "neutral") · \(Int((g.intensity * 100).rounded()))%" : "off"
         var group = InspectorGroup(id: "grade", title: "Grade", summary: summary, rows: rows, spacing: 0)
+        group.enabled = g.enabled
+        group.accessibilityLabel = "Grade enabled"
+        group.setEnabled = { v in var n = g; n.enabled = v; commit(n) }
         // FlatColorGradingAccessory's reset (RotateCcw 12, text-3). Hold-to-compare and the runtime status pill are
         // not drawn: the native preview has no compare bypass or runtime handshake yet.
         group.reset = g.isAuthored ? { commit(ColorGrading()) } : nil
