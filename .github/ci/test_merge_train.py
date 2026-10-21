@@ -16,7 +16,7 @@
 
 Run: python3 -I -B .github/ci/test_merge_train.py
 """
-import hashlib, os, sys, unittest
+import hashlib, os, subprocess, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import merge_train as mt  # noqa: E402
@@ -323,6 +323,34 @@ class IssueReferences(World):
         self.step()
         self.assertEqual(self.closing_lines(self.open_train()), [f"Closes #{n}" for n in range(10, 19)])
 
+    def test_unicode_digits_do_not_introduce_closing_references(self):
+        self.queue(1)
+        self.gh.prs[1].body = "Fixes #１２\nCloses #٣٤\nResolved #5６\nCloses #７８9\nFixes #90"
+        self.step()
+        self.assertEqual(self.closing_lines(self.open_train()), ["Closes #90"])
+
+    def test_large_body_under_limit_keeps_every_reference(self):
+        self.queue(1)
+        self.gh.prs[1].body = "\n".join(f"Fixes #{n}" for n in range(1, 4801))
+        self.step()
+        train = self.open_train()
+        self.assertLessEqual(len(train.body), 65536)
+        self.assertEqual(self.closing_lines(train), [f"Closes #{n}" for n in range(1, 4801)])
+
+    def test_oversized_body_is_rejected_before_pushing(self):
+        for n in (1, 2):
+            self.queue(n)
+            self.gh.prs[n].body = "\n".join(f"Fixes #{i}" for i in range((n - 1) * 3000 + 1, n * 3000 + 1))
+            self.assertLess(len(self.gh.prs[n].body), 65536)
+        for _ in range(2):
+            log = self.step()
+            self.assertTrue(self.open_train() is None, "oversized body opened a train")
+            self.assertEqual(self.git.pushed, [])
+            self.assertEqual(self.gh.auto_merge, [])
+            self.assertEqual(set(self.gh.prs), {1, 2})
+            self.assertTrue(all(mt.QUEUE in p.labels for p in self.gh.prs.values()))
+            self.assertTrue(any("65536" in line and "#1, #2" in line for line in log), log)
+
     def test_all_existing_exemptions_propagate_no_issue(self):
         self.queue(1, extra_labels={"no-issue"})
         for n, author in ((2, "dependabot[bot]"), (3, "chatgpt-codex-connector[bot]")):
@@ -611,10 +639,33 @@ class Commands(unittest.TestCase):
 
         def run(args, env=None, cwd=None):
             calls.append(args)
-            return 0, "src/code.py\nREADME.md\n", ""
+            sep = "\0" if "-z" in args else "\n"
+            return 0, sep.join(["src/code.py", "README.md", ""]), ""
         files = mt.Git("/x", run=run).changed_files("base", "head")
         self.assertEqual(files, ["src/code.py", "README.md"])
         self.assertIn("--no-renames", calls[0])
+
+    def test_changed_files_preserves_raw_documentation_paths(self):
+        with tempfile.TemporaryDirectory() as path:
+            def git(*args):
+                return subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.quotePath=true",
+                                       "-c", "user.name=Test", "-c", "user.email=test@example.invalid", *args],
+                                      cwd=path, check=True, capture_output=True, text=True).stdout.strip()
+            git("init", "-q")
+            git("commit", "-q", "--allow-empty", "-m", "base")
+            base = git("rev-parse", "HEAD")
+            names = [" leading.md", "é.md", "mpvfx-swift/docs/é.png", "mpvfx-swift/docs/line\nbreak.png"]
+            for name in names:
+                filename = os.path.join(path, name)
+                os.makedirs(os.path.dirname(filename), exist_ok=True)
+                with open(filename, "w") as f:
+                    f.write("doc fixture\n")
+            git("add", ".")
+            git("commit", "-q", "-m", "docs")
+            files = mt.Git(path).changed_files(base, "HEAD")
+            self.assertCountEqual(files, names)
+            self.assertTrue(mt.issue_exempt(mt.PR(number=1), files))
+            self.assertEqual(mt.Git(path).changed_files("HEAD", "HEAD"), [])
 
     def test_comment_and_labels(self):
         calls = []

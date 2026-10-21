@@ -44,12 +44,14 @@ STATE_RE = re.compile(r"<!-- merge-train-state (\{.*?\}) -->", re.S)
 QUEUED_RE = re.compile(r"<!-- merge-train:queued ([0-9a-f]{40}) -->")
 WORKFLOWS = ".github/workflows/"
 BAD = {"failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"}
-# Match pr_issue.py's closing grammar and exemptions (introduced separately in #123).
-CLOSING = re.compile(r"(?<![\w/#-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t]*:?[ \t]+#(\d+)\b", re.IGNORECASE)
+# Match pr_issue.py's keywords and exemptions (#123), but only accept ASCII issue numbers:
+# int() would otherwise turn Unicode digits into unintended GitHub closing references.
+CLOSING = re.compile(r"(?<![\w/#-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t]*:?[ \t]+#([0-9]+)\b", re.IGNORECASE)
 EXEMPT_LABEL = "no-issue"
 EXEMPT_AUTHORS = {"dependabot[bot]", "chatgpt-codex-connector[bot]"}
 DOCS_FILE = re.compile(r"\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$")
 DOCS_MAX_FILES = 3000
+BODY_MAX_CHARS = 65536
 
 
 class Error(Exception):
@@ -334,13 +336,13 @@ class Git:
     def __init__(self, cwd, push_token="", run=None):
         self.cwd, self.push_token, self.run = cwd, push_token, run or Runner()
 
-    def _git(self, *args, check=True, env=None):
+    def _git(self, *args, check=True, env=None, strip_output=True):
         # No hooks: nothing from a pull request runs. Merging only reads its trees.
         rc, out, err = self.run(["git", "-c", "core.hooksPath=/dev/null", *args], env=dict(self.IDENT, **(env or {})),
                                 cwd=self.cwd)
         if rc != 0 and check:
             raise Error(f"git {args[0]}: {err.strip()[:500]}")
-        return rc, out.strip()
+        return rc, out.strip() if strip_output else out
 
     def fetch_main(self):
         self._git("fetch", "-q", "origin", "+refs/heads/main:refs/remotes/origin/main")
@@ -369,7 +371,9 @@ class Git:
 
     def changed_files(self, base, sha):
         # Count both sides of renames, so moving code to a docs path is not docs-only.
-        return self._git("diff", "--name-only", "--no-renames", f"{base}...{sha}")[1].splitlines()
+        # NULs preserve raw filenames, including whitespace and names Git would C-quote.
+        return self._git("diff", "--name-only", "--no-renames", "-z", f"{base}...{sha}",
+                         strip_output=False)[1].split("\0")[:-1]
 
     def tree(self, rev):
         return self._git("rev-parse", f"{rev}^{{tree}}")[1]
@@ -534,12 +538,17 @@ def step(gh, git, log=None):
     branch = f"train/{n}"
     by_number = {p.number: p for p in prs}
     carried = [by_number[q.number] for q in batch]
+    body = render_body(branch, main, batch, pending, carried)
+    if len(body) > BODY_MAX_CHARS:
+        log.append(f"not opening {branch}: body has {len(body)} characters (limit {BODY_MAX_CHARS}); "
+                   f"shorten the closing references in {refs(p.number for p in carried)} before retrying")
+        return log
     labels = [TRAIN]
     if not closing_issues(carried) and all(issue_exempt(p, git.changed_files(main, p.head_sha)) for p in carried):
         labels.append(EXEMPT_LABEL)
     git.push(branch)
     head = git.head()
-    number, author = gh.create_pr(branch, train_title(batch), render_body(branch, main, batch, pending, carried))
+    number, author = gh.create_pr(branch, train_title(batch), body)
     gh.add_labels(number, labels)
     if author == ACTIONS_LOGIN:
         # A pull request opened with the workflow token starts no workflow; reopening it with the App token starts CI.
