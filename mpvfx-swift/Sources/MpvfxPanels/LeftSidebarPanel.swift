@@ -137,7 +137,9 @@ public final class LeftSidebarPanel {
     public var hovered: Hit?
     public internal(set) var search: PanelTextField?
     public var searchQuery = ""
-    public var filter = MediaFilter()
+    /// The filter and sort choice; every change calls `onFilterChange` so the host can keep it for the next launch.
+    public var filter = MediaFilter() { didSet { if filter != oldValue { onFilterChange?(filter) } } }
+    public var onFilterChange: ((MediaFilter) -> Void)?
     /// The tile the arrows move and Enter acts on (a click selects; Escape clears).
     public internal(set) var selected: MediaTileRef?
     /// Tab order over the header controls and the grid (the selected tile, or the first one).
