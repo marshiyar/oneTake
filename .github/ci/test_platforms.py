@@ -13,7 +13,13 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for platforms.py: each change runs the platforms it can affect, and anything shared runs all of them."""
-import contextlib, importlib.util, io, os, re, tempfile, unittest
+import contextlib
+import importlib.util
+import io
+import os
+import re
+import tempfile
+import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))

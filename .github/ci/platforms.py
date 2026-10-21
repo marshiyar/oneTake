@@ -21,7 +21,8 @@ The fast Linux checks job runs whenever code is true. Each file maps to the plat
 (RULES, first match wins); a file no rule names is shared and runs every platform. An empty list, or one of 3000
 files or more (where the pull request files API stops), runs everything.
 """
-import re, sys
+import re
+import sys
 
 PLATFORMS = ("linux", "windows", "macos")
 ALL = frozenset(PLATFORMS)
@@ -33,8 +34,11 @@ S = "mpvfx-swift/Sources/"
 RULES = [
     # VisualSpecTests reads the colour table of DESIGN.md: code, not documentation.
     (r"mpvfx-swift/docs/DESIGN\.md", ALL),
-    (r".*\.md|mpvfx-swift/docs/.*|LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE|(.*/)?\.gitignore"
-     r"|\.github/(ISSUE_TEMPLATE/.*|CODEOWNERS|FUNDING\.yml)", DOCS),
+    (
+        r".*\.md|mpvfx-swift/docs/.*|LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE|(.*/)?\.gitignore"
+        r"|\.github/(ISSUE_TEMPLATE/.*|CODEOWNERS|FUNDING\.yml)",
+        DOCS,
+    ),
     # CI: the workflow that runs the builds, and the scripts its build and test jobs call.
     (r"\.github/workflows/mpvfx-ci\.yml", ALL),
     (r"\.github/workflows/mpvfx-macos\.yml", {"macos"}),
