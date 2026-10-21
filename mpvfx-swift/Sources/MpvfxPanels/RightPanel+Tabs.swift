@@ -19,12 +19,18 @@ import MpvfxTimeline
 /// moves on from the header into the inspector and Shift+Tab back.
 extension RightPanel {
     var stripTabs: [PanelTab] {
-        [PanelTab(id: RightPanelTab.design.rawValue, label: "Design"), PanelTab(id: RightPanelTab.renders.rawValue, label: rendersLabel)]
+        [PanelTab(id: RightPanelTab.design.rawValue, label: "Design"), PanelTab(id: RightPanelTab.easing.rawValue, label: "Easing"),
+         PanelTab(id: RightPanelTab.renders.rawValue, label: rendersLabel)]
     }
 
     static func hit(_ part: PanelTabBar.Part) -> Hit? {
         switch part {
-        case .tab(let id): return id == RightPanelTab.renders.rawValue ? .renders : .design
+        case .tab(let id):
+            switch RightPanelTab(rawValue: id) {
+            case .renders?: return .renders
+            case .easing?: return .easing
+            default: return .design
+            }
         case .overflow: return .tabOverflow
         case .close: return nil
         }
@@ -33,6 +39,7 @@ extension RightPanel {
     var tabHover: PanelTabBar.Part? {
         switch hovered {
         case .design?: return .tab(RightPanelTab.design.rawValue)
+        case .easing?: return .tab(RightPanelTab.easing.rawValue)
         case .renders?: return .tab(RightPanelTab.renders.rawValue)
         case .tabOverflow?: return .overflow
         default: return nil
@@ -108,10 +115,10 @@ extension RightPanel {
 
     /// Left / Right / Home / End on the focused tab: switch to the next tab and keep focus on it.
     func tabArrow(_ k: EditorKey) -> Bool {
-        guard focus.visible, let cur = focus.current, cur == .design || cur == .renders,
+        guard focus.visible, let cur = focus.current, cur == .design || cur == .easing || cur == .renders,
               let next = PanelTabBar.tab(after: k, from: shownTab.rawValue, in: stripTabs), let tab = RightPanelTab(rawValue: next) else { return false }
         layout.setRightTab(tab)
-        focus.current = tab == .renders ? .renders : .design
+        focus.current = tab == .renders ? .renders : tab == .easing ? .easing : .design
         onChange?(); return true
     }
 }

@@ -76,8 +76,7 @@ extension KeyframeEasingPanel {
         dropdown.open(key: "easing-property", options: options, selected: t.parameterId, anchor: anchor, bounds: bounds) { [weak self] v in
             guard let self else { return }
             self.state.chosenProperty = v
-            // The panel now shows another property: keys selected on the old one no longer apply.
-            self.selectedKeyframes = self.selectedKeyframes.filter { $0.parameterId == v }
+            self.state.pinnedSelection = self.selectedKeyframes
         }
     }
 
