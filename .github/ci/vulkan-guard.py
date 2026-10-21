@@ -19,13 +19,15 @@ breaks the build on a Linux machine without libvulkan-dev (issue #78). CI instal
 the linux-no-vulkan workflow see that case.
 Usage: vulkan-guard.py [mpvfx-swift directory]   (exit 1 and one line per finding when a use is unguarded)
 """
-import os, re, sys
+import os
+import re
+import sys
 
 # Swift sources that may name a Vulkan type; the C targets (CVulkan, CMpvfxVulkan) are only built with the headers.
 SCANNED = ("Sources", "tools")
 SKIPPED = {"CVulkan", "CMpvfxVulkan"}
 VULKAN = re.compile(r"\b(?:VulkanColorRenderer|CMpvfxVulkan|CVulkan|Vk[A-Z]\w*|vk[A-Z]\w*)\b")
-GUARD = re.compile(r"^canImport\(CMpvfxVulkan\)(?:\s*&&.*)?$")
+GUARD = re.compile(r"^canImport\(CMpvfxVulkan\)(?:\s*&&[^|]*)?$")
 STRING = re.compile(r'"(?:\\.|[^"\\])*"')
 
 
@@ -35,34 +37,43 @@ def code_of(line):
     return line.split("//", 1)[0]
 
 
+def directive(line, stack):
+    """Apply a `#if` / `#elseif` / `#else` / `#endif` line to the stack of open branches; False for any other line."""
+    if line.startswith("#if "):
+        stack.append(bool(GUARD.match(line[4:].strip())))
+    elif line.startswith(("#elseif", "#else")):
+        if stack:
+            stack[-1] = False
+    elif line.startswith("#endif"):
+        if stack:
+            stack.pop()
+    else:
+        return False
+    return True
+
+
+def uncommented(lines):
+    """(line number, stripped line) for every line outside `/* ... */` block comments."""
+    in_block = False
+    for n, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if in_block:
+            if "*/" not in line:
+                continue
+            in_block = False
+            line = line.split("*/", 1)[1]
+        if line.startswith("/*") and "*/" not in line:
+            in_block = True
+            continue
+        yield n, line
+
+
 def scan(text):
     """Line numbers (1-based) of Vulkan uses outside the first branch of an `#if canImport(CMpvfxVulkan)`."""
     stack = []  # one bool per open #if: this branch guarantees CMpvfxVulkan exists
     out = []
-    in_block_comment = False
-    for n, raw in enumerate(text.splitlines(), 1):
-        line = raw.strip()
-        if in_block_comment:
-            if "*/" in line:
-                in_block_comment = False
-                line = line.split("*/", 1)[1]
-            else:
-                continue
-        if line.startswith("/*") and "*/" not in line:
-            in_block_comment = True
-            continue
-        if line.startswith("#if "):
-            stack.append(bool(GUARD.match(line[4:].strip())))
-            continue
-        if line.startswith("#elseif") or line.startswith("#else"):
-            if stack:
-                stack[-1] = False
-            continue
-        if line.startswith("#endif"):
-            if stack:
-                stack.pop()
-            continue
-        if any(stack):
+    for n, line in uncommented(text.splitlines()):
+        if directive(line, stack) or any(stack):
             continue
         if VULKAN.search(code_of(line)):
             out.append(n)

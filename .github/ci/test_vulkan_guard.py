@@ -13,7 +13,9 @@
 #
 #===----------------------------------------------------------------------===#
 """Tests for vulkan-guard.py and the workflow that builds the package without the Vulkan headers (issue #78)."""
-import importlib.util, os, unittest
+import importlib.util
+import os
+import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
