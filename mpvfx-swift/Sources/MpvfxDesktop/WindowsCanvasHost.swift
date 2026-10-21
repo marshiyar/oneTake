@@ -164,6 +164,7 @@ final class WindowsCanvasHost {
         case WM_MOUSEMOVE:
             lastPoint = p
             input?.pointerMove(x: p.x, y: p.y, modifiers: Self.modifiers())
+            showCursor(at: p)   // the move may change the stage's cursor; WM_SETCURSOR came before it
             return 0
         case WM_RBUTTONDOWN:
             SetFocus(hwnd)
@@ -213,6 +214,12 @@ final class WindowsCanvasHost {
         return 1
     }
 
+    /// Sets the cursor for a client point (logical px) straight after the input it follows.
+    private func showCursor(at p: (x: Double, y: Double)) {
+        guard let cursorAt else { return }
+        SetCursor(LoadCursorW(nil, UnsafePointer<WCHAR>(bitPattern: cursorAt(p.x, p.y).windowsCursorId)))
+    }
+
     // MARK: Keys
 
     /// Virtual keys with their own EditorKey code.
@@ -251,6 +258,7 @@ final class WindowsCanvasHost {
             var m = Self.modifiers()
             if down { m.insert(.alt) } else { m.remove(.alt) }
             input?.pointerMove(x: p.x, y: p.y, modifiers: m)
+            showCursor(at: p)
         }
         guard let k = Self.editorKey(vk, lp), let input else { return nil }
         if down { return input.keyDown(k) ? 0 : nil }

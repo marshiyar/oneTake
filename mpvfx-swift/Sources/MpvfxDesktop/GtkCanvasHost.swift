@@ -170,6 +170,7 @@ final class GtkCanvasHost {
         var m = Self.modifiers(ev.state)
         if pressed { m.insert(.alt) } else { m.remove(.alt) }
         input?.pointerMove(x: p.x, y: p.y, modifiers: m)
+        updateCursor(p.x, p.y)   // the re-sent move may change what the stage asks for
     }
 
     static func modifiers(_ s: guint) -> PointerModifiers {

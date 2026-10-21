@@ -47,16 +47,44 @@ final class StageHostCursorTests: XCTestCase {
         XCTAssertEqual(EditorShellRouter.Cursor.resizeNWSE.windowsCursorId, 32642)
     }
 
-    func testTheRouterAsksTheStageOnlyOverThePlayer() throws {
+    var dirs: [String] = []
+    override func tearDown() { for d in dirs { try? FileManager.default.removeItem(atPath: d) } }
+
+    func makeRouter() throws -> (EditorSession, EditorShellRouter, EditorShellFrames) {
         let d = NSTemporaryDirectory() + "mpvfx-stage-cursor-\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: d, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(atPath: d) }
+        dirs.append(d)
         let s = try EditorSession(backend: nil, projectPath: nil, demo: true)
         s.audio?.stop()
         let router = s.installShell(userData: d) {}
         router.resized(CanvasSize(1440, 900))
         router.stageCursor = { .move }
-        let f = try XCTUnwrap(router.frames)
+        return (s, router, try XCTUnwrap(router.frames))
+    }
+
+    /// Codex review on #340: a drag the player holds crossing a seam kept showing the seam's resize arrow.
+    func testAPlayerDragOverASeamKeepsTheStageCursor() throws {
+        let (_, router, f) = try makeRouter()
+        let seam = try XCTUnwrap(f.leftSeamHit)
+        let seamPoint = CanvasPoint(seam.x + seam.width / 2, f.player.y + f.player.height / 2)
+        XCTAssertEqual(router.cursor(at: seamPoint.x, seamPoint.y), .columnResize, "hovering the seam: resize arrow")
+        router.pointerDown(x: f.player.x + 40, y: f.player.y + 40, shift: false)
+        XCTAssertEqual(router.cursor(at: seamPoint.x, seamPoint.y), .move, "the player holds the pointer: its cursor")
+        router.pointerUp(x: seamPoint.x, y: seamPoint.y)
+        XCTAssertEqual(router.cursor(at: seamPoint.x, seamPoint.y), .columnResize)
+    }
+
+    /// Codex review on #340: with Settings open the stage and seam cursors showed through the card.
+    func testTheSettingsCardShowsTheArrowOverEverything() throws {
+        let (s, router, f) = try makeRouter()
+        let seam = try XCTUnwrap(f.leftSeamHit)
+        s.showSettings()
+        XCTAssertEqual(router.cursor(at: f.player.x + f.player.width / 2, f.player.y + f.player.height / 2), .arrow)
+        XCTAssertEqual(router.cursor(at: seam.x + seam.width / 2, f.player.y + 10), .arrow)
+    }
+
+    func testTheRouterAsksTheStageOnlyOverThePlayer() throws {
+        let (_, router, f) = try makeRouter()
         let player = CanvasPoint(f.player.x + f.player.width / 2, f.player.y + f.player.height / 2)
         let timeline = CanvasPoint(f.timeline.x + f.timeline.width / 2, f.timeline.y + f.timeline.height / 2)
         XCTAssertEqual(router.cursor(at: player.x, player.y), .move, "over the player: the stage's cursor")

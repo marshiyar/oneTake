@@ -228,6 +228,9 @@ final class TransformBoxInteractionTests: XCTestCase {
         let c = r.chrome.centre
         r.drag(c, CanvasPoint(c.x + 30, c.y + 30))
         XCTAssertEqual(r.groups.count, 1, "one group commit")
+        r.controller.pointerDown(x: c.x, y: c.y)
+        XCTAssertEqual(r.controller.stageCursor, .move, "a group drag shows the move cursor from the press (Codex, #340)")
+        r.controller.pointerUp(x: c.x, y: c.y)
         XCTAssertEqual(r.groups.first?.map(\.id).sorted(), ["a", "b"])
         XCTAssertTrue(r.commits.isEmpty)
     }
