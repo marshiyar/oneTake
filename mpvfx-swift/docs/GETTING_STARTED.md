@@ -133,8 +133,9 @@ folder. An export never replaces a file that is already there, and a project wit
 ## 7. Your own project
 
 Your own project, MpVFX, opens whenever you start the app without `MPVFX_PROJECT`. Edits save a moment after you make
-them, and Ctrl+S saves at once. To keep several projects apart, create a library with **New library** at the top of the
-left panel: a library holds events and projects, and its navigator switches between them and back to your own project.
+them, and Ctrl+S saves at once. To keep several projects apart, create a library with **New library** in the **…** menu at the top of
+the Media panel: a library holds events and projects. The switcher beside it (library ▸ event) picks the event, and the
+**…** menu switches between projects and back to your own project.
 
 The composition is 1920×1080 in a new project. To change it, press Esc in the timeline so nothing is selected, then pick a preset (16:9, 9:16, 1:1, 4:5, 4K) or type a width and height on the Design tab.
 

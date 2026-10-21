@@ -59,8 +59,8 @@ notes() {
     printf '%s\n\n%s\n%s\n' \
       "Untested development build from main: installers from every green CI run of main, not an official release." \
       "Commit: $commit" "Run: $run"
-  elif [ -f CHANGELOG.md ]; then
-    printf 'Release notes: see CHANGELOG (%s).\n' "$server/$repo/blob/$tag/CHANGELOG.md"
+  elif [ -f mpvfx-swift/CHANGELOG.md ]; then
+    printf 'Release notes: see CHANGELOG (%s).\n' "$server/$repo/blob/$tag/mpvfx-swift/CHANGELOG.md"
   else
     printf 'oneTake %s, built from %s.\n' "${tag#v}" "$commit"
   fi
