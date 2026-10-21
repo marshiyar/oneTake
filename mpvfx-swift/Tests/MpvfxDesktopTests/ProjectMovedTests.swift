@@ -180,6 +180,38 @@ final class ProjectMovedTests: XCTestCase {
         XCTAssertEqual(session.recentProjects.map(\.directory), [], "the old folder left the recent list")
     }
 
+    /// A failed autosave or a watch event about the old folder that arrives after "Locate Folder…" succeeded is stale: it
+    /// neither pauses autosave again nor asks (review on #141).
+    func testAFailureFromTheOldFolderDeliveredAfterRelocationIsIgnored() throws {
+        let userData = try temporaryDirectory(), root = try temporaryDirectory()
+        let created = try RuntimeDesktopBackend(userData: userData).createProject(name: "Film", directory: root + "/Film")
+        let movedDir = root + "/Film moved"
+        let session = try launch(userData: userData, projectDirectory: created.directory, dialogs: nil)
+        let shell = Shell(session)
+        edit(session)
+        try FileManager.default.moveItem(atPath: created.directory, toPath: movedDir)
+
+        // Hold every UI hop: the autosave's failure (and any watch event) waits until after the relocation.
+        let lock = NSLock()
+        var held: [() -> Void] = []
+        session.postToUI = { body in lock.withLock { held.append(body) } }
+        shell.fireTimers()
+        session.saveQueue.sync {}
+        XCTAssertFalse(lock.withLock { held.isEmpty }, "the autosave result is held")
+
+        session.postToUI = { body in DispatchQueue.main.async(execute: body) }
+        session.locateProjectFolder(path: movedDir)
+        XCTAssertEqual(session.project?.directory, movedDir)
+        XCTAssertFalse(session.isDirty, "the relocation saved the edit in the new folder")
+
+        for body in lock.withLock({ held }) { body() }
+        drainMain()
+        XCTAssertFalse(session.projectFolderMissing, "a stale failure does not pause autosave again")
+        XCTAssertEqual(shell.movedPrompts, [], "nor does it ask")
+        XCTAssertEqual(shell.errors, [])
+        XCTAssertEqual(shell.conflicts, 0)
+    }
+
     /// Acceptance: when the located document differs from the last saved one, the user gets the normal conflict choice.
     func testLocatingAChangedDocumentOffersTheConflictChoice() throws {
         let userData = try temporaryDirectory(), root = try temporaryDirectory()

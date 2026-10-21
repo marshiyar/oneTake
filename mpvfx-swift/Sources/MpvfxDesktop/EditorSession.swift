@@ -195,8 +195,8 @@ final class EditorSession {
             }
             post {
                 guard let self else { return }
-                if case .failure(let e) = result, self.projectFolderVanished(e, explicitSave: false) {
-                    self.autosaveInFlight = false; self.autosaveAgain = false
+                if case .failure(let e) = result, (e as? DesktopError)?.isProjectMoved == true {
+                    self.autosaveMissedTheFolder(e, generation: generation)
                     return
                 }
                 self.autosaveFinished(document, generation: generation, result)
@@ -215,6 +215,18 @@ final class EditorSession {
             onError("Could not save the project", "\(e)")
         }
         if autosaveAgain { autosaveAgain = false; autosave() }
+    }
+
+    /// An autosave found the project's folder gone. A result older than the last save or relocation is stale (the folder
+    /// was located meanwhile), so it neither pauses autosave again nor asks.
+    private func autosaveMissedTheFolder(_ error: Error, generation: Int) {
+        autosaveInFlight = false
+        guard generation == saveGeneration else {
+            if autosaveAgain { autosaveAgain = false; autosave() }
+            return
+        }
+        autosaveAgain = false
+        _ = projectFolderVanished(error, explicitSave: false)
     }
 
     /// The document on disk changed outside the app.
@@ -285,6 +297,7 @@ final class EditorSession {
     func adoptMovedFolder(_ moved: DesktopProject) {
         project = moved
         projectDir = URL(fileURLWithPath: moved.directory)
+        saveGeneration += 1   // an autosave still posting its result back wrote to the old folder
         compositor.releaseAll()   // decoders opened on the old paths
         composedDocument = nil; graphInputs = nil
         syncStage(); redraw()

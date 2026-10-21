@@ -23,9 +23,11 @@ extension EditorSession {
     /// `projectFolderVanished`. Called at launch and after every project switch.
     func watchOpenProject() {
         guard let backend, let project else { return }
+        let directory = project.directory
         do {
             try backend.watchProjectEvents(id: project.id) { [weak self] event in
-                self?.postToUI { self?.projectEvent(event) }   // postToUI hops to the UI thread
+                // postToUI hops to the UI thread; an event about a folder the session has left since is dropped.
+                self?.postToUI { if self?.project?.directory == directory { self?.projectEvent(event) } }
             }
         } catch { FileHandle.standardError.write(Data("[MpVFX] not watching the project file: \(error)\n".utf8)) }
     }
@@ -92,6 +94,7 @@ extension EditorSession {
         catch { onError("Could not use that folder", "\(error)"); return }
         projectFolderMissing = false
         adoptMovedFolder(moved)
+        watchOpenProject()   // events about the new folder; the old folder's late ones are dropped
         panels?.projectSwitched()   // the media bin and renders now list the new folder
         guard moved.content == lastSaved else { externalChange(moved.content); return }
         do { try save() }
