@@ -322,8 +322,7 @@ final class SessionPanels {
         switch cmd {
         case .createLibrary: command = ["type": .string("create")]
         case .openLibrary: command = ["type": .string("open")]
-        case .createEvent(let l, let name): command = ["type": .string("event"), "libraryId": .string(l), "name": .string(name)]
-        case .createProject(let l, let e, let name): command = ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
+        case .createEvent, .createProject, .renameEvent, .renameProject: command = Self.namedItemCommand(cmd)
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
             if left.library.currentProjectId != nil, let id = projectId,

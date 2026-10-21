@@ -36,6 +36,10 @@ private final class OneExportLibrary: LibraryService, @unchecked Sendable {
     func attach(libraryId: String, projectId: String, assetId: String) async throws -> String { throw DesktopError.notImplemented("attach") }
     func relink(libraryId: String, assetId: String, path: String) async throws { throw DesktopError.notImplemented("relink") }
     func root(libraryId: String) throws -> String { throw DesktopError.notImplemented("root") }
+    func renameEvent(libraryId: String, eventId: String, name: String) async throws { throw DesktopError.notImplemented("renameEvent") }
+    func renameProject(libraryId: String, projectId: String, name: String) async throws {
+        throw DesktopError.notImplemented("renameProject")
+    }
     func saveOutput(libraryId: String, jobId: String, destination: String, overwrite: Bool) async throws {
         saves.append(Save(libraryId: libraryId, jobId: jobId, destination: destination, overwrite: overwrite))
     }
