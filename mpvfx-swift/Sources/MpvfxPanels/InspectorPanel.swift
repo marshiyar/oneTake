@@ -44,6 +44,9 @@ public final class InspectorPanel {
     public var onEdited: (() -> Void)?
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
+    /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
+    public var onCopyGrade: (() -> Bool)?
+    public var onPasteGrade: (() -> Bool)?
     /// Called after a header click opened or closed a group (the host redraws); saving is done by `openGroupId`.
     public var onOpenGroupChanged: ((String) -> Void)?
 

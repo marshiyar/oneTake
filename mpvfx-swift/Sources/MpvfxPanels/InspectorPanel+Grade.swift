@@ -131,6 +131,8 @@ extension InspectorPanel {
         // Copy grade to: `flex justify-between border-t border-panel-hairline pt-1.5`, a 11px text-2 label with a
         // mono 11px text-0 select on a border-input/50 underline (clicking flips the two scopes), Apply in accent.
         gap(6)
+        rows.append(.init(.custom(gradeClipboardRow())))
+        gap(4)
         rows.append(.init(.custom(copyGradeRow(g, apply: { [weak self] in
             guard let self else { return }
             self.edited(editor.copyColorGrading(from: s.id, toAllProjectMedia: self.grade.copyToProject) > 0)
@@ -143,17 +145,38 @@ extension InspectorPanel {
         return group
     }
 
+    func gradeClipboardRow() -> InspectorCustomRow {
+        InspectorCustomRow(id: "grade:clipboard", height: 28, draw: { [weak self] c, r, panel in
+            guard let self else { return }
+            let gap = 6.0, width = (r.width - gap) / 2
+            let copy = CanvasRect(x: r.x, y: r.y + 2, width: width, height: 24)
+            let paste = CanvasRect(x: copy.maxX + gap, y: copy.y, width: width, height: 24)
+            PanelDraw.smallButton(c, copy, label: "Copy grade",
+                                  fill: panel.hovered == .custom("grade:clipboard", 0) ? PanelTheme.panelHover : PanelTheme.panelSurface,
+                                  color: PanelTheme.text1)
+            PanelDraw.smallButton(c, paste, label: "Paste grade",
+                                  fill: panel.hovered == .custom("grade:clipboard", 1) ? PanelTheme.panelHover : PanelTheme.panelSurface,
+                                  color: onPasteGrade == nil ? PanelTheme.text4 : PanelTheme.text1)
+            panel.addHit(copy, .custom("grade:clipboard", 0))
+            if onPasteGrade != nil { panel.addHit(paste, .custom("grade:clipboard", 1)) }
+        }, pointer: { [weak self] part, _, phase in
+            guard let self, phase == 0 else { return }
+            _ = part == 0 ? onCopyGrade?() : onPasteGrade?()
+            onEdited?()
+        })
+    }
+
     func copyGradeRow(_ g: ColorGrading, apply: @escaping () -> Void) -> InspectorCustomRow {
-        InspectorCustomRow(id: "grade:copyto", height: 24.5, draw: { [weak self] c, r, panel in
+        InspectorCustomRow(id: "grade:copyto", height: 32, draw: { [weak self] c, r, panel in
             guard let self else { return }
             c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-            let line = CanvasRect(x: r.x, y: r.y + 7, width: r.width, height: 16.5)
+            let line = CanvasRect(x: r.x, y: r.y + 5, width: r.width, height: 24)
             let label = "Copy grade to"
             let lw = c.measureText(label, font: PanelTheme.font(11)).width
             PanelDraw.text(c, label, in: CanvasRect(x: line.x, y: line.y, width: lw + 1, height: 16.5), font: PanelTheme.font(11), color: PanelTheme.text2)
             let option = self.grade.copyToProject ? "All project media" : "Current file media"
             let ow = c.measureText(option, font: PanelTheme.mono(11)).width + 18
-            let sel = CanvasRect(x: line.x + lw + 6, y: line.y, width: ow, height: 16.5)
+            let sel = CanvasRect(x: line.x + lw + 6, y: line.y, width: ow, height: 24)
             let hot = panel.hovered == .custom("grade:copyto", 0)
             PanelDraw.text(c, option, in: CanvasRect(x: sel.x, y: sel.y, width: ow - 14, height: 16.5), font: PanelTheme.mono(11), color: PanelTheme.text0)
             PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: sel.maxX - 11, y: sel.midY - 5, width: 10, height: 10), color: PanelTheme.text3)
@@ -161,7 +184,7 @@ extension InspectorPanel {
                        hot ? PanelTheme.panelBorderInput : PanelTheme.panelBorderInput.withAlpha(0.5))
             panel.addHit(sel.insetBy(-2), .custom("grade:copyto", 0))
             let aw = c.measureText("Apply", font: PanelTheme.font(11, .medium)).width
-            let ap = CanvasRect(x: r.maxX - aw, y: line.y, width: aw, height: 16.5)
+            let ap = CanvasRect(x: r.maxX - aw - 8, y: line.y, width: aw + 8, height: 24)
             let enabled = g.isAuthored
             PanelDraw.text(c, "Apply", in: ap, font: PanelTheme.font(11, .medium),
                            color: enabled ? (panel.hovered == .custom("grade:copyto", 1) ? PanelTheme.accent.withAlpha(0.8) : PanelTheme.accent) : PanelTheme.accent.withAlpha(0.5))
