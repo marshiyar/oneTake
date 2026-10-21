@@ -32,18 +32,26 @@ enum MediaPanelFixture {
                 v("media/drive.wav", .audio, 92.5, true), v("media/room-tone.wav", .audio, 30, false), v("media/Inter.ttf", .fonts, nil, false)]
     }
 
+    /// A1 is already attached to the project (its bin path is `assets/A1/…`), A3's linked original is gone, A4 is in
+    /// the other event.
+    static let libraryAssets: [LibraryNavModel.Asset] = [
+        .init(id: "A1", name: "NUNCA MUDA QUICK BMW M3 EDIT.mp4", kind: "video", eventId: "E"),
+        .init(id: "A2", name: "Su-57 raw.mp4", kind: "video", eventId: "E"),
+        .init(id: "A3", name: "interview.mov", kind: "video", eventId: "E", available: false, linked: true),
+        .init(id: "A4", name: "day2.mov", kind: "video", eventId: "E2"),
+    ]
+    /// One finished export (Save as…) and one still running (no action).
+    static let exports: [LibraryNavModel.Export] = [
+        .init(id: "J1", label: "render-546cccc1-d7d8-473d-8eda-5f0c.mp4", status: "complete"), .init(id: "J2", label: "draft.mp4", status: "running"),
+    ]
+    static let events: [LibraryNavModel.Item] = [.init(id: "E", name: "Media"), .init(id: "E2", name: "Day 2")]
+
     static func library() -> LibraryNavModel {
         var m = LibraryNavModel()
         m.available = true
         m.isStandalone = true
-        m.libraries = [.init(id: "L", name: "Untitled.mpvfxlibrary", events: [.init(id: "E", name: "Media"), .init(id: "E2", name: "Day 2")],
-                             projects: [.init(id: "P1", name: "Cut A", eventId: "E")],
-                             assets: [.init(id: "A1", name: "NUNCA MUDA QUICK BMW M3 EDIT.mp4", kind: "video", eventId: "E"),
-                                      .init(id: "A2", name: "Su-57 raw.mp4", kind: "video", eventId: "E"),
-                                      .init(id: "A3", name: "interview.mov", kind: "video", eventId: "E", available: false, linked: true),
-                                      .init(id: "A4", name: "day2.mov", kind: "video", eventId: "E2")],
-                             exports: [.init(id: "J1", label: "render-546cccc1-d7d8-473d-8eda-5f0c.mp4", status: "complete"),
-                                       .init(id: "J2", label: "draft.mp4", status: "running")])]
+        m.libraries = [.init(id: "L", name: "Untitled.mpvfxlibrary", events: events, projects: [.init(id: "P1", name: "Cut A", eventId: "E")],
+                             assets: libraryAssets, exports: exports)]
         m.recentProjects = [.init(path: "/p/Alpha", name: "Alpha")]
         return m
     }

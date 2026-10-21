@@ -31,9 +31,11 @@ public enum MediaTileText {
     }
 
     /// How many leading characters of `s` go on one line: the most that fit, cut back to just after the last
-    /// space, hyphen or underscore among them when there is one.
+    /// space, hyphen or underscore among them when there is one. Always at least 1 for a non-empty `s`, even when
+    /// its first character alone is wider than the line, so the caller's loop always advances.
     static func fitCount(_ c: CanvasContext, _ s: Substring, font: CanvasFont, width: Double) -> Int {
         let chars = Array(s)
+        guard chars.count > 1 else { return chars.count }
         var lo = 1, hi = chars.count
         while lo < hi {
             let mid = (lo + hi + 1) / 2

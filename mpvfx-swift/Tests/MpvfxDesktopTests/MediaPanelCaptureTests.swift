@@ -56,16 +56,21 @@ final class MediaPanelCaptureTests: XCTestCase {
              MediaBinItem(id: "media/drive.wav", name: "drive.wav", path: "media/drive.wav", category: .audio, duration: 92.5, used: true)]
         let portrait = frame(w: 18, h: 32, ground: 0x30), wide = frame(w: 32, h: 18, ground: 0x14)
         left.thumbnail = { id in id.contains("NUNCA") || id.contains("Luffy") ? portrait : (id.hasSuffix(".wav") ? nil : wide) }
+        left.library = library()
+        left.onLibrary = { _ in }
+    }
+
+    /// The screenshot's library: one event, two library files and one finished export, a standalone project open.
+    static func library() -> LibraryNavModel {
+        let assets: [LibraryNavModel.Asset] = [.init(id: "A1", name: "NUNCA MUDA QUICK BMW M3 EDIT.mp4", kind: "video", eventId: "E"),
+                                               .init(id: "A2", name: "Su-57 edit - Brushed down by speed.mp4", kind: "video", eventId: "E")]
+        let exports: [LibraryNavModel.Export] = [.init(id: "J1", label: "render-546cccc1-d7d8-473d-8eda-5f0c.mp4", status: "complete")]
         var model = LibraryNavModel()
         model.available = true
         model.isStandalone = true
-        model.libraries = [.init(id: "L", name: "Untitled.mpvfxlibrary", events: [.init(id: "E", name: "Media")], projects: [],
-                                 assets: [.init(id: "A1", name: "NUNCA MUDA QUICK BMW M3 EDIT.mp4", kind: "video", eventId: "E"),
-                                          .init(id: "A2", name: "Su-57 edit - Brushed down by speed.mp4", kind: "video", eventId: "E")],
-                                 exports: [.init(id: "J1", label: "render-546cccc1-d7d8-473d-8eda-5f0c.mp4", status: "complete")])]
+        model.libraries = [.init(id: "L", name: "Untitled.mpvfxlibrary", events: [.init(id: "E", name: "Media")], assets: assets, exports: exports)]
         model.recentProjects = [.init(path: "/p/Alpha", name: "Alpha")]
-        left.library = model
-        left.onLibrary = { _ in }
+        return model
     }
 
     func render(_ s: EditorSession, _ size: CanvasSize) -> CairoImageTarget {

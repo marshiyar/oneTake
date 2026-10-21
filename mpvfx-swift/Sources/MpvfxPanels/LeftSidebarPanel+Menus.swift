@@ -283,11 +283,18 @@ extension LeftSidebarPanel {
         guard let m = menu, case let entries = menuEntries(m.target), entries.indices.contains(i) else { return }
         switch entries[i].action {
         case .primary: runPrimary(m.target); menu = nil
-        case .copyPath: onCopyPath?(mediaItem(m.assetId)?.path ?? fullName(m.target)); menu = nil
+        case .copyPath: copyPath(m.target); menu = nil
         case .rename: menu?.mode = 2; menu?.rename = PanelTextField(key: "rename", value: fullName(m.target))
         case .delete: menu?.mode = 1
         case .relink: if let l = activeLibrary { onLibrary?(.relink(libraryId: l.id, assetId: m.assetId)) }; menu = nil
         }
+    }
+
+    /// Copy path exists only on project files (`mediaEntries`): their project-relative path, or the file name for
+    /// an item the host listed without one (as the bin always did).
+    func copyPath(_ ref: MediaTileRef) {
+        guard case .media(let id) = ref, let item = mediaItem(id) else { return }
+        onCopyPath?(item.path ?? item.name)
     }
 
     /// The name row of New event / New project; false so the caller asks for a redraw.
