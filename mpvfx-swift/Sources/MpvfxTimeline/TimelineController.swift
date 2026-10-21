@@ -32,11 +32,14 @@ public final class TimelineController {
         case pendingMove(clipId: String, row: Int, x: Double, y: Double)
         case move(ids: [String], grabbed: String, anchorRow: Int, x: Double, y: Double)
         case trim(clipId: String, edge: TrimEdge, ripple: Bool)
+        case slip(clipId: String, x: Double)
+        case roll(clipId: String, edge: TrimEdge)
         case pendingMarquee(x: Double, y: Double, base: Set<String>)
         case marquee(x: Double, y: Double, base: Set<String>)
     }
-    public enum Tool: Equatable, Sendable { case select, razor }
-    /// Toolbar tool (select / razor). Razor: click splits the clip, ⇧click splits every track.
+    public enum Tool: Equatable, Sendable { case select, razor, slip, roll }
+    /// Toolbar tool. Razor: click splits the clip, ⇧click splits every track. Slip (Y): drag a clip to change which part
+    /// of its media plays. Roll: drag the edge between two touching clips (TimelineController+SlipRoll.swift).
     public var tool: Tool = .select { didSet { if tool != .razor { view.razorGuideX = nil }; needsDisplay?() } }
     public static let marqueeThresholdPx = 4.0
     public static let splitEpsilon = 1e-3
@@ -213,13 +216,20 @@ public final class TimelineController {
         return nil
     }
 
-    public enum Cursor: Equatable { case normal, resize, move, pointer }
+    public enum Cursor: Equatable { case normal, resize, move, pointer, slip, roll }
     public internal(set) var cursor: Cursor = .normal
 
     // MARK: Pointer
 
     /// `alt` on a trim handle makes the trim ripple (later clips on the lane follow the edge).
     public func pointerDown(x: Double, y: Double, shift: Bool = false, alt: Bool = false) {
+        pointerDown(x: x, y: y, keys: TimelineGestureKeys(shift: shift, alt: alt))
+    }
+
+    /// A press with every modifier: `command` (⌘/Ctrl) adds to the selection like `shift`; on a clip ⌘/Ctrl+⌥ slips it
+    /// and ⇧ on an edge rolls the cut (`clipPointerDown`).
+    public func pointerDown(x: Double, y: Double, keys: TimelineGestureKeys) {
+        let shift = keys.shift || keys.command
         if view.gapMenu != nil { gapMenuClick(x: x, y: y); return }
         if view.clipMenu != nil { clipMenuClick(x: x, y: y); return }
         if view.keyframeMenu != nil { keyframeMenuClick(x: x, y: y); return }
@@ -248,14 +258,7 @@ public final class TimelineController {
             if view.selectedKeyframes.contains(where: { $0.clipId != id }) { view.selectedKeyframes = [] }
             if shift { if view.selection.contains(id) { view.selection.remove(id) } else { view.selection.insert(id) } }
             else { view.selection = [id] }
-        case let .clip(id, row, edge):
-            if shift { if view.selection.contains(id) { view.selection.remove(id) } else { view.selection.insert(id) }; needsDisplay?(); return }
-            if !view.selection.contains(id) { view.selection = [id] }
-            // Keyframe selections stay on one clip: pressing another clip's body drops them.
-            if view.selectedKeyframes.contains(where: { $0.clipId != id }) { view.selectedKeyframes = [] }
-            // A locked track selects but never starts an edit gesture.
-            if view.tracks[row].locked { break }
-            if let edge { gesture = .trim(clipId: id, edge: edge, ripple: alt) } else { gesture = .pendingMove(clipId: id, row: row, x: x, y: y) }
+        case .clip: clipPointerDown(hit, x: x, y: y, keys: keys)
         }
         needsDisplay?()
     }
@@ -290,8 +293,7 @@ public final class TimelineController {
         guard let g = gesture else {
             if tool == .select, keyframeHover(x: x, y: y) { return }
             let hit = hitTest(x: x, y: y)
-            var hovered: String?; var cur = Cursor.normal
-            if case let .clip(id, _, edge) = hit { hovered = id; cur = edge != nil ? .resize : .pointer }
+            let (hovered, cur) = hoverState(hit)
             if hovered != view.hoveredClip || cur != cursor { view.hoveredClip = hovered; cursor = cur; needsDisplay?() }
             return
         }
@@ -348,6 +350,7 @@ public final class TimelineController {
             view.drag = .trim(clipId: id, edge: edge, time: t, snapTime: s.target?.time)
             view.snapType = s.target?.type
             needsDisplay?()
+        default: slipRollMove(g, x: x)   // .slip, .roll
         }
     }
 
@@ -376,6 +379,7 @@ public final class TimelineController {
             let frame = (t * fps).rounded()
             if rippleTrim { editor.rippleTrim(clipId: id, edge: edge, toFrame: frame); return }
             editor.apply(edge == .start ? .trimIn(address: addr, startFrame: frame) : .trimOut(address: addr, endFrameExclusive: frame))
+        default: commitSlipRoll(drag)    // .slip, .roll
         }
     }
 
@@ -434,6 +438,8 @@ public final class TimelineController {
                 tool = tool == .razor ? .select : .razor; return true
             case .char(let ch) where (ch == "v" || ch == "V") && !k.shift:
                 tool = .select; return true
+            case .char(let ch) where (ch == "y" || ch == "Y") && !k.shift:
+                tool = tool == .slip ? .select : .slip; return true
             case .char(let ch) where (ch == "n" || ch == "N") && !k.shift:
                 // N toggles timeline snapping (TimelineToolbar).
                 snapEnabled.toggle(); needsDisplay?(); return true

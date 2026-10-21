@@ -59,8 +59,11 @@ final class TimelineInput: CanvasInput {
     /// only the modifier changes, so the landing preview follows it mid-drag.
     func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
         s.timeline.dragSwapDisabled = modifiers.contains(.alt)
-        // ⌘/Ctrl-click adds to the selection like ⇧ (clips and keyframe diamonds).
-        if button == PointerButton.primary { pointerDown(x: x, y: y, shift: modifiers.contains(.shift) || modifiers.command) }
+        // ⌘/Ctrl-click adds to the selection like ⇧ (clips and keyframe diamonds); ⌘/Ctrl+⌥ drag slips a clip, ⇧ drag on
+        // an edge rolls the cut, ⌥ on an edge ripple-trims (TimelineController.pointerDown).
+        guard button == PointerButton.primary else { return }
+        region.pointerDown(x: x, y: y, keys: TimelineGestureKeys(shift: modifiers.contains(.shift), alt: modifiers.contains(.alt),
+                                                                 command: modifiers.command))
     }
     func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
         s.timeline.dragSwapDisabled = modifiers.contains(.alt); region.pointerMove(x: x, y: y)

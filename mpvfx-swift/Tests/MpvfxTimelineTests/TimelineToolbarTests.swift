@@ -34,11 +34,11 @@ final class TimelineToolbarTests: XCTestCase {
     func testLayoutOrderAndGeometry() throws {
         let (tb, _, _) = try make()
         let items = tb.layout(width: Self.width)
-        XCTAssertEqual(items.map(\.item), [.select, .razor, .snap, .keyframe, .autoKeyframe, .split, .addBeat,
+        XCTAssertEqual(items.map(\.item), [.select, .razor, .slip, .roll, .snap, .keyframe, .autoKeyframe, .split, .addBeat,
                                            .trackHeight, .zoomOut, .zoomSlider, .zoomIn, .zoomPercent])
         XCTAssertEqual(items[0].rect, CanvasRect(x: 8, y: 2, width: 28, height: 28))
         XCTAssertEqual(items[1].rect.x, 38)
-        XCTAssertEqual(items[2].rect.x, 38 + 28 + 2 + 9 + 2, "divider mx-1 w-px between tools and actions")
+        XCTAssertEqual(items[4].rect.x, 38 + 3 * (28 + 2) + 9 + 2, "divider mx-1 w-px between the four tools and the actions")
         XCTAssertEqual(items.last!.rect.maxX, Self.width - 8, accuracy: 1e-9)
         tb.onRemoveSilence = { _ in }
         XCTAssertTrue(tb.layout(width: Self.width).contains { $0.item == .removeSilence }, "silence button only when wired")

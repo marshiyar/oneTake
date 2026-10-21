@@ -268,6 +268,8 @@ public final class TimelineEditor {
         case .split: "Split clip"
         case .delete: "Delete clip"
         case .deleteMany: "Delete clips"
+        case .slip: "Slip clip"
+        case .roll: "Roll edit"
         case .restoreDocument: "Edit"
         }
     }

@@ -37,6 +37,10 @@ public indirect enum NativeProjectClipCommand: Equatable {
     case split(address: NativeProjectClipAddress, splitFrame: Double, rightBinding: NativeClipDomBinding? = nil)
     case delete(address: NativeProjectClipAddress)
     case deleteMany([NativeProjectClipAddress])
+    /// Move the clip's source in-point by `deltaFrames` timeline frames (NativeTimelineSlipRoll.swift).
+    case slip(address: NativeProjectClipAddress, deltaFrames: Double)
+    /// Move the cut between two touching clips (NativeTimelineSlipRoll.swift).
+    case roll(NativeProjectClipRoll)
     case restoreDocument(NativeProjectDocument)
 }
 
@@ -47,6 +51,7 @@ public enum NativeProjectClipFailureCode: String, Codable {
     case invalidSplit = "invalid-split", nonIntegralSourceBoundary = "non-integral-source-boundary"
     case missingSplitBinding = "missing-split-binding", invalidSplitBinding = "invalid-split-binding"
     case duplicateSplitBinding = "duplicate-split-binding", generatedIdCollision = "generated-id-collision", documentMismatch = "document-mismatch"
+    case invalidSlip = "invalid-slip", invalidRoll = "invalid-roll"
 }
 
 public struct NativeProjectClipFailure: Equatable, Error {
@@ -85,9 +90,9 @@ private func nativeSplitBaselineKeyframeId(_ trackId: String, _ splitFrame: Doub
     "native-split-baseline:\(trackId)|frame:\(jsNumberString(splitFrame))"
 }
 
-private struct ClipLocation { let trackIndex: Int; let clipIndex: Int; let track: NativeProjectTrack; let clip: NativeProjectClip }
+struct ClipLocation { let trackIndex: Int; let clipIndex: Int; let track: NativeProjectTrack; let clip: NativeProjectClip }
 
-private func locate(_ d: NativeProjectDocument, _ a: NativeProjectClipAddress) -> Result<ClipLocation, NativeProjectClipFailure> {
+func locate(_ d: NativeProjectDocument, _ a: NativeProjectClipAddress) -> Result<ClipLocation, NativeProjectClipFailure> {
     if d.sequence.id != a.sequenceId { return .failure(.init(code: .missingSequence, message: "Sequence \(a.sequenceId) does not exist")) }
     guard let t = d.sequence.tracks.firstIndex(where: { $0.id == a.trackId }) else {
         return .failure(.init(code: .missingSourceTrack, message: "Track \(a.trackId) does not exist"))
@@ -289,6 +294,7 @@ public func applyNativeProjectClipCommand(_ d: NativeProjectDocument, _ command:
     case .deleteMany(let list): return try applyDeleteMany(d, list, engine)
     case let .move(a, dest): moves = [.init(address: a, destination: dest)]
     case .moveMany(let list): moves = list
+    default: return try applyNativeSlipOrRoll(d, command, engine)   // .slip, .roll (NativeTimelineSlipRoll.swift)
     }
     let located: [LocatedMove]
     switch locateMoves(d, moves) { case .failure(let f): return reject(d, f.code, f.message); case .success(let l): located = l }

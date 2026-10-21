@@ -187,6 +187,10 @@ public enum TimelineTimeDisplay: Sendable { case time, frame }
 public enum TimelineDragPreview: Equatable, Sendable {
     case move(clipIds: [String], deltaSeconds: Double, trackDelta: Int, snapTime: Double?)
     case trim(clipId: String, edge: TrimEdge, time: Double, snapTime: Double?)
+    /// The clip's content moved by `deltaFrames`; `sourceShift` is that move as a fraction of the source media.
+    case slip(clipId: String, deltaFrames: Double, sourceShift: Double)
+    /// The cut between two touching clips moved to `time` seconds.
+    case roll(outgoingId: String, incomingId: String, time: Double)
 }
 public enum TrimEdge: Sendable, Equatable { case start, end }
 
@@ -205,6 +209,8 @@ public final class TimelineView {
     public var keyframeSnapTime: Double?
     public var hoveredClip: String?
     public var drag: TimelineDragPreview?
+    /// The cut the roll tool would roll (row, time), shown as a double bracket while hovering.
+    public var rollHover: (row: Int, time: Double)?
     /// Where a live clip move lands (placeholder slot or new-track line); `dragLiftY` is the pointer's vertical travel,
     /// so the dragged clips follow the pointer between rows (TimelineCanvas drag actor).
     public var dropTarget: TimelineDropTarget?
@@ -277,6 +283,8 @@ public final class TimelineView {
                 if dropTarget == nil { row = max(0, min(tracks.count - 1, i + td)) }
             case let .trim(id, .start, t, _) where id == clip.id: start = t
             case let .trim(id, .end, t, _) where id == clip.id: end = t
+            case let .roll(outgoing, _, t) where outgoing == clip.id: end = t
+            case let .roll(_, incoming, t) where incoming == clip.id: start = t
             default: break
             }
         }
@@ -341,6 +349,7 @@ public final class TimelineView {
         if let m = gapMenu { drawGapMenu(c, m) }
         if let m = clipMenu { drawClipMenu(c, m) }
         if let m = keyframeMenu { drawKeyframeMenu(c, m) }
+        drawSlipRollOverlay(c)
     }
 
     /// bg-neutral-900, border-neutral-700, rounded-md, py-1; rows text-xs neutral-300 (disabled neutral-600),
@@ -432,11 +441,14 @@ public final class TimelineView {
     }
 
     var snapTime: Double? {
-        switch drag { case .move(_, _, _, let s)?: s; case .trim(_, _, _, let s)?: s; case nil: nil }
+        switch drag { case .move(_, _, _, let s)?: s; case .trim(_, _, _, let s)?: s; case .slip?, .roll?, nil: nil }
     }
     func isMoving(_ id: String) -> Bool { if case .move(let ids, _, _, _)? = drag { return ids.contains(id) }; return false }
     func isDragged(_ id: String) -> Bool {
-        switch drag { case .move(let ids, _, _, _)?: ids.contains(id); case .trim(let cid, _, _, _)?: cid == id; case nil: false }
+        switch drag {
+        case .move(let ids, _, _, _)?: ids.contains(id); case .trim(let cid, _, _, _)?, .slip(let cid, _, _)?: cid == id
+        case .roll(let outgoing, let incoming, _)?: outgoing == id || incoming == id; case nil: false
+        }
     }
 
     /// studio.css body font stack and .timeline-clip__timecode stack (Pango takes comma-separated families).
@@ -463,7 +475,7 @@ public final class TimelineView {
     }
 
     func drawClip(_ c: CanvasContext, track i: Int, _ clip: TimelineClipModel) {
-        let t = theme
+        let t = theme, clip = slipPreview(clip)
         var r = clipRect(track: i, clip)
         r.width = max(r.width, 4)                                   // Math.max(duration * pps, 4)
         let selected = selection.contains(clip.id), hovered = hoveredClip == clip.id, dragging = isDragged(clip.id)
