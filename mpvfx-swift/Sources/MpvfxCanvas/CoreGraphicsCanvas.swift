@@ -123,16 +123,32 @@ public final class CoreGraphicsCanvas: CanvasContext {
     }
     public func drawImage(_ image: CanvasImage, in rect: CanvasRect) { drawImage(image, in: rect, opacity: 1) }
     public func drawImage(_ image: CanvasImage, in rect: CanvasRect, opacity: Double) {
-        guard opacity > 0, let provider = CGDataProvider(data: Data(image.rgba) as CFData),
-              let cgImage = CGImage(width: image.width, height: image.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                                    bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-                                    provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { return }
+        guard opacity > 0, image.width > 0, image.height > 0,
+              let cgImage = image.drawable(CoreGraphicsImage.self, make: { CoreGraphicsImage(image) })?.image else { return }
         ctx.saveGState()
         if opacity < 1 { ctx.setAlpha(opacity) }
         ctx.translateBy(x: rect.x, y: rect.maxY); ctx.scaleBy(x: 1, y: -1)   // CGImage draws y-up
         ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: rect.width, height: rect.height))
         ctx.restoreGState()
+    }
+}
+
+/// A `CanvasImage` as a CGImage over one copy of its straight-alpha sRGB pixels, made once per image and drawn by
+/// every draw of it (and of its copies).
+public final class CoreGraphicsImage: CanvasDrawable {
+    public let image: CGImage
+    public let byteCount: Int
+
+    /// Nil when Core Graphics cannot make the image.
+    init?(_ image: CanvasImage) {
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let provider = CGDataProvider(data: Data(image.rgba) as CFData),
+              let cgImage = CGImage(width: image.width, height: image.height, bitsPerComponent: 8, bitsPerPixel: 32,
+                                    bytesPerRow: image.width * 4, space: space,
+                                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                                    provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { return nil }
+        self.image = cgImage
+        byteCount = image.rgba.count
     }
 }
 #endif

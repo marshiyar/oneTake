@@ -70,7 +70,11 @@ final class TimelineInput: CanvasInput {
     }
     func secondaryClick(x: Double, y: Double) { region.secondaryClick(x: x, y: y) }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { region.scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift) }
-    func keyDown(_ k: EditorKey) -> Bool { let h = s.commandKey(k) || s.keyframeKey(k) || s.timeline.keyDown(k) || s.player.globalKey(k); afterKey(); return h }
+    func keyDown(_ k: EditorKey) -> Bool {
+        // Record's Esc comes before the timeline, which consumes Esc.
+        let h = s.player.recordEscapeKey(k) || s.commandKey(k) || s.keyframeKey(k) || s.timeline.keyDown(k) || s.player.globalKey(k)
+        afterKey(); return h
+    }
     func keyUp(_ k: EditorKey) { s.playback.keyUp(k) }
     func resized(_ size: CanvasSize) { region.resized(size) }
 }
@@ -83,6 +87,7 @@ final class PlayerInput: CanvasInput {
     func pointerUp(x: Double, y: Double) { s.playerPointerUp(x: x, y: y) }
     /// Middle-button pan and other buttons go to the stage; moves carry modifiers (gesture recording reads them).
     func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
+        s.player.modifiers = modifiers   // a Record take starts on the property set held at the press
         if button == PointerButton.primary { pointerDown(x: x, y: y, shift: modifiers.contains(.shift)); return }
         s.player.pointerDown(x: x, y: y, shift: modifiers.contains(.shift), button: button); afterKey()
     }

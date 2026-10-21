@@ -19,7 +19,10 @@ protocol FxUnit: AnyObject {
     /// `frame` is the context frame of the quantum's first sample.
     func process(_ x: [[Float]], frame: Int) -> [[Float]]
     var automation: [String: [ParamTarget]] { get }
+    /// Frames this unit delays its output by; the stage running the chain drops that many from the start.
+    var latencyFrames: Int { get }
 }
+extension FxUnit { var latencyFrames: Int { 0 } }
 
 private func n(_ p: FxParams, _ k: String) -> Double { p.num(k) }
 private let dbToLinearMap: @Sendable (Double) -> Double = { pow(10, $0 / 20) }
@@ -247,6 +250,7 @@ func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, ela
     case "chorus-lfo": return ChorusUnit(p, sr, elapsed: elapsed)
     case "allpass-phaser": return PhaserUnit(p, sr, elapsed: elapsed)
     case "convolver": return ReverbUnit(p, sr)
+    case "spectral-denoise": return DenoiseUnit(p, sr)
     default: fatalError("No builder for \(def.implementation)")
     }
 }
@@ -261,6 +265,8 @@ public final class FxChainProcessor {
     let chain: FxChain
     public let sampleRate: Double
     public var isEmpty: Bool { runs.isEmpty }
+    /// Frames the whole chain delays its output by (summed over its units).
+    public var latencyFrames: Int { units.reduce(0) { $0 + $1.latencyFrames } }
 
     public init(_ chain: FxChain, automation: Automation? = nil, sampleRate: Double = 48000,
                 timing: FxAutomationScheduler.Timing = .init()) {

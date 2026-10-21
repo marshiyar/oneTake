@@ -56,6 +56,10 @@ public struct ColorGrading: Equatable, Sendable {
     public var intensity = 1.0
     public var adjust: [String: Double] = [:]
     public var wheels: [String: Wheel] = [:]
+    /// Lift / Gamma / Gain / Offset (`balance`, issue #176); a missing wheel is neutral.
+    public var balance: [String: Wheel] = [:]
+    /// Where contrast pivots (`pivot`, 0…1 luma); nil = 0.5, how every older grade was drawn.
+    public var pivot: Double? = nil
     /// (input, output) in 0…1, sorted by input. Empty = identity.
     public var curves: [String: [[Double]]] = [:]
     /// (hue degrees, delta). Empty = flat.
@@ -73,6 +77,13 @@ public struct ColorGrading: Equatable, Sendable {
     public func adjustValue(_ k: String) -> Double { adjust[k] ?? presetValues?.adjust[k] ?? 0 }
     public func detail(_ k: String) -> Double { details[k] ?? presetValues?.details[k] ?? Self.detailDefaults[k] ?? 0 }
     public func wheel(_ k: String) -> Wheel { wheels[k] ?? Wheel() }
+    public func balanceWheel(_ k: String) -> Wheel { balance[k] ?? Wheel() }
+    public var pivotValue: Double { pivot ?? GradeValues.defaultPivot }
+    /// Whether the older tonal wheels (Shadows / Midtones / Highlights) are shown: a contract 2 grade, or one that
+    /// already uses them. New grades balance with Lift / Gamma / Gain / Offset instead.
+    public var showsTonalWheels: Bool { version < 3 || wheels.values.contains { !$0.isNeutral } }
+    /// A stylize effect value as rendered: stored, else the preset's, else the contract default.
+    public func effect(_ k: String) -> Double { effects[k] ?? presetValues?.effects[k] ?? GradeValues.effectDefaults[k] ?? 0 }
     /// The named preset's values, which fill the keys the grade leaves out; nil for no preset or an unknown name.
     var presetValues: Preset? { preset.flatMap(Self.preset) }
     /// A control's own default (what a reset writes): 0 for an adjust key, the contract default for a detail.
@@ -81,9 +92,11 @@ public struct ColorGrading: Equatable, Sendable {
     public func hueCurve(_ k: String) -> [[Double]] { hueCurves[k] ?? [] }
 
     /// Anything differs from neutral (`hasHfColorGradingAuthoredValues`).
+    /// (A wheel with only a hue counts, so a hue typed before its amount is kept.)
     public var isAuthored: Bool {
         preset.map { $0 != "neutral" } ?? false || adjust.values.contains { abs($0) > 1e-6 }
-            || wheels.values.contains { !$0.isNeutral } || curves.values.contains { !$0.isEmpty && $0 != [[0, 0], [1, 1]] }
+            || wheels.values.contains { !$0.isNeutral || $0.hue != 0 } || balance.values.contains { !$0.isNeutral || $0.hue != 0 } || abs(pivotValue - GradeValues.defaultPivot) > 1e-6
+            || curves.values.contains { !$0.isEmpty && $0 != [[0, 0], [1, 1]] }
             || hueCurves.values.contains { !$0.isEmpty } || !secondaries.isEmpty || lut != nil
             || Self.detailKeys.contains { abs(detail($0) - (Self.detailDefaults[$0] ?? 0)) > 1e-6 }
             || effects.contains { k, v in Self.activeEffectKeys.contains(k) && v > 1e-4 }
@@ -110,11 +123,14 @@ public struct ColorGrading: Equatable, Sendable {
         o["preset"] = preset.map { .string($0) } ?? .null
         o["intensity"] = .number(intensity)
         o["adjust"] = num(adjust, keys: Self.adjustKeys)
-        if !wheels.isEmpty {
+        func wheelSet(_ ws: [String: Wheel], _ keys: [String]) -> NativeJSONValue {
             var w = NativeJSONObject()
-            for k in Self.wheelKeys { if let v = wheels[k] { w[k] = .object(["hue": .number(v.hue), "amount": .number(v.amount), "level": .number(v.level)]) } }
-            o["wheels"] = .object(w)
+            for k in keys { if let v = ws[k] { w[k] = .object(["hue": .number(v.hue), "amount": .number(v.amount), "level": .number(v.level)]) } }
+            return .object(w)
         }
+        if !wheels.isEmpty { o["wheels"] = wheelSet(wheels, Self.wheelKeys) }
+        if !balance.isEmpty { o["balance"] = wheelSet(balance, GradeValues.balanceKeys) }
+        if let pivot { o["pivot"] = .number(pivot) }
         if !curves.isEmpty { var c = NativeJSONObject(); for k in Self.curveKeys { if let v = curves[k] { c[k] = pts(v) } }; o["curves"] = .object(c) }
         if !hueCurves.isEmpty { var c = NativeJSONObject(); for k in Self.hueCurveKeys { if let v = hueCurves[k] { c[k] = pts(v) } }; o["hueCurves"] = .object(c) }
         if !secondaries.isEmpty {
@@ -158,13 +174,9 @@ public struct ColorGrading: Equatable, Sendable {
         let p = presetValues
         intensity = GradeValues.intensity(o["intensity"], fallback: p?.intensity ?? 1)
         adjust = Self.limitedValues(obj(o["adjust"]), keys: Self.adjustKeys, fallback: { p?.adjust[$0] ?? 0 }, GradeValues.adjustLimit)
-        if let w = obj(o["wheels"]) {
-            for k in Self.wheelKeys {
-                guard let x = obj(w[k]) else { continue }
-                wheels[k] = Wheel(hue: GradeValues.wrapDegrees(x["hue"]), amount: GradeValues.limited(x["amount"], fallback: 0, GradeValues.wheelAmountLimit),
-                                  level: GradeValues.limited(x["level"], fallback: 0, GradeValues.wheelLevelLimit))
-            }
-        }
+        wheels = Self.readWheels(obj(o["wheels"]), keys: Self.wheelKeys)
+        balance = Self.readWheels(obj(o["balance"]), keys: GradeValues.balanceKeys)
+        if o["pivot"] != nil { pivot = GradeValues.limited(o["pivot"], fallback: GradeValues.defaultPivot, 0...1) }
         if let c = obj(o["curves"]) { for k in c.keys { curves[k] = pts(c[k]) } }
         if let c = obj(o["hueCurves"]) { for k in c.keys { hueCurves[k] = pts(c[k]) } }
         if case .array(let a)? = o["secondaries"] {
@@ -182,7 +194,9 @@ public struct ColorGrading: Equatable, Sendable {
             }
         }
         details = Self.limitedValues(obj(o["details"]), keys: Self.detailKeys, fallback: { p?.details[$0] ?? Self.defaultDetail($0) }, GradeValues.detailLimit)
-        effects = nums(o["effects"])
+        effects = Self.limitedValues(obj(o["effects"]), keys: GradeValues.effectKeys, fallback: { p?.effects[$0] ?? GradeValues.effectDefaults[$0] ?? 0 },
+                                     GradeValues.effectLimit)
+            .merging(nums(o["effects"]).filter { !GradeValues.effectKeys.contains($0.key) }) { a, _ in a }   // keep keys this build does not know
         if case .bool(false)? = o["effectsEnabled"] { effectsEnabled = false }
         if case .array(let a)? = o["palette"] { palette = a.compactMap { if case .string(let s) = $0 { return s }; return nil } }
         // A blank source is no LUT; the strength is clamped to 0…1 and a non-number reads as 1, as the renderer does.
@@ -200,6 +214,18 @@ public struct ColorGrading: Equatable, Sendable {
         case .number(let d)?: return jsNumberString(d)
         default: return nil
         }
+    }
+
+    /// The wheels among `keys` that `o` holds as objects, read by the renderer's rules (hue wrapped, amount 0…1,
+    /// level -1…1).
+    static func readWheels(_ o: NativeJSONObject?, keys: [String]) -> [String: Wheel] {
+        var out: [String: Wheel] = [:]
+        for k in keys {
+            guard case .object(let x)? = o?[k] else { continue }
+            out[k] = Wheel(hue: GradeValues.wrapDegrees(x["hue"]), amount: GradeValues.limited(x["amount"], fallback: 0, GradeValues.wheelAmountLimit),
+                           level: GradeValues.limited(x["level"], fallback: 0, GradeValues.wheelLevelLimit))
+        }
+        return out
     }
 
     /// The `keys` present in `o`, each read by `GradeValues.limited` with its fallback and limit.

@@ -61,7 +61,7 @@ extension InspectorPanel {
             })), rail: true))
             if sel.showMaster {
                 gap(4, rail: true)
-                let v = (g.effects[sel.key] ?? 0) * 100
+                let v = g.effect(sel.key) * 100
                 let fmt: (Double) -> String = { x in sel.masterFormat?(x / 100) ?? "\(Int(x.rounded()))%" }
                 rows.append(.init(.slider(.init(key: "fx:\(sel.key)", label: sel.masterLabel, position: v, min: 0, max: sel.max,
                                                 display: fmt(v), format: fmt, tier: .explicitCustom,
@@ -190,26 +190,20 @@ extension InspectorPanel {
         })
     }
 
-    /// `grid grid-cols-4 gap-px border border-panel-hairline bg-panel-hairline`: 25px bg-panel-bg tabs, 9px labels,
-    /// the open family medium accent, the rest text-4 (hover text-1).
+    /// The effect families on the shared inline tab bar (`PanelTabBar`), like the curve and scope tabs.
     func effectFamilyTabs() -> InspectorCustomRow {
         let fams = EffectSpecs.families
-        return InspectorCustomRow(id: "fx:tabs", height: 27, draw: { [weak self] c, r, panel in
+        let tabs = fams.map { PanelTab(id: $0.label, label: $0.label) }
+        let pick: (Int) -> Void = { [weak self] i in
+            guard let self, fams.indices.contains(i) else { return }
+            self.effectsUI.catalogFamily = fams[i].label; self.onEdited?()
+        }
+        return InspectorCustomRow(id: "fx:tabs", height: PanelGrid.rowHeight, draw: { [weak self] c, r, _ in
             guard let self else { return }
-            c.fillRect(r.snapped, PanelTheme.panelHairline)
-            let w = (r.width - 2 - Double(fams.count - 1)) / Double(fams.count)
-            for (i, f) in fams.enumerated() {
-                let tr = CanvasRect(x: r.x + 1 + Double(i) * (w + 1), y: r.y + 1, width: w, height: 25)
-                c.fillRect(tr.snapped, PanelTheme.panelBg)
-                let on = f.label == self.effectsUI.catalogFamily
-                PanelDraw.text(c, f.label, in: CanvasRect(x: tr.x + 8, y: tr.midY - 6.75, width: tr.width - 16, height: 13.5),
-                               font: PanelTheme.font(9, on ? .medium : .regular),
-                               color: on ? PanelTheme.accent : (panel.hovered == .custom("fx:tabs", i) ? PanelTheme.text1 : PanelTheme.text4), align: .center)
-                panel.addHit(tr, .custom("fx:tabs", i))
-            }
+            self.drawInlineTabs(c, PanelTabBar(tabs: tabs, selected: self.effectsUI.catalogFamily, style: .inline), row: ("fx:tabs", base: 0), in: r)
         }, pointer: { [weak self] part, _, phase in
-            guard let self, phase == 0, fams.indices.contains(part) else { return }
-            self.effectsUI.catalogFamily = fams[part].label; self.onEdited?()
+            guard let self, phase == 0, let i = self.inlineTab("fx:tabs", part: part, select: pick) else { return }
+            pick(i)
         })
     }
 
@@ -221,10 +215,12 @@ extension InspectorPanel {
     func tileGrid(id: String, _ tiles: [CatalogTile], onPick: @escaping (Int) -> Void) -> InspectorCustomRow {
         let cols = 3, gap = 4.0
         // The height follows the width the body draws at (the panel is resizable), as the Grade preset grid's does.
-        let height = Self.previewGridHeight(count: max(1, tiles.count), width: bodyContentWidth, columns: cols, gap: gap)
+        let natural = Self.previewGridHeight(count: max(1, tiles.count), width: bodyContentWidth, columns: cols, gap: gap)
+        let height = PanelGrid.snapUp(natural)   // a whole grid slot: the tiles take up the rounding, so no gap opens below them
+        let rowCount = Double((max(1, tiles.count) + cols - 1) / cols)
         return InspectorCustomRow(id: id, height: height, draw: { [weak self] c, r, panel in
             let w = (r.width - gap * Double(cols - 1)) / Double(cols)
-            let h = 2 + (w - 2) * 9 / 16 + 27
+            let h = 2 + (w - 2) * 9 / 16 + 27 + max(0, r.height - natural) / rowCount
             for (i, t) in tiles.enumerated() {
                 let tr = CanvasRect(x: r.x + Double(i % cols) * (w + gap), y: r.y + Double(i / cols) * (h + gap), width: w, height: h)
                 let hov = panel.hovered == .custom(id, i)

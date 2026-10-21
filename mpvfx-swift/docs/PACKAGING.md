@@ -88,6 +88,40 @@ scheme are left as they are.
 App (installed on this repository only; repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`) only writes the
 merge train's comments and labels and turns on auto-merge (`.github/workflows/merge-train.yml`); it approves nothing.
 
+## Project board
+
+The board is the owner's GitHub Project "oneTake launch" (https://github.com/users/marshiyar/projects/5). It shows
+every open issue and pull request, and those closed in the last 14 days, on a kanban by **Status**: Backlog, Ready
+(label `buildable`), In progress (label `in-progress`, or a draft pull request), Blocked (label `blocked`), In review
+(an open pull request) and Done (closed or merged). Where the project has these fields, it also fills **Priority**
+from `priority:P0`..`P3`, **Area** from `area:*`, **Size** from `size:*`, **Milestone** (single select) and
+**Iteration** (the iteration titled like the milestone) from the milestone, and **Target date** from the milestone's
+due date, which is what the roadmap view lays out. Fields are read from the project on every run; only Status is
+assumed, and a field that is missing, or of a type the sync does not set, is named in the run log and skipped.
+
+`.github/workflows/project-board.yml` runs `.github/ci/project_board.py` on issue and pull request events, hourly,
+and by hand (Actions > project-board > Run workflow: `full` resyncs every issue and pull request, closed ones
+included; `dry_run` logs the changes without writing; `create_options` adds missing single-select options such as
+the Status columns above, keeping the existing ones). Each run is a full pass that writes only values that differ;
+it never removes an item or clears a field, and leaves an item the owner archived alone. Labels drive the board:
+change the label, not the card.
+
+**One owner step.** Projects v2 is reachable only through GraphQL with a token that holds the Projects permission;
+the workflow's own token "is scoped to the repository level and cannot access projects" ([GitHub Docs, Automating
+Projects using Actions](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/automating-projects-using-actions),
+read 2026-10-21). Until the secret below exists, every run prints a notice and passes.
+
+1. github.com > Settings > Developer settings > Personal access tokens > Fine-grained tokens > Generate new token:
+   resource owner marshiyar, repository access "Only select repositories" > oneTake with Issues and Pull requests
+   read-only, and the account permission **Projects: Read and write**. If the token page offers no Projects
+   permission for a personal account, use a classic token with the `project` scope instead, which is the route the
+   page above documents for user-owned projects.
+2. This repository > Settings > Secrets and variables > Actions > New repository secret: `PROJECT_TOKEN`.
+3. Only if the board is not marshiyar's project 5: under the same page's Variables tab, set `PROJECT_OWNER` and
+   `PROJECT_NUMBER` (the number in the project's URL).
+
+Then run the workflow once by hand with `create_options` on, and check the log's change lines against the board.
+
 ## Codacy findings to Codex
 
 `.github/workflows/codacy-to-codex.yml` hands Codacy's important findings to Codex with no session in the loop.
@@ -126,6 +160,14 @@ Without them the image is still built, ad-hoc signed and not notarized.
 
 4. Run `mpvfx-macos`. The log shows `notarytool ... "status": "Accepted"` and `The staple and validate action
    worked!`, and the smoke step's `spctl --assess` prints `source=Notarized Developer ID`.
+
+## The placeholder sound pack
+
+`sounds/placeholder.mpvfxsounds` (8 generated sounds, 1.96 MB, licence `placeholder-owned`: owned by the project, for
+testing only; record in `sounds/ASSETS.md`) goes into release packages only until the commissioned sound set
+replaces it (the packaging step that copies it arrives with the browser slice, #264). Remove it from the package inputs in
+the same change that adds the commissioned set. The installed app
+reads bundled packs read-only and user packs from `<userData>/sound-packs/`.
 
 ## Building an installer by hand
 
