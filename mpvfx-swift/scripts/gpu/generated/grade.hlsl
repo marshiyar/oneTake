@@ -117,7 +117,14 @@ void outMomWrite(int i, float4 v) { outMom[i] = v; }
 #define GU_bloomOn 64
 #define GU_kuwaharaOn 65
 #define GU_whiteBalanceGains 66
-#define GU_COUNT 67
+#define GU_keyEnabled 67
+#define GU_keyR 68
+#define GU_keyG 69
+#define GU_keyB 70
+#define GU_keySimilarity 71
+#define GU_keySmoothness 72
+#define GU_keySpill 73
+#define GU_COUNT 74
 #define EK_blur 0
 #define EK_pixelate 1
 #define EK_chromaBleed 2
@@ -1071,7 +1078,19 @@ float4 shade(float2 frag, P_ALL) {
     }
     if (crtCurvature > 0.0f) { color *= displayMask; }
     float3 graded = clamp3(color, 0.0f, 1.0f);
-    return V43(graded, sampleColor.w);
+    float alpha = sampleColor.w;
+    if (U(keyEnabled) > 0.0f) {
+        float3 key = V3(U(keyR), U(keyG), U(keyB));
+        float3 source = sampleColor.xyz;
+        float y = lumaOf(source), keyY = lumaOf(key);
+        float2 chroma = V2((source.z - y) / 1.8556f, (source.x - y) / 1.5748f);
+        float2 keyChroma = V2((key.z - keyY) / 1.8556f, (key.x - keyY) / 1.5748f);
+        float distance = SQRT(POW(chroma.x - keyChroma.x, 2.0f) + POW(chroma.y - keyChroma.y, 2.0f));
+        alpha *= smoothstepf(U(keySimilarity), U(keySimilarity) + FMAX(U(keySmoothness), 0.000001f), distance);
+        float excessGreen = FMAX(0.0f, graded.y - FMAX(graded.x, graded.z));
+        graded.y -= excessGreen * U(keySpill);
+    }
+    return V43(graded, alpha);
 }
 static const float blurWeights[13] = {0.08077993f, 0.07918038f, 0.07456928f, 0.06747307f, 0.05865827f, 0.04899551f, 0.03931982f, 0.03031761f, 0.02245983f, 0.01598624f, 0.01093238f, 0.00718308f, 0.00453456f};
 static const float bloomWeights[5] = {0.227027f, 0.1945946f, 0.1216216f, 0.054054f, 0.016216f};

@@ -22,6 +22,7 @@
 import Foundation
 import OneTakeMedia
 import MpvfxShared
+import MpvfxColor
 
 public struct NativeTimelineRenderInput {
     public var project: NativeProjectDocument
@@ -93,7 +94,9 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
             throw MediaToolError("Media path is missing for asset \(clip.assetId)")
         }
         // The color grade (and its stylize effects) renders through MpvfxColor; other effects are not migrated yet.
-        if clip.effects.contains(where: { $0.enabled && !exportSupportsEffect($0) }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
+        if clip.effects.contains(where: { effect in
+            effect.enabled && !exportSupportsEffect(effect) && effect.effectId != ColorGradeParams.colorKeyEffectId
+        }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
         try assertClipParametersSupported(clip)
         if let crop = clip.crop, ![crop.top, crop.right, crop.bottom, crop.left].allSatisfy({ $0.isFinite }) {
             throw MediaToolError("Invalid crop on clip \(clip.id)")
