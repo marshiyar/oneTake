@@ -54,6 +54,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
+    /// Source seconds of the one frame a held clip shows for its whole length (`clip.holdSourceFrame`); nil plays the source.
+    public var holdSourceTime: Double?
 
     public init(clipId: String, source: String, kind: Kind, start: Double, end: Double, sourceIn: Double, rate: Double = 1,
                 startFrame: Int = 0, endFrame: Int = Int.max, box: CanvasRect, scaleX: Double = 1, scaleY: Double = 1,
@@ -64,7 +66,10 @@ public struct PreviewLayer: Equatable, Sendable {
     }
 
     /// Source seconds shown at timeline `time`.
-    public func sourceTime(at time: Double) -> Double { sourceIn + (time - start) * rate }
+    public func sourceTime(at time: Double) -> Double { holdSourceTime ?? sourceIn + (time - start) * rate }
+
+    /// One picture for the whole clip (an image, or a held frame): decoded once and kept (the still lane).
+    public var isStill: Bool { kind == .image || holdSourceTime != nil }
 
     /// Nothing would reach the screen (zero area, zero scale, fully transparent, or cropped away).
     public var isVisible: Bool {
@@ -81,7 +86,10 @@ public struct PreviewLayer: Equatable, Sendable {
     /// Identity of the decoded picture stream: frames from one lane are interchangeable across draws.
     /// The grade is not part of it: lanes cache raw decoded frames and the grade is applied when drawing, so a grade
     /// edit never restarts a decoder.
-    public var laneKey: String { "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)" }
+    public var laneKey: String {
+        let key = "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)"
+        return holdSourceTime.map { "\(key)|hold:\($0)" } ?? key
+    }
 }
 
 /// The visual clips of a document and their per-time evaluation (static values, then keyframe tracks).
@@ -120,7 +128,7 @@ public struct PreviewComposition {
         let trackLayers = nativeTrackStackingLayers(document.sequence.tracks)
         for (index, track) in document.sequence.tracks.enumerated() {
             for clip in track.clips {
-                guard !Self.isHidden(track: track, clip: clip) else { n += 1; continue }
+                guard !Self.isHidden(track: track, clip: clip), !document.isUndrawnHoldClip(clip) else { n += 1; continue }
                 n += 1
                 if let asset = assets[clip.assetId], asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
@@ -186,6 +194,12 @@ public struct PreviewComposition {
         }
     }
 
+    /// Source seconds per timeline second: the clip's playback rate, 1 for a held frame (its rate is not read).
+    static func sourceRate(_ c: NativeProjectClip) -> Double {
+        guard c.holdSourceFrame == nil, let r = c.playbackRate, r.denominator != 0, r.numerator > 0 else { return 1 }
+        return r.numerator / r.denominator
+    }
+
     public func layer(_ e: Entry, at time: Double) -> PreviewLayer {
         let c = e.clip
         let local = max(0, min(c.durationFrames - 1, Double(frameIndex(at: time)) - c.startFrame))
@@ -215,7 +229,8 @@ public struct PreviewComposition {
         let box = CanvasRect(x: (num("layout.left") ?? 0) + px, y: (num("layout.top") ?? 0) + py,
                              width: max(0, num("layout.width") ?? canvas.width), height: max(0, num("layout.height") ?? canvas.height))
         let crop = c.crop.map { CropInsets(top: max(0, $0.top), right: max(0, $0.right), bottom: max(0, $0.bottom), left: max(0, $0.left)) } ?? .zero
-        let rate = c.playbackRate.map { $0.denominator != 0 && $0.numerator > 0 ? $0.numerator / $0.denominator : 1 } ?? 1
+        let held = c.holdSourceFrame?.sourceFrame
+        let rate = Self.sourceRate(c)
         let sourceIn = sourceFrameValue(NativeSourcePosition(sourceInFrame: c.sourceInFrame, sourceInFraction: c.sourceInFraction)) / fps
         var out = PreviewLayer(clipId: c.id, source: e.path, kind: e.kind, start: c.startFrame / fps,
                             end: (c.startFrame + c.durationFrames) / fps, sourceIn: sourceIn, rate: rate,
@@ -223,6 +238,7 @@ public struct PreviewComposition {
                             box: box, scaleX: sx, scaleY: sy,
                             rotation: (num("transform.rotation") ?? 0) + autoRotate, opacity: opacity, crop: crop)
         out.motionRotation = autoRotate
+        out.holdSourceTime = held.map { $0 / fps }
         out.grade = e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.text = e.kind == .text ? c.text : nil

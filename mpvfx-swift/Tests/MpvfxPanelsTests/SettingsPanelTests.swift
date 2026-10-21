@@ -170,14 +170,14 @@ final class SettingsPanelKeyboardTests: XCTestCase {
         XCTAssertTrue(s.focus.visible)
         XCTAssertEqual(s.focus.ringRect(s.hits), s.hits.rect { $0 == .appearance(.dark) }, "the ring is drawn on it")
 
-        let forward: [SettingsPanel.Hit] = [.audio, .cache, .chooseFolder, .resetFolder, .close,
+        let forward: [SettingsPanel.Hit] = [.audio, .cache, .chooseFolder, .resetFolder, .hold, .close,
                                             .appearance(.dark), .audio]   // past Close, round to the first control
         for want in forward {
             XCTAssertTrue(press(s, c, EditorKey(.tab)), "Tab is taken by the modal card")
             XCTAssertEqual(s.focus.current, want)
             XCTAssertTrue(s.focus.visible)
         }
-        let backward: [SettingsPanel.Hit] = [.appearance(.dark), .close, .resetFolder]
+        let backward: [SettingsPanel.Hit] = [.appearance(.dark), .close, .hold]
         for want in backward {
             XCTAssertTrue(press(s, c, EditorKey(.tab, shift: true)))
             XCTAssertEqual(s.focus.current, want)
@@ -440,8 +440,8 @@ final class SettingsPanelFocusSnapshotTests: XCTestCase {
                       file: file, line: line)
     }
 
-    /// At 1440×900 the card is 520×258 at (460, 321) and the audio field is (612, 427, 348, 28), so the 2px ring
-    /// covers y 425…427 above it; without the ring that pixel is the card (`popover`: #252525 dark, #FFFFFF light).
+    /// At 1440×900 the card is 520×304 at (460, 298) (five rows since the hold length row, issue #292) and the audio
+    /// field is (612, 404, 348, 28), so the 2px ring covers y 402…404 above it; without the ring that pixel is the card (`popover`: #252525 dark, #FFFFFF light).
     func testFocusRingOnTheAudioFieldInDarkAndLight() throws {
         let modes: [(ThemeMode, String, String)] = [(.dark, "#4c8df0", "#252525"), (.light, "#1a5fcc", "#ffffff")]
         for (mode, accent, card) in modes {
@@ -455,7 +455,7 @@ final class SettingsPanelFocusSnapshotTests: XCTestCase {
                 XCTAssertEqual(s.focus.current, .audio)
                 var t = render(s, "settings-focus-\(mode.rawValue)", scale: scale)
                 let field = try XCTUnwrap(s.hits.rect { $0 == .audio })
-                XCTAssertEqual(field, CanvasRect(x: 612, y: 427, width: 348, height: 28))
+                XCTAssertEqual(field, CanvasRect(x: 612, y: 404, width: 348, height: 28))
                 assertPixel(t, field.midX, field.y - 1, scale: scale, accent, tol: 30)
                 s.focus.pointerPressed()
                 t = render(s, "settings-nofocus-\(mode.rawValue)", scale: scale)
@@ -465,3 +465,20 @@ final class SettingsPanelFocusSnapshotTests: XCTestCase {
     }
 }
 #endif
+
+/// Issue #292: the hold length row lists its choices and reports the one picked.
+final class SettingsPanelHoldLengthTests: XCTestCase {
+    func testPickingAHoldLengthReportsIt() throws {
+        let s = SettingsPanel()
+        var reported: [Double] = []
+        s.onChange = { reported.append($0.holdSeconds) }
+        s.open()
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(1440, 900))
+        let row = try XCTUnwrap(s.hits.rect { $0 == .hold })
+        XCTAssertTrue(s.pointerDown(CanvasPoint(row.x + row.width / 2, row.y + row.height / 2)))
+        XCTAssertTrue(s.dropdown.isOpen)
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["0.5 s", "1 s", "2 s", "3 s", "5 s", "10 s"])
+        s.dropdown.pick(try XCTUnwrap(s.dropdown.options.first { $0.label == "5 s" }).value)
+        XCTAssertEqual(reported, [5]); XCTAssertEqual(s.values.holdSeconds, 5)
+    }
+}

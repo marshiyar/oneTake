@@ -171,7 +171,7 @@ private func applyTrimIn(_ d: NativeProjectDocument, _ a: NativeProjectClipAddre
         // Overflow mapping: a 64-bit overflow is a NativeSourceTimeRangeError and lands in this catch like the other
         // range errors; both become an invalid-trim rejection.
         position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-            playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeAssetConsumesSourceFrames($0) } == true ? 0 : delta)
+            playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeClipConsumesSourceFrames(clip, $0) } == true ? 0 : delta)
     } catch { return reject(d, .invalidTrim, errorMessage(error) ?? "Invalid source boundary") }
     let tracks = try rebasedTracks(clip, delta, clip.durationFrames, engine) { $0.id }
     var next = clip
@@ -189,7 +189,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     if !isSafeInteger(end) || nextDuration <= 0 { return reject(d, .invalidTrim, "Trim-out end must be an integer after the clip start") }
     let clip = loc.clip
     let asset = d.assets.first { $0.id == clip.assetId }!
-    if nativeAssetConsumesSourceFrames(asset.kind) {
+    if nativeClipConsumesSourceFrames(clip, asset.kind) {
         let fits: Bool
         do {
             fits = try sourceRangeFits(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
@@ -225,7 +225,7 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
         let asset = d.assets.first { $0.id == clip.assetId }!
         // Overflow mapping: as in trim-in, a 64-bit overflow is rejected like the other range errors (invalid-split).
         position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-            playbackRate: clip.playbackRate, timelineFrames: nativeAssetConsumesSourceFrames(asset.kind) ? local : 0)
+            playbackRate: clip.playbackRate, timelineFrames: nativeClipConsumesSourceFrames(clip, asset.kind) ? local : 0)
     } catch { return reject(d, .invalidSplit, errorMessage(error) ?? "Invalid source boundary") }
     if clip.binding != nil && rightBinding == nil {
         return reject(d, .missingSplitBinding, "Splitting a bound clip requires an explicit unique binding for the right clip")

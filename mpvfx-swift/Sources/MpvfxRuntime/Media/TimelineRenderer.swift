@@ -87,7 +87,7 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
     guard project.canvas.background.range(of: "^#[0-9a-f]{6}(?:[0-9a-f]{2})?$", options: [.regularExpression, .caseInsensitive]) != nil else {
         throw MediaToolError("Native canvas background must be an RGB or RGBA hex color")
     }
-    for track in project.sequence.tracks { for clip in track.clips where !project.isUndrawnElementClip(clip) {
+    for track in project.sequence.tracks { for clip in track.clips where !project.isUndrawnClip(clip) {
         guard let asset = project.assets.first(where: { $0.id == clip.assetId }),
               nativeIsTextClip(clip, project) || !(asset.source ?? "").isEmpty else {
             throw MediaToolError("Media path is missing for asset \(clip.assetId)")
@@ -171,7 +171,7 @@ func exportNeedsAudioGraph(_ project: NativeProjectDocument) -> Bool {
 /// timeline's track mute sets every clip), which the audio mix already silences.
 public func nativeExportVisibleProject(_ project: NativeProjectDocument) -> NativeProjectDocument {
     let tracks = project.sequence.tracks
-    let skipped = { (clip: NativeProjectClip) in clip.hidden == true || project.isUndrawnElementClip(clip) }
+    let skipped = { (clip: NativeProjectClip) in clip.hidden == true || project.isUndrawnClip(clip) }
     guard tracks.contains(where: { $0.hidden == true || $0.clips.contains(where: skipped) }) else { return project }
     var out = project
     out.sequence.durationFrames = sequenceEndFrame(project)
@@ -264,12 +264,21 @@ private func assertClipsFitTheirMedia(_ project: NativeProjectDocument, _ media:
         if asset.kind != .audio && !info.video { throw MediaToolError("No picture track in \(asset.name)") }
         if asset.kind == .audio && !info.soundTrack { throw MediaToolError("No audio track in \(asset.name)") }
         guard asset.kind != .image else { continue }
+        if try heldFrameFits(clip, info, fps: fps) { continue }
         let rate = (clip.playbackRate?.numerator ?? 1) / (clip.playbackRate?.denominator ?? 1)
         let sourceStart = sourceFrameValue(NativeSourcePosition(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction)) / fps
         if !info.duration.isFinite || sourceStart + clip.durationFrames / fps * rate > info.duration + 1 / fps {
             throw MediaToolError("Clip \(clip.id) extends beyond its media file")
         }
     }
+}
+
+/// A held clip reads one source frame, whatever its length: true when it is held and that frame is in its media
+/// (thrown when it is not); false for a clip that plays its source.
+private func heldFrameFits(_ clip: NativeProjectClip, _ info: NativeMediaInfo, fps: Double) throws -> Bool {
+    guard let held = clip.holdSourceFrame?.sourceFrame else { return false }
+    guard info.duration.isFinite, held / fps < info.duration else { throw MediaToolError("Clip \(clip.id) holds a frame past the end of its media file") }
+    return true
 }
 
 /// The document as the frames and the mix render it: droppable muted groups removed (their clips keep their picture

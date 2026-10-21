@@ -22,6 +22,10 @@ public let NATIVE_PROJECT_DOCUMENT_PATH = ".studio/project.json"
 public enum NativeProjectAssetKind: String, Codable, Sendable { case video, audio, image, element }
 
 public func nativeAssetConsumesSourceFrames(_ kind: NativeProjectAssetKind) -> Bool { kind == .video || kind == .audio }
+/// A held clip shows one source frame however long it is, so trimming, extending or splitting it reads no source.
+public func nativeClipConsumesSourceFrames(_ clip: NativeProjectClip, _ kind: NativeProjectAssetKind) -> Bool {
+    clip.holdSourceFrame == nil && nativeAssetConsumesSourceFrames(kind)
+}
 
 public enum NativeProjectTrackKind: String, Codable, Sendable { case video, audio, mixed }
 
@@ -178,6 +182,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// A held source frame (`NativeClipHold`): the clip shows that one frame for its whole length; absent plays the source.
+    public var holdSourceFrame: NativeClipHold? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.

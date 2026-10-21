@@ -269,7 +269,7 @@ final class EditorSession {
         composedDocument = nil; graphInputs = nil
         try loadContent(opened.content)
         player.view.canvasSize = CanvasSize(editor.document.canvas.width, editor.document.canvas.height)
-        if let notice = editor.document.undrawnElementLayersNotice { player.view.showToast(notice) }
+        if let notice = editor.document.undrawnClipsNotice { player.view.showToast(notice) }
     }
 
     // MARK: Media in the project

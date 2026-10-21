@@ -95,7 +95,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     /// Ask for `frame` on screen now, and (playing forward) `ahead` more after it, or (playing backward) `behind`
     /// more before it. Returns immediately.
     public func request(frame: Int, ahead: Int, behind: Int = 0, size: PreviewDecodeSize) {
-        let f = layer.kind == .image ? Self.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, frame))
+        let f = layer.isStill ? Self.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, frame))
         lock.lock()
         want = f; self.ahead = max(0, ahead); self.behind = max(0, behind); self.size = size
         waiting = !cache.contains(lane: key, frame: f)
@@ -134,7 +134,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
             // One pool per decoded frame: this loop runs for as long as playback keeps asking for frames, and the
             // queue only drains its own pool when the loop returns.
             let worked = withAutoreleasePool {
-                layer.kind == .image ? stepStill(sz) : b > 0 ? stepReverse(want: w, behind: b, size: sz) : stepVideo(want: w, ahead: a, size: sz)
+                layer.isStill ? stepStill(sz) : b > 0 ? stepReverse(want: w, behind: b, size: sz) : stepVideo(want: w, ahead: a, size: sz)
             }
             if !worked {
                 lock.lock()
@@ -153,12 +153,15 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         if notify { onFrame?() }
     }
 
-    /// Returns false when there is nothing to do.
+    /// The one picture of an image or a held frame, decoded once at a size that serves the request. Returns false
+    /// when there is nothing to do.
     func stepStill(_ sz: PreviewDecodeSize) -> Bool {
         if let s = stillSize, s.width * 10 >= sz.width * 9 && s.height * 10 >= sz.height * 9 { return false }
         stillSize = sz
+        let frames = layer.holdSourceTime.map { MediaFrameStream.Frames(from: max(0, $0), fps: fps, width: sz.width, height: sz.height) }
+            ?? .still(width: sz.width, height: sz.height)
         guard let reader = openReader(),
-              let img = MediaFrameStream(reader: reader, frames: .still(width: sz.width, height: sz.height)).next()
+              let img = MediaFrameStream(reader: reader, frames: frames).next()
         else { return false }
         framesDecoded += 1
         cache.store(img, lane: key, frame: Self.stillFrame)

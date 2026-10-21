@@ -28,6 +28,7 @@ public let shortcutSections: [ShortcutSection] = {
                        (", / .", "Move selected keyframes 1 frame"), ("⇧, / ⇧.", "Move selected keyframes 10 frames"),
                        ("H", "Toggle hold / bezier"), ("U", "Expand / collapse properties"), ("R", "Record gesture")]),
         s("Editing", [("⌘C", "Copy element"), ("⌘V", "Paste element"), ("⌘X", "Cut element"), ("S", "Split clip at playhead"),
+                      ("⇧H", "Hold frame at playhead"), ("⌥⇧H", "Hold frame, overwriting what follows"),
                       ("Shift + click/drag", "Selection tool: add clips to selection"), ("⌥ Drag clip", "Drop without swapping"), ("⇧Click", "Razor tool: split all tracks"),
                       ("⌘G", "Group elements"), ("⌘⇧G", "Ungroup"), ("Del", "Delete selected element (no keyframe selected)")]),
         s("Gesture recording modifiers", [("Drag", "Record x / y position"), ("Scroll", "Record z depth"), ("⇧ Drag", "Record rotationX / rotationY"),

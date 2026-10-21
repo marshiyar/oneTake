@@ -78,7 +78,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
         let t = max(first, min(last, time))
         let layer = comp.layer(entry, at: t)
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        let want = layer.isStill ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
         guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
             return compositor.decodesMedia ? .rendering : .unavailable
         }
@@ -96,7 +96,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         lock.unlock()
         if !queued {
             let dir = projectDir(), renderer = colorRenderer
-            let shownFrame = layer.kind == .image ? comp.frameIndex(at: t) : source.frame
+            let shownFrame = layer.isStill ? comp.frameIndex(at: t) : source.frame
             let gradeTime = Double(shownFrame) / comp.fps
             queue.async { [weak self] in
                 self?.render(key, slot: presetId, raw: source.image, time: gradeTime, renderer: renderer) {
@@ -116,12 +116,12 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
         let t = max(first, min(last, time))
         let layer = comp.layer(entry, at: t)
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        let want = layer.isStill ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
         guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
             return compositor.decodesMedia ? .rendering : .unavailable
         }
         let slot = "\u{0}scope"
-        let shownFrame = layer.kind == .image ? comp.frameIndex(at: t) : source.frame
+        let shownFrame = layer.isStill ? comp.frameIndex(at: t) : source.frame
         let key = Key(lane: layer.laneKey, frame: source.frame, preset: "\(slot)|\(layer.grade?.signature ?? "-")|\(shownFrame)", lut: "",
                       width: pixelWidth, height: pixelHeight)
         lock.lock()

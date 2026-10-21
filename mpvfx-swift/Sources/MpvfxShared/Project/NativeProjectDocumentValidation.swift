@@ -240,7 +240,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }
             validateStaticParameters(clip["staticParameters"], "\(clipPath).staticParameters", &issues)
-            if let asset, assetKind == "video" || assetKind == "audio", isNonNegativeInteger(clip["sourceInFrame"]),
+            if validateNativeClipHold(clip, asset, clipPath, &issues), let asset, assetKind == "video" || assetKind == "audio", isNonNegativeInteger(clip["sourceInFrame"]),
                isPositiveInteger(clip["durationFrames"]), isPositiveInteger(asset["durationFrames"]), let playbackRate, validFraction {
                 let f = fraction.map { NativePlaybackRate(numerator: $0["numerator"]!.numberValue!, denominator: $0["denominator"]!.numberValue!) }
                 let exceeds: Bool
