@@ -212,19 +212,16 @@ final class TimelineTrackHeaderPixelTests: XCTestCase {
         XCTAssertEqual(rgb(t, v2.x + 2, v2.centerY), ints(c.view.theme.gutterBackground), "an idle tag is an outline over the gutter")
     }
 
-    /// A 22 px clip bar (28 px row) keeps its filmstrip under the name and draws the name on a chip of the kind colour;
-    /// from 36 px the name strip spans the clip again.
-    func testCompactClipKeepsItsFilmstripAndPutsTheNameOnAChip() throws {
+    /// A 22 px clip bar (28 px row) still shows its content: the header strip takes half the bar (clipHeaderRect) and
+    /// the filmstrip fills the half below it.
+    func testCompactClipKeepsItsHeaderStripAndFilmstrip() throws {
         let red = CanvasImage(width: 16, height: 9, rgba: (0..<(16 * 9)).flatMap { _ in [UInt8(255), 0, 0, 255] })
-        let thumbs: (TimelineController) -> Void = { $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)] }
-        let (compact, c) = try render(thumbs)
-        let top = c.view.rowTop(1) + TimelineLayout.clipY
-        XCTAssertGreaterThan(rgb(compact, 264 + 300, top + 5)[0], 200, "no strip over the frames at the top of a compact clip")
-        let fill = TimelineView.clipBackground(audio: false, hovered: false, dragging: false)
-        let want = ints(fill)
-        XCTAssertEqual(rgb(compact, 264 + 9, top + 11), want, "the name's chip, left of its first letter")
-        let (tall, c48) = try render { thumbs($0); $0.setTrackHeight(48) }
-        XCTAssertEqual(rgb(tall, 264 + 300, c48.view.rowTop(1) + TimelineLayout.clipY + 5), want, "a 42 px clip has the full-width strip")
+        let (t, c) = try render { $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)] }
+        let bar = c.view.clipRect(track: 1, c.view.tracks[1].clips[0])
+        XCTAssertEqual(bar.height, 22)
+        XCTAssertEqual(rgb(t, 264 + 300, bar.y + 2), ints(TimelineView.clipBackground(audio: false, hovered: false, dragging: false)),
+                       "the header strip in the clip's kind colour")
+        XCTAssertGreaterThan(rgb(t, 264 + 300, bar.maxY - 3)[0], 200, "the frames below it")
     }
 
     func testLockedTrackDrawsAFilledAccentLock() throws {

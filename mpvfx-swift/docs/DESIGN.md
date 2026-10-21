@@ -83,12 +83,12 @@ Each step is its own pull request, small enough to review on screenshots.
 2. **Flat panels** — remove the rounded cards and gaps between the shell's panels; 1 px black seams; tab strips
    with an underlined active tab and a panel menu button; a status line at the bottom of the window for hints.
 3. **Clips show content** — frame thumbnails across video clips, waveforms across audio clips, the clip name in a
-   16 px header strip, durations as timecode.
+   18 px header strip, clip durations and the ruler as timecode. *(done)*
 4. **Track headers** — compact headers with a track tag (`V1`, `A1`) in the accent when targeted, lock, visibility,
    mute and solo, 28 px tall by default. Left to right: tag, name, clip count; right-aligned FX and solo (audio
    rows), eye or speaker, lock, each a 24 x 24 target in a column shared by every row. A control that is on is drawn
    in `mint` and changes shape (filled lock and headphones, slashed eye, crossed speaker, filled tag), so its state
-   is never colour alone. Video tags count from the bottom (`V1` is the base layer), audio tags from the top.
+   is never colour alone. Video tags count from the bottom (`V1` is the base layer), audio tags from the top. *(done)*
 5. **Inspector** — label in grey, value in the accent when changed, a stopwatch toggle for animated properties and
    the previous/add/next keyframe buttons on the same row.
 6. **Timeline extras** — coloured markers on the ruler, timecode on the playhead, audio meters docked beside the
