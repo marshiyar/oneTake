@@ -556,9 +556,20 @@ public final class InspectorPanel {
             hits.add(gear.insetBy(-3), .keyframe(s.key))
             row = CanvasRect(x: r.x, y: r.y, width: r.width - 18, height: r.height)
         }
-        PanelDraw.text(c, s.label, in: CanvasRect(x: row.x, y: row.midY - 8.25, width: 86, height: 16.5), font: PanelTheme.font(11), color: PanelTheme.text3)
-        var right = row.maxX
-        if let kf = s.keyframe, s.settings == nil { right = drawKeyframeNav(c, right: right, midY: row.midY, key: s.key, kf) - 10 }
+        let labelFont = PanelTheme.font(11), minTrack = PanelTheme.minTarget
+        var right = row.maxX, navGap = 0.0
+        if let kf = s.keyframe, s.settings == nil { right = drawKeyframeNav(c, right: right, midY: row.midY, key: s.key, kf); navGap = 10 }
+        // Narrow panels (down to `PanelFit.minRight`): when the keyframe controls leave the 86px label column less
+        // than a pointer target of track, the reset slot meets the controls, the label column shrinks to the label
+        // (gap 6) and, only if that is still short, the label truncates, so the track never runs under the value.
+        let slotWidth = s.centerTick || s.reset != nil ? 24.0 : 0
+        let narrow = right - navGap - slotWidth - 54 - (row.x + 96) < minTrack
+        if narrow { navGap = 0 }
+        right -= navGap
+        let room = right - slotWidth - 54 - row.x   // the label column, its gap and the track
+        let labelGap = narrow ? 6.0 : 10
+        let labelColumn = narrow ? max(0, min(86, c.measureText(s.label, font: labelFont).width, room - labelGap - minTrack)) : 86
+        PanelDraw.text(c, s.label, in: CanvasRect(x: row.x, y: row.midY - 8.25, width: labelColumn, height: 16.5), font: labelFont, color: PanelTheme.text3)
         if s.centerTick || s.reset != nil {
             let slot = CanvasRect(x: right - 14, y: row.midY - 5.5, width: 14, height: 11)
             if s.tier == .explicitCustom, s.reset != nil {
@@ -576,7 +587,8 @@ public final class InspectorPanel {
         let custom = s.tier == .explicitCustom || dragging
         PanelDraw.text(c, dragging ? s.format(pos) : s.display, in: valueRect, font: PanelTheme.mono(10),
                        color: custom ? PanelTheme.text0 : PanelTheme.text3, align: .right)
-        let track = CanvasRect(x: row.x + 96, y: row.midY - 10, width: max(10, valueRect.x - 10 - (row.x + 96)), height: 20)
+        let trackX = row.x + labelColumn + labelGap
+        let track = CanvasRect(x: trackX, y: row.midY - 10, width: max(10, valueRect.x - 10 - trackX), height: 20)
         let span = max(1e-9, s.max - s.min)
         let pct = max(0, min(1, (pos - s.min) / span))
         let lineY = track.midY - 1

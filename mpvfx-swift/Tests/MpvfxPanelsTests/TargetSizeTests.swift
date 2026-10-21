@@ -226,27 +226,50 @@ final class TargetSizeTests: XCTestCase {
     /// Issue #149: with keys on both sides of the playhead every keyframe row draws all four controls (stopwatch,
     /// ‹, ◆, ›), each a 24 × 24 target of its own: at least the minimum and overlapping no other target of the row.
     func testKeyframeControlsAreFullTargetsThatDoNotOverlap() throws {
-        let c = PanelMeasureCanvas(), size = CanvasSize(409, 2000), bounds = CanvasRect(x: 0, y: 0, width: 409, height: 2000)
         var seen: [String: Int] = [:]
-        for group in Self.keyedGroups {
+        // The 1440 × 900 and 1280 × 800 defaults and the narrowest the right panel goes.
+        for (width, group) in [409.0, 364, PanelFit.minRight].flatMap({ w in Self.keyedGroups.map { (w, $0) } }) {
+            let c = PanelMeasureCanvas(), size = CanvasSize(width, 2000), bounds = CanvasRect(x: 0, y: 0, width: width, height: 2000)
             let r = try Self.design(open: group, keyed: true)
             r.draw(c, size: size)
-            let map = Self.regions(group, r.inspector.hits, in: bounds) { $0 == .body }.filter { !$0.container }
+            let map = Self.regions("\(group)@\(Self.fmt(width))", r.inspector.hits, in: bounds) { $0 == .body }.filter { !$0.container }
             for k in map where Self.isKeyframeControl(k.action) {
                 let kind = String(k.action.prefix { $0 != "(" })
                 seen[kind, default: 0] += 1
-                XCTAssertGreaterThanOrEqual(k.rect.width, Self.minimum, "\(group) \(k.action) width")
-                XCTAssertGreaterThanOrEqual(k.rect.height, Self.minimum, "\(group) \(k.action) height")
+                XCTAssertGreaterThanOrEqual(k.rect.width, Self.minimum, "\(k.state) \(k.action) width")
+                XCTAssertGreaterThanOrEqual(k.rect.height, Self.minimum, "\(k.state) \(k.action) height")
                 for o in map where o.action != k.action {
                     let a = k.rect, b = o.rect
                     let overlaps = min(a.maxX, b.maxX) - max(a.x, b.x) > 1e-9 && min(a.maxY, b.maxY) - max(a.y, b.y) > 1e-9
-                    XCTAssertFalse(overlaps, "\(group) \(k.action) \(k.rect) overlaps \(o.action) \(o.rect)")
+                    XCTAssertFalse(overlaps, "\(k.state) \(k.action) \(k.rect) overlaps \(o.action) \(o.rect)")
                 }
             }
         }
         // Position, size (both pairs), rotation, scale, opacity and volume: each kind is drawn and audited.
         for kind in ["stopwatch", "kfPrev", "keyframe", "kfNext"] {
-            XCTAssertGreaterThanOrEqual(seen[kind] ?? 0, 6, "\(kind) drawn on the keyed rows")
+            XCTAssertGreaterThanOrEqual(seen[kind] ?? 0, 18, "\(kind) drawn on the keyed rows at each width")
+        }
+    }
+
+    /// Codex review of #152: at every right-panel width, down to `PanelFit.minRight`, a keyed slider row (opacity,
+    /// volume) keeps its track a pointer target wide, between its label and its value: the label ends before the
+    /// track starts and the value text starts after the track ends, so the knob never draws over either.
+    func testKeyedSliderRowsKeepTheirTrackClearAtEveryWidth() throws {
+        for width in [409.0, 364, 320, PanelFit.minRight] {
+            for (group, key, label) in [("style", "opacity", "Opacity"), ("media", "volume", "Volume")] {
+                let c = PanelMeasureCanvas(), size = CanvasSize(width, 2000)
+                let r = try Self.design(open: group, keyed: true)
+                r.draw(c, size: size)
+                let track = try XCTUnwrap(r.inspector.hits.rect { $0 == .slider(key) }, "\(key) @\(width)")
+                let stopwatch = try XCTUnwrap(r.inspector.hits.rect { $0 == .stopwatch(key) }, "\(key) @\(width)")
+                XCTAssertGreaterThanOrEqual(track.width, Self.minimum, "\(key) track @\(width)")
+                let row = { (t: (String, CanvasPoint, CanvasFont, CanvasColor)) in abs(t.1.y - track.midY) < track.height / 2 }
+                let texts = c.texts.filter { row($0) && $0.1.x >= 0 && $0.1.x < width }
+                let drawnLabel = try XCTUnwrap(texts.first { $0.0 == label }, "\(key) label drawn in full @\(width)")
+                XCTAssertLessThanOrEqual(drawnLabel.1.x + c.measureText(label, font: drawnLabel.2).width, track.x, "\(key) label clear of the track @\(width)")
+                let value = try XCTUnwrap(texts.first { $0.1.x > track.x && $0.1.x < stopwatch.x }, "\(key) value drawn @\(width)")
+                XCTAssertGreaterThanOrEqual(value.1.x, track.maxX, "\(key) value \(value.0) clear of the track @\(width)")
+            }
         }
     }
 

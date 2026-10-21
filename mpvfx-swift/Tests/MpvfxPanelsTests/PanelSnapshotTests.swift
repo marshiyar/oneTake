@@ -441,13 +441,16 @@ final class PanelSnapshotTests: XCTestCase {
                 // Rotation sits on a key: the diamond is filled mint at the centre of its own target.
                 assertPixel(t, diamond.midX, diamond.midY, PanelTheme.mint, tol: 12)
             }
-            // The slider rows with keyframe controls (opacity, volume) at the 1440 × 900 width.
+            // The slider rows with keyframe controls (opacity, volume) at the 1440 × 900 width and the narrowest panel.
+            let widths = [(PanelFit.defaults(1440).right, "1440x900"), (PanelFit.minRight, "min\(Int(PanelFit.minRight))")]
             for (group, key) in [("style", "opacity"), ("media", "volume")] {
-                let w = PanelFit.defaults(1440).right, size = CanvasSize(w, 900)
-                let r = try TargetSizeTests.design(open: group, keyed: true)
-                snapshot("inspector-keyframes-\(mode)-1440x900-\(group)", w: w, h: 900, scale: 1) { r.draw($0, size: size) }
-                let next = try XCTUnwrap(r.inspector.hits.rect { $0 == .kfNext(key) })
-                XCTAssertEqual(next.width, PanelTheme.minTarget); XCTAssertEqual(next.height, PanelTheme.minTarget)
+                for (w, name) in widths {
+                    let size = CanvasSize(w, 900)
+                    let r = try TargetSizeTests.design(open: group, keyed: true)
+                    snapshot("inspector-keyframes-\(mode)-\(name)-\(group)", w: w, h: 900, scale: 1) { r.draw($0, size: size) }
+                    let next = try XCTUnwrap(r.inspector.hits.rect { $0 == .kfNext(key) })
+                    XCTAssertEqual(next.width, PanelTheme.minTarget); XCTAssertEqual(next.height, PanelTheme.minTarget)
+                }
             }
         }
     }
