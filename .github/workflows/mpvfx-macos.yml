@@ -11,8 +11,10 @@ name: mpvfx-macos
 # engine libraries pinned in binaries.lock; the disk image carries them in MpVFX.app/Contents/Frameworks.
 #
 # Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
-# are optional (outside pull requests only): set, the disk image is signed with a Developer ID and notarized; unset, it
-# is ad-hoc signed.
+# are optional and reach only runs of main and of tags, never a pull-request branch however its run was started: set,
+# the disk image is signed with a Developer ID and notarized; unset, it is ad-hoc signed. A rejected notarization
+# (for example an expired app-specific password) fails a tag run and is a warning on main, where the image ships
+# signed but not notarized and the Gatekeeper assessment is skipped.
 
 on:
   workflow_call:
@@ -215,8 +217,8 @@ jobs:
       - name: Signing certificate (Developer ID, when the optional secrets are set)
         id: cert
         env:
-          MACOS_CERT_P12_BASE64: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_P12_BASE64 || '' }}
-          MACOS_CERT_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_PASSWORD || '' }}
+          MACOS_CERT_P12_BASE64: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_P12_BASE64 || '' }}
+          MACOS_CERT_PASSWORD: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MACOS_CERT_PASSWORD || '' }}
         run: |
           if [ -n "$MACOS_CERT_P12_BASE64" ]; then
             echo "identity=$(sh packaging/macos/import-cert.sh)" >> "$GITHUB_OUTPUT"
@@ -224,22 +226,29 @@ jobs:
             echo "::notice::MACOS_CERT_P12_BASE64 is not set: the disk image is ad-hoc signed and not notarized"
           fi
       - name: Package (disk image with the engine libraries in Contents/Frameworks)
+        id: package
         env:
+          # A release tag must be notarized; on main a rejected notarization login is a warning (owner, 2026-10-21).
+          NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/') && '1' || '0' }}
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
-          APPLE_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
-          APPLE_APP_PASSWORD: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_ID: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
+          APPLE_APP_PASSWORD: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_TEAM_ID || '' }}
           MPVFX_BUILD: ${{ github.sha }}
           MPVFX_SYMBOLS_DIR: ${{ github.workspace }}/symbols
         run: |
           export MPVFX_BUILD=${MPVFX_BUILD::7}
           if [ -n "$MACOS_SIGN_IDENTITY" ]; then mode=developer-id; else mode=adhoc; fi
           sh packaging/macos/package.sh "$GITHUB_WORKSPACE/dist" "$mode" | tee "$RUNNER_TEMP/package.log"
+          if [ "$mode" = developer-id ] && [ ! -e "$GITHUB_WORKSPACE/dist/.not-notarized" ]; then notarized=true; else notarized=false; fi
+          echo "notarized=$notarized" >> "$GITHUB_OUTPUT"
+          rm -f "$GITHUB_WORKSPACE/dist/.not-notarized"
           ls -l "$GITHUB_WORKSPACE/dist"
       - name: Launch smoke from the installed disk image
         timeout-minutes: 8
         env:
           SIGNED: ${{ steps.cert.outputs.identity != '' }}
+          NOTARIZED: ${{ steps.package.outputs.notarized }}
         run: |
           dmg=$(ls "$GITHUB_WORKSPACE"/dist/MpVFX-*.dmg)
           mnt=$(mktemp -d); hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
@@ -247,7 +256,10 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$apps/MpVFX.app"
           ls -l "$apps/MpVFX.app/Contents/Frameworks"
           otool -L "$apps/MpVFX.app/Contents/MacOS/MpVFX" | grep -E 'mpvfx_media|cvkf'
-          if [ "$SIGNED" = true ]; then
+          if [ "$SIGNED" = true ] && [ "$NOTARIZED" != true ]; then
+            echo "::warning::the disk image is Developer ID signed but not notarized: Gatekeeper assessment skipped"
+          fi
+          if [ "$SIGNED" = true ] && [ "$NOTARIZED" = true ]; then
             spctl --assess --type execute --verbose=4 "$apps/MpVFX.app"
             spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
           fi
