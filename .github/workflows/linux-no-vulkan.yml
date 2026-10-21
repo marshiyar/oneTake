@@ -116,7 +116,8 @@ jobs:
     runs-on: ubuntu-24.04
     # Runs here only when nothing was sent to OneTake-actionRunners-1 (job runners): the build runs in one place.
     needs: runners
-    if: always() && needs.runners.outputs.sent != 'true'
+    # !cancelled(), not always(): a newer run's cancel-in-progress still cancels it.
+    if: ${{ !cancelled() && needs.runners.outputs.sent != 'true' }}
     container: swift:6.3.3-noble
     timeout-minutes: 45
     defaults:

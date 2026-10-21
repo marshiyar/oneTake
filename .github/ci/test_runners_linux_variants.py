@@ -64,7 +64,7 @@ class Handoff(unittest.TestCase):
         for wf in VARIANTS:
             build = yaml.safe_load(text(f"{wf}.yml"))["jobs"]["build"]
             self.assertEqual(build["needs"], "runners", wf)
-            self.assertEqual(build["if"], "always() && needs.runners.outputs.sent != 'true'", wf)
+            self.assertEqual(build["if"], "${{ !cancelled() && needs.runners.outputs.sent != 'true' }}", wf)
 
     def test_the_vulkan_guard_stays_local_and_ungated(self):
         guard = yaml.safe_load(text("linux-no-vulkan.yml"))["jobs"]["guard"]
