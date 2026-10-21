@@ -37,12 +37,14 @@ public enum TimelineZoom {
         guard fit.isFinite, fit > 0 else { return 100 }
         return max(100, jsRound(previewFPS * maxFrameWidthPx / fit * 100))
     }
-    public static func clamp(_ percent: Double, fit: Double) -> Double {
+    /// The zoom percent within the limits; `rounded` (the buttons, slider and pinch) also snaps it to a whole percent,
+    /// while an absolute scale (`TimelineController.setZoom(pixelsPerSecond:)`) keeps its exact ratio.
+    public static func clamp(_ percent: Double, fit: Double, rounded: Bool = true) -> Double {
         guard percent.isFinite else { return 100 }
-        return max(minPercent, min(maxPercent(fit: fit), jsRound(percent)))
+        return max(minPercent, min(maxPercent(fit: fit), rounded ? jsRound(percent) : percent))
     }
     public static func percent(_ mode: TimelineZoomMode, manual: Double, fit: Double) -> Double {
-        mode == .fit ? 100 : clamp(manual, fit: fit)
+        mode == .fit ? 100 : clamp(manual, fit: fit, rounded: false)   // stored values were clamped on the way in
     }
     public static func pixelsPerSecond(fit: Double, mode: TimelineZoomMode, manual: Double) -> Double {
         guard fit.isFinite, fit > 0 else { return 100 }

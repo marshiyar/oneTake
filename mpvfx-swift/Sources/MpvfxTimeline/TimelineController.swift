@@ -148,12 +148,20 @@ public final class TimelineController {
 
     /// Zoom keeping the time under `anchorX` fixed on screen.
     public func setZoom(percent: Double, anchorX: Double? = nil) {
+        applyZoom(TimelineZoom.clamp(percent, fit: fitPixelsPerSecond), anchorX: anchorX)
+    }
+    func applyZoom(_ clampedPercent: Double, anchorX: Double?) {
         let ax = anchorX ?? TimelineLayout.contentOrigin
         let anchorTime = view.time(forX: ax)
-        zoomMode = .manual; manualZoomPercent = TimelineZoom.clamp(percent, fit: fitPixelsPerSecond)
+        zoomMode = .manual; manualZoomPercent = clampedPercent
         view.pixelsPerSecond = TimelineZoom.pixelsPerSecond(fit: fitPixelsPerSecond, mode: zoomMode, manual: manualZoomPercent)
         view.scrollX = TimelineLayout.contentOrigin + anchorTime * view.pixelsPerSecond - ax
         clampScroll(); onZoomChange?(zoomMode, manualZoomPercent); needsDisplay?()
+    }
+    /// Zoom to an exact absolute scale (within the zoom limits), whatever the fit is at this viewport and duration.
+    public func setZoom(pixelsPerSecond pps: Double, anchorX: Double? = nil) {
+        let fit = fitPixelsPerSecond
+        applyZoom(TimelineZoom.clamp(pps / max(fit, 1e-9) * 100, fit: fit, rounded: false), anchorX: anchorX)
     }
     public func zoom(in dirIn: Bool) { setZoom(percent: TimelineZoom.next(dirIn, mode: zoomMode, manual: manualZoomPercent, fit: fitPixelsPerSecond)) }
     public func zoomToFit() { zoomMode = .fit; view.scrollX = 0; relayout(); onZoomChange?(zoomMode, manualZoomPercent) }
