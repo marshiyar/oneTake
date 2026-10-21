@@ -230,9 +230,18 @@ public struct PreviewComposition {
         out.text = e.kind == .text ? c.text : nil
         out.masks = (c.masks ?? []).filter(\.isSupported).map { mask in
             var evaluated = mask
+            if let v = num("mask.\(mask.id).x") { evaluated.x = v }
+            if let v = num("mask.\(mask.id).y") { evaluated.y = v }
+            if let v = num("mask.\(mask.id).width") { evaluated.width = v }
+            if let v = num("mask.\(mask.id).height") { evaluated.height = v }
+            if let v = num("mask.\(mask.id).angle") { evaluated.angle = v }
             if let v = num("mask.\(mask.id).feather") { evaluated.feather = v }
             if let v = num("mask.\(mask.id).expansion") { evaluated.expansion = v }
             if let v = num("mask.\(mask.id).opacity") { evaluated.opacity = v }
+            if let v = num("mask.\(mask.id).invert") { evaluated.invert = v >= 0.5 }
+            if let v = num("mask.\(mask.id).mode") {
+                evaluated.mode = ["add", "subtract", "intersect"][min(max(Int(v.rounded()), 0), 2)]
+            }
             return evaluated
         }
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
@@ -315,10 +324,18 @@ public enum PreviewPainter {
             }
             if let image {
                 let picture = toView(mediaRect(imageWidth: image.width, imageHeight: image.height, in: layer.box), frame: frame, scale: s)
-                let visibleImage = layer.masks.isEmpty ? image : MaskCoverageRasterizer.applying(layer.masks, to: image)
+                let layerWidth = max(1, Int(box.width.rounded(.up))), layerHeight = max(1, Int(box.height.rounded(.up)))
+                let localPicture = CanvasRect(x: picture.x - box.x, y: picture.y - box.y,
+                                              width: picture.width, height: picture.height)
+                let visibleImage = layer.masks.isEmpty ? image : MaskCoverageRasterizer.applying(
+                    layer.masks, to: image, layerWidth: layerWidth, layerHeight: layerHeight, picture: localPicture)
                 c.drawImage(visibleImage, in: picture, opacity: layer.opacity)
             } else if let text = layer.text {
-                TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                if layer.masks.isEmpty {
+                    TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                } else if let image = maskedText(text, masks: layer.masks, box: box, scale: s) {
+                    c.drawImage(image, in: box, opacity: layer.opacity)
+                }
             }
             if let style = layer.style, style.visibleStrokeWidth > 0, let color = CanvasColor(hex: style.resolvedStrokeColor) {
                 // Inside the box edge, like export's drawbox.
@@ -327,6 +344,16 @@ public enum PreviewPainter {
                 c.stroke(p, color.withAlpha(color.a * layer.opacity), StrokeStyle(width: w))
             }
         }
+    }
+
+    private static func maskedText(_ text: NativeClipText, masks: [NativeClipMask], box: CanvasRect,
+                                   scale: Double) -> CanvasImage? {
+        let width = max(1, Int(box.width.rounded(.up))), height = max(1, Int(box.height.rounded(.up)))
+        guard let canvas = try? RasterCanvas(width: width, height: height) else { return nil }
+        canvas.clear(.transparent)
+        TextLayout.draw(NativeTextRendering.block(text, scale: scale),
+                        in: CanvasRect(x: 0, y: 0, width: box.width, height: box.height), on: canvas, opacity: 1)
+        return MaskCoverageRasterizer.applying(masks, to: canvas.image())
     }
 
     /// Mesh cells per side for a lens-projected layer: each cell is two triangles drawn with their own affine map.

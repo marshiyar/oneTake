@@ -46,6 +46,24 @@ public enum MaskCoverageRasterizer {
         return CanvasImage(width: image.width, height: image.height, rgba: rgba)
     }
 
+    /// Applies layer-local coverage to a picture contained within that layer. `picture` and the layer dimensions
+    /// are expressed in the same device-pixel coordinate space, so feather remains measured in rendered pixels.
+    public static func applying(_ masks: [NativeClipMask], to image: CanvasImage, layerWidth: Int, layerHeight: Int,
+                                picture: CanvasRect) -> CanvasImage {
+        let c = coverage(width: layerWidth, height: layerHeight, masks: masks)
+        guard !c.isEmpty, picture.width > 0, picture.height > 0 else { return image }
+        var rgba = image.rgba
+        for y in 0..<image.height { for x in 0..<image.width {
+            let layerX = Int((picture.x + (Double(x) + 0.5) * picture.width / Double(image.width)).rounded(.down))
+            let layerY = Int((picture.y + (Double(y) + 0.5) * picture.height / Double(image.height)).rounded(.down))
+            let coverage = (0..<layerWidth).contains(layerX) && (0..<layerHeight).contains(layerY)
+                ? c[layerY * layerWidth + layerX] : 0
+            let alpha = y * image.width * 4 + x * 4 + 3
+            rgba[alpha] = UInt8((Double(rgba[alpha]) * coverage).rounded().clamped(to: 0...255))
+        }}
+        return CanvasImage(width: image.width, height: image.height, rgba: rgba)
+    }
+
     private static func shape(width w: Int, height h: Int, mask m: NativeClipMask) -> [Double] {
         let cx = (m.x ?? 0.5) * Double(w), cy = (m.y ?? 0.5) * Double(h)
         let mw = (m.width ?? 1) * Double(w), mh = (m.height ?? 1) * Double(h)

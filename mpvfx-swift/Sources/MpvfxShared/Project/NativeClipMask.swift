@@ -16,6 +16,19 @@ import Foundation
 /// A non-destructive mask in layer-local coordinates. Geometry is normalized to the layer box.
 /// String-backed `kind` and `mode` deliberately preserve values written by a newer editor.
 public struct NativeClipMask: Codable, Equatable, Sendable {
+    public struct Configuration: Equatable, Sendable {
+        public var mode: String?
+        public var x: Double?, y: Double?, width: Double?, height: Double?, angle: Double?
+        public var feather: Double?, expansion: Double?, opacity: Double?
+        public var invert: Bool?
+
+        public init(mode: String? = nil, x: Double? = nil, y: Double? = nil, width: Double? = nil,
+                    height: Double? = nil, angle: Double? = nil, feather: Double? = nil,
+                    expansion: Double? = nil, opacity: Double? = nil, invert: Bool? = nil) {
+            self.mode = mode; self.x = x; self.y = y; self.width = width; self.height = height; self.angle = angle
+            self.feather = feather; self.expansion = expansion; self.opacity = opacity; self.invert = invert
+        }
+    }
     public var v: Int
     public var id: String
     public var kind: String
@@ -32,12 +45,20 @@ public struct NativeClipMask: Codable, Equatable, Sendable {
     public var spread = NativeSpreadKeys()
     static let known = ["v", "id", "kind", "mode", "x", "y", "width", "height", "angle", "feather", "expansion", "opacity", "invert"]
 
+    public init(v: Int = 1, id: String, kind: String, configuration: Configuration = .init()) {
+        self.v = v; self.id = id; self.kind = kind; mode = configuration.mode; x = configuration.x; y = configuration.y
+        width = configuration.width; height = configuration.height; angle = configuration.angle; feather = configuration.feather
+        expansion = configuration.expansion; opacity = configuration.opacity; invert = configuration.invert
+    }
+
+    @available(*, deprecated, message: "Use init(v:id:kind:configuration:)")
     public init(v: Int = 1, id: String, kind: String, mode: String? = nil, x: Double? = nil, y: Double? = nil,
                 width: Double? = nil, height: Double? = nil, angle: Double? = nil, feather: Double? = nil,
                 expansion: Double? = nil, opacity: Double? = nil, invert: Bool? = nil) {
-        self.v = v; self.id = id; self.kind = kind; self.mode = mode; self.x = x; self.y = y
-        self.width = width; self.height = height; self.angle = angle; self.feather = feather
-        self.expansion = expansion; self.opacity = opacity; self.invert = invert
+        self.init(v: v, id: id, kind: kind,
+                  configuration: Configuration(mode: mode, x: x, y: y, width: width, height: height,
+                                               angle: angle, feather: feather, expansion: expansion,
+                                               opacity: opacity, invert: invert))
     }
 
     public init(from decoder: Decoder) throws {
