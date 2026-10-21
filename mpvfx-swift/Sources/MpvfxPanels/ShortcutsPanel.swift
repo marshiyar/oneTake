@@ -31,6 +31,7 @@ public let shortcutSections: [ShortcutSection] = {
                        ("H", "Toggle hold / bezier"), ("F9", "Easy ease selected keyframes"),
                        ("⇧F9", "Easy ease in"), ("⌘⇧F9", "Easy ease out"), ("U", "Expand / collapse properties"), ("R", "Arm Record motion")]),
         s("Editing", [("⌘C", "Copy element"), ("⌘V", "Paste element"), ("⌥⌘C", "Copy grade"), ("⌥⌘V", "Paste grade"), ("⌘X", "Cut element"), ("S", "Split clip at playhead"),
+                      ("⇧H", "Hold frame at playhead"), ("⌥⇧H", "Hold frame, overwriting what follows"),
                       ("Shift + click/drag", "Selection tool: add clips to selection"), ("⌥ Drag clip", "Drop without swapping"), ("⇧Click", "Razor tool: split all tracks"),
                       ("⌘G", "Group elements"), ("⌘⇧G", "Ungroup"), ("Del", "Delete selected element (no keyframe selected)")]),
         s("Gesture recording modifiers", [("Drag", "Record x / y position"), ("Scroll", "Record z depth"), ("⇧ Drag", "Record rotationX / rotationY"),
