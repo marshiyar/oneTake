@@ -66,11 +66,13 @@ jobs:
     outputs:
       code: ${{ steps.files.outputs.code }}
       linux: ${{ steps.files.outputs.linux }}
-      windows: ${{ steps.files.outputs.windows }}
-      macos: ${{ steps.files.outputs.macos }}
+      # Windows and macOS jobs are paused (owner ruling 2026-10-21) to free the runners while the app is built out on
+      # Linux; the jobs stay defined, and the repository variable LINUX_ONLY=false brings them back.
+      windows: ${{ vars.LINUX_ONLY == 'false' && steps.files.outputs.windows || 'false' }}
+      macos: ${{ vars.LINUX_ONLY == 'false' && steps.files.outputs.macos || 'false' }}
       # true: the pull request touches macOS code (.github/ci/macos_gate.py), so its macOS build runs without the `macos`
       # label and ci-ok requires it.
-      macos_code: ${{ steps.mac.outputs.macos_code }}
+      macos_code: ${{ vars.LINUX_ONLY == 'false' && steps.mac.outputs.macos_code || 'false' }}
       # true: the pull request changes the test jobs OneTake-actionRunners-1 runs from main (mpvfx-ci.yml, its generated
       # mpvfx-ci-tests-source.yml or source_workflows.py), so every shard runs here, with its own definition.
       workflow: ${{ steps.files.outputs.workflow }}
