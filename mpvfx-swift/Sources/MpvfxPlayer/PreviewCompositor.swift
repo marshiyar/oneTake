@@ -161,10 +161,16 @@ public final class PreviewCompositor: FrameSource {
                                grade: look.grade, gradeCurrent: look.current))
             drew(pick, for: layer)
         }
+        // A layer only its fade hides this frame (a fade-in's first frame) keeps its decoder running.
+        for layer in layers where !layer.isVisible && layer.needsDecoder {
+            guard let lane = lane(for: layer, fps: comp.fps) else { continue }
+            lane.request(frame: frame, ahead: ahead, behind: behind, size: decodeSize(layer, scale: s, backing: context.backingScale))
+            used.insert(lane.key)
+        }
         // Pre-roll clips starting soon so their first frames are ready at the cut.
         if forward {
             let horizon = max(0.5, Double(ahead) / comp.fps) * max(1, context.speed)
-            for up in comp.upcoming(after: time, within: horizon) where up.isVisible {
+            for up in comp.upcoming(after: time, within: horizon) where up.needsDecoder {
                 guard let lane = lane(for: up, fps: comp.fps) else { continue }
                 lane.request(frame: up.startFrame, ahead: min(ahead, 3), size: decodeSize(up, scale: s, backing: context.backingScale))
                 used.insert(lane.key)
@@ -173,7 +179,7 @@ public final class PreviewCompositor: FrameSource {
         // Backward: clips that end just before the playhead get their last chunk ready for the cut.
         if backward {
             let horizon = max(0.5, Double(behind) / comp.fps)
-            for up in comp.upcomingReverse(before: time, within: horizon) where up.isVisible {
+            for up in comp.upcomingReverse(before: time, within: horizon) where up.needsDecoder {
                 guard let lane = lane(for: up, fps: comp.fps) else { continue }
                 lane.request(frame: up.endFrame - 1, ahead: 0, behind: behind, size: decodeSize(up, scale: s, backing: context.backingScale))
                 used.insert(lane.key)
