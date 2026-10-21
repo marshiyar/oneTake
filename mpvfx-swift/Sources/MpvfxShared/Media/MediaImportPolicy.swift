@@ -15,15 +15,16 @@
 import Foundation
 
 /// The media kinds of SUPPORTED_MEDIA_IMPORT_EXTENSIONS, in the table's key order.
-public enum MediaImportKind: String, CaseIterable, Codable { case video, audio, image, font, lut }
+public enum MediaImportKind: String, CaseIterable, Codable, Sendable { case video, audio, image, font, lut }
 
 /// SUPPORTED_MEDIA_IMPORT_EXTENSIONS (ordered: kind order and extension order are part of the contract).
-public let SUPPORTED_MEDIA_IMPORT_EXTENSIONS: KeyValuePairs<MediaImportKind, [String]> = [
-    .video: ["mp4", "m4v", "mov", "webm"],
-    .audio: ["mp3", "wav", "ogg", "m4a", "aac"],
-    .image: ["jpg", "jpeg", "png", "gif", "webp", "avif", "svg", "ico"],
-    .font: ["woff", "woff2", "ttf", "ttc", "otf", "eot"],
-    .lut: ["cube"],
+/// An array of pairs rather than KeyValuePairs, which is not Sendable.
+public let SUPPORTED_MEDIA_IMPORT_EXTENSIONS: [(key: MediaImportKind, value: [String])] = [
+    (.video, ["mp4", "m4v", "mov", "webm"]),
+    (.audio, ["mp3", "wav", "ogg", "m4a", "aac"]),
+    (.image, ["jpg", "jpeg", "png", "gif", "webp", "avif", "svg", "ico"]),
+    (.font, ["woff", "woff2", "ttf", "ttc", "otf", "eot"]),
+    (.lut, ["cube"]),
 ]
 
 public func supportedMediaImportExtensions(_ kind: MediaImportKind) -> [String] {

@@ -103,11 +103,15 @@ func engineLinkerSettings(_ component: String) -> [LinkerSetting] {
     #endif
 }
 
+// Swift 6 language mode, target by target (issue #50): the package default stays Swift 5 until every target is listed.
+let swift6: [SwiftSetting] = [.swiftLanguageMode(.v6)]
+
 let engineTargets: [Target] = [
     .systemLibrary(name: "CMediaEngine", path: "Sources/CMediaEngine"),
-    .target(name: "OneTakeMedia", dependencies: ["CMediaEngine"], linkerSettings: engineLinkerSettings("media")),
+    .target(name: "OneTakeMedia", dependencies: ["CMediaEngine"], swiftSettings: swift6, linkerSettings: engineLinkerSettings("media")),
     .systemLibrary(name: "CKeyframeEngine", path: "Sources/CKeyframeEngine"),
-    .target(name: "OneTakeKeyframes", dependencies: ["CKeyframeEngine"], linkerSettings: engineLinkerSettings("keyframes")),
+    .target(name: "OneTakeKeyframes", dependencies: ["CKeyframeEngine"], swiftSettings: swift6,
+            linkerSettings: engineLinkerSettings("keyframes")),
 ]
 
 let package = Package(
@@ -124,7 +128,7 @@ let package = Package(
             pkgConfig: "gtk+-3.0",
             providers: [.apt(["libgtk-3-dev"])]
         ),
-        .target(name: "MpvfxShared", dependencies: [keyframeEngine]),
+        .target(name: "MpvfxShared", dependencies: [keyframeEngine], swiftSettings: swift6),
         // Color grading and stylize effects: the grading shader on the CPU, shared by preview and export; on macOS
         // frames are graded on the GPU through MpvfxMetal (CPU port as fallback and test reference).
         // Uniform/parameter layout shared with the Metal kernels (the header lives beside the shader).
@@ -163,7 +167,7 @@ let package = Package(
         // Audio output (PulseAudio / Core Audio / WASAPI) + stem decode through the media engine (OneTakeMedia) + mixer + audio master clock.
         .target(name: "MpvfxAudio", dependencies: audioTargetDependencies),
         // Pure-Swift audio bus/FX graph (Float32, deterministic) shared by playback and export.
-        .target(name: "MpvfxAudioGraph"),
+        .target(name: "MpvfxAudioGraph", swiftSettings: swift6),
         // Player popovers (speed, shortcuts, volume) + crop persistence, drawn on MpvfxCanvas.
         .target(name: "MpvfxPanels", dependencies: ["MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", "MpvfxTheme"]),
         // Release-build render-speed benchmark for the bus/FX graph (`swift run -c release MpvfxAudioBench`).
@@ -180,13 +184,14 @@ let package = Package(
             .target(name: "CGtk3", condition: .when(platforms: [.linux])), win32,
         ]),
         .testTarget(name: "MpvfxSharedTests", dependencies: ["MpvfxShared"],
-                    exclude: ["Engine/Fixtures", "Export/Fixtures", "Library/Fixtures", "Media/Fixtures", "Project/Fixtures"]),
-        .testTarget(name: "OneTakeMediaTests", dependencies: [mediaEngine]),
+                    exclude: ["Engine/Fixtures", "Export/Fixtures", "Library/Fixtures", "Media/Fixtures", "Project/Fixtures"],
+                    swiftSettings: swift6),
+        .testTarget(name: "OneTakeMediaTests", dependencies: [mediaEngine], swiftSettings: swift6),
         .testTarget(name: "MpvfxThemeTests", dependencies: ["MpvfxTheme"]),
         // Launches the built MpVFX binary (Linux, under Xvfb) and compares window snapshots; OneTakeMedia decodes the PNGs.
-        .testTarget(name: "MpvfxAppSmokeTests", dependencies: [mediaEngine]),
+        .testTarget(name: "MpvfxAppSmokeTests", dependencies: [mediaEngine], swiftSettings: swift6),
         .testTarget(name: "MpvfxColorTests", dependencies: colorTestDependencies),
-        .testTarget(name: "MpvfxSharedEngineTests", dependencies: ["MpvfxShared", keyframeEngine]),
+        .testTarget(name: "MpvfxSharedEngineTests", dependencies: ["MpvfxShared", keyframeEngine], swiftSettings: swift6),
         .testTarget(name: "MpvfxDesktopCoreTests", dependencies: ["MpvfxDesktopCore", "MpvfxTheme"]),
         // The whole editor (EditorSession, shell router, panels) rendered through a canvas: live appearance switching.
         // MpvfxBackend + MpvfxTimeline: the quit test saves through RuntimeDesktopBackend and reads the editor's undo stack.
@@ -203,7 +208,7 @@ let package = Package(
         .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", keyframeEngine]),
         .testTarget(name: "MpvfxStartupTests", dependencies: [keyframeEngine, "MpvfxShared", "MpvfxRuntime"]),
         .testTarget(name: "MpvfxAudioTests", dependencies: ["MpvfxAudio", "MpvfxAudioGraph", "MpvfxShared"]),
-        .testTarget(name: "MpvfxAudioGraphTests", dependencies: ["MpvfxAudioGraph"], exclude: ["Fixtures"]),
+        .testTarget(name: "MpvfxAudioGraphTests", dependencies: ["MpvfxAudioGraph"], exclude: ["Fixtures"], swiftSettings: swift6),
         .testTarget(name: "MpvfxPanelsTests", dependencies: ["MpvfxPanels", "MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", keyframeEngine, "MpvfxTheme"]),
         // Inspector controls end to end: row edit -> preview composite / live audio graph inputs / export frame and mix.
         .testTarget(name: "MpvfxInspectorAuditTests", dependencies: ["MpvfxPanels", "MpvfxPlayer", "MpvfxTimeline", "MpvfxCanvas", "MpvfxShared",
