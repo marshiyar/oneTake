@@ -108,6 +108,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>LSApplicationCategoryType</key><string>public.app-category.video</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
+<key>NSSpeechRecognitionUsageDescription</key><string>MpVFX turns the speech in your clips into captions on this Mac. Audio is not sent anywhere.</string>
 </dict></plist>
 PLIST
 plutil -lint "$app/Contents/Info.plist"
