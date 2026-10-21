@@ -29,6 +29,18 @@ final class MemoryBudgetTests: XCTestCase {
         XCTAssertLessThanOrEqual(MemoryBudget.previewFrames(), 2 * gb)
     }
 
+    /// The preview benchmark's `budget_sum_mib`: raw frames plus graded pictures, each within its own bounds.
+    func testPreviewTotalIsTheSumOfThePreviewBudgets() {
+        let gb = 1 << 30
+        let ram = Int(15.6 * Double(gb))   // the Linux hosted runner of the issue #97 baseline
+        XCTAssertEqual(MemoryBudget.previewTotal(physical: ram, env: [:]),
+                       MemoryBudget.previewFrames(physical: ram, env: [:]) + MemoryBudget.gradedFrames(physical: ram))
+        XCTAssertEqual(MemoryBudget.previewTotal(physical: ram, env: [:]), Int(Double(ram) * 0.10) + (256 << 20))
+        let overridden = MemoryBudget.previewTotal(physical: 16 * gb, env: ["MPVFX_PREVIEW_CACHE_MB": "64"])
+        XCTAssertEqual(overridden, (64 << 20) + (256 << 20), "the override replaces the frame budget in the sum too")
+        XCTAssertEqual(MemoryBudget.previewTotal(physical: 1 * gb, env: [:]), (256 << 20) + (64 << 20), "both floors")
+    }
+
     func testFootprintIsReadable() throws {
         #if os(Linux) || os(macOS)
         let a = try XCTUnwrap(ResidentMemory.footprintBytes())

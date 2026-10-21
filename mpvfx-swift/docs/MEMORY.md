@@ -33,6 +33,12 @@ background loop.
   - media bin thumbnails, filmstrips: 2% of RAM, 64 to 256 MB;
   - idle Metal grade targets: at most 6 sizes and 256 MB.
   Least recently used entries go first.
+- **Frames being decoded count against the frame budget.** A decode lane reserves a frame's bytes in
+  `PreviewFrameCache` before it decodes it (`reserve`, which evicts to make room) and hands the reservation over when
+  it stores the frame, or gives it back when the media ended or the frame was dropped. Cached plus in-flight frames
+  stay within `MemoryBudget.previewFrames`; before, each lane decoding at a full cache held one more frame outside it
+  (`PreviewMemoryTests.testTwoStacked1080pLanesKeepCachedPlusInFlightFramesWithinTheBudget`). Lookahead
+  (`PreviewCompositor.maxLookahead`, 12) and reverse chunks are cache entries, inside the budget.
 - **Memory pressure gives memory back.** `MemoryPressureMonitor` listens to macOS memory warnings. On a warning the
   frame cache drops to half its budget, thumbnails trim to half, the grader keeps only its most recent picture, and
   the Metal pool empties. On a critical warning the caches empty completely. Views re-request what they need.
@@ -52,7 +58,13 @@ background loop.
 ## Risks
 
 - Budgets are estimates of picture bytes. Allocator overhead and the media engine's own working memory (decoder state) are not counted, so the real
-  footprint sits somewhat above the sum of the budgets.
+  footprint sits somewhat above the sum of the budgets (`MemoryBudget.previewTotal`: frames plus graded pictures).
+  The preview benchmark reports the gap per scenario as `unaccounted_mib`; the target is at most 512 MiB above
+  `budget_sum_mib` on the Linux hosted runner (issue #97).
+- Until issue #97 the preview benchmark kept its playback phase's compositor, with a frame cache filled up to the
+  budget, alive while its real-time phase filled a second one, so `peak_rss_mib` counted two caches the app never
+  holds at once (estimated from the baseline: Linux stacked 3328 MiB is about one 1597 MiB budget plus 320
+  real-time frames of 3.5 MiB plus the process). The bench now releases the first compositor before the second starts.
 - Dropping graded pictures under budget pressure costs a re-grade (a GPU pass on macOS, CPU time on Linux) when that
   clip is shown again.
 - The macOS-only paths (Metal pool budget, the system memory-pressure source, `phys_footprint`) are exercised only on
@@ -64,6 +76,10 @@ background loop.
   `PreviewMemoryTests` (frame cache budget and eviction, pressure, removed clips, grader budget, a long
   play / scrub / grade / reverse session, and a 600-frame read loop whose footprint must stay flat),
   `MetalPoolMemoryTests` (Metal pool within budget, emptied on pressure).
+- Preview benchmark (`tools/MpvfxPreviewBench`, run by `.github/workflows/bench.yml`): each scenario's line has
+  `peak_rss_mib`, `cache_bytes_mib` (frames cached plus in flight at their peak), `in_flight_mib`,
+  `grader_bytes_mib`, `budget_sum_mib`, `start_rss_mib` (before any decoding) and `unaccounted_mib`
+  (`peak_rss_mib` minus the caches' peaks).
 - Smoke run: `MPVFX_SMOKE_MEMORY=<rounds>` launches the app, drives the open project through rounds of play, scrub,
   grade edits, reverse and replay, simulates a memory warning halfway, and exits 0 (`PASS`) or 4 (`FAIL`) with a
   footprint report. `MPVFX_SMOKE_MEMORY_LIMIT_MB` sets the allowed growth beyond what the caches hold (default 256),

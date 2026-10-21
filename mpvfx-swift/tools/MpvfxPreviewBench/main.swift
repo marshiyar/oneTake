@@ -36,6 +36,14 @@ import CoreGraphics
 //   MpvfxPreviewBench --make-clips <fixtures dir>   (writes the clips with the media engine's encoder; Clips.swift)
 //   (--no-realtime: playback only, for allocation counts under valgrind --tool=dhat)
 //   scenarios: 1080p, 4k, stacked, graded, scrub
+//
+// Memory (issue #97): next to peak_rss_mib each line records what the budgeted caches held at their peak
+// (cache_bytes_mib: decoded frames cached plus in flight; in_flight_mib: frames the lanes were decoding;
+// grader_bytes_mib: graded pictures, sampled at every draw), their budgets (budget_sum_mib, MemoryBudget.previewTotal
+// for this machine), the process before any decoding (start_rss_mib) and peak_rss_mib minus the caches' peaks
+// (unaccounted_mib: the binaries and engine libraries, the engine's decoder state, canvas surfaces, allocator
+// overhead). The playback phase's compositor is released before the real-time phase starts its own, as closing a
+// project does, so the two phases' caches are never held at once.
 
 func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
 
@@ -107,6 +115,8 @@ final class Run {
     let rect: CanvasRect
     let ready = DispatchSemaphore(value: 0)
     var paintSeconds = 0.0, draws = 0, stalls = 0
+    /// Most bytes of graded pictures the grader held, sampled after every draw (outside the paint timing).
+    var gradedPeak = 0
 
     init(_ doc: NativeProjectDocument, width: Int, height: Int) {
         screen = Screen(width: width, height: height)
@@ -119,6 +129,7 @@ final class Run {
         let t0 = now()
         compositor.draw(screen.canvas, in: rect, time: time, elements: [], context: FrameDrawContext(isPlaying: playing))
         paintSeconds += now() - t0; draws += 1
+        gradedPeak = max(gradedPeak, compositor.gradedMemoBytes)
         return compositor.lastShown.allSatisfy { $0.exact && $0.gradeCurrent }
     }
 
@@ -146,6 +157,28 @@ final class Run {
 
 func fmt(_ v: Double) -> String { String(format: "%.2f", v) }
 
+func mib(_ bytes: Int) -> Double { Double(bytes) / 1_048_576 }
+
+/// What the budgeted caches held at their peak over every compositor a scenario ran (one phase after another, so
+/// the largest of each is what was held at once), and their budgets.
+struct CachePeaks {
+    var held = 0, inFlight = 0, graded = 0, budget = 0
+
+    mutating func add(_ run: Run) {
+        let cache = run.compositor.cache
+        held = max(held, cache.peakHeldBytes)
+        inFlight = max(inFlight, cache.peakInFlightBytes)
+        graded = max(graded, run.gradedPeak)
+        budget = max(budget, cache.budgetBytes + run.compositor.gradedMemoBudget)
+    }
+
+    func fields(peakRSS: Double, startRSS: Double) -> [String: String] {
+        ["cache_bytes_mib": fmt(mib(held)), "in_flight_mib": fmt(mib(inFlight)), "grader_bytes_mib": fmt(mib(graded)),
+         "budget_sum_mib": fmt(mib(budget)), "start_rss_mib": fmt(startRSS),
+         "unaccounted_mib": fmt(peakRSS - mib(held) - mib(graded))]
+    }
+}
+
 /// Unthrottled forward playback: every frame shown exactly, as fast as the pipeline delivers them.
 func playback(_ run: Run, frames: Int) -> [String: String] {
     _ = run.draw(0, playing: false); run.show(0, playing: false)
@@ -167,8 +200,7 @@ func playback(_ run: Run, frames: Int) -> [String: String] {
 /// Real-time playback for `seconds` at 30 draws per second, as the display timer drives it: the share of draws that
 /// showed every layer's exact frame (the rest held an earlier frame), how many different pictures reached the screen
 /// per second (smoothness: 30 is every frame), and how far the shown frame trailed the playhead.
-func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Double) -> [String: String] {
-    let run = Run(doc, width: width, height: height)
+func realtime(_ run: Run, seconds: Double) -> [String: String] {
     run.show(0, playing: false)
     var exact = 0, total = 0, changes = 0, lag = 0
     var last: [Int?] = []
@@ -235,6 +267,7 @@ func main() throws {
         print("       MpvfxPreviewBench --make-clips <fixtures dir>"); exit(2)
     }
     let (width, height) = (1280, 720)
+    let startRSS = mib(ResidentMemory.footprintBytes() ?? 0)
     let doc = try document(sc.clips, dir: args[2], seconds: sc.seconds)
     let frames = args.count > 4 ? Int(args[4]) ?? 120 : Int(sc.seconds * 30) - 2
     var result: [String: String] = ["scenario": args[1], "display": "\(width)x\(height)"]
@@ -244,9 +277,18 @@ func main() throws {
     } else {
         result.merge(playback(run, frames: frames)) { $1 }
     }
-    run.compositor.stopAll()
-    if args[1] != "scrub" && !args.contains("--no-realtime") { result.merge(realtime(doc, width: width, height: height, seconds: min(5, sc.seconds - 0.5))) { $1 } }
-    result["peak_rss_mib"] = fmt(peakMiB())
+    var peaks = CachePeaks()
+    peaks.add(run)
+    run.compositor.releaseAll()
+    if args[1] != "scrub" && !args.contains("--no-realtime") {
+        let live = Run(doc, width: width, height: height)
+        result.merge(realtime(live, seconds: min(5, sc.seconds - 0.5))) { $1 }
+        peaks.add(live)
+        live.compositor.releaseAll()
+    }
+    let peak = peakMiB()
+    result["peak_rss_mib"] = fmt(peak)
+    result.merge(peaks.fields(peakRSS: peak, startRSS: startRSS)) { $1 }
     let line = result.keys.sorted().map { "\"\($0)\":\"\(result[$0] ?? "")\"" }.joined(separator: ",")
     print("{\(line)}")
     let handle = FileHandle(forWritingAtPath: args[3]) ?? {
