@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cmath>
 #include <mutex>
+#include <new>
+#include <utility>
 #include <vector>
 #include <wchar.h>
 
@@ -149,6 +151,28 @@ HRESULT geometry(const MpvfxPath &path, Com<ID2D1PathGeometry> &out) {
     }
     if (open) sink->EndFigure(D2D1_FIGURE_END_OPEN);
     return sink->Close();
+}
+
+/// E_POINTER / E_INVALIDARG when the pixels cannot become a bitmap of `t` (missing, empty, larger than it allows).
+HRESULT checkBitmapInput(const MpvfxD2DTarget *t, const MpvfxPixels *pixels) {
+    if (!t || !t->rt || !pixels || !pixels->rgba) return E_POINTER;
+    const UINT32 maxSide = t->rt->GetMaximumBitmapSize();
+    const bool fits = pixels->width > 0 && pixels->height > 0 && pixels->width <= maxSide && pixels->height <= maxSide;
+    return fits ? S_OK : E_INVALIDARG;
+}
+
+/// Straight RGBA8 -> premultiplied BGRA8 (rounded), the layout of the bitmap.
+std::vector<uint8_t> premultipliedBGRA(const MpvfxPixels &pixels) {
+    const uint8_t *rgba = pixels.rgba;
+    std::vector<uint8_t> bgra(static_cast<size_t>(pixels.width) * pixels.height * 4);
+    for (size_t i = 0; i < bgra.size(); i += 4) {
+        const uint32_t a = rgba[i + 3];
+        bgra[i + 0] = static_cast<uint8_t>((rgba[i + 2] * a + 127) / 255);
+        bgra[i + 1] = static_cast<uint8_t>((rgba[i + 1] * a + 127) / 255);
+        bgra[i + 2] = static_cast<uint8_t>((rgba[i + 0] * a + 127) / 255);
+        bgra[i + 3] = static_cast<uint8_t>(a);
+    }
+    return bgra;
 }
 
 }  // namespace
@@ -313,25 +337,49 @@ mpvfx_hresult mpvfx_d2d_measure_text(const MpvfxText *text, float *width, float 
     return S_OK;
 }
 
-mpvfx_hresult mpvfx_d2d_draw_rgba(MpvfxD2DTarget *t, const MpvfxPixels *pixels, MpvfxRect dst, float opacity) {
-    const uint8_t *rgba = pixels->rgba;
+struct MpvfxD2DBitmap {
+    Com<ID2D1Bitmap> bitmap;
+    Com<ID2D1RenderTarget> owner;   // the render target that made it (held, so its address stays unique)
+    uint32_t width = 0, height = 0;
+};
+
+mpvfx_hresult mpvfx_d2d_bitmap_create(MpvfxD2DTarget *t, const MpvfxPixels *pixels, MpvfxD2DBitmap **out) {
+    if (!out) return E_POINTER;
+    *out = nullptr;
+    const HRESULT valid = checkBitmapInput(t, pixels);
+    if (FAILED(valid)) return valid;
     const uint32_t width = pixels->width, height = pixels->height;
-    if (width == 0 || height == 0) return S_OK;
-    std::vector<uint8_t> bgra(static_cast<size_t>(width) * height * 4);
-    for (size_t i = 0; i < bgra.size(); i += 4) {
-        const uint32_t a = rgba[i + 3];
-        bgra[i + 0] = static_cast<uint8_t>((rgba[i + 2] * a + 127) / 255);
-        bgra[i + 1] = static_cast<uint8_t>((rgba[i + 1] * a + 127) / 255);
-        bgra[i + 2] = static_cast<uint8_t>((rgba[i + 0] * a + 127) / 255);
-        bgra[i + 3] = static_cast<uint8_t>(a);
-    }
+    const std::vector<uint8_t> bgra = premultipliedBGRA(*pixels);
     const D2D1_BITMAP_PROPERTIES props =
         D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f);
     Com<ID2D1Bitmap> bitmap;
     HRESULT hr = t->rt->CreateBitmap(D2D1::SizeU(width, height), bgra.data(), width * 4, props, bitmap.put());
     if (FAILED(hr)) return hr;
-    const D2D1_RECT_F src = D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height));
-    t->rt->DrawBitmap(bitmap.get(), D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h), std::clamp(opacity, 0.0f, 1.0f),
+    auto *made = new (std::nothrow) MpvfxD2DBitmap();
+    if (!made) return E_OUTOFMEMORY;
+    made->bitmap = std::move(bitmap);
+    t->rt->AddRef();
+    made->owner.attach(t->rt.get());
+    made->width = width; made->height = height;
+    *out = made;
+    return S_OK;
+}
+
+int32_t mpvfx_d2d_bitmap_belongs_to(const MpvfxD2DBitmap *b, const MpvfxD2DTarget *t) {
+    return (b && t && t->rt && b->owner.get() == t->rt.get()) ? 1 : 0;
+}
+
+uint64_t mpvfx_d2d_bitmap_bytes(const MpvfxD2DBitmap *b) {
+    return b ? static_cast<uint64_t>(b->width) * b->height * 4 : 0;
+}
+
+void mpvfx_d2d_bitmap_release(MpvfxD2DBitmap *b) { delete b; }
+
+mpvfx_hresult mpvfx_d2d_draw_bitmap(MpvfxD2DTarget *t, const MpvfxD2DBitmap *b, MpvfxRect dst, float opacity) {
+    if (!t || !b) return E_POINTER;
+    if (!mpvfx_d2d_bitmap_belongs_to(b, t)) return E_INVALIDARG;
+    const D2D1_RECT_F src = D2D1::RectF(0, 0, static_cast<float>(b->width), static_cast<float>(b->height));
+    t->rt->DrawBitmap(b->bitmap.get(), D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h), std::clamp(opacity, 0.0f, 1.0f),
                       D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &src);
     return S_OK;
 }

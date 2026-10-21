@@ -140,8 +140,9 @@ public enum EffectSpecs {
         "crosshatchEdges": 0.5, "crosshatchWave": 0.33, "crosshatchWaveFrequency": 2.0 / 9,
         "kuwaharaRadius": 1.0 / 7, "kuwaharaSharpness": 5.0 / 16, "kuwaharaSaturation": 0.5,
     ]
-    public static func value(_ g: ColorGrading, _ key: String) -> Double { g.effects[key] ?? contractDefaults[key] ?? 0 }
+    /// The value the renderer draws (`ColorGrading.effect`: stored, else the named preset's, else the default).
+    public static func value(_ g: ColorGrading, _ key: String) -> Double { g.effect(key) }
     /// A setting's reset value: the effect's add value, else the contract default.
     public static func resetValue(effect: String, _ key: String) -> Double { applyDefaults[effect]?[key] ?? contractDefaults[key] ?? 0 }
-    public static func isActive(_ g: ColorGrading, _ key: String) -> Bool { (g.effects[key] ?? 0) > 0.0001 }
+    public static func isActive(_ g: ColorGrading, _ key: String) -> Bool { g.effect(key) > 0.0001 }
 }

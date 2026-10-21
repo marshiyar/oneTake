@@ -141,6 +141,30 @@ final class ExportColorGradeTests: XCTestCase {
         XCTAssertLessThanOrEqual(maxAbsDiff(exported, try previewExportFrame(input, at: 0.5)), 1)
     }
 
+    func testColourKeyMovAlphaMatchesPreviewAndRejectsUnsupportedContract() throws {
+        let key = #"{"v":1,"kind":"chroma","similarity":0.08,"smoothness":0.18}"#
+        let document = try project(key, effectId: "color-key", canvas: ##"{"width":64,"height":32,"background":"#00000000"}"##)
+        let input = NativeTimelineRenderInput(project: document, projectDir: root,
+                                              outputPath: "\(root)/key.mov", format: .mov)
+        let output = try render(document, "key.mov")
+        let exported = try Exported(path: output).rgba(0.5).rgba
+        let preview = try previewExportFrame(input, at: 0.5)
+        XCTAssertLessThanOrEqual(maxAbsDiff(exported, preview), 1)
+        let greenAlpha: [UInt8] = (0..<32).flatMap { (y: Int) -> [UInt8] in
+            (24..<32).map { (x: Int) -> UInt8 in exported[(y * 64 + x) * 4 + 3] }
+        }
+        XCTAssertLessThanOrEqual(greenAlpha.max() ?? 255, 1, "the computed matte is written to MOV alpha")
+
+        let unsupported = NativeClipEffect(id: "future", effectId: "color-key", enabled: true,
+                                           parameters: try XCTUnwrap(try NativeJSONValue.parse(#"{"v":2,"kind":"future"}"#).objectValue))
+        XCTAssertFalse(exportSupportsEffect(unsupported), "an effect ID alone must not claim export support")
+        let malformed = NativeClipEffect(id: "bad", effectId: "color-key", enabled: true,
+                                         parameters: try XCTUnwrap(try NativeJSONValue.parse(#"{"v":1,"kind":"chroma","spill":2}"#).objectValue))
+        XCTAssertFalse(exportSupportsEffect(malformed), "unsupported parameters must not claim export support")
+        XCTAssertNoThrow(try assertNativeTimelineSupported(try project(#"{"v":2,"kind":"future"}"#, effectId: "color-key")),
+                         "future contracts are intentionally retained and skipped")
+    }
+
     func testOtherEffectsAreStillRefused() throws {
         XCTAssertThrowsError(try render(try project(#"{"amount":1}"#, effectId: "glow"), "glow.mov")) { e in
             XCTAssertTrue("\(e)".contains("not been migrated"))

@@ -22,6 +22,23 @@ import MpvfxShared
 /// those parameters, `ColorGradeParams.clipGrade(_:)` finds it on a clip.
 public struct ColorGradeParams: Equatable, Sendable {
     public static let effectId = "color-grading"
+    public static let colorKeyEffectId = "color-key"
+
+    /// Version 1 of the chroma-key contract. Values are linear RGB and normalized amounts.
+    public struct ColorKey: Equatable, Sendable {
+        public var color: SIMD3<Double>
+        public var similarity: Double
+        public var smoothness: Double
+        public var spill: Double
+
+        public init(color: SIMD3<Double> = SIMD3(0, 1, 0), similarity: Double = 0.1,
+                    smoothness: Double = 0.1, spill: Double = 0) {
+            self.color = color
+            self.similarity = similarity
+            self.smoothness = smoothness
+            self.spill = spill
+        }
+    }
 
     public struct Wheel: Equatable, Sendable {
         /// Degrees in [0, 360); amount in [0, 1]; level in [-1, 1].
@@ -56,6 +73,10 @@ public struct ColorGradeParams: Equatable, Sendable {
     public var intensity = 1.0
     public var adjust: [String: Double] = Self.adjustZero
     public var wheels: [String: Wheel] = ["shadows": Wheel(), "midtones": Wheel(), "highlights": Wheel()]
+    /// Lift, gamma, gain and offset (`balance`); neutral when absent.
+    public var balance: [String: Wheel] = ["lift": Wheel(), "gamma": Wheel(), "gain": Wheel(), "offset": Wheel()]
+    /// The luma contrast pivots on.
+    public var pivot = GradeValues.defaultPivot
     public var curves: [String: [[Double]]] = ["master": Self.curveIdentity, "red": Self.curveIdentity, "green": Self.curveIdentity, "blue": Self.curveIdentity]
     public var hueCurves: [String: [[Double]]] = ["hueVsHue": [], "hueVsSaturation": [], "hueVsLuma": []]
     public var secondaries: [Secondary] = []
@@ -63,6 +84,7 @@ public struct ColorGradeParams: Equatable, Sendable {
     public var effects: [String: Double] = Self.effectDefaults
     public var palette: [String]?
     public var lut: Lut?
+    public var colorKey: ColorKey?
 
     public init() {}
 
@@ -82,19 +104,7 @@ public struct ColorGradeParams: Equatable, Sendable {
     public static let curveKeys = ["master", "red", "green", "blue"]
     public static let hueCurveKeys = ["hueVsHue", "hueVsSaturation", "hueVsLuma"]
     public static let detailKeys = GradeValues.detailKeys
-    public static let effectKeys = [
-        "blur", "pixelate", "chromaBleed", "tapeDamage", "tapeTracking", "tapeNoise", "tapeSpeed", "filmArtifacts",
-        "halftone", "halftoneSize", "twoInkPrint", "twoInkPrintSize", "ascii", "asciiSize", "asciiInvert", "asciiStyle",
-        "asciiColor", "asciiRotation", "dither", "ditherSize", "bloom", "bloomRadius", "monoScreen", "monoScreenSize",
-        "monoScreenAngle", "monoScreenSpread", "monoScreenShape", "monoScreenInvert", "scanlines", "scanlineCount",
-        "scanlineSoftness", "chromaticAberration", "chromaticAngle", "crtCurvature", "digitalGlitch", "digitalGlitchColorSplit",
-        "digitalGlitchLineTear", "digitalGlitchPixelate", "digitalGlitchBlockAmount", "digitalGlitchBlockDisplacement",
-        "digitalGlitchBlockOpacity", "digitalGlitchSpeed", "engraving", "engravingSpacing", "engravingMinThickness",
-        "engravingMaxThickness", "engravingAngle", "engravingContrast", "engravingSharpness", "engravingWave",
-        "engravingWaveFrequency", "crosshatch", "crosshatchSpacing", "crosshatchThickness", "crosshatchAngle",
-        "crosshatchContrast", "crosshatchEdges", "crosshatchLineWeight", "crosshatchWave", "crosshatchWaveFrequency",
-        "kuwahara", "kuwaharaRadius", "kuwaharaSharpness", "kuwaharaSaturation",
-    ]
+    public static let effectKeys = GradeValues.effectKeys
     /// The 18 stylize effects (HF_COLOR_GRADING_ACTIVE_EFFECT_KEYS); the other effect keys are their settings.
     public static let activeEffectKeys = ["blur", "pixelate", "chromaBleed", "tapeDamage", "filmArtifacts", "halftone", "twoInkPrint", "ascii", "dither",
                                           "bloom", "monoScreen", "scanlines", "chromaticAberration", "crtCurvature", "digitalGlitch", "engraving", "crosshatch", "kuwahara"]
@@ -103,23 +113,9 @@ public struct ColorGradeParams: Equatable, Sendable {
     public static let adjustLimits: [String: ClosedRange<Double>] = Dictionary(uniqueKeysWithValues: adjustKeys.map { ($0, GradeValues.adjustLimit($0)) })
     public static let detailDefaults: [String: Double] = GradeValues.detailDefaults
     public static let detailLimits: [String: ClosedRange<Double>] = Dictionary(uniqueKeysWithValues: detailKeys.map { ($0, GradeValues.detailLimit($0)) })
-    public static let effectDefaults: [String: Double] = [
-        "blur": 0, "pixelate": 0, "chromaBleed": 0, "tapeDamage": 0, "tapeTracking": 0, "tapeNoise": 1, "tapeSpeed": 0.5, "filmArtifacts": 0,
-        "halftone": 0, "halftoneSize": 0, "twoInkPrint": 0, "twoInkPrintSize": 0,
-        "ascii": 0, "asciiSize": 5.0 / 76, "asciiInvert": 0, "asciiStyle": 0, "asciiColor": 1, "asciiRotation": 0,
-        "dither": 0, "ditherSize": 0, "bloom": 0, "bloomRadius": 8,
-        "monoScreen": 0, "monoScreenSize": 0, "monoScreenAngle": 0, "monoScreenSpread": 0, "monoScreenShape": 0, "monoScreenInvert": 0,
-        "scanlines": 0, "scanlineCount": 0, "scanlineSoftness": 0, "chromaticAberration": 0, "chromaticAngle": 0, "crtCurvature": 0,
-        "digitalGlitch": 0, "digitalGlitchColorSplit": 0, "digitalGlitchLineTear": 0, "digitalGlitchPixelate": 0, "digitalGlitchBlockAmount": 0,
-        "digitalGlitchBlockDisplacement": 0, "digitalGlitchBlockOpacity": 0, "digitalGlitchSpeed": 0,
-        "engraving": 0, "engravingSpacing": 7.0 / 17, "engravingMinThickness": 0.2, "engravingMaxThickness": 3.2 / 7, "engravingAngle": 0.25,
-        "engravingContrast": 7.0 / 15, "engravingSharpness": 0.59, "engravingWave": 0.2, "engravingWaveFrequency": 2.0 / 9,
-        "crosshatch": 0, "crosshatchSpacing": 7.0 / 25, "crosshatchThickness": 0.25, "crosshatchAngle": 0.25, "crosshatchContrast": 1.0 / 3,
-        "crosshatchEdges": 0.5, "crosshatchLineWeight": 0, "crosshatchWave": 0.33, "crosshatchWaveFrequency": 2.0 / 9,
-        "kuwahara": 0, "kuwaharaRadius": 1.0 / 7, "kuwaharaSharpness": 5.0 / 16, "kuwaharaSaturation": 0.5,
-    ]
-    public static let effectLimitOverrides: [String: ClosedRange<Double>] = ["asciiStyle": 0...7, "bloom": 0...3, "bloomRadius": 1...100, "monoScreenShape": 0...4]
-    public static func effectLimit(_ k: String) -> ClosedRange<Double> { effectLimitOverrides[k] ?? 0...1 }
+    public static let effectDefaults: [String: Double] = GradeValues.effectDefaults
+    public static let effectLimitOverrides: [String: ClosedRange<Double>] = GradeValues.effectLimitOverrides
+    public static func effectLimit(_ k: String) -> ClosedRange<Double> { GradeValues.effectLimit(k) }
     public static let curveIdentity: [[Double]] = [[0, 0], [1, 1]]
     public static let maxCurvePoints = 16, maxSecondaries = 4
 
@@ -180,10 +176,12 @@ public struct ColorGradeParams: Equatable, Sendable {
         let p = Self.preset(named: presetId)
         preset = presetId
         if let v = Self.number(o["version"]), v.isFinite, v >= 3 { version = 3 }
-        let rawAdjust = Self.object(o["adjust"]), rawDetails = Self.object(o["details"]), rawEffects = Self.object(o["effects"])
+        let rawAdjust = Self.object(o["adjust"]), rawDetails = Self.object(o["details"])
+        let rawEffects = (o["effectsEnabled"] == .bool(false)) ? nil : Self.object(o["effects"])
         for k in Self.adjustKeys { adjust[k] = Self.limited(rawAdjust?[k], fallback: p?.adjust[k] ?? Self.adjustZero[k], GradeValues.adjustLimit(k)) }
         for k in Self.detailKeys { details[k] = Self.limited(rawDetails?[k], fallback: p?.details[k] ?? Self.detailDefaults[k], GradeValues.detailLimit(k)) }
         for k in Self.effectKeys { effects[k] = Self.limited(rawEffects?[k], fallback: p?.effects[k] ?? Self.effectDefaults[k], Self.effectLimit(k)) }
+        if o["effectsEnabled"] == .bool(false) { for k in Self.effectKeys { effects[k] = Self.effectDefaults[k] ?? 0 } }
         intensity = GradeValues.intensity(o["intensity"], fallback: p?.intensity ?? 1)
         // wheels
         let w = Self.object(o["wheels"])
@@ -192,6 +190,9 @@ public struct ColorGradeParams: Equatable, Sendable {
             wheels[k] = Wheel(hue: Self.wrapDegrees(x?["hue"]), amount: Self.limited(x?["amount"], fallback: 0, GradeValues.wheelAmountLimit),
                               level: Self.limited(x?["level"], fallback: 0, GradeValues.wheelLevelLimit))
         }
+        let b = Self.object(o["balance"])
+        for k in GradeValues.balanceKeys { balance[k] = Self.wheel(Self.object(b?[k])) }
+        pivot = Self.limited(o["pivot"], fallback: GradeValues.defaultPivot, 0...1)
         let c = Self.object(o["curves"])
         for k in Self.curveKeys { curves[k] = Self.normalizeCurve(c?[k]) }
         let h = Self.object(o["hueCurves"])
@@ -218,12 +219,47 @@ public struct ColorGradeParams: Equatable, Sendable {
     /// The enabled `color-grading` effect on a clip, normalized; nil when the clip has none (or it is switched off).
     public static func clipGrade(_ clip: NativeProjectClip) -> ColorGradeParams? {
         // The panels keep one grade per clip, the first `color-grading` effect (TimelineEditor.colorGrading).
-        guard let e = clip.effects.first(where: { $0.effectId == effectId }), e.enabled else { return nil }
-        return ColorGradeParams(json: e.parameters ?? NativeJSONObject())
+        let storedGrade = clip.effects.first(where: { $0.effectId == effectId })
+        let gradeEffect = storedGrade?.enabled == true ? storedGrade : nil
+        let parsedGrade = gradeEffect.flatMap { ColorGradeParams(json: $0.parameters ?? NativeJSONObject()) }
+        var result = parsedGrade ?? ColorGradeParams()
+        if let effect = clip.effects.first(where: { $0.effectId == colorKeyEffectId && $0.enabled }),
+           let parameters = effect.parameters,
+           supportsColorKey(parameters),
+           let key = parseColorKey(parameters) {
+            result.colorKey = key
+        }
+        return parsedGrade != nil || result.colorKey != nil ? result : nil
+    }
+
+    static func parseColorKey(_ object: NativeJSONObject) -> ColorKey? {
+        var color = SIMD3<Double>(0, 1, 0)
+        if let stored = object["color"] {
+            guard case .array(let channels) = stored, channels.count == 3,
+                  let red = number(channels[0]), let green = number(channels[1]), let blue = number(channels[2]) else { return nil }
+            color = SIMD3(red, green, blue)
+        }
+        return ColorKey(color: color, similarity: number(object["similarity"]) ?? 0.1,
+                        smoothness: number(object["smoothness"]) ?? 0.1, spill: number(object["spill"]) ?? 0)
+    }
+
+    /// Whether parameters are the complete, validated colour-key contract understood by this renderer.
+    public static func supportsColorKey(_ object: NativeJSONObject) -> Bool {
+        guard object["v"]?.numberValue == 1, object["kind"]?.stringValue == "chroma" else { return false }
+        if let color = object["color"] {
+            guard let channels = color.arrayValue, channels.count == 3,
+                  channels.allSatisfy({ $0.numberValue.map { $0.isFinite && (0...1).contains($0) } ?? false }) else { return false }
+        }
+        return ["similarity", "smoothness", "spill"].allSatisfy { name in
+            object[name].map { $0.numberValue.map { $0.isFinite && (0...1).contains($0) } ?? false } ?? true
+        }
     }
 
     // MARK: Activity (isHfColorGradingActive)
 
+    public var hasBalance: Bool {
+        GradeValues.balanceKeys.contains { k in let w = balance[k] ?? Wheel(); return abs(w.amount) > 0.0001 || abs(w.level) > 0.0001 }
+    }
     public var hasWheelGrade: Bool { Self.wheelKeys.contains { k in let w = wheels[k] ?? Wheel(); return abs(w.amount) > 0.0001 || abs(w.level) > 0.0001 } }
     public var hasRgbCurves: Bool { Self.curveKeys.contains { k in (curves[k] ?? []).contains { abs($0[0] - $0[1]) > 0.0001 } } }
     public var hasHueCurves: Bool { Self.hueCurveKeys.contains { k in (hueCurves[k] ?? []).contains { abs($0[1]) > 0.0001 } } }
@@ -231,10 +267,11 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     /// Whether the grade changes any pixel (an inactive grade draws nothing).
     public var isActive: Bool {
+        if colorKey != nil { return true }
         if abs(detail("vignette")) > 0.0001 || abs(detail("grain")) > 0.0001 || Self.activeEffectKeys.contains(where: { abs(effect($0)) > 0.0001 }) { return true }
         if intensity == 0 { return false }
         if let lut, lut.intensity != 0 { return true }
-        return Self.adjustKeys.contains { abs(adjust($0)) > 0.0001 } || hasWheelGrade || hasRgbCurves || hasHueCurves || hasSecondaryCorrections
+        return Self.adjustKeys.contains { abs(adjust($0)) > 0.0001 } || hasWheelGrade || hasBalance || hasRgbCurves || hasHueCurves || hasSecondaryCorrections
     }
 
     /// Whether the picture changes over time on a still frame (grain, film dust, tape, glitch, waving hatch lines).
@@ -257,6 +294,10 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     // MARK: Helpers
 
+    static func wheel(_ x: NativeJSONObject?) -> Wheel {
+        Wheel(hue: wrapDegrees(x?["hue"]), amount: limited(x?["amount"], fallback: 0, GradeValues.wheelAmountLimit),
+              level: limited(x?["level"], fallback: 0, GradeValues.wheelLevelLimit))
+    }
     static func object(_ v: NativeJSONValue?) -> NativeJSONObject? { if case .object(let o)? = v { return o }; return nil }
     /// The reading rules are `GradeValues` (MpvfxShared), shared with the inspector so it shows what renders.
     static func number(_ v: NativeJSONValue?) -> Double? { GradeValues.number(v) }
