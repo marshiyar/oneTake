@@ -69,7 +69,27 @@ class Plan(unittest.TestCase):
         run = step(changes, "Changed files")["run"]
         self.assertIn(r"grep -qE '^\.github/(workflows/mpvfx-ci(-tests-source)?\.yml|ci/source_workflows\.py)$'", run)
         self.assertIn('[ "$n" -ge 3000 ]', run)
-        self.assertIn('remote_ok = bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"', self.pick["run"])
+        gate = 'remote_ok = (bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"'
+        self.assertIn(gate, self.pick["run"])
+
+    def test_nothing_is_sent_unless_the_app_is_installed_here(self):
+        # Without the installation the runners repository cannot report back: remote shards would time out.
+        app = step(self.jobs["plan"], "Runners App installed here")
+        self.assertEqual(app["run"], 'bash ../.github/ci/runners_app_installed.sh >> "$GITHUB_OUTPUT"')
+        self.assertEqual(self.pick["env"]["INSTALLED"], "${{ steps.app.outputs.installed }}")
+        self.assertIn('and os.environ["INSTALLED"] == "true")', self.pick["run"])
+        self.assertEqual(self.jobs["plan"]["outputs"]["runners_ok"], "${{ steps.app.outputs.installed }}")
+        macos = self.jobs["macos-runners"]
+        self.assertIn("plan", macos["needs"])
+        self.assertIn("needs.plan.outputs.runners_ok == 'true'", macos["if"])
+
+    def test_the_installation_check_never_fails_and_says_false_without_secrets(self):
+        with open(os.path.join(ROOT, ".github", "ci", "runners_app_installed.sh"), encoding="utf-8") as f:
+            script = f.read()
+        self.assertIn("installed=false", script)
+        self.assertIn('echo "installed=$installed"', script)
+        self.assertIn('[ "$code" = 200 ] && installed=true', script)
+        self.assertNotIn("set -e", script)
 
     def test_a_sent_shard_is_not_in_the_local_lists(self):
         run = self.pick["run"]
