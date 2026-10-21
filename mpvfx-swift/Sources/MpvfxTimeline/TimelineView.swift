@@ -19,12 +19,13 @@ import MpvfxTheme
 /// value the user changes (toolbar Track height slider, timelineTrackHeight), so it is instance
 /// state; everything else is fixed.
 public struct TimelineLayout: Equatable, Sendable {
-    /// Media row height: 32...96 in steps of 8 on the slider, stored rounded and clamped (setTimelineTrackHeight).
+    /// Media row height: 28...96 in steps of 4 on the slider, stored rounded and clamped (setTimelineTrackHeight).
     public var trackHeight: Double { didSet { trackHeight = Self.clampTrackHeight(trackHeight) } }
     public init(trackHeight: Double = defaultTrackHeight) { self.trackHeight = Self.clampTrackHeight(trackHeight) }
-    /// TRACK_H: default media row height and the fixed height of an audio-group header row.
-    public static let defaultTrackHeight = 48.0, groupHeaderHeight = 48.0
-    public static let minTrackHeight = 32.0, maxTrackHeight = 96.0, trackHeightStep = 8.0
+    /// Compact track headers (docs/DESIGN.md step 4): 28 px is the default media row height and the fixed height of an
+    /// audio-group header row. A stored height from before (32...96) stays valid.
+    public static let defaultTrackHeight = 28.0, groupHeaderHeight = 28.0
+    public static let minTrackHeight = 28.0, maxTrackHeight = 96.0, trackHeightStep = 4.0
     public static func clampTrackHeight(_ h: Double) -> Double {
         guard h.isFinite else { return defaultTrackHeight }
         return max(minTrackHeight, min(maxTrackHeight, (h + 0.5).rounded(.down)))
@@ -212,7 +213,7 @@ public struct TimelineTrackModel: Sendable, Equatable {
     public var id: String; public var name: String; public var kind: String; public var clips: [TimelineClipModel]
     public var groupId: String?
     /// Track header state mirrored from the document (TimelineEditor+Tracks).
-    public var hidden = false, locked = false, muted = false
+    public var hidden = false, locked = false, muted = false, soloed = false
     public init(id: String? = nil, name: String, kind: String = "video", clips: [TimelineClipModel]) {
         self.id = id ?? name; self.name = name; self.kind = kind; self.clips = clips
     }
@@ -248,6 +249,14 @@ public final class TimelineView {
     /// Playhead time a keyframe retime is snapped to (the accent snap guide).
     public var keyframeSnapTime: Double?
     public var hoveredClip: String?
+    /// Track header control under the pointer, and the targeted tracks (the accent tags).
+    public var hoveredHeader: TimelineHeaderHover?
+    public var trackTargets = TimelineTrackTargets()
+    /// Every track, including the members of collapsed groups that `tracks` leaves out (set on reload), so tags and
+    /// targets do not change when a group folds.
+    public var allTracks: [TimelineTrackModel] = []
+    /// The tracks tags and targets are resolved against: `allTracks` once the controller set it.
+    var targetableTracks: [TimelineTrackModel] { allTracks.isEmpty ? tracks : allTracks }
     public var drag: TimelineDragPreview?
     /// Where a live clip move lands (placeholder slot or new-track line); `dragLiftY` is the pointer's vertical travel,
     /// so the dragged clips follow the pointer between rows (TimelineCanvas drag actor).

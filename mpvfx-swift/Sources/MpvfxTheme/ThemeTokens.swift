@@ -228,6 +228,14 @@ public enum ThemeTokens {
     /// Timeline lanes (rowBackground) and track headers (gutterBackground).
     public static let timelineRowPair = ThemePair(0x1D1D1D, 0xFFFFFF)
     public static let timelineGutterPair = ThemePair(0x212121, 0xEFEFF2)
+    /// Track header controls (docs/DESIGN.md step 4) on `timelineGutterPair`: an idle lock, eye, speaker or solo glyph
+    /// (3:1, a control), and the track tag's text when the track is not targeted (4.5:1). A control that is on, and a
+    /// targeted tag's fill, use `mintPair`; a targeted tag's text uses `onAccentMintPair`.
+    public static let trackControlIdlePair = ThemePair(0x8C8C8C, 0x6E6E73)
+    public static let trackTagTextPair = ThemePair(0xB4B4B4, 0x46464C)
+    /// The 1 px outline of an untargeted track tag, and the wash under a header control in the pointer.
+    public static let trackTagOutlinePair = ThemePair(0x4A4A4A, 0xC4C4CA)
+    public static let trackControlHoverPair = ThemePair(0x2E2E2E, 0xDCDCE1)
     /// Timeline clip fill by media kind (docs/DESIGN.md), at rest and under the pointer. Light fills are mid tones that
     /// stand out from the white lanes and still carry dark ink at 4.5:1.
     public static let clipVideoPair = ThemePair(0x1D4A64, 0x8FBDE2), clipVideoHoverPair = ThemePair(0x245A79, 0x7BB0DA)
