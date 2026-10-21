@@ -36,7 +36,7 @@ extension PreviewToolbar {
     /// Off: the bar's neutral wash. Armed: a red-tinted fill with a red border. Recording: solid red.
     func drawRecord(_ c: CanvasContext, _ r: CanvasRect) {
         let hov = hovered == .record, red = Self.red500, white = PanelTheme.white
-        let onRed = CanvasColor(r: 1, g: 1, b: 1)   // white on red in both modes
+        let onRed = PanelTheme.onAccent   // white on red in both modes
         switch recording {
         case .idle: c.fillRoundedRect(r, radius: 6, Self.wash(hov ? 0.6 : 0.4))
         case .armed:
