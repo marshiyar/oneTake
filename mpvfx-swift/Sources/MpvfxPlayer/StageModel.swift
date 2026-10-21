@@ -60,10 +60,12 @@ public struct StageElement: Equatable, Sendable {
     /// Live overrides while a gesture is being recorded (nil: the document's value).
     public var opacity: Double?
     public var scale: Double?
+    /// On a locked track: the stage selects it but does not move or transform it.
+    public var locked = false
     public init(id: String, name: String, rect: CanvasRect, kind: TimelineClipKind, rotation: Double = 0, crop: CropInsets = .zero,
-                opacity: Double? = nil, scale: Double? = nil) {
+                opacity: Double? = nil, scale: Double? = nil, locked: Bool = false) {
         self.id = id; self.name = name; self.rect = rect; self.kind = kind; self.rotation = rotation; self.crop = crop
-        self.opacity = opacity; self.scale = scale
+        self.opacity = opacity; self.scale = scale; self.locked = locked
     }
     public var centre: CanvasPoint { CanvasPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) }
     /// Visible (cropped) rect in unrotated element space.

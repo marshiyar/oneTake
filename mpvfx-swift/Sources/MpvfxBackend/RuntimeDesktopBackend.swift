@@ -116,7 +116,8 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     public func saveProject(id: String, content: String) throws {
         try checkOpen()
         let s = try store(id)
-        try exclusive(s) { try s.save(content) }
+        do { try access.runBlocking(s.directory) { try s.save(content) } }
+        catch { throw Self.desktopError(error, savingTo: s.directory) }
     }
 
     /// Runs a synchronous write to `s` on the project's access queue, after the operations already queued on it
@@ -488,7 +489,16 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     private func mapErrorsAsync<T>(_ body: () async throws -> T) async throws -> T {
         do { return try await body() } catch { throw Self.desktopError(error) }
     }
-    static func desktopError(_ error: Error) -> DesktopError {
+    /// Recognizes only supported filesystem failures during a save; other errors keep their usual translation.
+    private static func saveFailureError(_ error: Error, folder: String?) -> DesktopError? {
+        guard let folder,
+              let code = (error as? ProjectFSError)?.code ?? (error as? DurableWriteError)?.filesystemCode,
+              let failure = DesktopError.SaveFailure(rawValue: code == "EPERM" ? "EACCES" : code) else { return nil }
+        return DesktopError(saveFailure: failure, folder: folder)
+    }
+
+    static func desktopError(_ error: Error, savingTo folder: String? = nil) -> DesktopError {
+        if let failure = saveFailureError(error, folder: folder) { return failure }
         switch error {
         case let e as DesktopError: return e
         case let e as ProjectDocumentError: return DesktopError(e.message, name: desktopErrorName(e.kind))
