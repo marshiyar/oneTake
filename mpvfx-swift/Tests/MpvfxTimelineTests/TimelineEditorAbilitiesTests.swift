@@ -83,6 +83,16 @@ final class TimelineEditorAbilitiesTests: XCTestCase {
         XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
     }
 
+    func testSetClipsAutomationIsOneUndoStepAndAllOrNothing() throws {
+        let e = try editor(); let before = e.document
+        XCTAssertFalse(e.setClipsAutomation(["clip:music": "auto", "clip:logo": "auto"], label: "Duck beds"), "images carry no audio")
+        XCTAssertEqual(e.document, before)
+        XCTAssertTrue(e.setClipsAutomation(["clip:music": "auto", "clip:a": "auto"], label: "Duck beds"))
+        XCTAssertEqual(clip(e, "clip:music")?.audioAutomation, "auto"); XCTAssertEqual(clip(e, "clip:a")?.audioAutomation, "auto")
+        XCTAssertEqual(e.undoStack.count, 1); XCTAssertEqual(e.undoLabel, "Duck beds")
+        XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before)
+    }
+
     func testAudioGroupLifecycle() throws {
         let e = try editor(); let before = e.document
         XCTAssertNil(e.createAudioGroup(clipIds: ["clip:music"]), "needs two clips")

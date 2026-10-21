@@ -141,6 +141,15 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// Host hook: the composited program frame at the playhead for the Grade scopes' Program mode, at most w x h.
+    public var programScopeFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// What the Grade scopes read (the Scopes row's Clip / Program switch). Every change is saved as
+    /// `PanelPreferences.scopeSource`; `RightPanel.init` restores it.
+    public var scopeSource: ColorScopes.Source = .clip {
+        didSet { if scopeSource != oldValue, let layout { layout.update { $0.scopeSource = scopeSource } } }
+    }
+    /// Analyses scope frames off the main thread (latest wins); the host sets its `onReady` to redraw.
+    public let scopeAnalyzer = ScopeAnalyzer()
     public var lutAssets: () -> [String] = { [] }
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,
@@ -468,6 +477,12 @@ public final class InspectorPanel {
         for r in allRows() { if case .slider(let s) = r.kind, s.key == key { return s } }
         return nil
     }
+    /// Hit key suffix of a slider's settings gear (`.keyframe("<slider key>#gear")`).
+    static let gearSuffix = "#gear"
+    /// A slider's settings gear shares the hit kind under its own key (Vignette and Grain also keyframe).
+    func keyframeOrGearHit(_ k: String) {
+        if k.hasSuffix(Self.gearSuffix), let st = slider(String(k.dropLast(Self.gearSuffix.count)))?.settings { st.toggle() } else { keyframe(k)?.toggle() }
+    }
     func keyframe(_ key: String) -> InspectorRow.Keyframe? { number(key)?.keyframe ?? slider(key)?.keyframe }
     func reset(_ key: String) -> (() -> Void)? { number(key)?.reset ?? slider(key)?.reset }
     func toggle(_ key: String) -> InspectorRow.Toggle? {
@@ -524,7 +539,7 @@ public final class InspectorPanel {
         case .groupEnabled(let id): if let g = buildGroups().first(where: { $0.id == id }), let on = g.enabled { g.setEnabled?(!on) }
         case .field(let k): if let n = number(k) { field = PanelTextField(key: k, value: n.text) }
         case .scrub(let k): if let s = number(k)?.scrub { scrub = Scrub(key: k, startX: p.x, value: s.value, current: s.value, moved: false) }
-        case .keyframe(let k): if let st = slider(k)?.settings { st.toggle() } else { keyframe(k)?.toggle() }
+        case .keyframe(let k): keyframeOrGearHit(k)
         case .kfPrev(let k): keyframe(k)?.prev?()
         case .kfNext(let k): keyframe(k)?.next?()
         case .stopwatch(let k): keyframe(k)?.stopwatch()

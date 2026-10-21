@@ -50,7 +50,7 @@ final class SessionPanels {
     private(set) var presetPreviews: PresetPreviewRenderer?
     /// Effects catalog and look tile demos on the built-in sample picture.
     private(set) var effectPreviews: EffectPreviewRenderer?
-    private var presetPreviewTime = 0.0
+    private(set) var presetPreviewTime = 0.0
     private var panelsAnimating = false
 
     init(session: EditorSession, layout: PanelLayoutState, userData: String) {
@@ -330,8 +330,7 @@ final class SessionPanels {
         switch cmd {
         case .createLibrary: command = ["type": .string("create")]
         case .openLibrary: command = ["type": .string("open")]
-        case .createEvent(let l, let name): command = ["type": .string("event"), "libraryId": .string(l), "name": .string(name)]
-        case .createProject(let l, let e, let name): command = ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
+        case .createEvent, .createProject, .renameEvent, .renameProject: command = Self.namedItemCommand(cmd)
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
             if left.library.currentProjectId != nil, let id = projectId,
@@ -455,7 +454,7 @@ final class SessionPanels {
         _ = schedule(1.0 / 60, step)
     }
 
-    /// Grade preset tiles and scopes: the selected clip's frame graded with each preset, or its own grade (PresetPreviewRenderer). While playing
+    /// Grade preset tiles: the selected clip's frame graded with each preset (PresetPreviewRenderer). While playing
     /// the tiles keep the frame they showed when playback started, so playback does not re-grade 18 thumbnails a frame.
     private func wirePresetPreviews(_ inspector: InspectorPanel) {
         let renderer = PresetPreviewRenderer(compositor: session.compositor)
@@ -476,11 +475,7 @@ final class SessionPanels {
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
         wireStageFrame(inspector, renderer)
-        inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
-            guard let self, let inspector else { return .unavailable }
-            let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
-            return PresetPreviewState(renderer.gradedFrame(clipId: clipId, time: t, pixelWidth: w, pixelHeight: h))
-        }
+        wireScopes(inspector, clip: renderer)
     }
 
     /// Effects catalog tiles: the selected clip's frame with its grade plus each effect or look (the preset tiles'
