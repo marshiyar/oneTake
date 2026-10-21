@@ -22,7 +22,8 @@ import MpvfxColor
 ///
 /// Geometry follows the export renderer (TimelineRenderer.swift): the clip's box is `layout.left/top +
 /// transform.position`, sized `layout.width/height` (default: the fit of the media's natural size, else the
-/// whole canvas); the media is fitted inside the box keeping its aspect (contain, nativeMediaRect), then scaled and rotated about the box centre, at `opacity`.
+/// whole canvas); the media is placed in the box by the clip's fit (nativeMediaRect: contain by default, cover clipped
+/// to the box, or stretched onto it), then scaled and rotated about the box centre, at `opacity`.
 /// `crop` insets the untransformed box (canvas px) and travels with the box's scale and rotation.
 public struct PreviewLayer: Equatable, Sendable {
     public enum Kind: Sendable, Equatable { case video, image, text }
@@ -36,6 +37,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var sourceIn: Double
     /// Source seconds per timeline second.
     public var rate: Double
+    /// Optional clip-local nonlinear map; export and preview share this exact layer path.
+    public var speedRamp: NativeSpeedRamp?
     /// Timeline frames the clip covers, [startFrame, endFrame).
     public var startFrame: Int, endFrame: Int
     public var box: CanvasRect
@@ -54,6 +57,11 @@ public struct PreviewLayer: Equatable, Sendable {
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
+    /// How the picture fills the box (`clip.fit`; nil: Fit, contain).
+    public var fit: NativeMediaFit?
+    /// The media's natural width over height when known: sizes the decode so a Fill or Stretch picture, larger than
+    /// the box on one axis, is decoded at the size it is drawn rather than scaled up from a contained frame.
+    public var mediaAspect: Double?
 
     public init(clipId: String, source: String, kind: Kind, start: Double, end: Double, sourceIn: Double, rate: Double = 1,
                 startFrame: Int = 0, endFrame: Int = Int.max, box: CanvasRect, scaleX: Double = 1, scaleY: Double = 1,
@@ -64,7 +72,10 @@ public struct PreviewLayer: Equatable, Sendable {
     }
 
     /// Source seconds shown at timeline `time`.
-    public func sourceTime(at time: Double) -> Double { sourceIn + (time - start) * rate }
+    public func sourceTime(at time: Double) -> Double {
+        sourceIn + (speedRamp?.sourcePosition(atClipFrame: max(0, (time - start) * timelineFPS)) ?? ((time - start) * rate * timelineFPS)) / timelineFPS
+    }
+    public var timelineFPS = 1.0
 
     /// Nothing would reach the screen (zero area, zero scale, fully transparent, or cropped away).
     public var isVisible: Bool {
@@ -94,6 +105,8 @@ public struct PreviewComposition {
         public var layer: Double
         /// The clip's active grade, built once per document.
         public var grade: ColorGradeRenderer? = nil
+        /// The media's natural width over height (PreviewLayer.mediaAspect), nil when unknown.
+        public var mediaAspect: Double? = nil
     }
 
     public let canvas: CanvasSize
@@ -121,6 +134,7 @@ public struct PreviewComposition {
         for (index, track) in document.sequence.tracks.enumerated() {
             for clip in track.clips {
                 guard !Self.isHidden(track: track, clip: clip) else { n += 1; continue }
+                guard clip.speedRamp?.isSupported != false else { n += 1; continue }
                 n += 1
                 if let asset = assets[clip.assetId], asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
@@ -140,7 +154,9 @@ public struct PreviewComposition {
                 let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
                 let clip = nativeClipWithNaturalLayout(clip, natural: naturalSize(asset),
                                                        canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
-                ordered.append((Entry(clip: clip, kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade), n))
+                let kind: PreviewLayer.Kind = asset.kind == .image ? .image : .video
+                ordered.append((Entry(clip: clip, kind: kind, path: path, layer: layer, grade: grade,
+                                      mediaAspect: naturalSize(asset).flatMap(\.aspect)), n))
             }
         }
         entries = ordered.sorted { a, b in
@@ -222,10 +238,14 @@ public struct PreviewComposition {
                             startFrame: Int(c.startFrame.rounded()), endFrame: Int((c.startFrame + c.durationFrames).rounded()),
                             box: box, scaleX: sx, scaleY: sy,
                             rotation: (num("transform.rotation") ?? 0) + autoRotate, opacity: opacity, crop: crop)
+        out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
+        out.timelineFPS = fps
         out.motionRotation = autoRotate
         out.grade = e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.text = e.kind == .text ? c.text : nil
+        out.fit = c.fit
+        out.mediaAspect = e.mediaAspect
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
         return out
@@ -242,11 +262,13 @@ public enum PreviewPainter {
         return CanvasRect(x: box.x + (box.width - w) / 2, y: box.y + (box.height - h) / 2, width: w, height: h)
     }
 
-    /// Where a layer's picture lands, in composition px: nativeMediaRect (contain, or the whole box when the box is
-    /// already the picture's aspect to within rounding), so the picture's edges are the selection box's edges.
-    public static func mediaRect(imageWidth: Int, imageHeight: Int, in box: CanvasRect) -> CanvasRect {
-        let r = nativeMediaRect(imageWidth: Double(imageWidth), imageHeight: Double(imageHeight),
-                                box: NativeClipLayoutBox(left: box.x, top: box.y, width: box.width, height: box.height))
+    /// Where a layer's picture lands, in composition px: nativeMediaRect for the clip's `fit` (contain by default, or
+    /// the whole box when the box is already the picture's aspect to within rounding, so the picture's edges are the
+    /// selection box's edges; cover overflows the box; stretch is the box).
+    public static func mediaRect(imageWidth: Int, imageHeight: Int, in box: CanvasRect,
+                                 fit: NativeMediaFit? = nil) -> CanvasRect {
+        let layout = NativeClipLayoutBox(left: box.x, top: box.y, width: box.width, height: box.height)
+        let r = nativeMediaRect(imageWidth: Double(imageWidth), imageHeight: Double(imageHeight), box: layout, fit: fit)
         return CanvasRect(x: r.left, y: r.top, width: r.width, height: r.height)
     }
 
@@ -255,10 +277,25 @@ public enum PreviewPainter {
         CanvasRect(x: frame.x + r.x * s, y: frame.y + r.y * s, width: r.width * s, height: r.height * s)
     }
 
-    /// Device pixels the layer's box covers on screen (the decode target before rounding).
+    /// Device pixels the layer's picture covers on screen (the decode target before rounding): the box, or for a
+    /// Fill or Stretch layer of known aspect the picture's cover of the box, which is larger than it on one axis.
     public static func screenPixels(_ layer: PreviewLayer, viewScale: Double, backingScale: Double) -> (width: Double, height: Double) {
         let k = viewScale * max(backingScale, 1)
-        return (layer.box.width * abs(layer.scaleX) * k, layer.box.height * abs(layer.scaleY) * k)
+        return coverPixels(layer.box.width * abs(layer.scaleX) * k, layer.box.height * abs(layer.scaleY) * k, layer)
+    }
+
+    /// `w` x `h` grown to the smallest size of the media's aspect that covers it, when the layer fills its box.
+    /// The decoder fits the picture inside the size it is asked for keeping its aspect, so a Stretch picture is
+    /// decoded at its cover too (a box-shaped target would come back letterboxed). The cover is scaled down, aspect
+    /// kept, to the engine's picture bound (NATIVE_CANVAS_MAX_SIDE): a 16:9 picture stretched onto a 16384 square
+    /// would otherwise ask the export's reader for about 29128 x 16384.
+    static func coverPixels(_ w: Double, _ h: Double, _ layer: PreviewLayer) -> (width: Double, height: Double) {
+        guard layer.fit?.fillsTheBox == true, let a = layer.mediaAspect, a.isFinite, a > 0, w > 0, h > 0 else {
+            return (w, h)
+        }
+        let cw = max(w, h * a), ch = max(h, w / a)
+        let k = min(1, NATIVE_CANVAS_MAX_SIDE / max(cw, ch))
+        return (min(NATIVE_CANVAS_MAX_SIDE, cw * k), min(NATIVE_CANVAS_MAX_SIDE, ch * k))
     }
 
     /// Draws one layer: scale then rotate about the box centre, clip to the cropped box, contain-fit the image.
@@ -305,8 +342,15 @@ public enum PreviewPainter {
                 var p = CanvasPath(); p.addRect(box); c.fill(p, fill.withAlpha(fill.a * layer.opacity))
             }
             if let image {
-                let picture = toView(mediaRect(imageWidth: image.width, imageHeight: image.height, in: layer.box), frame: frame, scale: s)
-                c.drawImage(image, in: picture, opacity: layer.opacity)
+                let placed = mediaRect(imageWidth: image.width, imageHeight: image.height,
+                                       in: layer.box, fit: layer.fit)
+                let picture = toView(placed, frame: frame, scale: s)
+                // Fill overflows the box on one axis: clipped to the box, as object-fit: cover crops it.
+                if layer.fit == .fill {
+                    c.withState { c.clip(box); c.drawImage(image, in: picture, opacity: layer.opacity) }
+                } else {
+                    c.drawImage(image, in: picture, opacity: layer.opacity)
+                }
             } else if let text = layer.text {
                 TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
             }

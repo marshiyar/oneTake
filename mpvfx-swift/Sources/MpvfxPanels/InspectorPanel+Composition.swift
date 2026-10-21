@@ -107,7 +107,7 @@ extension InspectorPanel {
 
     /// The section's header (the bus header's look: icon, "Composition", the size in text-4), then its rows.
     func drawComposition(_ c: CanvasContext, _ r: CanvasRect, _ editor: TimelineEditor) {
-        let h = 44.0
+        let h = Self.clipHeaderHeight - 1
         let row = CanvasRect(x: r.x + 16, y: r.y, width: r.width - 32, height: h)
         PanelIcon.phosphor(.square).draw(c, in: CanvasRect(x: row.x, y: row.y + (h - 14) / 2, width: 14, height: 14), color: PanelTheme.container)
         let nameX = row.x + 24
@@ -117,7 +117,7 @@ extension InspectorPanel {
         PanelDraw.text(c, Self.sizeText(w, hh), in: CanvasRect(x: nameX + ns.width + 8, y: row.y + 1.5, width: max(0, row.maxX - nameX - ns.width - 8), height: h),
                        font: PanelTheme.font(10), color: PanelTheme.text4)
         PanelDraw.hline(c, x0: r.x, x1: r.maxX, y: r.y + h, PanelTheme.panelHairline)
-        let g = compositionGroup(editor)
+        let g = laidOut(compositionGroup(editor), c, width: r.width)
         let bodyH = Self.openBodyHeight(g, 0)
         bodyRect = CanvasRect(x: r.x, y: r.y + h + 1, width: r.width, height: max(0, r.height - h - 1))
         bodyContentHeight = bodyH; bodyMaxScroll = 0

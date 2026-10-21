@@ -121,6 +121,7 @@ final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
         }
         let host = GtkCanvasHost { [router] c, size in router.draw(c, size: size) }
         host.input = router
+        host.cursorAt = { [router] x, y in router.cursor(at: x, y) }
         host.onFilesDragged = { [weak session] p in session?.panels?.assetDrag?.filesDragged(over: p) }
         host.onFilesDropped = { [weak session] paths, p in session?.panels?.assetDrag?.dropFiles(paths, at: p) }
         shellHost = host
@@ -162,6 +163,9 @@ final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
         session.onExternalConflict = { answer in
             answer(mpvfx_choice_box(nil, "The project file changed on disk",
                 "It was changed outside MpVFX while you have unsaved edits.", "Keep My Edits", "Use the File on Disk") == 1)
+        }
+        session.onProjectMoved = { message, answer in
+            answer(mpvfx_choice_box(nil, "The project folder is missing", message, "Locate Folder…", "Keep Editing") == 1)
         }
         session.onImportRequested = { [weak self, weak session] in
             guard let self else { return }
