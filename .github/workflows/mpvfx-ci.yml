@@ -62,6 +62,9 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.files.outputs.code }}
+      # true: the pull request changes the test jobs OneTake-actionRunners-1 runs from main (mpvfx-ci.yml, its generated
+      # mpvfx-ci-tests-source.yml or source_workflows.py), so every shard runs here, with its own definition.
+      workflow: ${{ steps.files.outputs.workflow }}
     steps:
       - name: Changed files
         id: files
@@ -75,6 +78,9 @@ jobs:
           # Both sides of a rename count: code renamed to a .md name is still a code change.
           gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
           n=$(wc -l < "$RUNNER_TEMP/files.txt")
+          if [ "$n" -ge 3000 ] || grep -qE '^\.github/(workflows/mpvfx-ci(-tests-source)?\.yml|ci/source_workflows\.py)$' "$RUNNER_TEMP/files.txt"; then
+            echo "workflow=true" >> "$GITHUB_OUTPUT"
+          fi
           other=$(grep -vE '\.md$|^mpvfx-swift/docs/|^(LICENSE|LICENSE-MIT|LICENSE-APACHE|NOTICE)$' "$RUNNER_TEMP/files.txt" || true)
           if [ "$n" -gt 0 ] && [ "$n" -lt 3000 ] && [ -z "$other" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"; echo "documentation only ($n files): build and tests skipped"
@@ -176,10 +182,11 @@ jobs:
           LINUX_HITS: ${{ steps.l0.outputs.cache-hit }},${{ steps.l1.outputs.cache-hit }},${{ steps.l2.outputs.cache-hit }},${{ steps.l3.outputs.cache-hit }}
           WINDOWS_HITS: ${{ steps.w0.outputs.cache-hit }},${{ steps.w1.outputs.cache-hit }},${{ steps.w2.outputs.cache-hit }},${{ steps.w3.outputs.cache-hit }}
           # Shards marked `runners` (test-shards.py RUNNERS) go to OneTake-actionRunners-1 when both App secrets are
-          # set and the commit is this repository's (never a fork's pull request); otherwise every shard runs here.
+          # set and the commit is this repository's (never a fork's pull request) and does not change the test jobs that
+          # repository runs from main (changes.outputs.workflow); otherwise every shard runs here.
           APP_ID: ${{ secrets.RUNNERS_APP_ID }}
           APP_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
-          OWN: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          OWN: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.changes.outputs.workflow != 'true' }}
         run: |
           python3 -I -B - <<'PY'
           import json, os

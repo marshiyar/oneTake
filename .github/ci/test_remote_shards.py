@@ -61,7 +61,14 @@ class Plan(unittest.TestCase):
         env = self.pick["env"]
         self.assertEqual(env["APP_ID"], "${{ secrets.RUNNERS_APP_ID }}")
         self.assertEqual(env["APP_KEY"], "${{ secrets.RUNNERS_APP_PRIVATE_KEY }}")
-        self.assertEqual(env["OWN"], "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}")
+        self.assertEqual(env["OWN"], "${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.changes.outputs.workflow != 'true' }}")
+
+    def test_a_pull_request_changing_the_moved_test_jobs_runs_every_shard_here(self):
+        changes = self.jobs["changes"]
+        self.assertEqual(changes["outputs"]["workflow"], "${{ steps.files.outputs.workflow }}")
+        run = step(changes, "Changed files")["run"]
+        self.assertIn(r"grep -qE '^\.github/(workflows/mpvfx-ci(-tests-source)?\.yml|ci/source_workflows\.py)$'", run)
+        self.assertIn('[ "$n" -ge 3000 ]', run)
         self.assertIn('remote_ok = bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"', self.pick["run"])
 
     def test_a_sent_shard_is_not_in_the_local_lists(self):
