@@ -82,6 +82,26 @@ final class LookMatchPainterTests: XCTestCase {
         XCTAssertEqual(Double(shown.rgba[0]), 115, accuracy: 2)
     }
 
+    func testExistingContrastPivotAndOffsetRespectPrimaryShaderOrder() throws {
+        for (contrast, pivot, raw) in [(0.5, 0.35, UInt8(110)), (-0.4, 0.65, UInt8(160))] {
+            let e = try editor(); var grade = ColorGrading()
+            grade.adjust["contrast"] = contrast; grade.adjust["exposure"] = 0.1; grade.pivot = pivot
+            grade.balance["offset"] = .init(hue: 0, amount: 0, level: 0.16)
+            XCTAssertTrue(e.setColorGrading(clipId: "take", grade))
+            let preview = PreviewCompositor(); defer { preview.stopAll() }
+            func composition() -> PreviewComposition {
+                PreviewComposition(document: e.document, projectDir: URL(fileURLWithPath: "/project"), engine: e.engine, fileExists: { _ in true })
+            }
+            let source = preview.graded(try XCTUnwrap(composition().layers(at: 0).first), flat(raw, raw, raw), frame: 0, time: 0, fps: 30)
+            let desired = source.rgba[0] + 30, reference = flat(desired, desired, desired)
+            let matched = try XCTUnwrap(LookMatch.matched(grade, source: source, reference: reference))
+            XCTAssertTrue(e.setColorGrading(clipId: "take", matched))
+            let shown = preview.graded(try XCTUnwrap(composition().layers(at: 0).first), flat(raw, raw, raw), frame: 0, time: 0, fps: 30)
+            XCTAssertEqual(Double(shown.rgba[0]), Double(desired), accuracy: 2, "contrast \(contrast), pivot \(pivot)")
+            XCTAssertEqual(matched.pivot, grade.pivot)
+        }
+    }
+
     func testMatchedStatisticsImproveTheRenderedColourAndPreviewEqualsExport() throws {
         for (source, reference) in [(flat(60, 60, 60), flat(120, 120, 120)), (flat(110, 90, 70), flat(90, 100, 110))] {
             let e = try editor(), matched = try XCTUnwrap(LookMatch.matched(ColorGrading(), source: source, reference: reference))

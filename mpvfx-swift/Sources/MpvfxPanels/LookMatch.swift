@@ -55,11 +55,13 @@ public enum LookMatch {
         let correction = a.lumaDeviation > 0.005 && b.lumaDeviation > 0.005
             ? min(2, max(0.5, b.lumaDeviation / (a.lumaDeviation * gain))) : 1
         next.adjust["contrast"] = AutoBalance.limited("contrast", oldContrast * correction - 1)
-        let contrastGain = max(0, 1 + next.adjustValue("contrast")) / oldContrast
+        let newContrast = max(0, 1 + next.adjustValue("contrast"))
         let pivot = SIMD3<Double>(repeating: grade.pivotValue)
         let old = grade.balanceWheel("offset")
         let offset = vector(old)
-        let predicted = ((a.mean - offset) * gain - pivot) * contrastGain + pivot + offset
+        // Undo the existing pivoted contrast before applying the exposure delta; Offset is post-primary.
+        let preContrast = (a.mean - offset - pivot) / oldContrast + pivot
+        let predicted = (preContrast * gain - pivot) * newContrast + pivot + offset
         let residual = b.mean - predicted
         next.balance["offset"] = wheel(vector(old) + residual)
         return next
