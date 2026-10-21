@@ -61,6 +61,7 @@ extension InspectorPanel {
         if let editor, showsComposition { return [compositionGroup(editor)] }
         guard let editor, let s = selected() else { return [] }
         var groups: [InspectorGroup] = []
+        if let generator = generatorGroup(editor, s) { groups.append(generator) }
         if let text = textGroup(editor, s) { groups.append(text) }
         if s.isVisual { groups.append(transformGroup(editor, s)); groups.append(styleGroup(editor, s)) }
         if s.kind == .video || s.kind == .image {
