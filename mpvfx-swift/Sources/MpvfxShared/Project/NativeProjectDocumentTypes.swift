@@ -178,6 +178,9 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// How a media clip's picture fills its box (the inspector's Fit row); absent means Fit, the contain fit every
+    /// clip had before the option existed. Text clips ignore it.
+    public var fit: NativeMediaFit? = nil
     /// Fade-in length in project frames from the clip start (`NativeClipFade`); absent means none.
     public var fadeInFrames: Double? = nil
     /// Fade-out length in project frames up to the clip end; absent means none.
@@ -239,6 +242,9 @@ public extension NativeAudioGroup {
 public struct NativeProjectSequence: Codable, Equatable, Sendable {
     public var id: String; public var name: String; public var durationFrames: Double?
     public var audioGroups: [NativeAudioGroup]?; public var tracks: [NativeProjectTrack]
+    /// The caption track (`NativeCaptionTrack.swift`); absent in a project without captions and in every project
+    /// written before captions existed, which open unchanged.
+    public var captions: NativeCaptionTrack? = nil
 }
 
 /// The timeline kind a document stores in `mediaEngine`. Every document is a native timeline drawn by the Swift
@@ -257,6 +263,8 @@ public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var id: String; public var revision: Double
     public var frameRate: RationalFrameRate; public var canvas: NativeCanvas
     public var assets: [NativeProjectAsset]; public var sequence: NativeProjectSequence
+    /// The Easing panel's custom presets for this project (NativeEasingPreset.swift); nil writes no key.
+    public var easingPresets: [NativeEasingPreset]? = nil
 }
 
 public extension NativeProjectDocument {
@@ -306,6 +314,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidPlaybackRate = "invalid-playback-rate", invalidBinding = "invalid-binding", duplicateBinding = "duplicate-binding"
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
+    case invalidCaption = "invalid-caption"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip"
 }
 

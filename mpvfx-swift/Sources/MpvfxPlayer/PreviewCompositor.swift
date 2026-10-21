@@ -176,7 +176,7 @@ public final class PreviewCompositor: FrameSource {
             }
         }
         for (k, lane) in lanes where !used.contains(k) { lane.stop(); lanes[k] = nil }
-        lastShown = shown
+        lastShown = shown; cache.fitBudget(); grader.fitBudget()   // the caches count drawables this draw made
         standIns.keepOnly(Set(shown.filter { $0.frame != nil }.map(\.clipId)))   // inactive clips keep no stand-in
 
         // Element clips (no media of their own) keep their labelled box; video/image clips whose file is missing

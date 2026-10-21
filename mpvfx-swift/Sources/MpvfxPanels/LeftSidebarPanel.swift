@@ -232,15 +232,19 @@ public final class LeftSidebarPanel {
 
     // MARK: Tab strip (the tabs; hide and the panel menu at the right end)
 
+    /// Drawn (and so focused) in reading order: the tabs, Import media, hide, the panel menu.
     func drawTabStrip(_ c: CanvasContext, _ strip: CanvasRect) -> Double {
         PanelTabStrip.drawBackground(c, strip)
         let tabs = stripTabs
-        let labels = tabs.map { Self.tabLabels[$0] ?? $0.rawValue }
-        for (i, rect) in PanelTabStrip.tabRects(c, strip, labels: labels).enumerated() {
-            PanelTabStrip.tab(c, rect, label: labels[i], active: tab == tabs[i], hovered: hovered == .tab(tabs[i]))
-            hits.add(rect, .tab(tabs[i]))
-        }
         let hide = hideRect(strip), menu = PanelTabStrip.buttonRect(strip, index: 0)
+        let x = strip.x + PanelTabStrip.edgeInset
+        let bar = PanelTabBar(tabs: tabs.map { PanelTab(id: $0.rawValue, label: Self.tabLabels[$0] ?? $0.rawValue) },
+                              selected: tab.rawValue, style: .strip)
+        let laid = bar.layout(c, in: CanvasRect(x: x, y: strip.y, width: max(0, hide.x - 4 - x), height: strip.height))
+        var hover: PanelTabBar.Part?
+        if case .tab(let t)? = hovered { hover = .tab(t.rawValue) }
+        bar.draw(c, laid, hovered: hover)
+        for (r, part) in PanelTabBar.hitRects(laid) { if case .tab(let id) = part, let t = LeftSidebarTab(rawValue: id) { hits.add(r, .tab(t)) } }
         drawHideButton(c, hide)
         PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == "\(Hit.panelMenu)")
         hits.add(menu, .panelMenu)

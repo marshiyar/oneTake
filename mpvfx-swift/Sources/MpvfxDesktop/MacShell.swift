@@ -84,9 +84,10 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                 switch item.command {
                 case .about: selector = #selector(NSApplication.orderFrontStandardAboutPanel(_:))
                 case .services, .openRecent, .panels: continue
-                case .openProject, .settings, .closePanel:
+                case .openProject, .settings, .closePanel, .keyframeEasing:
                     let action = item.command == .settings ? #selector(openSettings(_:))
-                        : item.command == .closePanel ? #selector(closePanel(_:)) : #selector(openProject(_:))
+                        : item.command == .closePanel ? #selector(closePanel(_:))
+                        : item.command == .keyframeEasing ? #selector(openKeyframeEasing(_:)) : #selector(openProject(_:))
                     let mi = NSMenuItem(title: item.label, action: action, keyEquivalent: item.key ?? "")
                     mi.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
                     mi.target = self
@@ -147,6 +148,9 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
 
     /// MpVFX > Settings… (⌘, in the editor reaches the same card through EditorSession.commandKey).
     @objc func openSettings(_ sender: NSMenuItem) { session?.showSettings() }
+
+    /// View > Keyframe Easing: the Keyframe Easing panel.
+    @objc func openKeyframeEasing(_ sender: NSMenuItem) { session?.showKeyframeEasingPanel() }
 
     /// File > Open…: the folder dialog (⌘O in the editor reaches the same call through EditorSession.commandKey).
     @objc func openProject(_ sender: NSMenuItem) { session?.requestOpenProject() }
@@ -289,6 +293,13 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
             alert.messageText = "The project file changed on disk"
             alert.informativeText = "It was changed outside MpVFX while you have unsaved edits."
             alert.addButton(withTitle: "Keep My Edits"); alert.addButton(withTitle: "Use the File on Disk")
+            answer(alert.runModal() == .alertFirstButtonReturn)
+        }
+        session.onProjectMoved = { message, answer in
+            let alert = NSAlert(); alert.alertStyle = .warning
+            alert.messageText = "The project folder is missing"
+            alert.informativeText = message
+            alert.addButton(withTitle: "Locate Folder…"); alert.addButton(withTitle: "Keep Editing")
             answer(alert.runModal() == .alertFirstButtonReturn)
         }
         session.redraw = { [weak host] in host?.invalidate() }

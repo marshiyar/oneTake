@@ -66,8 +66,13 @@ jobs:
     outputs:
       code: ${{ steps.files.outputs.code }}
       linux: ${{ steps.files.outputs.linux }}
-      windows: ${{ steps.files.outputs.windows }}
-      macos: ${{ steps.files.outputs.macos }}
+      # Windows and macOS jobs are paused (owner ruling 2026-10-21) to free the runners while the app is built out on
+      # Linux; the jobs stay defined, and the repository variable LINUX_ONLY=false brings them back.
+      windows: ${{ vars.LINUX_ONLY == 'false' && steps.files.outputs.windows || 'false' }}
+      macos: ${{ vars.LINUX_ONLY == 'false' && steps.files.outputs.macos || 'false' }}
+      # true: the pull request touches macOS code (.github/ci/macos_gate.py), so its macOS build runs without the `macos`
+      # label and ci-ok requires it.
+      macos_code: ${{ vars.LINUX_ONLY == 'false' && steps.mac.outputs.macos_code || 'false' }}
       # true: the pull request changes the test jobs OneTake-actionRunners-1 runs from main (mpvfx-ci.yml, its generated
       # mpvfx-ci-tests-source.yml or source_workflows.py), so every shard runs here, with its own definition.
       workflow: ${{ steps.files.outputs.workflow }}
@@ -97,6 +102,15 @@ jobs:
           fi
           echo "$n files changed"
           python3 -I -B .github/ci/platforms.py "$RUNNER_TEMP/files.txt" | tee -a "$GITHUB_OUTPUT"
+          cp "$RUNNER_TEMP/files.txt" "$RUNNER_TEMP/macos-files.txt"
+      - name: macOS code
+        id: mac
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: python3 -I -B .github/ci/macos_gate.py classify "$RUNNER_TEMP/macos-files.txt" | tee -a "$GITHUB_OUTPUT"
 
   plan:
     # Which Linux and Windows test shards this run needs: those with no pass recorded for their inputs.
@@ -671,7 +685,7 @@ jobs:
     if: >-
       needs.changes.outputs.macos == 'true' && needs.plan.outputs.runners_ok == 'true'
       && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule'
-      || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')
+      || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'macos') || needs.changes.outputs.macos_code == 'true')
       && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -724,7 +738,7 @@ jobs:
     needs: [changes, checks, macos-runners]
     if: >-
       always() && needs.changes.outputs.macos == 'true' && needs.checks.result == 'success'
-      && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos'))
+      && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'macos') || needs.changes.outputs.macos_code == 'true'))
       && needs.macos-runners.outputs.sent != 'true'
     uses: ./.github/workflows/mpvfx-macos.yml
     secrets: inherit   # only the optional Apple signing secrets; unset, the disk image is ad-hoc signed
@@ -733,10 +747,13 @@ jobs:
 
   ci-ok:
     # The one required check: every job passed or was skipped on purpose.
+    permissions:
+      contents: read
+      statuses: read
     needs: [changes, plan, checks, linux, linux-test, windows, windows-test, remote-shards, macos-runners, macos]
     if: always()
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
       - name: Every required job passed or was skipped
         env:
@@ -755,6 +772,23 @@ jobs:
           for r in $REQUIRED; do
             case "$r" in success|skipped) ;; *) echo "::error::a required job ended $r"; exit 1 ;; esac
           done
+      # A pull request that touches macOS code must pass its macOS build: the local macos job, or the status the runners
+      # repository reports (a macOS-only compile error once merged because this was only a warning).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request' && needs.changes.outputs.macos_code == 'true'
+        with:
+          sparse-checkout: .github/ci
+          persist-credentials: false
+      # Owner ruling 2026-10-21: CI never holds a merge back waiting. A macOS build that already ran and failed fails
+      # ci-ok; one still running on OneTake-actionRunners-1 does not block (its `macos (runners-1)` status reports it).
+      - name: macOS build not red
+        if: github.event_name == 'pull_request' && needs.changes.outputs.macos_code == 'true'
+        env:
+          LOCAL: ${{ needs.macos.result }}
+          SENT: ${{ needs.macos-runners.outputs.sent }}
+        run: |
+          [ "$LOCAL" != failure ] || { echo "::error::the macOS build failed on this head"; exit 1; }
+          [ "$SENT" != true ] || echo "::notice::the macOS build runs on OneTake-actionRunners-1: see its macos (runners-1) status"
 
   publish:
     needs: [plan, checks, linux, linux-test, windows, windows-test, remote-shards]
