@@ -574,7 +574,7 @@ jobs:
     # Only main (nightly prerelease) and v* tags (official release) publish; publish.sh decides which.
     # Owner ruling 2026-10-21: no OS holds another back. The release carries the installers of every OS whose build
     # (and, for Linux and Windows, test shards) passed; an OS that failed or never got a runner is left out, not waited
-    # for. It needs the shared checks and at least one OS.
+    # for. It needs the shared checks and at least one OS; a stable v<X.Y.Z> tag fails in Release unless every OS passed.
     if: >-
       always() && github.event_name != 'pull_request'
       && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
@@ -620,8 +620,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          # A stable v<X.Y.Z> tag is the public launch: it ships every OS or none. Prereleases and nightlies leave out
+          # an OS that did not pass.
+          stable=false
+          case "$GITHUB_REF" in refs/tags/v*-*) ;; refs/tags/v*) stable=true ;; esac
           for os in LINUX WINDOWS MACOS; do
-            ok="${os}_OK"; [ "${!ok}" = true ] || echo "::warning::${os,,} did not pass; this release leaves it out"
+            ok="${os}_OK"; [ "${!ok}" = true ] && continue
+            if [ "$stable" = true ]; then echo "::error::${os,,} did not pass; a stable release ships every OS"; exit 1; fi
+            echo "::warning::${os,,} did not pass; this release leaves it out"
           done
           shopt -s nullglob
           files=(dist/*.dmg dist/*.deb dist/*-setup.exe dist/*.tar.gz dist/*.zip dist/*-smoke.png)
