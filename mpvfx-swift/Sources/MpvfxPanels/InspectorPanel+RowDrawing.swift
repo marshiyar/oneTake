@@ -223,6 +223,17 @@ extension InspectorPanel {
         if n.scrub != nil && !n.disabled { addHit(CanvasRect(x: line.x, y: line.y, width: width, height: line.height), .scrub(n.key)) }
     }
 
+    /// A focused field's backdrop, then its caret after the draft; a read-only value shows its text selected instead.
+    func drawFieldEditing(_ c: CanvasContext, _ tr: CanvasRect, text: String, font: CanvasFont, readOnly: Bool) {
+        c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput)
+        guard readOnly else {
+            c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent)
+            return
+        }
+        let w = min(tr.width, c.measureText(text, font: font).width)
+        c.fillRect(CanvasRect(x: tr.maxX - w - 1, y: tr.y + 1, width: w + 2, height: tr.height - 2), PanelTheme.accent.withAlpha(0.3))
+    }
+
     /// The value field in `slot` (its line centred): the value, the draft and caret while typed, the underline, the hit.
     func drawNumberField(_ c: CanvasContext, _ slot: CanvasRect, _ n: InspectorRow.Number) {
         let field = CanvasRect(x: slot.x, y: slot.midY - 9.25, width: slot.width, height: 18.5)
@@ -232,10 +243,9 @@ extension InspectorPanel {
         if let s = scrub, s.key == n.key, let fmt = n.scrub?.format { text = fmt(s.current) }
         if editing, let f = self.field { text = f.draft }
         let tr = CanvasRect(x: textX, y: field.y, width: max(0, field.maxX - textX), height: 16.5)
-        if editing { c.fillRect(CanvasRect(x: tr.x - 3, y: tr.y, width: tr.width + 6, height: tr.height), PanelTheme.panelInput) }
+        if editing { drawFieldEditing(c, tr, text: text, font: PanelTheme.mono(11), readOnly: n.readOnly) }
         PanelDraw.text(c, text, in: tr, font: PanelTheme.mono(11),
                        color: n.tier.valueInk(disabled: n.disabled, typing: editing, adjusting: scrub?.key == n.key), align: .right)
-        if editing { c.fillRect(CanvasRect(x: tr.maxX + 1, y: tr.midY - 6, width: 1, height: 12), PanelTheme.accent) }   // caret
         let hover = isHovering(n.key)
         let underline: CanvasColor = n.tier == .explicitCustom
             ? PanelTheme.accent.withAlpha(hover ? 0.7 : 0.3)
