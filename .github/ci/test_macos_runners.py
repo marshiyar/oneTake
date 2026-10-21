@@ -15,8 +15,6 @@
 """Tests for the macOS hand-off to OneTake-app/OneTake-actionRunners-1 in mpvfx-ci.yml: when it is sent, the local
 fallback, the inputs mpvfx-macos.yml takes for it, and ci-ok treating macOS as reported, not required."""
 import os
-import shutil
-import subprocess  # nosec B404: runs ci-ok's own script from this repository
 import unittest
 
 import yaml
@@ -83,24 +81,21 @@ class Inputs(unittest.TestCase):
 
 
 class Gate(unittest.TestCase):
-    def run_gate(self, required, macos):
-        gate = workflow("mpvfx-ci.yml")["jobs"]["ci-ok"]
-        self.assertIn("macos-runners", gate["needs"])
-        script = gate["steps"][0]["run"]
-        env = {"PATH": os.environ["PATH"], "REQUIRED": required, "MACOS": macos}
-        bash = shutil.which("bash")
-        self.assertIsNotNone(bash)
-        return subprocess.run([bash, "-c", script], env=env, capture_output=True, text=True, check=False)  # nosec B603
+    def setUp(self):
+        self.gate = workflow("mpvfx-ci.yml")["jobs"]["ci-ok"]
+        self.script = self.gate["steps"][0]["run"]
 
-    def test_a_macos_failure_only_warns(self):
-        r = self.run_gate("success success skipped", "failure cancelled")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(r.stdout.count("::warning::"), 2)
+    def test_both_macos_jobs_are_reported_not_required(self):
+        self.assertIn("macos-runners", self.gate["needs"])
+        env = self.gate["steps"][0]["env"]
+        self.assertEqual(env["MACOS"], "${{ needs.macos-runners.result }} ${{ needs.macos.result }}")
+        self.assertNotIn("macos", env["REQUIRED"])
+        self.assertIn('for r in $MACOS; do', self.script)
+        self.assertIn("::warning::a macos job ended", self.script)
 
     def test_a_required_failure_still_fails(self):
-        r = self.run_gate("success failure", "success skipped")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("::error::a required job ended failure", r.stdout)
+        self.assertIn('for r in $REQUIRED; do', self.script)
+        self.assertIn('echo "::error::a required job ended $r"; exit 1', self.script)
 
 
 if __name__ == "__main__":
