@@ -19,8 +19,12 @@ Every check, what its failure means, how to fix or re-run it, and the rules for 
 
 CI is slow, so pull requests can land in batches instead of one at a time:
 
-1. When a pull request is ready, the maintainer adds the label `queue`. The bot notes which commit was queued;
-   pushing new commits afterwards takes the pull request out of the queue (add the label again when ready).
+1. When a pull request is ready, the bot adds the label `queue` itself: `ci-ok`, Codacy and `names-issue` have passed
+   on its latest commit, it merges cleanly, no Codex P0 or P1 review comment is left without a reply, and it is not
+   stacked on another open pull request (it waits until that one lands). The maintainer can also add `queue` by hand.
+   The bot notes which commit was queued; pushing new commits afterwards takes the pull request out of the queue,
+   and it is queued again once the new commit is ready. Add the label `hold` to keep a pull request out of the queue
+   (and out of a batch already being tested).
 2. Every few minutes the merge train takes up to eight queued pull requests, merges them onto `main` in the order they
    were queued, and opens one pull request for the batch (`Merge train: #a, #b, #c`). CI runs once for the whole batch.
 3. If CI passes, the batch lands as one commit, and each pull request in it is closed with a comment
@@ -31,6 +35,9 @@ CI is slow, so pull requests can land in batches instead of one at a time:
 
 A pull request that conflicts with `main` or with another one in the batch is left out of that batch with a comment
 and stays queued; update it from `main`. A pull request that changes workflow files is landed on its own.
+
+Pull requests can still be merged directly at any time. The train simply drops a queued pull request that was merged
+or closed elsewhere; a batch whose `main` moved underneath it is closed and tried again on the new `main`.
 
 ## Commits
 
