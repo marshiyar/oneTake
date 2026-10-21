@@ -27,6 +27,7 @@ extension EditorSession {
         let dockStore = DockLayoutStore(userData: userData)
         let router = EditorShellRouter(layout: layout, dock: DockView(layout: DockDefaults.layout(.editor), registry: .editor))
         router.isFullscreen = { [weak self] in self?.player.view.isFullscreen ?? false }
+        router.stageCursor = { [weak self] in self?.player.stageCursor ?? .arrow }
         installPreview(userData: userData)
         // Track height, zoom and the magnet persist with the UI preferences.
         let region = TimelineRegion(controller: timeline, preferences: FileTimelineUIPreferencesStore(

@@ -120,6 +120,7 @@ final class EditorSession {
         compositor.frameReady = { [weak self] in self?.postToUI { self?.redraw() } }
         player.onSelectionChange = { [weak self] ids in self?.timeline.view.selection = Set(ids); self?.redraw() }
         player.onCommit = { [weak self] e in self?.stageCommitted(e) }
+        installStageTransform()
         player.onDelete = { [weak self] ids in self?.deleteClips(ids) }
         player.onZOrder = { [weak self] ids, action in self?.applyZOrder(ids, action) }
         player.zOrderEnabled = { [weak self] id in self?.zOrderActions(id) ?? [] }
@@ -427,7 +428,8 @@ final class EditorSession {
             let base = stageBase(e.id, kind: e.kind, time: t)
             let tr = editor.transform(clipId: e.id, time: t)
             return StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, tr), kind: e.kind,
-                                rotation: tr.rotation ?? 0, crop: savedCrop(e.id), scale: StageGeometry.uniformScale(editor: editor, clipId: e.id, time: t))
+                                rotation: tr.rotation ?? 0, crop: savedCrop(e.id), scale: StageGeometry.uniformScale(editor: editor, clipId: e.id, time: t),
+                                locked: editor.clip(e.id)?.track.locked == true)
         }
         let sel = timeline.view.selection
         player.view.selectedIds = player.view.elements.filter { sel.contains($0.id) }.map(\.id)
@@ -445,7 +447,10 @@ final class EditorSession {
         StageGeometry.baseRect(editor: editor, clipId: id, kind: kind, time: time)
     }
 
-    func stageCommitted(_ e: StageElement) {
+    func stageCommitted(_ e: StageElement) { stageCommitted([e]) }
+
+    /// Writes one stage element's crop and transform (keyframes at the playhead where a property is animated).
+    func writeStage(_ e: StageElement) {
         persistCrop(id: e.id, e.crop)
         let t = playback.currentTime
         let base = stageBase(e.id, kind: e.kind, time: t)
@@ -453,7 +458,6 @@ final class EditorSession {
                                   kind: e.kind, rotation: editor.transform(clipId: e.id, time: t).rotation ?? 0)
         let tr = StageGeometry.transform(base: base, start: before, end: e)
         if tr != ClipTransform() { editor.applyTransform(clipId: e.id, time: t, tr) }
-        syncStage(); redraw()
     }
 
     private var tickingPlayback = false
