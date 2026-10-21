@@ -152,6 +152,7 @@ public final class TimelineEditor {
 
     /// TimelineLanes trackLabel: the first clip's label, else "Track N" (1-based display position).
     static func trackName(_ t: NativeProjectTrack, displayNumber: Int, assets: [String: NativeProjectAsset]) -> String {
+        if t.id.hasPrefix("track:voice:") { return "Voice" }
         if let c = t.clips.first { return assets[c.assetId]?.name ?? c.assetId }
         return "Track \(displayNumber)"
     }

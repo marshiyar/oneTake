@@ -190,6 +190,7 @@ extension EditorShellRouter {
     /// The Settings card, an open panel menu, then the dock's own keys (⌘⇧W, Ctrl+Tab, Escape during a drag), then
     /// the focused pane; global shortcuts fall back to the timeline (which falls through to playback).
     func keyDown(_ k: EditorKey) -> Bool {
+        if globalVoiceKey?(k) == true { needsDisplay(); return true }
         if modalOpen, modal?.keyDown(k) == true { needsDisplay(); return true }
         if dockMenu.isOpen { _ = dockMenu.key(k); needsDisplay(); return true }
         if dock.keyDown(k) { needsDisplay(); return true }

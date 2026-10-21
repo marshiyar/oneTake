@@ -286,3 +286,5 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+Voice recording (#317): Record voice in the preview transport, or ⌥Space, counts in for 0–5 seconds (Settings) and records the selected microphone. The live meter latches clipping for the take. Space keeps the WAV and places an ordinary audio clip on the Voice track; Esc discards it. Repeated overlapping takes retain and mute earlier takes, with one undo step per kept take. The WAV includes sub-frame silence to align the first captured sample with reported input latency. Punch-in and pre-roll remain #318.
