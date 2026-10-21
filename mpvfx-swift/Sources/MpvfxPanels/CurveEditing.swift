@@ -64,7 +64,7 @@ public struct CurveEditing: Equatable, Sendable {
     /// Point `i` moved to `p`: an end point keeps its input; any other point stays `minGap` inside its neighbours;
     /// the output is clamped to the tab's range. Both are kept at 1/1000.
     public func moving(_ i: Int, to p: [Double], in points: [[Double]]) -> [[Double]] {
-        guard points.indices.contains(i), p.count == 2 else { return points }
+        guard points.indices.contains(i), p.count == 2, p[0].isFinite, p[1].isFinite else { return points }
         var out = points
         let x = isPinned(i, in: points) ? points[i][0] : constrainedInput(i, p[0], in: points)
         out[i] = [x, output(p[1])]

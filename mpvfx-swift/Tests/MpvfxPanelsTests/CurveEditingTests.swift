@@ -45,6 +45,8 @@ final class CurveEditingTests: XCTestCase {
         XCTAssertNil(rgb.removing(0, from: pts)); XCTAssertNil(rgb.removing(2, from: pts))
         XCTAssertEqual(rgb.removing(1, from: pts), GradeCurve.identity)
         XCTAssertEqual(rgb.moving(7, to: [0.5, 0.5], in: pts), pts, "an index past the end changes nothing")
+        XCTAssertEqual(rgb.moving(1, to: [0.4, .nan], in: pts), pts, "a non-finite output changes nothing")
+        XCTAssertEqual(rgb.moving(1, to: [.infinity, 0.4], in: pts), pts, "a non-finite input changes nothing")
     }
 
     func testHuePointsMoveInsideTheirNeighboursAndTheCircle() {
