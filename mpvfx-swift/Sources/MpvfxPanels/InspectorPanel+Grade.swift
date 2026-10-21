@@ -198,62 +198,72 @@ extension InspectorPanel {
     func scopesRow(_ clipId: String) -> InspectorCustomRow {
         let open = grade.scopesOpen
         let canvasH = (bodyContentWidth - 2) * Double(ColorScopes.bitmapHeight) / Double(ColorScopes.bitmapWidth) + 2
-        let height = open ? 28 + 23.5 + 6 + canvasH + 7 : 35
-        return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, panel in
+        let height = open ? 28 + Self.scopeTabsHeight + 6 + canvasH + 7 : 35
+        return InspectorCustomRow(id: "grade:scopes", height: height, draw: { [weak self] c, r, _ in
             guard let self else { return }
             let state: PresetPreviewState? = open ? (self.scopeFrame?(clipId, ColorScopes.bitmapWidth, ColorScopes.bitmapWidth) ?? .unavailable) : nil
-            let status: String
-            switch state {
-            case nil: status = "Off"
-            case .ready?: status = "ready"
-            case .rendering?: status = "loading"
-            case .unavailable?: status = "unavailable"
-            }
             let head = CanvasRect(x: r.x, y: r.y, width: r.width, height: 28)
-            let refreshW = open ? 18.0 + 8 : 0
-            let toggle = CanvasRect(x: head.x, y: head.y, width: head.width - refreshW, height: 28)
-            PanelDraw.text(c, "Scopes", in: CanvasRect(x: toggle.x, y: toggle.midY - 8.25, width: 80, height: 16.5),
-                           font: PanelTheme.font(11), color: PanelTheme.text2)
-            let sw = c.measureText(status, font: PanelTheme.font(9)).width
-            PanelDraw.text(c, status, in: CanvasRect(x: toggle.maxX - sw - 0.5, y: toggle.midY - 6.75, width: sw + 1, height: 13.5),
-                           font: PanelTheme.font(9), color: PanelTheme.text5)
-            panel.addHit(toggle, .custom("grade:scopes", 0))
-            if open {
-                let rb = CanvasRect(x: head.maxX - 18, y: head.midY - 9, width: 18, height: 18)
-                PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4), color: panel.hovered == .custom("grade:scopes", 1) ? PanelTheme.text1 : PanelTheme.text4)
-                panel.addHit(rb, .custom("grade:scopes", 1))
-                var x = r.x
-                for (i, m) in ColorScopes.Mode.allCases.enumerated() {
-                    let on = self.grade.scopeMode == m
-                    let tw = c.measureText(m.label, font: PanelTheme.font(9)).width
-                    let tab = CanvasRect(x: x, y: head.maxY, width: tw, height: 23.5)
-                    let hov = panel.hovered == .custom("grade:scopes", 2 + i)
-                    PanelDraw.text(c, m.label, in: CanvasRect(x: tab.x, y: tab.y + 4, width: tw + 1, height: 13.5), font: PanelTheme.font(9),
-                                   color: on ? PanelTheme.text1 : (hov ? PanelTheme.text2 : PanelTheme.text4))
-                    if on { c.fillRect(CanvasRect(x: tab.x, y: tab.maxY - 2, width: tw, height: 2), PanelTheme.accent) }
-                    panel.addHit(tab, .custom("grade:scopes", 2 + i))
-                    x += tw + 8
-                }
-                let box = CanvasRect(x: r.x, y: head.maxY + 23.5 + 6, width: r.width, height: canvasH)
-                c.fillRect(box, PanelTheme.stageScrim)   // scopes draw on black in both modes
-                var frame: CanvasImage?
-                if case .ready(let img)? = state { frame = img }
-                c.drawImage(self.scopeBitmap(frame), in: box.insetBy(1))
-                c.strokeRect(box.insetBy(0.5), PanelTheme.panelHairline, width: 1)
-            }
+            self.drawScopesHead(c, head, status: Self.scopesStatus(state), open: open)
+            if open { self.drawScopesBody(c, CanvasRect(x: r.x, y: head.maxY, width: r.width, height: Self.scopeTabsHeight + 6 + canvasH), state) }
             c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
-            switch part {
-            case 0: self.grade.scopesOpen.toggle(); self.grade.scopeMemo = nil
-            case 1: self.grade.scopeMemo = nil
-            default:
-                let modes = ColorScopes.Mode.allCases
-                if modes.indices.contains(part - 2) { self.grade.scopeMode = modes[part - 2] }
-            }
+            self.scopesPressed(part)
             self.onEdited?()
         })
     }
+
+    static func scopesStatus(_ state: PresetPreviewState?) -> String {
+        switch state {
+        case nil: "Off"
+        case .ready?: "ready"
+        case .rendering?: "loading"
+        case .unavailable?: "unavailable"
+        }
+    }
+
+    /// "Scopes" and its status (the toggle, part 0), and while open the refresh button (part 1).
+    func drawScopesHead(_ c: CanvasContext, _ head: CanvasRect, status: String, open: Bool) {
+        let refreshW = open ? 18.0 + 8 : 0
+        let toggle = CanvasRect(x: head.x, y: head.y, width: head.width - refreshW, height: head.height)
+        PanelDraw.text(c, "Scopes", in: CanvasRect(x: toggle.x, y: toggle.midY - 8.25, width: 80, height: 16.5),
+                       font: PanelTheme.font(11), color: PanelTheme.text2)
+        let sw = c.measureText(status, font: PanelTheme.font(9)).width
+        PanelDraw.text(c, status, in: CanvasRect(x: toggle.maxX - sw - 0.5, y: toggle.midY - 6.75, width: sw + 1, height: 13.5),
+                       font: PanelTheme.font(9), color: PanelTheme.text5)
+        addHit(toggle, .custom("grade:scopes", 0))
+        guard open else { return }
+        let rb = CanvasRect(x: head.maxX - 18, y: head.midY - 9, width: 18, height: 18)
+        PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(4), color: hovered == .custom("grade:scopes", 1) ? PanelTheme.text1 : PanelTheme.text4)
+        addHit(rb, .custom("grade:scopes", 1))
+    }
+
+    /// The mode tabs (parts 2…) and, 6 below them, the scope of the graded frame on black.
+    func drawScopesBody(_ c: CanvasContext, _ r: CanvasRect, _ state: PresetPreviewState?) {
+        drawInlineTabs(c, PanelTabBar(tabs: Self.scopeTabs, selected: grade.scopeMode.label, style: .inline), row: ("grade:scopes", base: 2),
+                       in: CanvasRect(x: r.x, y: r.y, width: r.width, height: Self.scopeTabsHeight))
+        let box = CanvasRect(x: r.x, y: r.y + Self.scopeTabsHeight + 6, width: r.width, height: r.height - Self.scopeTabsHeight - 6)
+        c.fillRect(box, PanelTheme.stageScrim)   // scopes draw on black in both modes
+        var frame: CanvasImage?
+        if case .ready(let img)? = state { frame = img }
+        c.drawImage(scopeBitmap(frame), in: box.insetBy(1))
+        c.strokeRect(box.insetBy(0.5), PanelTheme.panelHairline, width: 1)
+    }
+
+    func scopesPressed(_ part: Int) {
+        switch part {
+        case 0: grade.scopesOpen.toggle(); grade.scopeMemo = nil
+        case 1: grade.scopeMemo = nil
+        default:
+            let modes = ColorScopes.Mode.allCases
+            let pick: (Int) -> Void = { [weak self] i in if modes.indices.contains(i) { self?.grade.scopeMode = modes[i]; self?.onEdited?() } }
+            if let i = inlineTab("grade:scopes", part: part, select: pick) { pick(i) }
+        }
+    }
+
+    /// The scope mode tabs, by label (the mode's label is its tab id).
+    static var scopeTabs: [PanelTab] { ColorScopes.Mode.allCases.map { PanelTab(id: $0.label, label: $0.label) } }
+    static let scopeTabsHeight = PanelGrid.rowHeight
 
     /// The scope bitmap for the current mode, redrawn only when the frame or the mode changed.
     func scopeBitmap(_ frame: CanvasImage?) -> CanvasImage {
@@ -437,26 +447,20 @@ extension InspectorPanel {
 
     // MARK: Curves (the curve modes and the curve graph)
 
-    /// Curve tabs (`flex flex-wrap gap-x-2 border-b border-panel-hairline`): `border-b-2 px-0.5 py-1 text-[9px]`,
-    /// active text-1 over the accent, the rest text-4 (hover text-2).
+    /// The curve tabs on the shared inline tab bar (`PanelTabBar`): a 32 pt line over a hairline, overflow behind a
+    /// chevron when the panel is narrow, one Tab stop with arrow keys.
     func curveTabsRow() -> InspectorCustomRow {
-        InspectorCustomRow(id: "grade:curvetabs", height: 24.5, draw: { [weak self] c, r, panel in
+        let tabs = Self.curveTabs.map { PanelTab(id: $0.key, label: $0.label) }
+        let pick: (Int) -> Void = { [weak self] i in
+            guard let self, Self.curveTabs.indices.contains(i) else { return }
+            self.grade.curveTab = Self.curveTabs[i].key; self.grade.selectedPoint = nil; self.onEdited?()
+        }
+        return InspectorCustomRow(id: "grade:curvetabs", height: PanelGrid.rowHeight, draw: { [weak self] c, r, _ in
             guard let self else { return }
-            var x = r.x
-            c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
-            for (i, t) in Self.curveTabs.enumerated() {
-                let w = c.measureText(t.label, font: PanelTheme.font(9)).width + 4
-                let tr = CanvasRect(x: x, y: r.y, width: w, height: 23.5)
-                let on = self.grade.curveTab == t.key
-                PanelDraw.text(c, t.label, in: CanvasRect(x: tr.x, y: tr.y + 4, width: w, height: 13.5), font: PanelTheme.font(9),
-                               color: on ? PanelTheme.text1 : (panel.hovered == .custom("grade:curvetabs", i) ? PanelTheme.text2 : PanelTheme.text4), align: .center)
-                if on { c.fillRect(CanvasRect(x: tr.x, y: tr.maxY - 2, width: tr.width, height: 2), PanelTheme.accent) }
-                panel.addHit(tr, .custom("grade:curvetabs", i))
-                x = tr.maxX + 8
-            }
+            self.drawInlineTabs(c, PanelTabBar(tabs: tabs, selected: self.grade.curveTab, style: .inline), row: ("grade:curvetabs", base: 0), in: r)
         }, pointer: { [weak self] part, _, phase in
-            guard let self, phase == 0, Self.curveTabs.indices.contains(part) else { return }
-            self.grade.curveTab = Self.curveTabs[part].key; self.grade.selectedPoint = nil
+            guard let self, phase == 0, let i = self.inlineTab("grade:curvetabs", part: part, select: pick) else { return }
+            pick(i)
         })
     }
 

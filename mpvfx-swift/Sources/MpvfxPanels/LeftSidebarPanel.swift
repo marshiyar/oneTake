@@ -119,6 +119,8 @@ public final class LeftSidebarPanel {
     public private(set) var hits = HitMap<Hit>()
     public let dropdown = PanelDropdown()
     public var hovered: Hit?
+    /// Keyboard focus on the tab strip (the selected tab, Import media, hide, the panel menu).
+    public var focus = PanelFocus<Hit>()
     public private(set) var search: PanelTextField?
     public var searchQuery = ""
     var selectedLibraryId: String?
@@ -339,35 +341,53 @@ public final class LeftSidebarPanel {
 
     // MARK: Tab strip (the tabs; Import media, hide and the panel menu at the right end)
 
+    /// Drawn (and so focused) in reading order: the tabs, Import media, hide, the panel menu.
     func drawTabStrip(_ c: CanvasContext, _ strip: CanvasRect) -> Double {
         PanelTabStrip.drawBackground(c, strip)
-        let tabs = availableTabs
-        let tabRects = PanelTabStrip.tabRects(c, strip, labels: tabs.map { Self.tabLabels[$0]! })
-        for (rect, t) in zip(tabRects, tabs) {
-            PanelTabStrip.tab(c, rect, label: Self.tabLabels[t]!, active: tab == t, hovered: hovered == .tab(t))
-            hits.add(rect, .tab(t))
-        }
         let hide = PanelTabStrip.buttonRect(strip, index: 1), menu = PanelTabStrip.buttonRect(strip, index: 0)
+        let tabs = stripTabs, x = strip.x + PanelTabStrip.edgeInset
+        let natural = tabs.reduce(0) { $0 + PanelTabBar.naturalWidth(c, $1, style: .strip) }
+        let (ib, showLabel) = importButtonRect(c, hide: hide, room: hide.x - 4 - (x + natural) - 4)
+        // Only "Media" is offered today (`availableTabs`), so the bar never overflows and needs no overflow hit.
+        let bar = PanelTabBar(tabs: tabs, selected: tab.rawValue, style: .strip)
+        let laid = bar.layout(c, in: CanvasRect(x: x, y: strip.y, width: max(0, ib.x - 4 - x), height: strip.height))
+        var hover: PanelTabBar.Part?
+        if case .tab(let t)? = hovered { hover = .tab(t.rawValue) }
+        bar.draw(c, laid, hovered: hover)
+        for (r, part) in PanelTabBar.hitRects(laid) { if case .tab(let id) = part, let t = LeftSidebarTab(rawValue: id) { hits.add(r, .tab(t)) } }
+        drawImportButton(c, ib, showLabel: showLabel)
         PanelTabStrip.iconButton(c, hide, icon: .sidebarHideLeft, hovered: hovered == .hideSidebar)
         hits.add(hide, .hideSidebar)
         PanelTabStrip.iconButton(c, menu, icon: .panelMenu, hovered: hovered == .panelMenu, open: dropdown.key == "\(Hit.panelMenu)")
         hits.add(menu, .panelMenu)
-        // Import media: plus and label (px-2, gap 6) before the icons; only the plus when the strip has no room for the label.
-        let label = importing ? "Importing…" : "Import media"
+        if let ring = focus.ringRect(hits) { PanelDraw.focusRing(c, ring) }   // focus only ever stops on the strip
+        return strip.height
+    }
+
+    /// The strip's tabs, in `availableTabs` order.
+    var stripTabs: [PanelTab] { availableTabs.map { PanelTab(id: $0.rawValue, label: Self.tabLabels[$0] ?? $0.rawValue) } }
+
+    var importLabel: String { importing ? "Importing…" : "Import media" }
+
+    /// Import media's rect left of the hide button: plus and label (px-2, gap 6), or only the plus when `room`
+    /// cannot hold the label.
+    func importButtonRect(_ c: CanvasContext, hide: CanvasRect, room: Double) -> (CanvasRect, Bool) {
+        let labelled = 8 + 11 + 6 + c.measureText(importLabel, font: PanelTheme.font(11, .medium)).width + 8
+        let showLabel = labelled <= room
+        let bw = showLabel ? labelled : PanelTabStrip.buttonSize
+        return (CanvasRect(x: hide.x - 4 - bw, y: hide.y, width: bw, height: PanelTabStrip.buttonSize), showLabel)
+    }
+
+    func drawImportButton(_ c: CanvasContext, _ ib: CanvasRect, showLabel: Bool) {
         let font = PanelTheme.font(11, .medium), bh = PanelTabStrip.buttonSize, glyph = 11.0
-        let labelled = 8 + glyph + 6 + c.measureText(label, font: font).width + 8
-        let showLabel = labelled <= hide.x - 4 - (tabRects.last?.maxX ?? strip.x) - 4
-        let bw = showLabel ? labelled : bh
-        let ib = CanvasRect(x: hide.x - 4 - bw, y: hide.y, width: bw, height: bh)
         c.fillRoundedRect(ib, radius: PanelTheme.radius, hovered == .importMedia ? PanelTheme.panelHover : PanelTheme.panelInput)
         let tc = hovered == .importMedia ? PanelTheme.text1 : PanelTheme.text3
         let gx = showLabel ? ib.x + 8 : ib.midX - glyph / 2
         PanelIcon.plus.draw(c, in: CanvasRect(x: gx, y: ib.y + (bh - glyph) / 2, width: glyph, height: glyph), color: tc, lineWidth: 2.5)
         if showLabel {
-            PanelDraw.text(c, label, in: CanvasRect(x: gx + glyph + 6, y: ib.y, width: ib.maxX - 8 - gx - glyph - 6, height: bh), font: font, color: tc)
+            PanelDraw.text(c, importLabel, in: CanvasRect(x: gx + glyph + 6, y: ib.y, width: ib.maxX - 8 - gx - glyph - 6, height: bh), font: font, color: tc)
         }
         if !importing { hits.add(ib, .importMedia) }
-        return strip.height
     }
 
     // MARK: Media bin
@@ -645,7 +665,7 @@ public final class LeftSidebarPanel {
     public private(set) var lastDraggedAssetId: String?
 
     public func pointerDown(_ p: CanvasPoint, time: Double = Date().timeIntervalSinceReferenceDate) -> Bool {
-        pressedAsset = nil; draggingAssetId = nil
+        pressedAsset = nil; draggingAssetId = nil; focus.pointerPressed()
         if dropdown.pointerDown(p) { onChange?(); return true }
         let hit = hits.hit(p)
         if let m = menu {
@@ -814,6 +834,6 @@ public final class LeftSidebarPanel {
             }
             if case .escape = k.code { menu = nil; onChange?(); return true }
         }
-        return false
+        return stripKey(k)
     }
 }

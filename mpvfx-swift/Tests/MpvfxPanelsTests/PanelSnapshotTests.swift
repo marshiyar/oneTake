@@ -289,8 +289,9 @@ final class PanelSnapshotTests: XCTestCase {
         XCTAssertGreaterThan(asked, 0)
         for s in ["ready", "Histogram", "Waveform", "RGB Parade", "Vectorscope"] { XCTAssertTrue(c.drawnStrings.contains(s), s) }
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
-        // Open, the Scopes row is 234.35 tall in a 240 slot instead of the closed 40 (see testGradeScopesRowAndRetryPlaceTheGrid).
-        XCTAssertEqual(tile.y, 80 + 40 + 8 + 240 + 12 + 24 + 6, accuracy: 1, "the open scopes push the grid down")
+        // Open, the Scopes row (header 28, the 32 pt mode tabs, 6, the 375 × 168.75 scope in its 2 pt border, 7) fills
+        // a 248 slot instead of the closed 40 (see testGradeScopesRowAndRetryPlaceTheGrid).
+        XCTAssertEqual(tile.y, 80 + 40 + 8 + 248 + 12 + 24 + 6, accuracy: 1, "the open scopes push the grid down")
         let parade = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 4) })
         XCTAssertTrue(r.inspector.pointerDown(CanvasPoint(parade.midX, parade.midY))); r.inspector.pointerUp(CanvasPoint(parade.midX, parade.midY))
         XCTAssertEqual(r.inspector.grade.scopeMode, .parade)

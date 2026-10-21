@@ -126,6 +126,8 @@ public final class InspectorPanel {
                                  _ pick: @escaping (String) -> Void) -> Void)?
     /// The Composition section's preset select, from the last draw (the popover opens under it).
     var compositionPresetField: CanvasRect?
+    /// The inline tab bars of the last draw, by bespoke row id (InspectorPanel+Tabs.swift).
+    var tabBars: [String: InlineTabBar] = [:]
 
     public init() {}
 
@@ -186,7 +188,7 @@ public final class InspectorPanel {
 
     public func draw(_ c: CanvasContext, in r: CanvasRect) {
         lastRect = r
-        hits.reset()
+        hits.reset(); tabBars = [:]
         // The shelf went away (closed, the rack's owner changed, the selection or group moved on): the audition ends.
         defer { if let k = auditionKey, hits.rect(where: { $0 == .button(k) }) == nil { endAudition() } }
         c.fillRect(r, PanelTheme.panelBg)
@@ -582,7 +584,7 @@ public final class InspectorPanel {
     public func keyDown(_ k: EditorKey) -> Bool {
         if k.code == .tab {   // Tab from a field commits it, then focus moves on
             if field != nil { commitField(); onEdited?() }
-            let moved = focus.move(hits, forward: !k.shift, Self.focusable)
+            let moved = focus.move(hits, forward: !k.shift) { [unowned self] in self.isFocusable($0) }
             if moved { revealFocus() }
             onEdited?(); return moved
         }
@@ -591,7 +593,7 @@ public final class InspectorPanel {
                 if k.code == .escape { focus.visible = false; onEdited?(); return true }
                 return press(cur)
             }
-            return gradeKey(k)
+            return bodyKey(k)
         }
         switch f.key(k) {
         case .commit: field = f; commitField(); onEdited?(); return true

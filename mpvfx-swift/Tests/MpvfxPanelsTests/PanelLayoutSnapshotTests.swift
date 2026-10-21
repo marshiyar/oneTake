@@ -47,6 +47,35 @@ final class PanelLayoutSnapshotTests: XCTestCase {
         }
     }
 
+    /// The tab bars (docs/DESIGN.md "Tabs"): the header strip, the Grade curve tabs (behind an overflow button at
+    /// 280 pt) and the effect families, at every width in both appearances; the selected tab's underline is the accent.
+    func testTabBarsAtEveryWidthInBothAppearances() throws {
+        let scale = 1.0, h = PanelLayoutAuditTests.height   // tall enough for the whole Grade body
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            for (wName, w) in PanelLayoutAuditTests.widths {
+                for group in ["grade", "effects"] {
+                    let (r, _) = try PanelLayoutAuditTests.panel(clip: "clip:a", group: group, width: w)
+                    r.inspector.effectsUI.catalogOpen = true
+                    let t = CairoImageTarget(width: Int(w * scale), height: Int(h * scale))
+                    t.canvas.scale(scale, scale)
+                    r.draw(t.canvas, size: CanvasSize(w, h))
+                    if let dir = Self.outDir {
+                        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                        XCTAssertEqual(t.writePNG("\(dir)/tabs-\(group)-\(wName)-\(mode).png"), 0)
+                    }
+                    let name = "\(group) \(wName) \(mode)"
+                    let design = try XCTUnwrap(r.hits.rect { $0 == .design }, name)
+                    assertPixel(t, design.midX, design.maxY - 1, scale: scale, PanelTheme.accent, "\(name): Design underline")
+                    let id = group == "grade" ? "grade:curvetabs" : "fx:tabs"
+                    let bar = try XCTUnwrap(r.inspector.tabBars[id], name)
+                    let sel = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom(id, bar.base + bar.selected) }, name)
+                    assertPixel(t, sel.midX, sel.maxY - 1, scale: scale, PanelTheme.accent, "\(name): selected tab underline")
+                }
+            }
+        }
+    }
+
     func check(_ t: CairoImageTarget, _ r: RightPanel, scale: Double, _ name: String) throws {
         let body = try XCTUnwrap(r.inspector.hits.rect { $0 == .body }, name)
         let inset = CanvasColor(ThemeTokens.panelBgInsetPair.now), bg = PanelTheme.panelBg
