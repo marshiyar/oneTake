@@ -35,7 +35,9 @@ public extension TimelineEditor {
             }
         }
         guard body(step, { doc }), !failed, doc != document else { return false }
+        let before = document
         withHistory(label) { replaceDocument(doc, inverse: .restoreDocument(document)) }
+        reportTransitionChanges(from: before)
         lastFailure = nil
         return true
     }

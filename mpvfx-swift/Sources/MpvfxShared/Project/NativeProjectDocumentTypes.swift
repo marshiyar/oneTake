@@ -231,13 +231,18 @@ public struct NativeProjectTrack: Codable, Equatable, Sendable {
     public var hidden: Bool?
     /// A locked track refuses clip edits (move, trim, split, delete, paste). Absent means unlocked.
     public var locked: Bool?
+    /// Cut transitions between adjacent clips of this track (`NativeCutTransition`). Absent means every cut is hard;
+    /// edits leave it absent rather than empty.
+    public var transitions: [NativeCutTransition]? = nil
+
     /// A soloed audio track is heard alone: while any audio track is soloed, the clips of every other track are left
     /// out of the mix (live playback and export). Ignored on video and mixed tracks. Absent means not soloed.
     public var soloed: Bool?
 
     public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil,
-                locked: Bool? = nil, soloed: Bool? = nil) {
+                locked: Bool? = nil, soloed: Bool? = nil, transitions: [NativeCutTransition]? = nil) {
         self.id = id; self.kind = kind; self.lane = lane; self.clips = clips; self.hidden = hidden; self.locked = locked; self.soloed = soloed
+        self.transitions = transitions
     }
 }
 
@@ -334,7 +339,7 @@ public extension NativeProjectDocument {
 
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
-        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedHoldNotice].compactMap { $0 }
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedHoldNotice, undrawnTransitionsNotice].compactMap { $0 }
     }
 }
 
@@ -346,6 +351,8 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
     case invalidCaption = "invalid-caption"
+    case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
+    case duplicateTransition = "duplicate-transition"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
     case invalidSpeedRamp = "invalid-speed-ramp"
 }

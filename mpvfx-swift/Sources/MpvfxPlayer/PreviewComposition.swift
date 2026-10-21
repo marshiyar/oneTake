@@ -58,6 +58,9 @@ public struct PreviewLayer: Equatable, Sendable {
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
+    /// A dip transition's colour laid over the picture (nil: none), and how much of it (0…1).
+    public var transitionColor: CanvasColor?
+    public var transitionColorAmount = 0.0
     /// Source seconds of the one frame a held clip shows for its whole length (`clip.holdSourceFrame`); nil plays the source.
     public var holdSourceTime: Double?
     /// Supported masks evaluated at this timeline time.
@@ -81,8 +84,13 @@ public struct PreviewLayer: Equatable, Sendable {
     /// Source seconds shown at timeline `time`.
     public func sourceTime(at time: Double) -> Double {
         if let held = holdSourceTime { return held }
-        return sourceIn + (speedRamp?.sourcePosition(atClipFrame: max(0, (time - start) * timelineFPS)) ?? ((time - start) * rate * timelineFPS)) / timelineFPS
+        guard let ramp = speedRamp else { return sourceIn + (time - start) * rate }
+        // A transition can start the layer earlier than its clip (handle media): the ramp is timed from the clip start.
+        let x = (time - (rampStart ?? start)) * timelineFPS
+        return sourceIn + (x >= 0 ? ramp.sourcePosition(atClipFrame: x) : x * ramp.speed(atClipFrame: 0)) / timelineFPS
     }
+    /// The clip's own start when a transition moved `start` earlier and a speed ramp is timed from the clip start.
+    public var rampStart: Double?
     public var timelineFPS = 1.0
 
     /// One picture for the whole clip (an image, or a held frame): decoded once and kept (the still lane).
@@ -119,6 +127,12 @@ public struct PreviewComposition {
         public var layer: Double
         /// The clip's active grade, built once per document (its static grade when `gradeAnimation` is set).
         public var grade: ColorGradeRenderer? = nil
+        /// The cut transitions the clip takes part in (`nativeCutTransitionSpans`): the frames it is drawn before its
+        /// start and after its end from its handles, and how it mixes during each transition.
+        public var transitions = NativeClipTransitions()
+        /// Timeline frames the clip is drawn over, transitions included, [drawStart, drawEnd).
+        public var drawStart: Double { clip.startFrame - transitions.lead }
+        public var drawEnd: Double { clip.startFrame + clip.durationFrames + transitions.tail }
         /// Set when grade parameters are keyframed (issue #179): the grade is then built per frame from the values
         /// at that frame, through this memo of the last few frames' renderers.
         public var gradeAnimation: PreviewGradeAnimation? = nil
@@ -127,6 +141,10 @@ public struct PreviewComposition {
         /// The media's natural width over height (PreviewLayer.mediaAspect), nil when unknown.
         public var mediaAspect: Double? = nil
     }
+
+    /// Pre-roll horizon, in seconds, for a clip that comes on screen through a transition: both of its decoders run
+    /// at once, so the incoming one starts this far ahead and the first frame of the transition is ready.
+    public static let transitionPreroll = 1.0
 
     public let canvas: CanvasSize
     public let background: CanvasColor
@@ -169,6 +187,8 @@ public struct PreviewComposition {
                 }
             }
         }
+        let spans = nativeCutTransitionSpans(document)
+        for i in ordered.indices { ordered[i].0.transitions = spans[ordered[i].0.clip.id] ?? NativeClipTransitions() }
         offlineAssetIds = media.offline
         entries = ordered.sorted { a, b in
             if a.0.layer != b.0.layer { return a.0.layer < b.0.layer }
@@ -265,7 +285,7 @@ public struct PreviewComposition {
     public func layers(at time: Double) -> [PreviewLayer] {
         let f = Double(frameIndex(at: time))
         return entries.compactMap { e in
-            guard e.clip.startFrame <= f, f < e.clip.startFrame + e.clip.durationFrames else { return nil }
+            guard e.drawStart <= f, f < e.drawEnd else { return nil }
             return layer(e, at: time)
         }
     }
@@ -274,8 +294,9 @@ public struct PreviewComposition {
     public func upcoming(after time: Double, within horizon: Double) -> [PreviewLayer] {
         let f = Double(frameIndex(at: time))
         return entries.compactMap { e in
-            let start = e.clip.startFrame / fps
-            guard e.clip.startFrame > f, start <= time + horizon else { return nil }
+            let start = e.drawStart / fps
+            let reach = e.transitions.lead > 0 ? max(horizon, Self.transitionPreroll) : horizon
+            guard e.drawStart > f, start <= time + reach else { return nil }
             return layer(e, at: start)
         }
     }
@@ -284,7 +305,7 @@ public struct PreviewComposition {
     public func upcomingReverse(before time: Double, within horizon: Double) -> [PreviewLayer] {
         let f = Double(frameIndex(at: time))
         return entries.compactMap { e in
-            let endFrame = e.clip.startFrame + e.clip.durationFrames
+            let endFrame = e.drawEnd
             guard endFrame <= f, endFrame / fps >= time - horizon, e.clip.durationFrames > 0 else { return nil }
             return layer(e, at: (endFrame - 1) / fps)
         }
@@ -362,7 +383,25 @@ public struct PreviewComposition {
         }
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
+        applyTransitions(e.transitions, to: &out, atFrame: Double(frameIndex(at: time)))
         return out
+    }
+
+    /// Widens the layer over its transitions' handle frames (one decode lane covers the whole range) and mixes it
+    /// for the transition at `frame`: a dissolve scales the incoming clip's opacity, a dip lays its colour over
+    /// either clip.
+    func applyTransitions(_ t: NativeClipTransitions, to layer: inout PreviewLayer, atFrame frame: Double) {
+        if t.lead > 0 {
+            if layer.speedRamp != nil { layer.rampStart = layer.start } else { layer.sourceIn -= t.lead * layer.rate / fps }
+            layer.start -= t.lead / fps; layer.startFrame -= Int(t.lead)
+        }
+        if t.tail > 0 { layer.end += t.tail / fps; layer.endFrame += Int(t.tail) }
+        let mix: NativeTransitionMix, span: NativeCutTransitionSpan
+        if let s = t.incoming, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.incomingMix(atFrame: frame) }
+        else if let s = t.outgoing, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.outgoingMix(atFrame: frame) }
+        else { return }
+        layer.opacity *= mix.opacity
+        if mix.colorAmount > 0 { layer.transitionColor = CanvasColor(hex: span.color); layer.transitionColorAmount = mix.colorAmount }
     }
 }
 
@@ -455,6 +494,7 @@ public enum PreviewPainter {
             if let fill = layer.style?.fill.flatMap(CanvasColor.init(hex:)), fill.a > 0 {
                 var p = CanvasPath(); p.addRect(box); c.fill(p, fill.withAlpha(fill.a * layer.opacity))
             }
+            var covered = box
             if let image {
                 let placed = mediaRect(imageWidth: image.width, imageHeight: image.height,
                                        in: layer.box, fit: layer.fit)
@@ -470,6 +510,7 @@ public enum PreviewPainter {
                 } else {
                     c.drawImage(visibleImage, in: picture, opacity: layer.opacity)
                 }
+                covered = picture
             } else if let text = layer.text {
                 if layer.masks.isEmpty {
                     TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
@@ -477,6 +518,7 @@ public enum PreviewPainter {
                     c.drawImage(image, in: box, opacity: layer.opacity)
                 }
             }
+            drawTransitionColor(layer, over: covered, on: c)
             if let style = layer.style, style.visibleStrokeWidth > 0, let color = CanvasColor(hex: style.resolvedStrokeColor) {
                 // Inside the box edge, like export's drawbox.
                 let w = min(style.visibleStrokeWidth * s, min(box.width, box.height) / 2)
@@ -484,6 +526,13 @@ public enum PreviewPainter {
                 c.stroke(p, color.withAlpha(color.a * layer.opacity), StrokeStyle(width: w))
             }
         }
+    }
+
+    /// A dip transition's colour over the layer's picture (or its box for text), at the dip's amount.
+    static func drawTransitionColor(_ layer: PreviewLayer, over rect: CanvasRect, on c: CanvasContext) {
+        guard layer.transitionColorAmount > 0, let color = layer.transitionColor else { return }
+        var p = CanvasPath(); p.addRect(rect)
+        c.fill(p, color.withAlpha(color.a * min(1, layer.transitionColorAmount) * layer.opacity))
     }
 
     private static func maskedText(_ text: NativeClipText, masks: [NativeClipMask], box: CanvasRect,

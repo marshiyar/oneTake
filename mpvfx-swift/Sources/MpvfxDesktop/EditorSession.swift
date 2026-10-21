@@ -136,6 +136,7 @@ final class EditorSession {
         syncStage()
         let previousOnChange = editor.onChange
         editor.onChange = { [weak self] in previousOnChange?(); self?.documentChanged(); self?.rebuildAudioGraphIfNeeded() }
+        editor.onNotice = { [weak self] in self?.player.view.showToast($0); self?.redraw() }
         watchOpenProject()
     }
 
