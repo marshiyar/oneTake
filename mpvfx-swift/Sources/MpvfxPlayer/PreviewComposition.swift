@@ -177,7 +177,8 @@ public struct PreviewComposition {
         /// path and whether the file is there; nil for assets with no media file (elements, text).
         mutating func check(_ asset: NativeProjectAsset) -> (path: String, present: Bool)? {
             guard asset.kind == .video || asset.kind == .image || asset.kind == .audio, let src = asset.source, !src.isEmpty else { return nil }
-            let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
+            // An absolute source (`/…`, or `C:\…` on Windows) is used as is; anything else is relative to the project.
+            let path = NSString(string: src).isAbsolutePath ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
             let present = exists[path] ?? fileExists(path)
             exists[path] = present
             if !present { offline.insert(asset.id) }
