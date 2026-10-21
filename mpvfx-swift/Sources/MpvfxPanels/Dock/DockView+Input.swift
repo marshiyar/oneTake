@@ -87,7 +87,8 @@ extension DockView {
 
     func moved(_ d: Drag, to p: CanvasPoint, swap: Bool) -> Drag {
         let scene = DockDrop.Scene(layout: layout, geometry: geometry, tabs: tabs)
-        return Drag(panel: d.panel, point: p, preview: DockDrop.preview(DockDrop.Probe(point: p, panel: d.panel, swap: swap), scene: scene))
+        let preview = DockDrop.preview(DockDrop.Probe(point: p, panel: d.panel, swap: swap), scene: scene)
+        return Drag(panel: d.panel, point: p, preview: preview, swap: swap)
     }
 
     func hover(_ p: CanvasPoint) -> Bool {
@@ -125,8 +126,10 @@ extension DockView {
             onCommit(layout)
             return true
         }
-        guard let d = drag else { return false }
+        guard let last = drag else { return false }
         drag = nil
+        // The drop is where the pointer is released, not where it last moved (a host may send no move before it).
+        let d = moved(last, to: p, swap: last.swap)
         if let target = d.preview?.target, case .success(let next) = DockDrop.applying(target, dragging: d.panel, to: layout) {
             perform { $0 = next }
             focused = d.panel

@@ -141,6 +141,17 @@ final class DockViewTests: XCTestCase {
         XCTAssertNil(v.drag?.preview)
     }
 
+    /// A host may release without a move at the release point: the drop is resolved where the pointer is released.
+    func testTheDropIsWhereThePointerIsReleased() throws {
+        let v = makeView()
+        XCTAssertEqual(v.pointerDown(center(try tab(v, "media").rect)), .handled)
+        let content = try frame(v, "preview").content
+        v.pointerMove(CanvasPoint(content.midX, content.midY))   // over the preview: would stack there
+        v.pointerUp(CanvasPoint(700, bounds.maxY - 6))            // released at the bottom window edge
+        redraw(v)
+        XCTAssertEqual(try frame(v, "media").frame.width, bounds.width, "docked along the bottom, not stacked with the preview")
+    }
+
     func testEscapeCancelsADragAndTheLayoutStays() throws {
         let v = makeView()
         let before = v.layout
