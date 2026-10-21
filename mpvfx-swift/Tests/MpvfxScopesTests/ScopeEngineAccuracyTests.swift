@@ -119,8 +119,8 @@ final class ScopeEngineAccuracyTests: XCTestCase {
 
     func testTheNumberOfWorkersDoesNotChangeTheResult() throws {
         let f = try F.busy(1001, 531)   // enough samples for 4 workers (ScopeEngine.samplesPerWorker)
-        let one = ScopeEngine.analyze(f, options: ScopeOptions(workers: 1))
-        let many = ScopeEngine.analyze(f, options: ScopeOptions(workers: 7))
+        let one = ScopeEngine.analyze(f, options: .with { $0.workers = 1 })
+        let many = ScopeEngine.analyze(f, options: .with { $0.workers = 7 })
         XCTAssertEqual(one.waveform, many.waveform)
         XCTAssertEqual(one.histogram, many.histogram)
         XCTAssertEqual(one.vectorscope, many.vectorscope)
@@ -136,8 +136,8 @@ final class ScopeEngineAccuracyTests: XCTestCase {
             let o = ((y * 2) * 64 + x * 2) * 4
             return (big.rgba[o], big.rgba[o + 1], big.rgba[o + 2], big.rgba[o + 3])
         }
-        let a = ScopeEngine.analyze(big, options: ScopeOptions(columns: 32, maxSamples: 32 * 18))
-        let b = ScopeEngine.analyze(picked, options: ScopeOptions(columns: 32))
+        let a = ScopeEngine.analyze(big, options: .with { $0.columns = 32; $0.maxSamples = 32 * 18 })
+        let b = ScopeEngine.analyze(picked, options: .with { $0.columns = 32 })
         XCTAssertEqual(a.step, 2)
         XCTAssertEqual(a.samples, 32 * 18)
         XCTAssertEqual(a.waveform, b.waveform)
@@ -146,7 +146,7 @@ final class ScopeEngineAccuracyTests: XCTestCase {
     }
 
     func testColumnsSpreadTheFrameEvenly() throws {
-        let a = ScopeEngine.analyze(try F.greyRamp(height: 1), options: ScopeOptions(columns: 64))
+        let a = ScopeEngine.analyze(try F.greyRamp(height: 1), options: .with { $0.columns = 64 })
         XCTAssertEqual(a.columns, 64)
         for c in 0..<64 {
             XCTAssertEqual((0..<256).reduce(0) { $0 + Int(a.waveform(.luma, column: c, level: $1)) }, 4, "column \(c)")

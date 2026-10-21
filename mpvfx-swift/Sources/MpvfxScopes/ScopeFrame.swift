@@ -44,21 +44,27 @@ public struct ScopeFrame: Sendable {
 /// analysis fail or allocate without bound.
 public struct ScopeOptions: Sendable, Equatable {
     public var matrix: ScopeMatrix
-    /// Waveform columns across the frame (at most the sampled width).
-    public var columns: Int
-    /// Vectorscope bins from the centre to the +-0.5 edge; the grid is (2 radius + 1) square, centre = achromatic.
-    public var vectorRadius: Int
     /// Vectorscope magnification, 1...8: at 2 the grid spans +-0.25.
     public var vectorZoom: Double
+    /// Waveform columns across the frame (at most the sampled width).
+    public var columns = 512
+    /// Vectorscope bins from the centre to the +-0.5 edge; the grid is (2 radius + 1) square, centre = achromatic.
+    public var vectorRadius = 128
     /// Frames with more pixels are point-sampled on a uniform grid down to at most this many samples.
-    public var maxSamples: Int
+    public var maxSamples = 1920 * 1080
     /// Threads; 0 = min(8, active processors).
-    public var workers: Int
+    public var workers = 0
 
-    public init(matrix: ScopeMatrix = .rec709, columns: Int = 512, vectorRadius: Int = 128, vectorZoom: Double = 1,
-                maxSamples: Int = 1920 * 1080, workers: Int = 0) {
-        self.matrix = matrix; self.columns = columns; self.vectorRadius = vectorRadius
-        self.vectorZoom = vectorZoom; self.maxSamples = maxSamples; self.workers = workers
+    /// The two settings a viewer changes; the others keep their defaults until set.
+    public init(matrix: ScopeMatrix = .rec709, vectorZoom: Double = 1) {
+        self.matrix = matrix; self.vectorZoom = vectorZoom
+    }
+
+    /// These options with `edit` applied: `ScopeOptions.with { $0.workers = 1 }`.
+    public static func with(_ edit: (inout ScopeOptions) -> Void) -> ScopeOptions {
+        var o = ScopeOptions()
+        edit(&o)
+        return o
     }
 
     /// The options with every value inside its range.

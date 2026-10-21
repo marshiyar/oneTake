@@ -34,21 +34,24 @@ final class ScopeEngineInputTests: XCTestCase {
     }
 
     func testOutOfRangeOptionsAreClamped() {
-        let o = ScopeOptions(columns: -5, vectorRadius: 1 << 40, vectorZoom: .nan, maxSamples: -1, workers: 10_000).resolved
+        let o = ScopeOptions.with {
+            $0.columns = -5; $0.vectorRadius = 1 << 40; $0.vectorZoom = .nan; $0.maxSamples = -1; $0.workers = 10_000
+        }.resolved
         XCTAssertEqual(o.columns, 1)
         XCTAssertEqual(o.vectorRadius, 512)
         XCTAssertEqual(o.vectorZoom, 1)
         XCTAssertEqual(o.maxSamples, 1)
         XCTAssertEqual(o.workers, 64)
-        XCTAssertEqual(ScopeOptions(vectorRadius: 0, vectorZoom: 100).resolved.vectorRadius, 16)
+        XCTAssertEqual(ScopeOptions.with { $0.vectorRadius = 0 }.resolved.vectorRadius, 16)
         XCTAssertEqual(ScopeOptions(vectorZoom: 100).resolved.vectorZoom, 8)
         XCTAssertEqual(ScopeOptions(vectorZoom: -.infinity).resolved.vectorZoom, 1)
     }
 
     func testExtremeOptionsStillAnalyse() throws {
         let f = try ScopeFixtures.busy(17, 9)
-        let a = ScopeEngine.analyze(f, options: ScopeOptions(columns: 100_000, vectorRadius: -3, vectorZoom: .infinity,
-                                                             maxSamples: 0, workers: -2))
+        let a = ScopeEngine.analyze(f, options: .with {
+            $0.columns = 100_000; $0.vectorRadius = -3; $0.vectorZoom = .infinity; $0.maxSamples = 0; $0.workers = -2
+        })
         XCTAssertEqual(a.step, 17, "one sample per frame at maxSamples 1")
         XCTAssertEqual(a.samples, 1)
         XCTAssertEqual(a.columns, 1)
