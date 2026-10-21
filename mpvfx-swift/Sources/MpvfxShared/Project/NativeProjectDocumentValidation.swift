@@ -213,6 +213,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             }
             validateNativeClipFades(clip, clipPath, &issues)
             validateNativeClipPresentation(clip, clipPath, &issues)
+            validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }
