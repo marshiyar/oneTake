@@ -451,54 +451,77 @@ class FakeGit:
     def is_ancestor(self, a, b):
         return self.ancestors
 
+    def squash(self, base, tip, message):
+        self.log.append(("squash", base, tip, message))
+        return "f" * 40
+
     def push_batch(self):
         self.log.append(("push",))
+
+    def fetch_batch(self):
+        return "f" * 40, self.message
 
 
 class Publish(unittest.TestCase):
     def setUp(self):
-        self.f = FakeGh()
+        self.f, self.o = FakeGh(), FakeGh()        # the App's gh and the owner's gh
         for n in (4, 6, 8, 9):
-            self.f.add(n, labels=["merge-conflict"], sha=INCLUDED[0]["sha"] if n == 4 else INCLUDED[1]["sha"] if n == 6 else None)
-        self.plan = {"base": "c" * 40, "prs": [item(n, body=f"Closes #{n + 100}", title=f"title {n}").as_json() for n in (4, 6, 8, 9)]}
+            sha = INCLUDED[0]["sha"] if n == 4 else INCLUDED[1]["sha"] if n == 6 else None
+            self.f.add(n, labels=["merge-conflict"], sha=sha)
+        self.plan = {"base": "c" * 40, "prs": [item(n, body=f"Closes #{n + 100}", title=f"title {n}").as_json()
+                                               for n in (4, 6, 8, 9)]}
         self.result = {"base": "c" * 40, "tip": "d" * 40, "gate": "passed", "gate_detail": "", "included": INCLUDED,
                        "skipped": [{"number": 8, "reason": "conflicts that need a person", "files": ["x"]}],
                        "dropped": [{"number": 9, "title": "t", "error": "e", "files": ["y"]}], "contained": []}
 
-    def go(self, merge=True, git=None):
-        log = []
-        git = git or FakeGit()
-        ig.publish(gh_with(self.f), git, self.plan, self.result, merge, "b.bundle", log)
-        return git, [(m, p.split("repos/o/r/")[1], fl) for m, p, fl in self.f.writes]
+    def writes(self, fake):
+        return [(m, p.split("repos/o/r/")[1], fl) for m, p, fl in fake.writes]
 
-    def test_merge_squashes_closes_and_relabels(self):
+    def go(self, merge=True, git=None, owner=True):
+        git = git or FakeGit()
+        ig.publish(gh_with(self.f), git, self.plan, self.result, merge, "b.bundle", [], gh_with(self.o) if owner else None)
+        return git, self.writes(self.o)
+
+    def test_owner_token_squashes_with_the_pushed_commit_closes_and_relabels(self):
         git, w = self.go()
-        self.assertEqual(git.log[-1], ("push",))
+        self.assertEqual([x[0] for x in git.log], ["unbundle", "squash", "push"])
+        self.assertEqual(git.log[1][1:3], ("c" * 40, "d" * 40))
+        message = git.log[1][3]
+        self.assertIn("Closes #104\nCloses #106", message)
         merge = next(x for x in w if x[1] == "pulls/77/merge")
-        self.assertEqual(merge[2]["merge_method"], "squash")
-        self.assertEqual(merge[2]["sha"], "d" * 40)
+        self.assertEqual((merge[2]["merge_method"], merge[2]["sha"]), ("squash", "f" * 40))
         self.assertEqual(merge[2]["commit_title"], "Integrate #4 #6 (#77)")
         self.assertNotIn("Co-authored-by", merge[2]["commit_message"])
+        self.assertIn("Closes #104", merge[2]["commit_message"])
         self.assertEqual([x[1] for x in w if x[2] == {"state": "closed"}], ["pulls/4", "pulls/6"])
         self.assertIn(("DELETE", "issues/4/labels/merge-conflict", {}), w)
-        self.assertIn(("DELETE", "issues/6/labels/merge-conflict", {}), w)
-        needs = [x[1] for x in w if x[2] == {"labels[]": ig.NEEDS}]
-        self.assertEqual(needs, ["issues/8/labels", "issues/9/labels"])
         create = next(x for x in w if x[1] == "pulls")
         self.assertEqual((create[2]["head"], create[2]["base"], create[2]["title"]), (ig.BRANCH, "main", "Integrate #4 #6"))
         self.assertIn("Closes #104", create[2]["body"])
+        # the App only pushes and labels the left-out ones; it opens, merges and closes nothing
+        self.assertFalse([x for x in self.writes(self.f) if x[1].startswith("pulls")])
 
-    def test_audio_change_adds_the_coauthor_to_the_squash_message_only(self):
+    def test_left_out_prs_get_the_label(self):
+        self.go()
+        self.assertEqual([x[1] for x in self.writes(self.f) if x[2] == {"labels[]": ig.NEEDS}],
+                         ["issues/8/labels", "issues/9/labels"])
+
+    def test_without_owner_token_the_branch_is_pushed_and_nothing_is_opened_or_merged(self):
+        git, w = self.go(owner=False)
+        self.assertEqual(git.log[-1], ("push",))
+        self.assertEqual((w, [x for x in self.writes(self.f) if x[1].startswith("pulls")]), ([], []))
+
+    def test_audio_change_adds_the_coauthor_to_the_commit_and_squash_message_only(self):
         self.result["included"][0]["files"] = ["mpvfx-swift/Sources/MpvfxAudio/A.swift"]
-        _, w = self.go()
+        git, w = self.go()
+        self.assertIn(ZED, git.log[1][3])
         merge = next(x for x in w if x[1] == "pulls/77/merge")
         self.assertIn(ZED, merge[2]["commit_message"])
-        create = next(x for x in w if x[1] == "pulls")
-        self.assertNotIn("Zed", create[2]["body"])
+        self.assertNotIn("Zed", next(x for x in w if x[1] == "pulls")[2]["body"])
         self.result["included"][0]["files"] = [SWIFT]
 
     def test_existing_batch_pr_is_updated_not_duplicated(self):
-        self.f.batch = 50
+        self.o.batch = 50
         _, w = self.go(merge=False)
         self.assertIn("pulls/50", [x[1] for x in w])
         self.assertNotIn("pulls", [x[1] for x in w])
@@ -506,7 +529,7 @@ class Publish(unittest.TestCase):
     def test_merge_off_or_failed_gate_opens_but_does_not_merge_or_close(self):
         _, w = self.go(merge=False)
         self.assertFalse([x for x in w if x[1].endswith("/merge") or x[2] == {"state": "closed"}])
-        self.f.writes.clear()
+        self.o.writes.clear()
         self.result["gate"] = "failed"
         _, w = self.go()
         self.assertFalse([x for x in w if x[1].endswith("/merge") or x[2] == {"state": "closed"}])
@@ -522,13 +545,81 @@ class Publish(unittest.TestCase):
         with self.assertRaises(ig.Error):
             self.go(git=git)
         self.assertNotIn(("push",), git.log)
-        self.assertEqual(self.f.writes, [])
+        self.assertEqual((self.f.writes, self.o.writes), ([], []))
 
     def test_nothing_included_only_labels_the_left_out(self):
         self.result.update(included=[], gate="none")
         git, w = self.go()
-        self.assertEqual(git.log, [])
-        self.assertEqual([x[1] for x in w if x[2] == {"labels[]": ig.NEEDS}], ["issues/8/labels", "issues/9/labels"])
+        self.assertEqual((git.log, w), ([], []))
+        self.assertEqual([x[1] for x in self.writes(self.f) if x[2] == {"labels[]": ig.NEEDS}],
+                         ["issues/8/labels", "issues/9/labels"])
+
+
+class Land(unittest.TestCase):
+    MESSAGE = ("Integrate #4 #6\n\n- #4 Fix A\n- #6 Add B\n\nCloses #104\n\n"
+               f"{ZED}\n{ig.TRAILER}")
+
+    def test_message_parsing(self):
+        title, numbers, body = ig.parse_message(self.MESSAGE)
+        self.assertEqual((title, numbers), ("Integrate #4 #6", [4, 6]))
+        self.assertEqual(body, ["- #4 Fix A", "- #6 Add B", "", "Closes #104"])
+        self.assertEqual(ig.parse_message("")[1], [])
+
+    def test_commit_message_round_trips(self):
+        msg = ig.commit_message(INCLUDED, [SWIFT], ["Closes #1"])
+        self.assertEqual(ig.parse_message(msg)[1], [4, 6])
+
+    def test_land_opens_merges_closes_and_labels(self):
+        f = FakeGh()
+        git = FakeGit()
+        git.message = self.MESSAGE
+        result = {"skipped": [{"number": 8, "reason": "r", "files": ["x"]}], "dropped": [], "contained": [3]}
+        note = ig.land(gh_with(f), git, result, [])
+        w = [(m, p.split("repos/o/r/")[1], fl) for m, p, fl in f.writes]
+        create = next(x for x in w if x[1] == "pulls")
+        self.assertEqual(create[2]["title"], "Integrate #4 #6")
+        self.assertIn("Closes #104", create[2]["body"])
+        self.assertIn("## Skipped", create[2]["body"])
+        for hidden in ("Co-authored-by", "Agent-Role"):
+            self.assertNotIn(hidden, create[2]["body"])
+        merge = next(x for x in w if x[1] == "pulls/77/merge")
+        self.assertEqual((merge[2]["sha"], merge[2]["commit_title"]), ("f" * 40, "Integrate #4 #6 (#77)"))
+        self.assertIn(ZED, merge[2]["commit_message"])
+        self.assertEqual([x[1] for x in w if x[2] == {"state": "closed"}], ["pulls/4", "pulls/6"])
+        self.assertIn(("DELETE", "issues/3/labels/merge-conflict", {}), w)
+        self.assertIn(("POST", "issues/8/labels", {"labels[]": ig.NEEDS}), w)
+        self.assertIn("closed #4 #6", note)
+
+    def test_land_refuses_a_message_without_pull_requests(self):
+        git = FakeGit()
+        git.message = "just a commit"
+        with self.assertRaises(ig.Error):
+            ig.land(gh_with(FakeGh()), git, None, [])
+
+
+class SquashCommit(RealGit):
+    def test_batch_is_main_plus_one_owner_authored_commit(self):
+        s1 = self.pr(1, {"src/a.txt": "one\n"})
+        s2 = self.pr(2, {"src/b.txt": "two\n"})
+        git = self.bot()
+        git.fetch([1, 2])
+        with git.union_attributes():
+            git.start(self.base)
+            for i in self.items((1, s1), (2, s2)):
+                git.merge_one(i)
+        tip = git.head()
+        sh(self.work, "git", "checkout", "-q", "--detach", self.base)
+        msg = ig.commit_message(INCLUDED, [SWIFT], ["Closes #5"])
+        sha = git.squash(self.base, tip, msg)
+        self.assertEqual(sh(self.work, "git", "rev-parse", f"{sha}^{{tree}}"), sh(self.work, "git", "rev-parse", f"{tip}^{{tree}}"))
+        self.assertEqual(sh(self.work, "git", "rev-list", "--parents", "-1", sha), f"{sha} {self.base}")
+        who = sh(self.work, "git", "log", "-1", "--format=%an <%ae>|%cn <%ce>", sha)
+        owner = f"{ig.cf.OWNER_NAME} <{ig.cf.OWNER_EMAIL}>"
+        self.assertEqual(who, f"{owner}|{owner}")
+        body = sh(self.work, "git", "log", "-1", "--format=%B", sha)
+        self.assertIn("Closes #5", body)
+        self.assertIn(ig.TRAILER, body)
+        self.assertNotIn("Co-Authored-By: Claude", body)
 
 
 class Summary(unittest.TestCase):
