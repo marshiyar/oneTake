@@ -124,6 +124,55 @@ final class InspectorPanelTests: XCTestCase {
         XCTAssertEqual(audio.groups.map(\.title), ["Audio FX", "Media"])
     }
 
+    func testGradeHeaderBypassIsOneUndoableEdit() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        p.openGroupId = "grade"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("grade") })
+        let before = editor.colorGrading(clipId: "clip:a")?.enabled ?? true
+        XCTAssertGreaterThanOrEqual(toggle.width, 24)
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled, !before)
+        XCTAssertEqual(editor.undoStack.count, 1)
+        XCTAssertTrue(editor.undo())
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled ?? true, before)
+    }
+
+    func testGradeAndEffectsBypassesPublishAccessibleSwitches() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        p.openGroupId = "grade"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let controls = p.accessibilityControls
+        XCTAssertEqual(Set(controls.map(\.label)), ["Grade enabled", "Effects enabled"])
+        XCTAssertTrue(controls.allSatisfy { $0.frame.width >= 24 && $0.frame.height >= 24 })
+        try XCTUnwrap(controls.first { $0.label == "Grade enabled" }).press()
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.enabled, false)
+    }
+
+    func testEffectsHeaderBypassPreservesAmounts() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        var grade = editor.colorGrading(clipId: "clip:a") ?? ColorGrading(); grade.effects["blur"] = 0.45
+        XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", grade))
+        p.openGroupId = "effects"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effectsEnabled, false)
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        XCTAssertTrue(p.pointerDown(center(try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") }))))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effects["blur"], 0.45)
+    }
+
+    func testEffectsHeaderBypassPersistsOnANeutralGrade() throws {
+        let (p, editor, c) = try makeInspector(select: "clip:a")
+        XCTAssertNil(editor.colorGrading(clipId: "clip:a"))
+        p.openGroupId = "effects"; c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        let toggle = try XCTUnwrap(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(p.pointerDown(center(toggle)))
+        XCTAssertEqual(editor.colorGrading(clipId: "clip:a")?.effectsEnabled, false)
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 360, height: 1400))
+        XCTAssertNotNil(p.hits.rect { $0 == .groupEnabled("effects") })
+        XCTAssertTrue(c.drawnStrings.contains("off"))
+    }
+
     /// The accordion entrance (hf-flat-group-enter, 120 ms ease-out): the toggled group and the one it closed
     /// animate while a host clock drives `tick`; nothing animates without one.
     func testAccordionEntranceRunsFor120ms() throws {
@@ -570,7 +619,7 @@ final class RightPanelTests: XCTestCase {
         let c = PanelMeasureCanvas()
         r.draw(c, size: CanvasSize(409, 600))
         XCTAssertTrue(r.keyDown(EditorKey(.tab)))
-        XCTAssertEqual(r.focus.current, .design, "Tab starts at the strip's first tab")
+        XCTAssertEqual(r.focus.current, .renders, "Tab starts at the strip's selected tab: the tab bar is one stop (docs/DESIGN.md \"Tabs\")")
         var n = 0
         while r.focus.current != .export, n < 30 { _ = r.keyDown(EditorKey(.tab)); n += 1 }
         XCTAssertEqual(r.focus.current, .export)

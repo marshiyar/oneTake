@@ -201,7 +201,7 @@ extension InspectorPanel {
         rows += arcMotionRows(editor, s)
         return InspectorGroup(id: "layout", title: "Transform",
                               summary: "\(PanelFormat.number(x, decimals: 0))px,\(PanelFormat.number(y, decimals: 0))px · \(Int(w.rounded()))×\(Int(h.rounded()))",
-                              rows: rows, spacing: 6)
+                              rows: rows)
     }
 
     // MARK: Style
@@ -265,7 +265,7 @@ extension InspectorPanel {
 
     func groupVolumeRows(_ editor: TimelineEditor, _ g: NativeAudioGroup) -> [InspectorRow] {
         let gid = g.id, gv = g.volume ?? 1
-        return [.init(.spacer(8)), .init(.slider(.init(
+        return [.init(.spacer(PanelGrid.unit)), .init(.slider(.init(
             key: "groupVolume", label: "Group volume", position: AudioGainFader.position(gain: gv), min: AudioGainFader.min, max: AudioGainFader.max,
             display: AudioGainFader.text(gv), format: { AudioGainFader.text(AudioGainFader.gain(position: $0)) },
             tier: gv == 1 ? .default : .explicitCustom, centerTick: true,
