@@ -46,9 +46,10 @@ RULES = [
     (r"\.github/workflows/mpvfx-macos\.yml", {"macos"}),
     (r"\.github/ci/test-shards\.py", ALL),
     (r"\.github/ci/run-shard\.py", {"linux", "windows"}),
-    # The Linux and Windows test shards that run on OneTake-actionRunners-1: the generated workflow, its generator, and
-    # the job that waits for their statuses.
-    (r"\.github/workflows/mpvfx-ci-tests-source\.yml|\.github/ci/(source_workflows|remote_shards)\.py",
+    # The Linux and Windows test shards that run on OneTake-actionRunners-1: the generated workflow, its generator, the
+    # plan job's check that the Runners App is installed, and the job that waits for their statuses.
+    (r"\.github/workflows/mpvfx-ci-tests-source\.yml|\.github/ci/(source_workflows|remote_shards)\.py"
+     r"|\.github/ci/runners_app_installed\.sh",
      {"linux", "windows"}),
     (r"\.github/ci/metal-toolchain\.sh", {"macos"}),
     # This file decides what the pull request that changes it runs, so a change to it runs everything.

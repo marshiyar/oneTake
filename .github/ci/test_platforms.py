@@ -88,7 +88,7 @@ class Classify(unittest.TestCase):
         self.assertEqual(run(".github/ci/test-shards.py"), (True, ALL))
         self.assertEqual(run(".github/ci/run-shard.py"), (True, {"linux", "windows"}))
         for p in (".github/workflows/mpvfx-ci-tests-source.yml", ".github/ci/source_workflows.py",
-                  ".github/ci/remote_shards.py"):
+                  ".github/ci/remote_shards.py", ".github/ci/runners_app_installed.sh"):
             self.assertEqual(run(p), (True, {"linux", "windows"}), p)
         self.assertEqual(run(".github/ci/platforms.py"), (True, ALL))
 
@@ -115,7 +115,7 @@ class Repository(unittest.TestCase):
         for p in (".github/workflows/mpvfx-ci.yml", ".github/workflows/mpvfx-macos.yml", ".github/ci/test-shards.py",
                   ".github/ci/run-shard.py", ".github/ci/metal-toolchain.sh", ".github/ci/platforms.py",
                   ".github/workflows/mpvfx-ci-tests-source.yml", ".github/ci/source_workflows.py",
-                  ".github/ci/remote_shards.py",
+                  ".github/ci/remote_shards.py", ".github/ci/runners_app_installed.sh",
                   "mpvfx-swift/docs/DESIGN.md", "mpvfx-swift/scripts/copyright.py",
                   "mpvfx-swift/scripts/test_fetch_binaries.py"):
             self.assertTrue(os.path.isfile(os.path.join(ROOT, p)), p)

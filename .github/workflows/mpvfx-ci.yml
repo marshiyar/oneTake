@@ -111,6 +111,8 @@ jobs:
       remote_linux: ${{ steps.pick.outputs.remote_linux }}
       remote_windows: ${{ steps.pick.outputs.remote_windows }}
       remote_keys: ${{ steps.pick.outputs.remote_keys }}
+      # The oneTake-Runners1 App is installed here, so OneTake-actionRunners-1 can report back (macos-runners too).
+      runners_ok: ${{ steps.app.outputs.installed }}
     defaults:
       run:
         shell: bash
@@ -183,6 +185,12 @@ jobs:
           key: windows-pass-rest-${{ fromJSON(steps.keys.outputs.windows)[3].key }}
           lookup-only: true
           enableCrossOsArchive: true
+      - name: Runners App installed here
+        id: app
+        env:
+          RUNNERS_APP_ID: ${{ secrets.RUNNERS_APP_ID }}
+          RUNNERS_APP_PRIVATE_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+        run: bash ../.github/ci/runners_app_installed.sh >> "$GITHUB_OUTPUT"
       - name: Shards to run
         id: pick
         env:
@@ -197,12 +205,14 @@ jobs:
           APP_ID: ${{ secrets.RUNNERS_APP_ID }}
           APP_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
           OWN: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.changes.outputs.workflow != 'true' }}
+          INSTALLED: ${{ steps.app.outputs.installed }}
         run: |
           python3 -I -B - <<'PY'
           import json, os
           full = os.environ["FULL"] == "true"
-          remote_ok = bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"
-          print(f"::notice::{'shards marked runners run on OneTake-actionRunners-1' if remote_ok else 'every shard runs here (no RUNNERS_APP_* secrets, or a fork)'}")
+          remote_ok = (bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"
+                       and os.environ["INSTALLED"] == "true")
+          print(f"::notice::{'shards marked runners run on OneTake-actionRunners-1' if remote_ok else 'every shard runs here (no RUNNERS_APP_* secrets or App installation here, or a fork)'}")
           def pick(label, shards, hits):
               hits = os.environ[hits].split(",")
               assert len(hits) == len(shards), f"{label}: {len(shards)} shards, {len(hits)} lookups"
@@ -657,9 +667,9 @@ jobs:
     # uploads the disk image into this commit's nightly release. Without the RUNNERS_APP_* secrets (a fork, or before
     # they are set) nothing is sent and the macos job below builds here instead. Fork pull requests are never sent:
     # their head commit is not in this repository, and OneTake-actionRunners-1 builds only marshiyar/oneTake.
-    needs: changes
+    needs: [changes, plan]
     if: >-
-      needs.changes.outputs.macos == 'true'
+      needs.changes.outputs.macos == 'true' && needs.plan.outputs.runners_ok == 'true'
       && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule'
       || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')
       && github.event.pull_request.head.repo.full_name == github.repository))
