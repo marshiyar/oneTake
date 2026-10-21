@@ -87,7 +87,7 @@ protocol CrossPaneDrag: AnyObject {
 /// Lays the window out through the dock and routes drawing and input to the panes. Host-neutral: a shell gives it
 /// one full-window canvas (GtkCanvasHost / MacCanvasHost / WindowsCanvasHost) and forwards that canvas's events here,
 /// so dragging, swapping, closing and opening panels work the same on Linux, macOS and Windows.
-final class EditorShellRouter: CanvasInput {
+final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
     /// A pane: a dock panel's content, except the Preview, whose content is two panes (top bar, player).
     struct Region: Hashable, Sendable {
         let id: String
@@ -152,6 +152,20 @@ final class EditorShellRouter: CanvasInput {
         case .previewTopBar: return f.previewTopBar
         case .player: return f.player
         default: return isFullscreen() ? EditorShellFrames.zero : (dock.contentRect(of: region.id) ?? EditorShellFrames.zero)
+        }
+    }
+
+    /// Controls from each pane translated from pane-local into window coordinates for the native host.
+    var accessibilityControls: [CanvasAccessibilityControl] {
+        let f = frames ?? relayout()
+        return panes.keys.sorted { $0.id < $1.id }.flatMap { region -> [CanvasAccessibilityControl] in
+            guard let provider = panes[region]?.input as? CanvasAccessibilityProvider else { return [] }
+            let origin = rect(region, f)
+            return provider.accessibilityControls.map { control in
+                CanvasAccessibilityControl(label: control.label, value: control.value,
+                    frame: CanvasRect(x: control.frame.x + origin.x, y: control.frame.y + origin.y,
+                                      width: control.frame.width, height: control.frame.height), press: control.press)
+            }
         }
     }
 

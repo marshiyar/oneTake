@@ -95,7 +95,10 @@ extension InspectorPanel {
                 } else { apply(spec) }
             })))
         }
-        var group = InspectorGroup(id: "effects", title: "Effects", summary: active.isEmpty ? "none" : "\(active.count) active", rows: rows, spacing: 0)
+        var group = InspectorGroup(id: "effects", title: "Effects", summary: !g.effectsEnabled ? "off" : (active.isEmpty ? "none" : "\(active.count) active"), rows: rows, spacing: 0)
+        group.enabled = g.effectsEnabled
+        group.accessibilityLabel = "Effects enabled"
+        group.setEnabled = { v in var n = g; n.effectsEnabled = v; commit(n) }
         // FlatEffectsAccessory: reset every effect (and the palette) while any is active.
         if !active.isEmpty {
             group.reset = { var n = g; for k in ColorGrading.activeEffectKeys { n.effects[k] = nil }; n.palette = nil; commit(n) }

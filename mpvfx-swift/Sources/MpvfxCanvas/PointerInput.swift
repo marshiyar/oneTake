@@ -39,3 +39,19 @@ public enum PointerButton {
         switch n { case 1: primary; case 2: middle; case 3: secondary; case 8: back; case 9: forward; default: Int(n) }
     }
 }
+
+/// A native accessibility control represented by a custom-drawn canvas widget.
+public struct CanvasAccessibilityControl {
+    public var label: String
+    public var value: Bool
+    public var frame: CanvasRect
+    public var press: () -> Void
+    public init(label: String, value: Bool, frame: CanvasRect, press: @escaping () -> Void) {
+        self.label = label; self.value = value; self.frame = frame; self.press = press
+    }
+}
+
+/// Canvas inputs that publish native controls to their desktop host.
+public protocol CanvasAccessibilityProvider: AnyObject {
+    var accessibilityControls: [CanvasAccessibilityControl] { get }
+}

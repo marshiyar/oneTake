@@ -596,6 +596,10 @@ final class RightPanelInput: CanvasInput {
     func resized(_ size: CanvasSize) {}
 }
 
+extension RightPanelInput: CanvasAccessibilityProvider {
+    var accessibilityControls: [CanvasAccessibilityControl] { panels.right.accessibilityControls }
+}
+
 extension EditorSession {
     /// Puts the Media, Design and Renders panels into the shell (called from installShell).
     func installPanels(_ router: EditorShellRouter, userData: String) {

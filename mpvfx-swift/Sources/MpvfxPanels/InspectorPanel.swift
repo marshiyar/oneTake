@@ -22,7 +22,7 @@ public final class InspectorPanel {
     public enum Hit: Equatable {
         case group(String), field(String), scrub(String), keyframe(String), kfPrev(String), kfNext(String), stopwatch(String), reset(String)
         case slider(String), toggle(String), segment(String, String), button(String), fxToggle(String), fxRemove(String)
-        case headerClear, headerReset, body, groupReset(String), scrollbar
+        case headerClear, headerReset, body, groupReset(String), groupEnabled(String), scrollbar
         case custom(String, Int)
     }
 
@@ -49,6 +49,15 @@ public final class InspectorPanel {
 
     // Interaction state
     public private(set) var hits = HitMap<Hit>()
+
+    /// Header bypasses exposed to the native canvas host after layout has populated `hits`.
+    public var accessibilityControls: [CanvasAccessibilityControl] {
+        buildGroups().compactMap { group in
+            guard let label = group.accessibilityLabel, let value = group.enabled,
+                  let frame = hits.rect(where: { $0 == .groupEnabled(group.id) }) else { return nil }
+            return CanvasAccessibilityControl(label: label, value: value, frame: frame) { group.setEnabled?(!value) }
+        }
+    }
     public var hovered: Hit?
     public private(set) var field: PanelTextField?
     /// The body's scroll (wheel glides, trackpad 1:1, clamped) and its scrollbar fade.
@@ -333,11 +342,19 @@ public final class InspectorPanel {
         c.fillRect(r.snapped, PanelTheme.panelBg)
         hits.add(r, .group(g.id))   // first, so header accessories added after it win the hit test
         let inner = CanvasRect(x: r.x + 16, y: r.y, width: r.width - 32, height: r.height)
+        if let on = g.enabled {
+            let target = CanvasRect(x: inner.maxX - 58, y: r.midY - 12, width: 28, height: 24)
+            let track = CanvasRect(x: target.x + 3, y: target.midY - 6, width: 22, height: 12)
+            c.fillRoundedRect(track, radius: 6, on ? PanelTheme.accent : PanelTheme.panelBorderInput)
+            c.fillRoundedRect(CanvasRect(x: on ? track.maxX - 10 : track.x + 2, y: track.y + 2, width: 8, height: 8), radius: 4, PanelTheme.white)
+            hits.add(target, .groupEnabled(g.id))
+        }
         if open {
             PanelDraw.text(c, g.title, in: inner, font: PanelTheme.font(12, .semibold), color: PanelTheme.text0)
             PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text3)
             if g.reset != nil {
-                let rr = CanvasRect(x: inner.maxX - 12 - 10 - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
+                let offset = g.enabled == nil ? 34.0 : 78.0
+                let rr = CanvasRect(x: inner.maxX - offset, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
                 PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.text3)
                 hits.add(rr.insetBy(-4), .groupReset(g.id))
             }
@@ -715,6 +732,7 @@ public final class InspectorPanel {
         case .group(let id):
             toggleGroup(id)
         case .groupReset(let id): buildGroups().first { $0.id == id }?.reset?()
+        case .groupEnabled(let id): if let g = buildGroups().first(where: { $0.id == id }), let on = g.enabled { g.setEnabled?(!on) }
         case .field(let k): if let n = number(k) { field = PanelTextField(key: k, value: n.text) }
         case .scrub(let k): if let s = number(k)?.scrub { scrub = Scrub(key: k, startX: p.x, value: s.value, current: s.value, moved: false) }
         case .keyframe(let k): if let st = slider(k)?.settings { st.toggle() } else { keyframe(k)?.toggle() }

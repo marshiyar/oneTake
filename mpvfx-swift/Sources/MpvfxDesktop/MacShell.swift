@@ -268,6 +268,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         let router = session.installShell(userData: paths.userData) { [weak self] in self?.ensurePlayTimer() }
         let host = MacCanvasHost { [router] c, size in router.draw(c, size: size) }
         host.input = router
+        host.accessibilityControls = { [router] in router.accessibilityControls }
         host.onFilesDragged = { [weak session] p in session?.panels?.assetDrag?.filesDragged(over: p) }
         host.onFilesDropped = { [weak session] paths, p in session?.panels?.assetDrag?.dropFiles(paths, at: p) }
         host.cursorAt = { [router] x, y in
