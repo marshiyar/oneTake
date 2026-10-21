@@ -232,6 +232,22 @@ final class TransformBoxInteractionTests: XCTestCase {
         XCTAssertTrue(r.commits.isEmpty)
     }
 
+    /// Codacy review on #338: a group of only locked layers started a gesture with no members, and its snap read
+    /// the first member's bounds out of range.
+    func testAGroupOfOnlyLockedLayersDoesNotMoveOrCrash() {
+        let r = Rig()
+        r.view.elements[0].locked = true
+        r.view.elements.append(StageElement(id: "b", name: "B", rect: CanvasRect(x: 100, y: 100, width: 200, height: 200),
+                                            kind: .element, locked: true))
+        r.view.selectedIds = ["a", "b"]
+        r.view.toolbar.snapEnabled = true
+        let start = r.view.elements, c = CanvasPoint(r.chrome.centre.x + 40, r.chrome.centre.y + 40)
+        r.drag(c, CanvasPoint(c.x + 30, c.y + 30))
+        XCTAssertEqual(r.view.elements, start)
+        XCTAssertTrue(r.commits.isEmpty)
+        XCTAssertEqual(r.view.toast?.message, PlayerController.lockedMessage)
+    }
+
     func testLockedLayersSelectButDoNotTransform() {
         let r = Rig()
         r.view.elements[0].locked = true

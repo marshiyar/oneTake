@@ -298,6 +298,14 @@ extension PlayerController {
 extension PlayerController {
     /// Arrows with only locked layers selected: nothing moves and the stage says why (the key is still consumed,
     /// so it does not fall through to the playhead). Nothing selected on the stage: the key is not ours.
+    /// A press inside the group box moves its unlocked members; with every member locked nothing moves and the drag
+    /// gets the locked-layer message (a group gesture always has at least one element to move).
+    func pressGroup(at p: CanvasPoint) {
+        let starts = unlockedElements(view.selectedIds)
+        if starts.isEmpty { transformSession.lockedPress = view.selection; return }
+        gesture = .group(starts: starts, x: p.x, y: p.y)
+    }
+
     /// The listed elements a nudge or drag may move (locked ones left out).
     func unlockedElements(_ ids: [String]) -> [StageElement] { view.elements.filter { ids.contains($0.id) && !$0.locked } }
 
