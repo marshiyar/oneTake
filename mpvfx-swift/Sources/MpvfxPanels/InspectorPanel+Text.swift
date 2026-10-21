@@ -25,13 +25,20 @@ extension InspectorPanel {
         guard let t = editor.clipText(clipId: s.id) else { return nil }
         let id = s.id
         func tier(_ explicit: Bool) -> PropertyValueTier { explicit ? .explicitCustom : .default }
+        func isExplicit(_ field: String, fallback: Bool) -> Bool {
+            s.clip.textStyle.map { $0.overrides.contains(field) } ?? fallback
+        }
         func field(_ key: String, _ label: String, _ text: String, explicit: Bool, step: Double? = nil, value: Double = 0,
                    format: @escaping (Double) -> String = { PanelFormat.number($0) },
                    commit: @escaping (String) -> Bool, scrub: ((Double) -> Bool)? = nil, reset: @escaping () -> Bool) -> InspectorRow {
-            .init(.number(InspectorRow.Number(
+            let explicit = isExplicit(key, fallback: explicit)
+            return .init(.number(InspectorRow.Number(
                 key: key, label: label, text: text, tier: tier(explicit),
                 commit: { [weak self] v in self?.edited(commit(v), label: "Edit text") },
-                reset: explicit ? { [weak self] in self?.edited(reset(), label: "Edit text") } : nil,
+                reset: explicit ? { [weak self] in
+                    let changed = s.clip.textStyle == nil ? reset() : editor.resetTextStyleOverride(clipId: id, field: key)
+                    self?.edited(changed, label: "Edit text")
+                } : nil,
                 scrub: step.flatMap { st in scrub.map { apply in (value, st, { [weak self] v in self?.edited(apply(v), label: "Edit text") }, format) } })))
         }
         var rows: [InspectorRow] = []
@@ -79,7 +86,11 @@ extension InspectorPanel {
                 self?.edited(ok, label: "Edit text")
             }))))
         rows += colorRows(ColorFieldSpec(key: "textColor", label: "Color", value: t.color, placeholder: t.resolvedColor, allowAlpha: false,
-                                         historyLabel: "Edit text") { editor.setTextColor(clipId: id, $0) }, clipId: id)
+                                         historyLabel: "Edit text", tier: tier(isExplicit("color", fallback: t.color != nil)),
+                                         reset: {
+                                             s.clip.textStyle == nil ? editor.setTextColor(clipId: id, nil)
+                                                 : editor.resetTextStyleOverride(clipId: id, field: "color")
+                                         }) { editor.setTextColor(clipId: id, $0) }, clipId: id)
         let preview = t.preview
         return InspectorGroup(id: "text", title: "Text", summary: preview.isEmpty ? "empty" : preview, rows: rows)
     }

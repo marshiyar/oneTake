@@ -85,11 +85,23 @@ public extension TimelineEditor {
             guard t != before else { return false }
             if var link = c.textStyle {
                 let changed = changedNativeTextStyleFields(before, t)
-                let overrides = Set((link.overrides ?? []) + changed)
-                link.overrides = overrides.isEmpty ? nil : overrides.sorted()
+                let overrides = Set(link.overrides + changed)
+                link.overrides = overrides.sorted()
                 c.textStyle = link
             }
             c.text = t; return true
+        }
+    }
+
+    /// Removes one local typography override so later style edits follow through again. Explicit nil/default
+    /// overrides are removed just like non-default ones; the stored local value is retained but no longer read.
+    @discardableResult
+    func resetTextStyleOverride(clipId: String, field: String) -> Bool {
+        editClip(clipId) { clip in
+            guard var link = clip.textStyle, link.isSupported, link.overrides.contains(field) else { return false }
+            link.overrides.removeAll { $0 == field }
+            clip.textStyle = link
+            return true
         }
     }
 

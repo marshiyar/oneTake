@@ -2,8 +2,10 @@
 
 Text style model and commands (#282): project `textStyles` records and optional clip links share typography while
 keeping each layer's words. Save, apply to multiple layers, update from a layer and detach are validated atomic
-editor commands with undo/redo. Inspector edits override only the changed fields; nil can explicitly restore a
-field's default. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
+editor commands with undo/redo. Cross-project clip paste detaches a resolved typography snapshot so missing or
+colliding style IDs cannot change the appearance; same-project paste keeps the live style link. Inspector edits
+override only the changed fields; nil can explicitly restore a field's default, and Reset removes the override to
+follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
 style/link versions and kinds remain serialized and undrawn with an open notice. The style browser is a later UI
 slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
 and `TextStyleRenderingTests`.
