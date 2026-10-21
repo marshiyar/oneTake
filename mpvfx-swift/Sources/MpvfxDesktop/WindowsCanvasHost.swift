@@ -64,7 +64,7 @@ final class WindowsCanvasHost {
         return CanvasSize(Double(px.width) / scale, Double(px.height) / scale)
     }
 
-    func invalidate() { InvalidateRect(hwnd, nil, false) }
+    func invalidate() { refreshCursor(); InvalidateRect(hwnd, nil, false) }
 
     /// Handles a window message; nil when it is not the host's, for the window procedure to pass on.
     func handle(_ msg: UINT, _ wp: WPARAM, _ lp: LPARAM) -> LRESULT? {
@@ -108,6 +108,7 @@ final class WindowsCanvasHost {
         mpvfx_d2d_begin_draw(t)
         let canvas = Direct2DCanvas(target: t, dpiScale: scale)
         paint(canvas, size)
+        refreshCursor()
         let hr = mpvfx_d2d_end_draw(t)
         if hr == Int32(bitPattern: 0x8899_000C) {   // D2DERR_RECREATE_TARGET: the device was lost; draw again on a new one
             releaseTarget(); invalidate(); return
@@ -167,22 +168,29 @@ final class WindowsCanvasHost {
             showCursor(at: p)   // the move may change the stage's cursor; WM_SETCURSOR came before it
             return 0
         case WM_RBUTTONDOWN:
+            lastPoint = p
+            defer { refreshCursor() }
             SetFocus(hwnd)
             input?.secondaryClick(x: p.x, y: p.y)
             return 0
         case WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_XBUTTONDOWN:
+            lastPoint = p
+            defer { refreshCursor() }
             SetFocus(hwnd)
             if buttonsDown == 0 { SetCapture(hwnd) }   // keep the drag when the pointer leaves the window
             buttonsDown += 1
             input?.pointerDown(x: p.x, y: p.y, button: Self.button(msg, wp)!, modifiers: Self.modifiers())
             return Int32(msg) == WM_XBUTTONDOWN ? 1 : 0
         case WM_LBUTTONUP, WM_MBUTTONUP, WM_XBUTTONUP:
+            lastPoint = p
+            defer { refreshCursor() }
             buttonsDown = max(0, buttonsDown - 1)
             if buttonsDown == 0 { ReleaseCapture() }
             input?.pointerUp(x: p.x, y: p.y, button: Self.button(msg, wp)!)
             return Int32(msg) == WM_XBUTTONUP ? 1 : 0
         case WM_CAPTURECHANGED:
             buttonsDown = 0
+            refreshCursor()
             return 0
         default:
             return nil
@@ -218,6 +226,15 @@ final class WindowsCanvasHost {
     private func showCursor(at p: (x: Double, y: Double)) {
         guard let cursorAt else { return }
         SetCursor(LoadCursorW(nil, UnsafePointer<WCHAR>(bitPattern: cursorAt(p.x, p.y).windowsCursorId)))
+    }
+
+    /// SetCursor affects the thread's cursor, so a redraw must not replace another window's cursor.
+    private func refreshCursor() {
+        var screen = POINT()
+        guard GetCursorPos(&screen), GetCapture() == hwnd || WindowFromPoint(screen) == hwnd else { return }
+        var client = screen
+        ScreenToClient(hwnd, &client)
+        showCursor(at: (Double(client.x) / scale, Double(client.y) / scale))
     }
 
     // MARK: Keys
@@ -259,12 +276,20 @@ final class WindowsCanvasHost {
     private func key(_ msg: UINT, _ wp: WPARAM, _ lp: LPARAM) -> LRESULT? {
         let vk = Int32(truncatingIfNeeded: wp)
         let down = Int32(msg) == WM_KEYDOWN || Int32(msg) == WM_SYSKEYDOWN
-        if vk == Int32(VK_MENU), let p = lastPoint {   // Alt alone: re-send the pointer with the new modifiers
-            var m = Self.modifiers()
-            if down { m.insert(.alt) } else { m.remove(.alt) }
-            input?.pointerMove(x: p.x, y: p.y, modifiers: m)
-            showCursor(at: p)
+        let changed: PointerModifiers?
+        switch vk {
+        case Int32(VK_MENU), Int32(VK_LMENU), Int32(VK_RMENU): changed = .alt
+        case Int32(VK_SHIFT), Int32(VK_LSHIFT), Int32(VK_RSHIFT): changed = .shift
+        case Int32(VK_CONTROL), Int32(VK_LCONTROL), Int32(VK_RCONTROL): changed = .ctrl
+        case Int32(VK_LWIN), Int32(VK_RWIN): changed = .meta
+        default: changed = nil
         }
+        if let changed, let p = lastPoint {
+            var m = Self.modifiers()
+            if down { m.insert(changed) } else { m.remove(changed) }
+            input?.pointerMove(x: p.x, y: p.y, modifiers: m)
+        }
+        defer { refreshCursor() }
         guard let k = Self.editorKey(vk, lp), let input else { return nil }
         if down { return input.keyDown(k) ? 0 : nil }
         input.keyUp(k)

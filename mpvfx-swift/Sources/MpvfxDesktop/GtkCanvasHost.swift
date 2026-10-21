@@ -45,6 +45,7 @@ final class GtkCanvasHost {
             let size = CanvasSize(Double(gtk_widget_get_allocated_width(w)), Double(gtk_widget_get_allocated_height(w)))
             if size != h.lastSize { h.lastSize = size; h.input?.resized(size) }
             h.paint(CairoCanvas(cr: cr), size)
+            h.refreshCursor()
             return 1
         } as @convention(c) (UnsafeMutablePointer<GtkWidget>?, OpaquePointer?, UnsafeMutableRawPointer?) -> gboolean, to: GCallback.self), me)
 
@@ -52,6 +53,9 @@ final class GtkCanvasHost {
             let ev = e!.assumingMemoryBound(to: GdkEventButton.self).pointee
             guard ev.type == GDK_BUTTON_PRESS else { return 0 }
             gtk_widget_grab_focus(w)
+            let h = Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue()
+            h.lastPoint = (ev.x, ev.y)
+            defer { h.refreshCursor() }
             if ev.button == 3 {
                 Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().input?.secondaryClick(x: ev.x, y: ev.y)
                 return 1
@@ -64,7 +68,10 @@ final class GtkCanvasHost {
         _ = mpvfx_connect(raw(widget), "button-release-event", unsafeBitCast({ (_, e, d) -> gboolean in
             let ev = e!.assumingMemoryBound(to: GdkEventButton.self).pointee
             guard ev.button != 3 else { return 0 }
-            Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().input?.pointerUp(x: ev.x, y: ev.y, button: PointerButton.fromGdk(ev.button))
+            let h = Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue()
+            h.lastPoint = (ev.x, ev.y)
+            h.input?.pointerUp(x: ev.x, y: ev.y, button: PointerButton.fromGdk(ev.button))
+            h.refreshCursor()
             return 1
         } as EvCB, to: GCallback.self), me)
         _ = mpvfx_connect(raw(widget), "motion-notify-event", unsafeBitCast({ (_, e, d) -> gboolean in
@@ -93,12 +100,16 @@ final class GtkCanvasHost {
             return 1
         } as EvCB, to: GCallback.self), me)
         _ = mpvfx_connect(raw(widget), "key-press-event", unsafeBitCast({ (_, e, d) -> gboolean in
-            Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().altChanged(e!.assumingMemoryBound(to: GdkEventKey.self).pointee, pressed: true)
+            let h = Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue()
+            defer { h.refreshCursor() }
+            h.modifierChanged(e!.assumingMemoryBound(to: GdkEventKey.self).pointee, pressed: true)
             guard let k = GtkCanvasHost.key(e!.assumingMemoryBound(to: GdkEventKey.self).pointee, isRepeat: false) else { return 0 }
             return (Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().input?.keyDown(k) ?? false) ? 1 : 0
         } as EvCB, to: GCallback.self), me)
         _ = mpvfx_connect(raw(widget), "key-release-event", unsafeBitCast({ (_, e, d) -> gboolean in
-            Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().altChanged(e!.assumingMemoryBound(to: GdkEventKey.self).pointee, pressed: false)
+            let h = Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue()
+            defer { h.refreshCursor() }
+            h.modifierChanged(e!.assumingMemoryBound(to: GdkEventKey.self).pointee, pressed: false)
             guard let k = GtkCanvasHost.key(e!.assumingMemoryBound(to: GdkEventKey.self).pointee, isRepeat: false) else { return 0 }
             Unmanaged<GtkCanvasHost>.fromOpaque(d!).takeUnretainedValue().input?.keyUp(k); return 1
         } as EvCB, to: GCallback.self), me)
@@ -167,15 +178,22 @@ final class GtkCanvasHost {
 
     /// Last pointer position over the canvas (a modifier change re-sends it).
     var lastPoint: (x: Double, y: Double)?
-    /// Alt pressed or released without moving: re-send the pointer with the new modifiers (the event's state is
-    /// from before the key, so the Alt bit is set from the key itself), as MacCanvasHost does on flagsChanged.
-    func altChanged(_ ev: GdkEventKey, pressed: Bool) {
-        let k = Int32(ev.keyval)
-        guard k == GDK_KEY_Alt_L || k == GDK_KEY_Alt_R, let p = lastPoint else { return }
+    /// A modifier transition re-sends the stationary pointer. GDK's event state is from before the key,
+    /// so the changed bit comes from the key itself, for both press and release.
+    func modifierChanged(_ ev: GdkEventKey, pressed: Bool) {
+        let modifier: PointerModifiers
+        switch Int32(ev.keyval) {
+        case GDK_KEY_Alt_L, GDK_KEY_Alt_R: modifier = .alt
+        case GDK_KEY_Shift_L, GDK_KEY_Shift_R: modifier = .shift
+        case GDK_KEY_Control_L, GDK_KEY_Control_R: modifier = .ctrl
+        case GDK_KEY_Meta_L, GDK_KEY_Meta_R, GDK_KEY_Super_L, GDK_KEY_Super_R: modifier = .meta
+        default: return
+        }
+        guard let p = lastPoint else { return }
         var m = Self.modifiers(ev.state)
-        if pressed { m.insert(.alt) } else { m.remove(.alt) }
+        if pressed { m.insert(modifier) } else { m.remove(modifier) }
         input?.pointerMove(x: p.x, y: p.y, modifiers: m)
-        updateCursor(p.x, p.y)   // the re-sent move may change what the stage asks for
+        refreshCursor()
     }
 
     static func modifiers(_ s: guint) -> PointerModifiers {
@@ -202,7 +220,10 @@ final class GtkCanvasHost {
         if let cursor { g_object_unref(UnsafeMutableRawPointer(cursor)) }
     }
 
+    /// The router can change under a stationary pointer (Settings, selection or pointer capture).
+    func refreshCursor() { if let p = lastPoint { updateCursor(p.x, p.y) } }
+
     func setMinimumSize(width: Int32, height: Int32) { gtk_widget_set_size_request(widget, width, height) }
-    func invalidate() { gtk_widget_queue_draw(widget) }
+    func invalidate() { refreshCursor(); gtk_widget_queue_draw(widget) }
 }
 #endif
