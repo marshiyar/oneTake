@@ -539,12 +539,14 @@ jobs:
     # or a pull request labelled `macos` sends its macOS build there: a repository_dispatch to OneTake-actionRunners-1,
     # which calls mpvfx-macos.yml on this commit, reports the commit status `macos (runners-1)` here and, for main,
     # uploads the disk image into this commit's nightly release. Without the RUNNERS_APP_* secrets (a fork, or before
-    # they are set) nothing is sent and the macos job below builds here instead.
+    # they are set) nothing is sent and the macos job below builds here instead. Fork pull requests are never sent:
+    # their head commit is not in this repository, and OneTake-actionRunners-1 builds only marshiyar/oneTake.
     needs: changes
     if: >-
       needs.changes.outputs.code == 'true'
       && ((github.event_name == 'push' && github.ref == 'refs/heads/main')
-      || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')))
+      || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')
+      && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -554,7 +556,9 @@ jobs:
         id: have
         env:
           APP_ID: ${{ secrets.RUNNERS_APP_ID }}
-        run: echo "app=$([ -n "$APP_ID" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          APP_KEY: ${{ secrets.RUNNERS_APP_PRIVATE_KEY }}
+        # Both secrets, or neither is used: a half-set pair builds here instead of failing the token step.
+        run: echo "app=$([ -n "$APP_ID" ] && [ -n "$APP_KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Runners App token
         id: token
         if: steps.have.outputs.app == 'true'
