@@ -208,12 +208,7 @@ final class WindowsCanvasHost {
         var pt = POINT()
         GetCursorPos(&pt)
         ScreenToClient(hwnd, &pt)
-        let id: Int
-        switch cursorAt(Double(pt.x) / scale, Double(pt.y) / scale) {
-        case .arrow: id = 32512           // IDC_ARROW
-        case .columnResize: id = 32644    // IDC_SIZEWE
-        case .rowResize: id = 32645       // IDC_SIZENS
-        }
+        let id = cursorAt(Double(pt.x) / scale, Double(pt.y) / scale).windowsCursorId
         SetCursor(LoadCursorW(nil, UnsafePointer<WCHAR>(bitPattern: id)))
         return 1
     }
