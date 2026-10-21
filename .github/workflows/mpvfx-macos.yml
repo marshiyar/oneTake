@@ -12,11 +12,11 @@ name: mpvfx-macos
 #
 # Secrets: none are needed. MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID
 # are optional and reach only runs of main and of tags, never a pull-request branch however its run was started: set,
-# the disk image is signed with a Developer ID and notarized; unset, it is ad-hoc signed. A rejected notarization
-# (for example an expired app-specific password) fails a stable tag (v<X.Y.Z>) or a release-candidate tag
-# (v<X.Y.Z>-rc.<N>) run and is a warning on main and on alpha and beta tags, where the image ships signed but not
-# notarized and the Gatekeeper assessment is skipped. dist/macos-notarization.txt (in the macos artifact, never a
-# release asset) says notarized or not-notarized, so the release notes can tell users how to open the app.
+# the disk image is signed with a Developer ID and notarized; unset, it is ad-hoc signed. Notarization never fails a
+# run, on any ref (owner, 2026-10-21): a submission that fails (for example an expired app-specific password) or a
+# verdict other than Accepted is a warning, the image ships signed but not notarized, and the Gatekeeper assessment is
+# skipped. A failed signature or a damaged image still fails. dist/macos-notarization.txt (in the macos artifact,
+# never a release asset) says notarized or not-notarized, so the release notes can tell users how to open the app.
 
 on:
   workflow_call:
@@ -230,9 +230,9 @@ jobs:
       - name: Package (disk image with the engine libraries in Contents/Frameworks)
         id: package
         env:
-          # A stable tag (v<X.Y.Z>, no hyphen) or a release candidate (v<X.Y.Z>-rc.<N>) must be notarized; on main
-          # and on alpha and beta tags a rejected notarization login is a warning (owner, 2026-10-21).
-          NOTARIZE_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/v') && (!contains(github.ref, '-') || contains(github.ref, '-rc.')) && '1' || '0' }}
+          # Notarization never blocks a build, on any ref (owner, 2026-10-21): a submission that fails or a verdict
+          # other than Accepted is a warning, and dist/.not-notarized marks the image. Signing still fails hard.
+          NOTARIZE_REQUIRED: '0'
           MACOS_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
           APPLE_ID: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_ID || '' }}
           APPLE_APP_PASSWORD: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_APP_PASSWORD || '' }}

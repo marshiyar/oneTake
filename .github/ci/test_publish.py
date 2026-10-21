@@ -115,7 +115,7 @@ class Decide(Base):
 ASSETS = ["MpVFX-0.1.0-macos-arm64.dmg", "mpvfx_0.1.0_amd64.deb", "MpVFX-0.1.0-setup.exe",
           "MpVFX-0.1.0-linux-x86_64.tar.gz", "MpVFX-0.1.0-windows-x64.zip", "mac-smoke.png", "linux-smoke.png",
           "windows-smoke.png"]
-NOT_NOTARIZED = "macOS: right-click → Open the first time; this build isn't notarized."
+NOT_NOTARIZED = "macOS: not notarized: right-click → Open the first time"
 
 
 class Notes(Base):
@@ -177,7 +177,7 @@ class Notes(Base):
         self.assertIn(f"https://github.com/o/r/blob/{SHA}/README.md#download", win)
         self.assertIn("Debian package", linux)
         self.assertIn("portable archive", linux)
-        self.assertNotIn("isn't notarized", text)
+        self.assertNotIn("not notarized", text)
 
     def test_missing_installer_is_said(self):
         text = self.notes("v0.1.0", marker="notarized", assets=["mpvfx_0.1.0_amd64.deb"])
@@ -190,7 +190,14 @@ class Notes(Base):
                 text = self.notes("v0.1.0-alpha.1", **kwargs)
                 self.assertIn(NOT_NOTARIZED, text)
                 mac = next(line for line in text.splitlines() if line.startswith("| macOS |"))
-                self.assertIn("isn't notarized", mac)
+                self.assertIn("Not notarized: right-click → Open the first time.", mac)
+                shutil.rmtree(os.path.join(self.dir, "dist"), ignore_errors=True)
+
+    def test_not_notarized_line_on_every_channel(self):
+        for ref, ref_type in (("main", "branch"), ("v0.1.0-alpha.1", "tag"), ("v0.1.0-beta.1", "tag"),
+                              ("v0.1.0-rc.1", "tag"), ("v0.1.0", "tag")):
+            with self.subTest(ref=ref):
+                self.assertIn(NOT_NOTARIZED, self.notes(ref, ref_type, marker="not-notarized"))
                 shutil.rmtree(os.path.join(self.dir, "dist"), ignore_errors=True)
 
     def test_what_changed_and_links(self):
@@ -198,6 +205,27 @@ class Notes(Base):
         self.assertIn("## What changed\n\n- Fix export (#12)", text)
         self.assertIn(f"Commit: https://github.com/o/r/commit/{SHA}", text)
         self.assertIn("Run: https://github.com/o/r/actions/runs/42", text)
+
+
+class Notarization(unittest.TestCase):
+    """Notarization never blocks a build on any ref (owner, 2026-10-21); the marker reaches the publish job."""
+
+    def test_workflow_never_requires_notarization(self):
+        with open(os.path.join(HERE, "..", "workflows", "mpvfx-macos.yml")) as f:
+            text = f.read()
+        values = [line.split(":", 1)[1].strip() for line in text.splitlines()
+                  if line.strip().startswith("NOTARIZE_REQUIRED:")]
+        self.assertEqual(values, ["'0'"])
+        self.assertIn("dist/macos-notarization.txt", text)
+
+    def test_package_script_marks_a_rejected_verdict(self):
+        path = os.path.join(HERE, "..", "..", "mpvfx-swift", "packaging", "macos", "package.sh")
+        with open(path) as f:
+            text = f.read()
+        verdict = text[text.index('grep -q \'"status" *: *"Accepted"\''):text.index("xcrun stapler staple")]
+        self.assertIn('NOTARIZE_REQUIRED:-1}" = 1', verdict)
+        self.assertIn(': > "$dist/.not-notarized"', verdict)
+        self.assertIn("exit 0", verdict)
 
 
 class Changes(Base):

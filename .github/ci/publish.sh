@@ -201,14 +201,16 @@ notes() {
   for os in macOS Windows Linux; do
     case "$os" in
       macOS) row=$mac hint="Open the .dmg and drag MpVFX to Applications (Apple silicon, macOS 15 or newer)."
-        if ! notarized; then hint+=" Right-click → Open the first time; this build isn't notarized."; fi ;;
+        if ! notarized; then hint+=" Not notarized: right-click → Open the first time."; fi ;;
       Windows) row=$win hint="Run the setup.exe, or unzip the portable zip anywhere and run MpVFX.exe (Windows 10 or 11, x64). Unsigned: on \"Windows protected your PC\" choose More info, then Run anyway ([README]($server/$repo/blob/$GITHUB_SHA/README.md#download))." ;;
       Linux) row=$linux hint="\`sudo apt install ./<file>.deb\` (Ubuntu 24.04 or newer, Debian 13), or unpack the archive and run MpVFX." ;;
     esac
     kind=${row:-not in this build}
     printf '| %s | %s | %s |\n' "$os" "$kind" "$hint"
   done
-  if ! notarized; then printf "\nmacOS: right-click → Open the first time; this build isn't notarized.\n"; fi
+  if ! notarized; then
+    printf '\nmacOS: not notarized: right-click → Open the first time (if macOS offers no Open button: System Settings > Privacy & Security > Open Anyway).\n'
+  fi
   printf '\n## What changed\n\n%s\n' "${changes_md:-}"
   if [ "$mode" != nightly ] && [ -f CHANGELOG.md ]; then
     printf '\nRelease notes: see CHANGELOG (%s).\n' "$server/$repo/blob/$tag/CHANGELOG.md"

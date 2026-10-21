@@ -136,9 +136,10 @@ done
 
 if [ "$mode" = developer-id ]; then
   codesign --force --sign "$MACOS_SIGN_IDENTITY" --timestamp "$dmg"
-  # A submission that never reaches Apple's verdict (rejected login, network) fails only when NOTARIZE_REQUIRED=1
-  # (release tags); otherwise the image ships Developer ID signed, not notarized, and "$dist/.not-notarized" says so.
-  # A verdict other than Accepted is a problem with the app itself and always fails.
+  # Notarization fails the build only when NOTARIZE_REQUIRED=1 (the default for a run by hand; CI sets 0 on every ref,
+  # owner 2026-10-21): a submission that never reaches Apple's verdict (rejected login, network) or a verdict other
+  # than Accepted otherwise ships the image Developer ID signed, not notarized, and "$dist/.not-notarized" says so.
+  # A failed signature (codesign above) or a damaged image (hdiutil above, stapler below) always fails.
   if ! xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
     --team-id "$APPLE_TEAM_ID" --wait --timeout 30m --output-format json > "$work/notary.json"; then
     cat "$work/notary.json"; echo
@@ -150,8 +151,11 @@ if [ "$mode" = developer-id ]; then
   cat "$work/notary.json"; echo
   if ! grep -q '"status" *: *"Accepted"' "$work/notary.json"; then
     id=$(sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' "$work/notary.json" | head -1)
-    [ -z "$id" ] || xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
-    echo "notarization was not accepted" >&2; exit 1
+    [ -z "$id" ] || xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" || true
+    if [ "${NOTARIZE_REQUIRED:-1}" = 1 ]; then echo "notarization was not accepted" >&2; exit 1; fi
+    echo "::warning::Apple did not accept the notarization (log above); the disk image is signed, not notarized"
+    : > "$dist/.not-notarized"
+    rm -rf "$work"; echo "$dmg"; exit 0
   fi
   xcrun stapler staple "$dmg"
   xcrun stapler validate "$dmg"
