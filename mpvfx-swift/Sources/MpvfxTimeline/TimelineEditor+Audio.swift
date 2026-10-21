@@ -76,6 +76,26 @@ public extension TimelineEditor {
         updateAudioClip(clipId, "Set clip automation") { $0.audioAutomation = automation?.isEmpty == false ? automation : nil }
     }
 
+    /// Serialized automation for several clips at once, as one undo step (nil removes a clip's automation).
+    /// Nothing changes unless every clip is an unlocked audio or video clip.
+    @discardableResult
+    func setClipsAutomation(_ automation: [String: String?], label: String) -> Bool {
+        guard !automation.isEmpty else { return false }
+        var d = document
+        for (clipId, value) in automation {
+            guard !isClipLocked(clipId), let (_, c) = clip(clipId),
+                  let kind = document.assets.first(where: { $0.id == c.assetId })?.kind, kind == .audio || kind == .video else {
+                lastFailure = .init(code: .incompatibleDestination, message: "Clip \(clipId) is not an unlocked audio or video clip"); return false
+            }
+            for ti in d.sequence.tracks.indices {
+                if let ci = d.sequence.tracks[ti].clips.firstIndex(where: { $0.id == clipId }) {
+                    d.sequence.tracks[ti].clips[ci].audioAutomation = value?.isEmpty == false ? value : nil
+                }
+            }
+        }
+        return commit(d, label)
+    }
+
     // MARK: Audio groups
 
     /// Group audio/video clips onto a new bus. Needs two or more clips; a video track joins only whole.

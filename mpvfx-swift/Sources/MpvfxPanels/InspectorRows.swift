@@ -27,6 +27,9 @@ public struct InspectorRow {
         public var stopwatch: () -> Void
         public var prev: (() -> Void)?
         public var next: (() -> Void)?
+        /// The property's kind and the playhead key's interpolation: the ◆ draws the timeline's mark for them.
+        public var kind: TimelineKeyframeKind = .transform
+        public var ease: TimelineKeyframeEase = .linear
     }
     public struct Number {
         public var key: String
@@ -39,6 +42,15 @@ public struct InspectorRow {
         /// Label drag scrubs the value: (current value, units per pixel, apply on release).
         public var scrub: (value: Double, step: Double, apply: (Double) -> Void, format: (Double) -> String)?
         public var disabled = false
+        /// Shown in the normal ink and focusable, its text selected while focused, but never edited (Media start).
+        public var readOnly = false
+        /// A colour value's swatch before its text (issue #189): `color` nil draws the checkerboard; a press on its
+        /// 24 pt target presses the button `key` (the row's controls carry it).
+        public var swatch: Swatch?
+    }
+    public struct Swatch {
+        public var color: String?
+        public var key: String
     }
     public struct Slider {
         public var key: String
@@ -57,6 +69,9 @@ public struct InspectorRow {
         public var settings: (active: Bool, toggle: () -> Void)?
         /// Drags along y, bottom = min (the Tone EQ's faders).
         public var vertical = false
+        /// A detent: a drag within `detentReach` of the track's span from it lands on it (Rate's 1x).
+        public var detent: Double?
+        public static let detentReach = 0.03
     }
     public struct Toggle {
         public var key: String

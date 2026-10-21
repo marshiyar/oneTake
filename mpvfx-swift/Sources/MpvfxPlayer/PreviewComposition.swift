@@ -108,8 +108,11 @@ public struct PreviewComposition {
         public var path: String
         /// Compositing order key: layout.zIndex, else the track's display row (the top row draws on top).
         public var layer: Double
-        /// The clip's active grade, built once per document.
+        /// The clip's active grade, built once per document (its static grade when `gradeAnimation` is set).
         public var grade: ColorGradeRenderer? = nil
+        /// Set when grade parameters are keyframed (issue #179): the grade is then built per frame from the values
+        /// at that frame, through this memo of the last few frames' renderers.
+        public var gradeAnimation: PreviewGradeAnimation? = nil
         /// The missing file's name when the clip is offline (kind .offline).
         public var offlineFileName: String? = nil
         /// The media's natural width over height (PreviewLayer.mediaAspect), nil when unknown.
@@ -151,7 +154,8 @@ public struct PreviewComposition {
                 if asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
                     ordered.append((Entry(clip: clip, kind: .text, path: "text:\(clip.id)", layer: layer), n))
-                } else if let entry = media.entry(clip, asset: asset, layer: layer) {
+                } else if var entry = media.entry(clip, asset: asset, layer: layer) {
+                    if entry.kind != .offline { entry.gradeAnimation = PreviewGradeAnimation.forClip(entry.clip, projectDir: projectDir?.path) }
                     ordered.append((entry, n))
                 }
             }
@@ -315,7 +319,8 @@ public struct PreviewComposition {
         out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
         out.timelineFPS = fps
         out.motionRotation = autoRotate
-        out.grade = e.grade
+        // An animated grade decides on its own (nil there means no active grade at this frame, not "use the static one").
+        out.grade = e.gradeAnimation.map { $0.renderer(e.clip, values: values) } ?? e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.text = e.kind == .text ? c.text : nil
         out.offlineFileName = e.offlineFileName
@@ -449,8 +454,13 @@ public enum PreviewPainter {
                 }
             } else if let text = layer.text {
                 if layer.masks.isEmpty {
-                    TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                    if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale) {
+                        c.drawImage(look.image, in: look.rect, opacity: layer.opacity)
+                    } else {
+                        TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                    }
                 } else if let image = maskedText(text, masks: layer.masks, box: box, scale: s) {
+                    // A masked text layer draws its fill only: the look reaches outside the box the mask is cut from.
                     c.drawImage(image, in: box, opacity: layer.opacity)
                 }
             }

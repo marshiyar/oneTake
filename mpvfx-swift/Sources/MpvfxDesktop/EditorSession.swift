@@ -62,6 +62,8 @@ final class EditorSession {
     private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
+    /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
+    var clipInfoFeed: ClipInfoFeed?
     var desktopPreferences: DesktopPreferences?
     /// System / Light / Dark setting (EditorSession+Appearance); set by the shell via installAppearance.
     var appearance: AppearanceSettings?
@@ -492,6 +494,7 @@ final class EditorSession {
         }
         let sel = timeline.view.selection
         player.view.selectedIds = player.view.elements.filter { sel.contains($0.id) }.map(\.id)
+        player.selectionSynced()
     }
 
     /// Capture-phase keyframe keys (K toggles the selected element's position keyframe), before playback JKL.
@@ -608,6 +611,7 @@ final class EditorSession {
         let loopChanged = audio.loop?.start != wantLoop?.start || audio.loop?.end != wantLoop?.end
         if loopChanged { audio.loop = wantLoop }
         if playback.wantsExternalClock {
+            panels?.endAuditionForTimeline()
             // A toggle/range change must discard sound already queued under the old loop policy,
             // especially a queued wrap when switching off. Ordinary device wraps never restart.
             if !audio.isPlaying || loopChanged || (!tickingPlayback && abs(audio.currentTime - playback.currentTime) > 0.25) {

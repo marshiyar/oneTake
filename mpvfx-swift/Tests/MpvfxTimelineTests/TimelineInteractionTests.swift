@@ -183,8 +183,9 @@ final class TimelineVisualTests: XCTestCase {
         let row0 = Int(TimelineLayout.rowTop(0))
         let squareCorner = rgb(264, rowA + 3), roundCorner = rgb(264 + 50, row0 + 3)   // unselected logo clip at 0.5s
         XCTAssertLessThan(roundCorner[0], squareCorner[0], "clip away from t=0 has an antialiased rounded corner")
-        // Selected clip:b: handle bar at left+4..6, top+6.
-        let bar = rgb(264 + 650 + 4, rowA + 3 + 20), body = rgb(264 + 650 + 20, rowA + 3 + 20)
+        // Selected clip:b: handle bar at left+4..6, top+6 to bottom-6; the body probe sits between the bar and the name.
+        let midY = rowA + 3 + Int(TimelineLayout.defaultTrackHeight - 2 * TimelineLayout.clipY) / 2
+        let bar = rgb(264 + 650 + 4, midY), body = rgb(264 + 650 + 9, midY)
         XCTAssertGreaterThan(bar[0], body[0], "trim handle bar visible on the selected clip")
         let beat = rgb(264 + 950, 280); XCTAssertGreaterThan(beat[1], beat[0] + 50, "beat line is green")
     }
@@ -239,7 +240,8 @@ final class TimelineChunk4Tests: XCTestCase {
     func starts(_ e: TimelineEditor, _ track: String) -> [Double] {
         e.document.sequence.tracks.first { $0.id == track }!.clips.map(\.startFrame).sorted()
     }
-    let rowY = [64.0, 112.0, 160.0]
+    /// Row centres of the three demo tracks.
+    let rowY = (0..<3).map { TimelineLayout.rowTop($0) + TimelineLayout.defaultTrackHeight / 2 }
     func x(_ t: Double) -> Double { 264 + 100 * t }
 
     func testRazorSplitsClickedClipAndShiftSplitsAll() throws {

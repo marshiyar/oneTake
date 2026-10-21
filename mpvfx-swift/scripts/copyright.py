@@ -83,9 +83,11 @@ def strip_old(lines):
             continue
         if FRAME in lines[i] and i + 1 < len(lines) and any("This source file is part of MpVFX." in l for l in lines[i:i + 4]):
             j = i + 1
-            while j < len(lines) and FRAME not in lines[j]:
+            # The old block ends at its closing frame line; one that lost it ends at its last comment line, so a
+            # missing frame never takes the code below it.
+            while j < len(lines) and FRAME not in lines[j] and lines[j].lstrip().startswith(("//", "#", "::", "<!--", "--", ";")):
                 j += 1
-            i = j + 1
+            i = j + 1 if j < len(lines) and FRAME in lines[j] else j
             continue
         out.append(lines[i])
         i += 1

@@ -804,7 +804,7 @@ extension InspectorPanel {
             })
         }
         let presetsLabel = ui.menu == .presets ? "Close" : "Presets", addLabel = ui.menu == .add ? "Close" : "+ effect"
-        return .init(.custom(InspectorCustomRow(id: "afx:buttons", height: 31.5 + 4 + 15, draw: { [weak self] c, r, _ in
+        return .init(.custom(InspectorCustomRow(id: "afx:buttons", height: 31.5 + PanelTheme.minTarget, draw: { [weak self] c, r, _ in
             guard let self else { return }
             let pr = CanvasRect(x: r.x, y: r.y, width: r.width, height: 31.5).snapped
             let hot = self.hovered == .button("fx:presets")
@@ -817,7 +817,7 @@ extension InspectorPanel {
             let ar = CanvasRect(x: r.maxX - w, y: pr.maxY + 4, width: w, height: 15)
             PanelDraw.text(c, addLabel, in: CanvasRect(x: ar.x + 4, y: ar.y, width: w - 8 + 1, height: 15), font: PanelTheme.font(10),
                            color: self.hovered == .button("fx:add") ? PanelTheme.text0 : PanelTheme.text2)
-            self.addHit(ar, .button("fx:add"))
+            self.addHit(CanvasRect(x: ar.x, y: pr.maxY, width: ar.width, height: PanelTheme.minTarget), .button("fx:add"))
         })), controls: [.init(.buttons(picks))])
     }
 }

@@ -85,6 +85,7 @@ public final class TimelineController {
     public init(view: TimelineView, playback: PlaybackState, editor: TimelineEditor? = nil) {
         self.view = view; self.playback = playback; self.editor = editor
         view.laneNavigation = { [weak self] id, lane in self?.laneNavigation(clipId: id, lane: lane) ?? TimelineKeyframeNavigation() }
+        view.laneRowNavigation = { [weak self] id, row in self?.laneNavigation(clipId: id, row: row) ?? TimelineKeyframeNavigation() }
         if let editor { reload(from: editor) }
         editor?.onChange = { [weak self] in guard let self, let e = self.editor else { return }; self.reload(from: e) }
     }
@@ -117,12 +118,12 @@ public final class TimelineController {
             let before = all[..<first].filter { t in visible.contains { $0.id == t.id } }.count
             return (g.id, before)
         }
-        view.tracks = visible
-        // useAutoExpandKeyframedClips: expand a clip when it first gains property lanes.
-        let laned = Set(all.flatMap(\.clips).filter { !$0.lanes.isEmpty }.map(\.id))
-        view.expandedClips.formUnion(laned.subtracting(clipsWithLanes))
-        view.expandedClips.formIntersection(laned)
-        clipsWithLanes = laned
+        view.tracks = visible; view.allTracks = all
+        // A keyed clip starts with its one summary row; expanded rows and folded kinds are kept per clip while it exists.
+        let clipIds = Set(all.flatMap(\.clips).map(\.id))
+        view.expandedClips.formIntersection(clipIds)
+        view.collapsedKinds = view.collapsedKinds.filter { clipIds.contains($0.key) }
+        clipsWithLanes = Set(all.flatMap(\.clips).filter { !$0.lanes.isEmpty }.map(\.id))
         view.duration = max(e.duration, 0)
         view.frameRate = e.fps
         playback.duration = view.duration; playback.fps = e.fps
@@ -205,11 +206,11 @@ public final class TimelineController {
             let t = view.time(forX: x)
             if let c = view.tracks[row].clips.last(where: { t >= $0.start && t <= $0.end }) {
                 let used = Double(c.effects.count) * TimelineLayout.effectStripHeight
-                    + (view.expandedClips.contains(c.id) ? Double(c.lanes.count) * TimelineLayout.laneHeight : 0)
+                    + (c.lanes.isEmpty ? 0 : Double(view.trackLaneRows(row).count)) * TimelineLayout.laneHeight
                 let effTop = Double(view.effectLaneCount(track: row)) * TimelineLayout.effectStripHeight
                 let off = localY - view.trackHeight
                 let inEffects = off < Double(c.effects.count) * TimelineLayout.effectStripHeight
-                let inLanes = view.expandedClips.contains(c.id) && off >= effTop && off < effTop + Double(c.lanes.count) * TimelineLayout.laneHeight
+                let inLanes = !c.lanes.isEmpty && off >= effTop && off < effTop + Double(view.trackLaneRows(row).count) * TimelineLayout.laneHeight
                 if used > 0 && (inEffects || inLanes) { return .clipExtra(id: c.id, row: row) }
             }
             return .empty(row: row)
@@ -257,7 +258,7 @@ public final class TimelineController {
             if !shift { view.selectedKeyframes = [] }
             if x >= TimelineLayout.contentOrigin { gesture = .pendingMarquee(x: x, y: y, base: shift ? view.selection : []) }
         case .header(let row):
-            if let lc = view.laneControl(atX: x, y: y, track: row) { laneControlClick(clipId: lc.clip.id, lane: lc.lane, control: lc.control); needsDisplay?(); break }
+            if laneHeaderClick(x: x, y: y, row: row) { needsDisplay?(); break }
             headerClick(x: x, y: y, row: row)
         case let .groupHeader(id, caret):
             if caret { toggleGroup(id) } else { groupHeaderClick(id, x: x, y: y) }
@@ -306,7 +307,7 @@ public final class TimelineController {
         if keyframeGesture != nil { keyframePointerMove(x: x); return }
         guard let g = gesture else {
             if tool == .select, keyframeHover(x: x, y: y) { return }
-            let hit = hitTest(x: x, y: y)
+            let hit = hitTest(x: x, y: y); updateHeaderHover(hit, x: x, y: y)
             var hovered: String?; var cur = Cursor.normal
             if case let .clip(id, _, edge) = hit { hovered = id; cur = edge != nil ? .resize : .pointer }
             if hovered != view.hoveredClip || cur != cursor { view.hoveredClip = hovered; cursor = cur; needsDisplay?() }

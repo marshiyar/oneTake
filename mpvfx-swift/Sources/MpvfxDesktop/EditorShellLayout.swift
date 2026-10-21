@@ -111,6 +111,23 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
     var modal: SettingsPanel?
     var modalOpen: Bool { modal?.isOpen == true }
 
+    /// Settings > Interface size (issue #106), 1...2: the shell draws with `scale(k, k)` and lays out in the window
+    /// size divided by k, and every window point a host passes in (pointer, wheel, cursor, file drop) is divided by k,
+    /// so panes lay out and hit-test in the same points at any size. Out-of-range or non-finite values read as 1.
+    var interfaceScale = 1.0 {
+        didSet {
+            interfaceScale = Self.validScale(interfaceScale)
+            if interfaceScale != oldValue { size = layoutSize(windowSize); _ = relayout() }
+        }
+    }
+    static func validScale(_ k: Double) -> Double { k.isFinite && k >= 1 && k <= 2 ? k : 1 }
+    /// The host's canvas size in window points; `size` is it divided by `interfaceScale`.
+    private var windowSize = CanvasSize(0, 0)
+    private func layoutSize(_ window: CanvasSize) -> CanvasSize {
+        CanvasSize(window.width / interfaceScale, window.height / interfaceScale)
+    }
+    /// A window point in layout points.
+    func toLayout(_ x: Double, _ y: Double) -> (Double, Double) { (x / interfaceScale, y / interfaceScale) }
     let layout: PanelLayoutState
     let dock: DockView
     var panes: [Region: ShellPane] = [:]
@@ -168,8 +185,8 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
             let origin = rect(region, f)
             return provider.accessibilityControls.map { control in
                 CanvasAccessibilityControl(label: control.label, value: control.value,
-                    frame: CanvasRect(x: control.frame.x + origin.x, y: control.frame.y + origin.y,
-                                      width: control.frame.width, height: control.frame.height), press: control.press)
+                    frame: CanvasRect(x: (control.frame.x + origin.x) * interfaceScale, y: (control.frame.y + origin.y) * interfaceScale,
+                                      width: control.frame.width * interfaceScale, height: control.frame.height * interfaceScale), press: control.press)
             }
         }
     }
@@ -196,6 +213,7 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
     /// stage's, or the arrow) so a drag crossing a splitter shows no resize arrow; a splitter under the pointer or
     /// being dragged; then the preview's stage cursor.
     func cursor(at x: Double, _ y: Double) -> Cursor {
+        let (x, y) = toLayout(x, y)
         guard !modalOpen else { return .arrow }
         if let c = captured { return c == .player ? Cursor(stage: stageCursor()) : .arrow }
         if !isFullscreen() {
@@ -221,6 +239,7 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
 
     /// The region under a window point and the point in that region's coordinates (file drops from the desktop).
     func hit(_ x: Double, _ y: Double) -> (region: Region, local: CanvasPoint)? {
+        let (x, y) = toLayout(x, y)
         guard let r = region(at: x, y) else { return nil }
         let (lx, ly) = local(r, x, y)
         return (r, CanvasPoint(lx, ly))
@@ -232,13 +251,14 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
         return (x - r.x, y - r.y)
     }
 
-    func resized(_ size: CanvasSize) { self.size = size; relayout() }
+    func resized(_ window: CanvasSize) { windowSize = window; size = layoutSize(window); relayout() }
 
     // The wheel (CanvasInput); kept here with the router's state it reads.
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) {
         scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false)
     }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {
+        let k = interfaceScale, (dx, dy, x) = (dx / k, dy / k, x / k)
         if modalOpen { if modal?.scroll(dy: dy) == true { needsDisplay() }; return }
         if dockMenu.isOpen { dockMenu.scrollBy(dy); needsDisplay(); return }
         // Wheel goes to the pane under the pointer; `y` is tracked from the last move.

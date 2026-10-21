@@ -31,6 +31,8 @@ public enum PanelIcon: Equatable, Sendable {
     case selectCaret
     case close, eye, eyeOff, layers, film, image, music, text, font, reset, trash, plus, upload, download, help, spinnerArc, diamond, diamondFilled
     case chevronLeft, chevronRight, check, keyframeNav
+    /// Audition: play and stop on a tile.
+    case play, stop
     /// Three dots in a row: a panel's menu button (the end of its tab strip).
     case panelMenu
     /// A funnel: the Media panel's filter button.
@@ -56,6 +58,8 @@ public extension PanelIcon {
         case .groupCaretRight: fill(["M4 2l4 4-4 4z"], 12)
         case .groupCaretDown: fill(["M2 4l4 4 4-4z"], 12)
         case .selectCaret: stroke(["m6 9 6 6 6-6"], 2)
+        case .play: fill(["M7 4.5 L19.5 12 L7 19.5 Z"])
+        case .stop: fill(["M6.5 6.5 H17.5 V17.5 H6.5 Z"])
         case .chevronLeft: stroke(["m15 18-6-6 6-6"])
         case .chevronRight: stroke(["m9 18 6-6-6-6"])
         case .check: PhosphorIcon.check.draw(c, in: box, color: color)

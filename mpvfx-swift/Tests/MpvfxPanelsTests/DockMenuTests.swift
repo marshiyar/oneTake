@@ -17,7 +17,7 @@ import MpvfxCanvas
 
 /// The panel menus (macOS Window > Panels, every group's ⋯ menu): what they list and what a pick does.
 final class DockMenuTests: XCTestCase {
-    let registry = DockRegistry.editor
+    let registry = DockRegistry.corePanels
 
     func testThePanelListHasEveryPanelInOrderWithACheckmarkOnTheOpenOnes() throws {
         var l = DockDefaults.layout(registry)

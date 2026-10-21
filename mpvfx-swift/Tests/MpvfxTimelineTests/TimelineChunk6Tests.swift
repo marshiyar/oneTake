@@ -51,22 +51,26 @@ final class TimelineChunk6Tests: XCTestCase {
         XCTAssertEqual(a.lanes[0].keyframes, [0, 2])
         XCTAssertEqual(e.timelineGroups, [TimelineGroupModel(id: "dialogue", label: "Dialogue", memberTrackIds: ["track:a1", "track:a2"])])
         XCTAssertEqual(c.view.bands, [.track(0), .group("dialogue"), .track(1), .track(2)])
-        XCTAssertTrue(c.view.expandedClips.contains("clip:a"), "auto-expanded on first lanes")
+        // #201: a keyed clip starts with one summary row instead of auto-expanding a row per property.
+        XCTAssertFalse(c.view.expandedClips.contains("clip:a"), "starts collapsed")
+        XCTAssertEqual(c.view.laneRows(a), [.summary])
     }
 
     func testVariableRowHeightsAndHitTests() throws {
         let (c, _) = try make()
         let v = c.view
-        XCTAssertEqual(v.trackRowHeight(0), 48 + 18 + 28)
+        // Media row H, then one 18 px effect strip and one 28 px lane; the group header is G tall.
+        let H = L.defaultTrackHeight, G = L.groupHeaderHeight, row0 = H + 18 + 28
+        XCTAssertEqual(v.trackRowHeight(0), row0)
         XCTAssertEqual(v.rowTop(0), 40)
-        XCTAssertEqual(v.groupHeaderTop("dialogue"), 40 + 94)
-        XCTAssertEqual(v.rowTop(1), 40 + 94 + 48)
+        XCTAssertEqual(v.groupHeaderTop("dialogue"), 40 + row0)
+        XCTAssertEqual(v.rowTop(1), 40 + row0 + G)
         let x = v.x(for: 1)
-        XCTAssertEqual(c.hitTest(x: x, y: 60), .clip(id: "clip:a", row: 0, edge: nil))
-        XCTAssertEqual(c.hitTest(x: x, y: 40 + 48 + 5), .clipExtra(id: "clip:a", row: 0))       // effect strip
-        XCTAssertEqual(c.hitTest(x: x, y: 40 + 66 + 10), .clipExtra(id: "clip:a", row: 0))      // lane
-        XCTAssertEqual(c.hitTest(x: v.x(for: 10), y: 40 + 66 + 10), .empty(row: 0))
-        XCTAssertEqual(c.hitTest(x: 18, y: 40 + 94 + 24), .groupHeader(id: "dialogue", caret: true))
+        XCTAssertEqual(c.hitTest(x: x, y: 40 + H / 2), .clip(id: "clip:a", row: 0, edge: nil))
+        XCTAssertEqual(c.hitTest(x: x, y: 40 + H + 5), .clipExtra(id: "clip:a", row: 0))            // effect strip
+        XCTAssertEqual(c.hitTest(x: x, y: 40 + H + 18 + 10), .clipExtra(id: "clip:a", row: 0))      // lane
+        XCTAssertEqual(c.hitTest(x: v.x(for: 10), y: 40 + H + 18 + 10), .empty(row: 0))
+        XCTAssertEqual(c.hitTest(x: 18, y: 40 + row0 + G / 2), .groupHeader(id: "dialogue", caret: true))
         XCTAssertEqual(c.hitTest(x: x, y: v.rowTop(1) + 20), .clip(id: "clip:m1", row: 1, edge: nil))
         XCTAssertEqual(c.hitTest(x: v.x(for: 2), y: v.rowTop(2) + 20), .clip(id: "clip:m2", row: 2, edge: nil))
         XCTAssertEqual(v.trackIndex(nearY: v.rowTop(2) + 10), 2)
@@ -76,11 +80,13 @@ final class TimelineChunk6Tests: XCTestCase {
     func testUTogglesExpansion() throws {
         let (c, _) = try make()
         c.view.selection = ["clip:a"]
+        // Collapsed: the media row + effect strip 18 + the summary row 28; U adds the Rotation row under it.
+        XCTAssertEqual(c.view.trackRowHeight(0), c.view.trackHeight + 18 + 28)
         XCTAssertTrue(c.keyDown(EditorKey(.char("u"))))
-        XCTAssertFalse(c.view.expandedClips.contains("clip:a"))
-        XCTAssertEqual(c.view.trackRowHeight(0), 66)
+        XCTAssertTrue(c.view.expandedClips.contains("clip:a"))
+        XCTAssertEqual(c.view.trackRowHeight(0), c.view.trackHeight + 18 + 56)
         XCTAssertTrue(c.keyDown(EditorKey(.char("u"))))
-        XCTAssertEqual(c.view.trackRowHeight(0), 94)
+        XCTAssertEqual(c.view.trackRowHeight(0), L.defaultTrackHeight + 18 + 28)
         c.view.selection = ["clip:m1"]
         XCTAssertFalse(c.keyDown(EditorKey(.char("u"))), "no lanes, nothing to toggle")
     }
@@ -144,17 +150,32 @@ final class TimelineChunk6Tests: XCTestCase {
         c.secondaryClick(x: c.view.x(for: 1), y: 60)
         let r = RecordingCanvas()
         c.view.draw(r, size: CanvasSize(1200, 600))
-        XCTAssertTrue(r.texts.contains("Color Grade")); XCTAssertTrue(r.texts.contains("Rotation"))
+        XCTAssertTrue(r.texts.contains("Color Grade")); XCTAssertTrue(r.texts.contains("Keyframes"), "the summary row's header")
         XCTAssertTrue(r.texts.contains("Dialogue")); XCTAssertTrue(r.texts.contains("Show thumbnails"))
     }
 }
 
 final class RecordingCanvas: CanvasContext {
     var texts: [String] = []
+    /// Every fill and stroke with its colour and the bounding box of its path (no transforms: the timeline draws none).
+    var fills: [(color: CanvasColor, bounds: CanvasRect)] = [], strokes: [(color: CanvasColor, bounds: CanvasRect)] = []
     func save() {}; func restore() {}
     func translate(_ dx: Double, _ dy: Double) {}; func scale(_ sx: Double, _ sy: Double) {}; func rotate(_ radians: Double) {}
-    func clip(_ path: CanvasPath) {}; func fill(_ path: CanvasPath, _ color: CanvasColor) {}
-    func stroke(_ path: CanvasPath, _ color: CanvasColor, _ style: StrokeStyle) {}
+    func clip(_ path: CanvasPath) {}
+    func fill(_ path: CanvasPath, _ color: CanvasColor) { fills.append((color, Self.bounds(path))) }
+    func stroke(_ path: CanvasPath, _ color: CanvasColor, _ style: StrokeStyle) { strokes.append((color, Self.bounds(path))) }
+    static func bounds(_ path: CanvasPath) -> CanvasRect {
+        let pts: [CanvasPoint] = path.elements.flatMap { e -> [CanvasPoint] in
+            switch e { case .move(let p), .line(let p): [p]; case .curve(let a, let b, let p): [a, b, p]; case .close: [] }
+        }
+        let xs = pts.map(\.x), ys = pts.map(\.y)
+        let x0 = xs.min() ?? 0, y0 = ys.min() ?? 0
+        return CanvasRect(x: x0, y: y0, width: (xs.max() ?? 0) - x0, height: (ys.max() ?? 0) - y0)
+    }
+    /// Whether a fill (or stroke) of `color` has its centre within 1 px of `p`.
+    func painted(_ color: CanvasColor, at p: CanvasPoint, stroke: Bool = false) -> Bool {
+        (stroke ? strokes : fills).contains { $0.color == color && abs($0.bounds.centerX - p.x) <= 1 && abs($0.bounds.centerY - p.y) <= 1 }
+    }
     func drawText(_ text: String, at origin: CanvasPoint, font: CanvasFont, color: CanvasColor) { texts.append(text) }
     func measureText(_ text: String, font: CanvasFont) -> CanvasSize { CanvasSize(Double(text.count) * 5, font.size) }
     var images: [(image: CanvasImage, rect: CanvasRect)] = []
