@@ -55,14 +55,17 @@ public struct GestureRecorder {
     /// The live values of the latest tick (the stage previews them).
     public private(set) var live = NativeOrderedMap<Double>()
 
-    public init(clipId: String, startTime: Double, fps: Double, base: Base, viewScale: Double, pointer: CanvasPoint) {
+    /// `anchored`: `pointer` is the grab point (a press on the layer), so deltas run from it and the take samples
+    /// from its first frame, holds included. Unanchored, the first move becomes the grab point.
+    public init(clipId: String, startTime: Double, fps: Double, base: Base, viewScale: Double, pointer: CanvasPoint, anchored: Bool = false) {
         self.clipId = clipId; self.startTime = startTime; self.fps = fps > 0 ? fps : 30; self.base = base
         self.viewScale = viewScale > 0 ? viewScale : 1
         self.pointer = pointer; startPointer = pointer
         opacity = base.opacity; scale = base.scale
+        hasMoved = anchored
     }
 
-    /// Pointer moved (view px). The first move anchors the deltas at the grab point.
+    /// Pointer moved (view px). Unanchored, the first move anchors the deltas at the grab point.
     public mutating func pointerMoved(_ p: CanvasPoint, modifiers m: PointerModifiers) {
         if !hasMoved { startPointer = p; hasMoved = true }
         pointer = p; modifiers = m
@@ -110,8 +113,10 @@ public struct GestureRecorder {
         // recordSample: keep the latest pointer state for each output frame.
         let frame = time > 0 ? (time * fps).rounded(.toNearestOrAwayFromZero) : 0
         let sample = GestureSample(time: frame > 0 ? frame / fps : 0, properties: props)
-        if let last = samples.last, last.time == sample.time { samples[samples.count - 1] = sample } else { samples.append(sample) }
-        trail.append(pointer)
+        // One sample and one trail point per output frame: a fast pointer never floods the take.
+        if let last = samples.last, last.time == sample.time {
+            samples[samples.count - 1] = sample; trail[trail.count - 1] = pointer
+        } else { samples.append(sample); trail.append(pointer) }
         duration = time
         return true
     }

@@ -67,9 +67,14 @@ public final class PlayerController {
     // Gesture recording (wired by `enableGestureRecording`).
     public var recordingDocument: (() -> NativeProjectDocument?)?
     public var recordingEngine: KeyframeEngine?
-    /// Commits the recorded document as one undo step ("Gesture recording"); returns false when it was refused.
+    /// Commits the recorded document as one undo step ("Record motion"); returns false when it was refused.
     public var onRecordingCommit: ((_ edited: NativeProjectDocument, _ before: NativeProjectDocument) -> Bool)?
     public internal(set) var recorder: GestureRecorder?
+    /// Record motion is armed (PlayerController+Record.swift).
+    var recordArmed = false
+    /// Extra selection handles (view px, given the selected element in view coordinates): a press on one while
+    /// Record is armed starts a take, like the body, corner and rotate handles.
+    public var extraHandleHit: ((_ point: CanvasPoint, _ selected: StageElement) -> Bool)?
     var recordingStart: StageElement?
     var recordingProjectId: String?
     var recordingLimit = Double.infinity
@@ -170,7 +175,7 @@ public final class PlayerController {
             view.zoom = .fit; view.zoomChanged(); zoomTouched(); needsDisplay?(); return
         }
         if let b = view.button(at: p, in: size) { press(b); return }
-        guard vp.contains(p), recorder == nil else { return }   // recording: the stage only follows the pointer
+        guard vp.contains(p), !recordTakesPress(p, shift: shift) else { return }   // armed Record owns stage presses
 
         if let e = selected {
             let ve = view.chromeElement(e, in: size)
@@ -253,7 +258,7 @@ public final class PlayerController {
     public func pointerMove(x: Double, y: Double, shift: Bool? = nil) {
         if let shift { shiftHeld = shift }
         let p = CanvasPoint(x, y); lastPointer = p
-        if recorder != nil { recorder?.pointerMoved(p, modifiers: modifiers) }
+        if recorder != nil { recordMove(p); return }   // only a held press on the layer drives it
         guard let g = gesture else { hover(p); return }
         let s = max(view.scale(in: size), 1e-9)
         switch g {
@@ -394,7 +399,7 @@ public final class PlayerController {
 
     public func pointerUp(x: Double, y: Double) {
         defer { gesture = nil; view.snapGuides = []; view.spacingGuides = [] }
-        guard let g = gesture else { return }
+        guard recorder == nil, let g = gesture else { finishTake(); return }   // release ends a take
         switch g {
         case .pan: zoomTouched(); return
         case let .marquee(_, _, additive):
@@ -476,19 +481,13 @@ public final class PlayerController {
     }
 
     /// Stage-owned keys: C toggles the crop tool, Enter applies it, Esc cancels it (or closes a menu),
-    /// G toggles the grid, R records a gesture (when wired).
+    /// G toggles the grid, R arms Record motion (when wired).
     public func keyDown(_ k: EditorKey) -> Bool {
         guard !k.command, !k.alt else { return false }
         if nudgeKey(k) { return true }
         flushNudge()
         switch k.code {
-        case .escape:
-            if cancelGesture() { return true }
-            if view.contextMenu != nil { view.contextMenu = nil; needsDisplay?(); return true }
-            if view.toolbar.gridPopoverOpen { view.toolbar.gridPopoverOpen = false; needsDisplay?(); return true }
-            if view.cropActive { cancelCrop(); return true }
-            if view.isFullscreen { view.isFullscreen = false; needsDisplay?(); return true }   // Esc leaves fullscreen
-            return false
+        case .escape: return escapeKey()
         case .enter where view.cropActive: runCrop(.apply); return true
         case .char(let ch) where ch == "c" || ch == "C":
             guard view.cropAvailable || view.cropActive else { return false }
