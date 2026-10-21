@@ -17,9 +17,13 @@ import XCTest
 /// Frame-time budget of the analysis (docs/SCOPES.md "Speed"). MpvfxScopes is built with -O in every configuration
 /// (Package.swift), so this measures the code the app runs. Measured on a shared 4-vCPU Intel Xeon @ 2.10 GHz
 /// Linux machine with other builds running: 1080p full density 12.7 ms median (date and load in docs/SCOPES.md).
-/// Budget: 25 ms, so the scopes keep up with 40 updates a second with 2x headroom for slower or busier runners.
+/// Budget: 25 ms with four or more processors, so the scopes keep up with 40 updates a second with 2x headroom for
+/// slower or busier runners. With fewer processors the work cannot be split as far, so the budget grows in
+/// proportion (100 ms on one; one worker measured 21 to 41 ms on the machine above, depending on its load).
 final class ScopeEngineBudgetTests: XCTestCase {
-    static let budget1080pMilliseconds = 25.0
+    static var budget1080pMilliseconds: Double {
+        25 * 4 / Double(min(4, max(1, ProcessInfo.processInfo.activeProcessorCount)))
+    }
 
     func testFullDensity1080pFitsTheFrameBudget() throws {
         let frame = try ScopeFixtures.busy(1920, 1080)

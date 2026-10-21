@@ -20,7 +20,7 @@ import Foundation
 public enum ScopeEngine {
     public static func analyze(_ frame: ScopeFrame, options: ScopeOptions = ScopeOptions()) -> ScopeAnalysis {
         let plan = ScopePlan(frame: frame, options: options.resolved)
-        let workers = max(1, min(plan.options.workers, plan.sampledHeight, plan.sampledWidth * plan.sampledHeight / samplesPerWorker))
+        let workers = workerCount(plan)
         let store = ScopeAccumulators(count: workers, plan: plan)
         defer { store.release() }
         let chunk = (plan.sampledHeight + workers - 1) / workers
@@ -37,6 +37,16 @@ public enum ScopeEngine {
 
     /// Below this many samples per thread, zeroing and merging another worker's counters costs more than it saves.
     static let samplesPerWorker = 131_072
+    /// All workers' counters together stay within this many bytes (the default settings use 2.4 MB per worker).
+    static let accumulatorBudget = 64 << 20
+
+    /// Threads for `plan`: the option's count, at most one per row and per `samplesPerWorker` samples, and no more
+    /// than `accumulatorBudget` holds; always at least one.
+    static func workerCount(_ plan: ScopePlan) -> Int {
+        let byMemory = accumulatorBudget / (plan.blockCount * MemoryLayout<UInt32>.size)
+        let bySamples = plan.sampledWidth * plan.sampledHeight / samplesPerWorker
+        return max(1, min(plan.options.workers, plan.sampledHeight, bySamples, byMemory))
+    }
 
     /// The smallest step s with ceil(width / s) x ceil(height / s) <= maxSamples (1 when the frame fits).
     public static func samplingStep(width: Int, height: Int, maxSamples: Int) -> Int {
@@ -45,7 +55,7 @@ public enum ScopeEngine {
         return s
     }
 
-    /// Counts the sampled rows `rows` into `block`.
+    /// One worker: its share of the sampled rows, into its own counters.
     static func accumulate(_ plan: ScopePlan, _ pixels: ScopePixels, rows: Range<Int>, into block: ScopeBlock) {
         var pass = ScopePass(plan: plan, pixels: pixels.base, block: block)
         for sy in rows { pass.count(row: sy) }
@@ -53,18 +63,18 @@ public enum ScopeEngine {
     }
 }
 
-/// One worker's walk over its rows. Luma is fixed point (weights sum to 65536, so greys are exact); the colour
-/// difference comes from per-code tables already scaled to vectorscope bins in 1/65536.
+/// One worker's walk over its rows. Luma is the standard's decimal arithmetic (`ScopeMatrix.lumaLevel`); the colour
+/// difference is a sum of per-code tables in vectorscope bins x 2^32, rounded once (`ScopeChroma`).
 struct ScopePass {
     let px: UnsafeBufferPointer<UInt8>, columnStart: UnsafePointer<Int>, t: UnsafePointer<Int>
     let wave: UnsafeMutablePointer<UInt32>, vec: UnsafeMutablePointer<UInt32>
-    let kr: Int, kg: Int, kb: Int, radius: Int, side: Int
+    let weights: (r: Int, g: Int, b: Int), radius: Int, side: Int
     let rowBytes: Int, step: Int, sampledWidth: Int
     var samples = 0, outside = 0
 
     init(plan: ScopePlan, pixels: UnsafeBufferPointer<UInt8>, block: ScopeBlock) {
         px = pixels; columnStart = block.columnStart; t = block.tables; wave = block.wave; vec = block.vector
-        (kr, kg, kb) = plan.weights
+        weights = plan.weights
         radius = plan.radius; side = plan.side
         rowBytes = plan.width * 4; step = plan.step; sampledWidth = plan.sampledWidth
     }
@@ -81,10 +91,10 @@ struct ScopePass {
     @inline(__always)
     mutating func add(at o: Int, column w: Int) {
         let r = Int(px[o]), g = Int(px[o + 1]), b = Int(px[o + 2])
-        let y = (kr * r + kg * g + kb * b + 32768) >> 16
+        let y = ScopeMatrix.lumaLevel(weights, r, g, b)
         wave[(w + y) << 2] &+= 1; wave[(w + r) << 2 + 1] &+= 1; wave[(w + g) << 2 + 2] &+= 1; wave[(w + b) << 2 + 3] &+= 1
-        let col = radius + (t[r] + t[256 + g] + t[512 + b] + 32768) >> 16
-        let row = radius - (t[768 + r] + t[1024 + g] + t[1280 + b] + 32768) >> 16
+        let d = ScopeChroma.offsets(t, r, g, b)
+        let col = radius + d.cb, row = radius - d.cr
         if col >= 0, col < side, row >= 0, row < side { vec[row * side + col] &+= 1 } else { outside += 1 }
         samples += 1
     }
@@ -96,7 +106,7 @@ struct ScopePlan: Sendable {
     let width: Int, height: Int, step: Int, sampledWidth: Int, sampledHeight: Int
     let columns: Int, radius: Int, side: Int
     let weights: (r: Int, g: Int, b: Int)
-    /// Cb then Cr contribution of each R, G and B code, in vectorscope bins x 65536 (6 x 256 entries).
+    /// Cb then Cr contribution of each R, G and B code, in vectorscope bins x 2^32 (6 x 256 entries).
     let tables: [Int]
     /// Offset of each sampled x's waveform column in the interleaved accumulator (`column x 256`).
     let columnStart: [Int]
@@ -108,22 +118,36 @@ struct ScopePlan: Sendable {
         sampledWidth = (width + step - 1) / step; sampledHeight = (height + step - 1) / step
         columns = min(options.columns, sampledWidth)
         radius = options.vectorRadius; side = 2 * radius + 1
-        weights = options.matrix.fixedPoint
-        tables = Self.chromaTables(options.matrix, binsPerUnit: 2 * Double(radius) * options.vectorZoom)
+        weights = options.matrix.decimalWeights
+        tables = ScopeChroma.tables(options.matrix, binsPerUnit: 2 * Double(radius) * options.vectorZoom)
         let (w, c, s) = (width, columns, step)
         columnStart = (0..<sampledWidth).map { min(c - 1, $0 * s * c / w) * 256 }
-    }
-
-    /// Cb = (B' - Y') / cbDivisor and Cr = (R' - Y') / crDivisor are linear in the codes, so each is a sum of one
-    /// table entry per channel.
-    static func chromaTables(_ m: ScopeMatrix, binsPerUnit: Double) -> [Int] {
-        let cb = [-m.kr, -m.kg, 1 - m.kb].map { $0 / m.cbDivisor }, cr = [1 - m.kr, -m.kg, -m.kb].map { $0 / m.crDivisor }
-        return (cb + cr).flatMap { k in (0..<256).map { Int((k * Double($0) / 255 * binsPerUnit * 65536).rounded()) } }
     }
 
     var waveCount: Int { 4 * columns * 256 }
     var vectorCount: Int { side * side }
     var blockCount: Int { waveCount + vectorCount }
+}
+
+/// The colour difference of 8-bit codes in vectorscope bins, the same arithmetic for the analysis and for
+/// `ScopeAnalysis.vectorBin(red:green:blue:)`.
+enum ScopeChroma {
+    /// 2^32: each table entry is off by at most 2^-33 bins, so three of them sum to within 2^-31 of the exact value.
+    static let one = 1 << 32
+
+    /// Cb = (B' - Y') / cbDivisor and Cr = (R' - Y') / crDivisor are linear in the codes, so each is a sum of one
+    /// table entry per channel.
+    static func tables(_ m: ScopeMatrix, binsPerUnit: Double) -> [Int] {
+        let cb = [-m.kr, -m.kg, 1 - m.kb].map { $0 / m.cbDivisor }, cr = [1 - m.kr, -m.kg, -m.kb].map { $0 / m.crDivisor }
+        return (cb + cr).flatMap { k in (0..<256).map { Int((k * Double($0) / 255 * binsPerUnit * Double(one)).rounded()) } }
+    }
+
+    /// Bins from the centre along +Cb and +Cr, the sum of the three channels rounded once, half up.
+    @inline(__always)
+    static func offsets(_ t: UnsafePointer<Int>, _ r: Int, _ g: Int, _ b: Int) -> (cb: Int, cr: Int) {
+        let half = one >> 1
+        return ((t[r] + t[256 + g] + t[512 + b] + half) >> 32, (t[768 + r] + t[1024 + g] + t[1280 + b] + half) >> 32)
+    }
 }
 
 /// The frame's bytes, shared read-only by the workers for the duration of `analyze`.

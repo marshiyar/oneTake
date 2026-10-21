@@ -86,6 +86,35 @@ final class ScopeEngineAccuracyTests: XCTestCase {
         }
     }
 
+    /// 20 000 random colours per matrix: luma at the exact level, and every sample in the bin the public geometry
+    /// gives (Codex finding on #196: Rec. 601 (221, 249, 125) was one column off when contributions were rounded to
+    /// 1/65536 of a bin before summing).
+    func testRandomColoursLandInThePublicBinsOnEveryMatrix() throws {
+        let codes = F.codes(20_000)
+        for m in ScopeMatrix.allCases {
+            for (r, g, b) in codes {
+                let a = ScopeEngine.analyze(try F.solid(1, 1, r, g, b), options: ScopeOptions(matrix: m))
+                XCTAssertEqual(a.histogram(.luma, level: F.lumaLevel(m, r, g, b)), 1, "\(m) \((r, g, b))")
+                let bin = try XCTUnwrap(a.vectorBin(red: r, green: g, blue: b))
+                XCTAssertEqual(a.vector(row: bin.row, col: bin.col), 1, "\(m) \((r, g, b))")
+                try assertMatchesGeometry(m, r, g, b, bin)
+            }
+        }
+        let a = ScopeEngine.analyze(try F.solid(1, 1, 221, 249, 125), options: ScopeOptions(matrix: .rec601))
+        XCTAssertEqual(a.vector(row: 132, col: 70), 1, "Cb x 256 = -57.500004: rounds to -58, column 70")
+    }
+
+    /// The bin of the Double geometry equals the analysis bin unless the exact value is within 1e-6 of a tie.
+    func assertMatchesGeometry(_ m: ScopeMatrix, _ r: UInt8, _ g: UInt8, _ b: UInt8, _ bin: (row: Int, col: Int)) throws {
+        let c = m.chroma(Double(r) / 255, Double(g) / 255, Double(b) / 255)
+        let x = c.cb * 256, y = c.cr * 256
+        let nearTie = abs(abs(x - x.rounded(.down)) - 0.5) < 1e-6 || abs(abs(y - y.rounded(.down)) - 0.5) < 1e-6
+        guard !nearTie else { return }
+        let geometric = try XCTUnwrap(F.vectorBin(m, r, g, b))
+        XCTAssertEqual(geometric.row, bin.row, "\(m) \((r, g, b))")
+        XCTAssertEqual(geometric.col, bin.col, "\(m) \((r, g, b))")
+    }
+
     func testTransparentPixelsAreSkippedAndEveryOtherPixelCountsOnce() throws {
         let f = try F.frame(4, 1) { x, _ in (200, 200, 200, [0, 1, 128, 255][x]) }
         let a = ScopeEngine.analyze(f)

@@ -59,9 +59,16 @@ public enum ScopeMatrix: String, CaseIterable, Sendable, Codable {
         return ((b - y) / cbDivisor, (r - y) / crDivisor)
     }
 
-    /// Luma weights in 1/65536 that sum to exactly 65536, so every neutral grey has luma equal to its code value.
-    var fixedPoint: (r: Int, g: Int, b: Int) {
-        let r = Int((kr * 65536).rounded()), b = Int((kb * 65536).rounded())
-        return (r, 65536 - r - b, b)
+    /// The published luma weights in units of 1/10000. Every matrix here is published to at most four decimals and
+    /// its weights sum to exactly 10000, so integer luma is the standard's own arithmetic: no rounding error, and a
+    /// neutral grey has luma equal to its code value.
+    public var decimalWeights: (r: Int, g: Int, b: Int) {
+        (Int((kr * 10000).rounded()), Int((kg * 10000).rounded()), Int((kb * 10000).rounded()))
+    }
+
+    /// Luma level (0...255) of 8-bit codes from `decimalWeights`, rounded half up.
+    @inline(__always)
+    public static func lumaLevel(_ w: (r: Int, g: Int, b: Int), _ r: Int, _ g: Int, _ b: Int) -> Int {
+        (w.r * r + w.g * g + w.b * b + 5000) / 10000
     }
 }

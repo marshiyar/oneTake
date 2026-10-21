@@ -58,6 +58,18 @@ final class ScopeEngineInputTests: XCTestCase {
         XCTAssertEqual(a.vectorSide, 33)
     }
 
+    /// Codex finding on #196: every option at its maximum must not multiply into a huge allocation.
+    func testWorkersAreCappedSoAllCountersFitTheMemoryBudget() throws {
+        let frame = try ScopeFrame(width: 3840, height: 2160, rgba: [UInt8](repeating: 255, count: 3840 * 2160 * 4))
+        let options = ScopeOptions.with { $0.columns = 4096; $0.vectorRadius = 512; $0.workers = 64; $0.maxSamples = .max }
+        let plan = ScopePlan(frame: frame, options: options.resolved)
+        let workers = ScopeEngine.workerCount(plan)
+        XCTAssertGreaterThanOrEqual(workers, 1)
+        XCTAssertLessThanOrEqual(workers * plan.blockCount * 4, ScopeEngine.accumulatorBudget)
+        let defaults = ScopePlan(frame: frame, options: ScopeOptions.with { $0.workers = 8 }.resolved)
+        XCTAssertEqual(ScopeEngine.workerCount(defaults), 8, "the default settings still use every worker")
+    }
+
     func testOneByOneFrameAndFullyTransparentFrame() throws {
         let one = ScopeEngine.analyze(try ScopeFixtures.solid(1, 1, 10, 20, 30))
         XCTAssertEqual(one.samples, 1)

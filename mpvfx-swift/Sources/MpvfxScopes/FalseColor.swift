@@ -50,12 +50,12 @@ public enum FalseColor {
     /// The frame in false colour (RGBA8, the frame's alpha kept), luma through `matrix`.
     public static func map(_ frame: ScopeFrame, matrix: ScopeMatrix = .rec709) -> [UInt8] {
         let table = levelTable()
-        let w = matrix.fixedPoint
+        let w = matrix.decimalWeights
         var out = [UInt8](repeating: 0, count: frame.rgba.count)
         frame.rgba.withUnsafeBufferPointer { src in
             out.withUnsafeMutableBufferPointer { dst in
                 for o in stride(from: 0, to: src.count, by: 4) {
-                    let y = (w.r * Int(src[o]) + w.g * Int(src[o + 1]) + w.b * Int(src[o + 2]) + 32768) >> 16
+                    let y = ScopeMatrix.lumaLevel(w, Int(src[o]), Int(src[o + 1]), Int(src[o + 2]))
                     dst[o] = table[y * 3]; dst[o + 1] = table[y * 3 + 1]; dst[o + 2] = table[y * 3 + 2]
                     dst[o + 3] = src[o + 3]
                 }
