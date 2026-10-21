@@ -83,7 +83,8 @@ Each step is its own pull request, small enough to review on screenshots.
 4. **Track headers** — compact headers with a track tag (`V1`, `A1`) in the accent when targeted, lock, visibility,
    mute and solo, 28 px tall by default.
 5. **Inspector** — label in grey, value in the accent when changed, a stopwatch toggle for animated properties and
-   the previous/add/next keyframe buttons on the same row.
+   the previous/add/next keyframe buttons on the same row. Labels are `text2`, not `text3`: 11 px labels are body
+   text and `text3` stays under 4.5:1 on the inspector's inset. *(done)*
 6. **Timeline extras** — coloured markers on the ruler, timecode on the playhead, audio meters docked beside the
    timeline.
 
