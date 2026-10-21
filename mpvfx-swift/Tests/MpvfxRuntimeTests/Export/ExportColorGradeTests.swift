@@ -150,7 +150,7 @@ final class ExportColorGradeTests: XCTestCase {
         let exported = try Exported(path: output).rgba(0.5).rgba
         let preview = try previewExportFrame(input, at: 0.5)
         XCTAssertLessThanOrEqual(maxAbsDiff(exported, preview), 1)
-        let greenAlpha = stride(from: 0, to: 32).flatMap { y in
+        let greenAlpha = stride(from: 0, to: 32, by: 1).flatMap { y in
             (24..<32).map { x in exported[(y * 64 + x) * 4 + 3] }
         }
         XCTAssertLessThanOrEqual(greenAlpha.max() ?? 255, 1, "the computed matte is written to MOV alpha")
