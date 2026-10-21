@@ -18,6 +18,7 @@ import importlib.util
 import io
 import os
 import unittest
+import urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("pr_issue", os.path.join(HERE, "pr_issue.py"))
@@ -171,74 +172,44 @@ class Run(unittest.TestCase):
             pr_issue.run(5, FakeApi({}))
 
 
-class FakeServer:
-    """Stands in for http.client.HTTPSConnection: records where api() connects and what it asks for."""
+class FakeOpener:
+    """Stands in for https_opener(): records each request; answers with a body or raises an error."""
 
-    def __init__(self, status=200, body=b'{"number": 5}', fail=False):
-        self.status, self.body, self.fail, self.made = status, body, fail, []
+    def __init__(self, body=b'{"number": 5}', error=None):
+        self.body, self.error, self.requests = body, error, []
 
-    def __call__(self, host, timeout=None):
-        conn = FakeConnection(self, host)
-        self.made.append(conn)
-        return conn
-
-
-class FakeConnection:
-    def __init__(self, server, host):
-        self.server, self.host, self.requests, self.closed = server, host, [], False
-
-    def request(self, method, path, headers=None):
-        if self.server.fail:
-            raise OSError("connection refused")
-        self.requests.append((method, path, headers))
-
-    def getresponse(self):
-        return FakeResponse(self.server.status, self.server.body)
-
-    def close(self):
-        self.closed = True
+    def open(self, req, timeout=None):
+        self.requests.append(req)
+        if self.error:
+            raise self.error
+        return contextlib.nullcontext(io.BytesIO(self.body))
 
 
-class FakeResponse:
-    def __init__(self, status, body):
-        self.status, self.body = status, body
-
-    def read(self):
-        return self.body
+def http_error(code):
+    return urllib.error.HTTPError("https://api.github.com/x", code, "status", {}, None)
 
 
 class Api(unittest.TestCase):
-    def setUp(self):
-        self.real = pr_issue.http.client.HTTPSConnection
+    def test_requests_only_https_api_github_com(self):
+        opener = FakeOpener()
+        self.assertEqual(pr_issue.api(REPO, "t", "pulls/5", opener), {"number": 5})
+        (req,) = opener.requests
+        self.assertEqual(req.full_url, "https://api.github.com/repos/marshiyar/oneTake/pulls/5")
+        self.assertEqual(req.get_header("Authorization"), "Bearer t")
 
-    def tearDown(self):
-        pr_issue.http.client.HTTPSConnection = self.real
-
-    def serve(self, **kw):
-        server = FakeServer(**kw)
-        pr_issue.http.client.HTTPSConnection = server
-        return server
-
-    def test_connects_only_to_the_api_host_over_https(self):
-        server = self.serve()
-        self.assertEqual(pr_issue.api(REPO, "t", "pulls/5"), {"number": 5})
-        (conn,) = server.made
-        self.assertEqual(conn.host, "api.github.com")
-        method, path, headers = conn.requests[0]
-        self.assertEqual((method, path), ("GET", "/repos/marshiyar/oneTake/pulls/5"))
-        self.assertEqual(headers["Authorization"], "Bearer t")
-        self.assertTrue(conn.closed)
+    def test_opener_refuses_every_other_scheme(self):
+        for url in ("file:///etc/hostname", "http://api.github.com/", "ftp://api.github.com/"):
+            with self.subTest(url=url), self.assertRaises(urllib.error.URLError):
+                pr_issue.https_opener().open(url, timeout=5)
 
     def test_not_found_is_none(self):
-        self.serve(status=404)
-        self.assertIsNone(pr_issue.api(REPO, "t", "issues/9"))
+        self.assertIsNone(pr_issue.api(REPO, "t", "issues/9", FakeOpener(error=http_error(404))))
 
     def test_failures_are_api_errors(self):
-        for kw in ({"status": 500, "body": b""}, {"body": b"not json"}, {"fail": True}):
-            server = self.serve(**kw)
-            with self.subTest(**kw), self.assertRaises(pr_issue.ApiError):
-                pr_issue.api(REPO, "t", "pulls/5")
-            self.assertTrue(server.made[0].closed)
+        for opener in (FakeOpener(error=http_error(500)), FakeOpener(body=b"not json"),
+                       FakeOpener(error=urllib.error.URLError("refused")), FakeOpener(error=OSError("reset"))):
+            with self.subTest(error=opener.error, body=opener.body), self.assertRaises(pr_issue.ApiError):
+                pr_issue.api(REPO, "t", "pulls/5", opener)
 
 
 class Main(unittest.TestCase):

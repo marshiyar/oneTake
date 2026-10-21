@@ -29,14 +29,14 @@ as the `changes` job of mpvfx-ci.yml: Markdown anywhere, mpvfx-swift/docs/, the 
 
 Prints a Markdown verdict; exit 0 pass or exempt, 1 the check fails, 2 bad arguments or the API could not be read.
 """
-import http.client
 import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.parse
+import urllib.request
 
-# The one host this check talks to, always over HTTPS (http.client.HTTPSConnection, no URL scheme to choose).
 API_HOST = "api.github.com"
 EXEMPT_LABEL = "no-issue"
 EXEMPT_AUTHORS = {"dependabot[bot]", "chatgpt-codex-connector[bot]"}
@@ -52,26 +52,30 @@ class ApiError(Exception):
     pass
 
 
-def api(repo, token, path):
-    """GET /repos/<repo>/<path> from api.github.com over HTTPS: the JSON, None on 404, ApiError otherwise."""
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
-               "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "mpvfx-pr-issue"}
-    conn = http.client.HTTPSConnection(API_HOST, timeout=60)
+def https_opener():
+    """An opener that speaks HTTPS only: any other scheme (file://, ftp://, http://) is a URLError; no redirects."""
+    opener = urllib.request.OpenerDirector()
+    for handler in (urllib.request.HTTPSHandler(), urllib.request.UnknownHandler(),
+                    urllib.request.HTTPDefaultErrorHandler(), urllib.request.HTTPErrorProcessor()):
+        opener.add_handler(handler)
+    return opener
+
+
+def api(repo, token, path, opener=None):
+    """GET https://api.github.com/repos/<repo>/<path>: the JSON, None on 404, ApiError otherwise."""
+    req = urllib.request.Request(f"https://{API_HOST}/repos/{repo}/{path}", headers={
+        "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "mpvfx-pr-issue"})
+    if req.type != "https" or req.host != API_HOST:
+        raise ApiError(f"GET {path}: refusing {req.type}://{req.host}, only https://{API_HOST}")
     try:
-        conn.request("GET", f"/repos/{repo}/{path}", headers=headers)
-        r = conn.getresponse()
-        data = r.read()
-    except (http.client.HTTPException, OSError) as e:
-        raise ApiError(f"GET {path}: {e}") from e
-    finally:
-        conn.close()
-    if r.status == 404:
-        return None
-    if r.status != 200:
-        raise ApiError(f"GET {path}: HTTP {r.status}")
-    try:
-        return json.loads(data or b"null")
-    except ValueError as e:
+        with (opener or https_opener()).open(req, timeout=60) as r:
+            return json.loads(r.read() or b"null")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise ApiError(f"GET {path}: HTTP {e.code}") from e
+    except (urllib.error.URLError, OSError, ValueError) as e:
         raise ApiError(f"GET {path}: {e}") from e
 
 
