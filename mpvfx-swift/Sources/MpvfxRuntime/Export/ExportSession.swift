@@ -167,7 +167,7 @@ public struct ExportStartError: Error, Equatable, CustomStringConvertible {
 }
 
 /// Starts exporting `project` (media resolved against `projectDir`) to `outputPath` on a background thread.
-/// Throws ExportStartError before starting when the plan has issues, the output exists, its extension does not
+/// Throws ExportStartError before starting when the plan has issues, a media file is missing, the output exists, its extension does not
 /// match the format, or no frame renderer is installed. A file created at `outputPath` while the export renders is
 /// never replaced: the export then fails with ExportOutputExistsError's message and leaves that file alone. `progress` and `completion` are called on a background thread.
 @discardableResult
@@ -177,6 +177,8 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
                         completion: @escaping (ExportOutcome) -> Void = { _ in }) throws -> ExportJob {
     let plan = planExport(project, settings: settings)
     var issues = plan.issues
+    let missing = missingExportMedia(project, projectDir: projectDir)
+    if !missing.isEmpty { issues.append("Missing media: \(missing.joined(separator: ", "))") }
     let ext = PosixPath.extname(outputPath).lowercased()
     if ext != plan.fileExtension { issues.append("The output file must end in \(plan.fileExtension) for \(exportFormatCapability(settings.format).name).") }
     if FileManager.default.fileExists(atPath: outputPath) { issues.append("The output file already exists.") }
@@ -234,6 +236,22 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
         }
     }
     return job
+}
+
+/// File names of the media the export would read that are not on disk, each once, in timeline order: checked before
+/// the export starts, so a missing file is named up front instead of failing the render partway through. Hidden
+/// clips and muted sound-only clips are not read, so their files may be missing.
+func missingExportMedia(_ project: NativeProjectDocument, projectDir: String) -> [String] {
+    let assets = Dictionary(project.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var checked = Set<String>(), names: [String] = []
+    for track in project.sequence.tracks where track.hidden != true {
+        for clip in track.clips where clip.hidden != true && !project.isUndrawnElementClip(clip) {
+            guard let asset = assets[clip.assetId], let source = asset.source, !source.isEmpty,
+                  !(clip.muted && asset.kind == .audio), checked.insert(source).inserted else { continue }
+            if !FileManager.default.fileExists(atPath: PosixPath.resolve(projectDir, source)) { names.append(PosixPath.basename(source)) }
+        }
+    }
+    return names
 }
 
 /// An unmuted audio or video clip: the export may carry sound (whether it does depends on the media's tracks).

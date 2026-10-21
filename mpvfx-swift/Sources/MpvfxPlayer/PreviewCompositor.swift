@@ -126,6 +126,10 @@ public final class PreviewCompositor: FrameSource {
         var used = Set<String>()
         var shown: [Shown] = []
         for layer in layers where layer.isVisible {
+            if layer.kind == .offline {   // missing media: a slate naming the file, never decoded
+                PreviewPainter.drawOffline(layer, on: c, frame: rect, scale: s)
+                shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
+            }
             if layer.kind == .text {   // text layers are laid out, not decoded
                 PreviewPainter.drawText(layer, on: c, frame: rect, scale: s)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
@@ -181,7 +185,7 @@ public final class PreviewCompositor: FrameSource {
         lastShown = shown
 
         // Element clips (no media of their own) keep their labelled box; video/image clips whose file is missing
-        // draw nothing, like a media element with an unreadable source.
+        // were drawn above as offline slates.
         let mediaIds = Set(layers.map(\.clipId))
         let rest = elements.filter { !mediaIds.contains($0.id) && $0.kind == .element }
         if !rest.isEmpty { PlaceholderFrameSource.drawBoxes(c, rest) }
@@ -214,7 +218,7 @@ public final class PreviewCompositor: FrameSource {
     public var maxReverseChunk = 48
 
     func lane(for layer: PreviewLayer, fps: Double) -> PreviewDecodeLane? {
-        guard decodesMedia, layer.kind != .text else { return nil }
+        guard decodesMedia, layer.kind != .text, layer.kind != .offline else { return nil }
         if let l = lanes[layer.laneKey] { return l }
         let l = PreviewDecodeLane(layer: layer, fps: fps, cache: cache)
         l.onFrame = { [weak self] in self?.frameReady?() }

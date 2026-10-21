@@ -73,7 +73,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     /// `pixelHeight` device pixels at most (aspect-fit). Call on the UI thread.
     public func preview(clipId: String, presetId: String, lut: ColorGradeParams.Lut?, time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
         guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
-              let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
+              let entry = comp.entries.first(where: { $0.clip.id == clipId && $0.kind != .offline }) else { return .unavailable }
         let c = entry.clip
         let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
         let t = max(first, min(last, time))
@@ -111,7 +111,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     /// `pixelHeight`. Shares the queue, the source lookup and the bounded cache with the preset tiles.
     public func gradedFrame(clipId: String, time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
         guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
-              let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
+              let entry = comp.entries.first(where: { $0.clip.id == clipId && $0.kind != .offline }) else { return .unavailable }
         let c = entry.clip
         let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
         let t = max(first, min(last, time))

@@ -372,12 +372,15 @@ final class EditorSession {
         editor.setCrop(clipId: id, NativeClipCrop(top: crop.top, right: crop.right, bottom: crop.bottom, left: crop.left))
     }
 
-    /// Rebuilds the compositor's layers when the document changed (media files are checked then, not per frame).
+    /// Rebuilds the compositor's layers when the document changed (media files are checked then, not per frame), and
+    /// marks the timeline's clips whose media is offline; a rebuild after a file comes back clears its mark.
     func syncDecoderClips() {
         guard editor.document != composedDocument else { return }
         composedDocument = editor.document
-        compositor.composition = PreviewComposition(document: editor.document, projectDir: projectDir, engine: engine,
-                                                    naturalSize: editor.naturalSize, sizePending: { [weak self] in self?.isSizePending($0) ?? false })
+        let composition = PreviewComposition(document: editor.document, projectDir: projectDir, engine: engine,
+                                             naturalSize: editor.naturalSize, sizePending: { [weak self] in self?.isSizePending($0) ?? false })
+        compositor.composition = composition
+        timeline.view.offlineAssetIds = composition.offlineAssetIds
     }
 
     func syncStage() {

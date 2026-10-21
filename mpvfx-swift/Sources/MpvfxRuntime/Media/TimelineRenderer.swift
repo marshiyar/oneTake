@@ -84,7 +84,9 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
     for track in project.sequence.tracks { for clip in track.clips where !project.isUndrawnElementClip(clip) {
         guard let asset = project.assets.first(where: { $0.id == clip.assetId }),
               nativeIsTextClip(clip, project) || !(asset.source ?? "").isEmpty else {
-            throw MediaToolError("Media path is missing for asset \(clip.assetId)")
+            // Named as the user knows it (the asset's name), not by its internal id.
+            let name = project.assets.first(where: { $0.id == clip.assetId })?.name ?? clip.assetId
+            throw MediaToolError("Media path is missing for \(name)")
         }
         // The color grade (and its stylize effects) renders through MpvfxColor; other effects are not migrated yet.
         if clip.effects.contains(where: { $0.enabled && !exportSupportsEffect($0) }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }

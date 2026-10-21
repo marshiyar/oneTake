@@ -95,4 +95,25 @@ final class ExportStartOutcomeTests: XCTestCase {
         XCTAssertEqual(try String(contentsOfFile: "\(root)/exists.mp4", encoding: .utf8), "keep")
         XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/.studio-render-tmp"))
     }
+
+    func testAMissingSourceIsRefusedByFileNameBeforeAnyThreadStarts() throws {
+        // Both clips' files are gone (one in a subfolder): the refusal names each file once, in timeline order, and
+        // nothing is staged, rendered or written, so the engine is never reached.
+        try FileManager.default.removeItem(atPath: "\(root)/red.mov")
+        try FileManager.default.removeItem(atPath: "\(root)/blue.mov")
+        let missing = projectJSON.replacingOccurrences(of: #""source":"blue.mov""#, with: #""source":"media/blue.mov""#)
+        var calls = 0
+        let counting = NativeExportFrames.defaultRenderer
+        NativeExportFrames.defaultRenderer = counting.map { r in { calls += 1; return try r($0) } }
+        defer { NativeExportFrames.defaultRenderer = counting }
+        XCTAssertThrowsError(try startExport(project: try document(missing), projectDir: root, outputPath: "\(root)/missing.mp4",
+                                             settings: settings)) {
+            XCTAssertEqual(($0 as? ExportStartError)?.issues, ["Missing media: red.mov, blue.mov"])
+            XCTAssertEqual("\($0)", "Missing media: red.mov, blue.mov")
+        }
+        XCTAssertEqual(calls, 0, "no frame was rendered")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/missing.mp4"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/missing.meta.json"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/.studio-render-tmp"))
+    }
 }

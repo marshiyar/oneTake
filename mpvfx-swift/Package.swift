@@ -200,7 +200,7 @@ let package = Package(
         .testTarget(name: "MpvfxRuntimeTests", dependencies: ["MpvfxRuntime", "MpvfxShared", keyframeEngine, "MpvfxColor", "MpvfxPlayer", mediaEngine, "MpvfxCanvas"],
                     exclude: ["Library/Fixtures", "Media/Fixtures", "Projects/Fixtures"]),
         .testTarget(name: "MpvfxCanvasTests", dependencies: ["MpvfxCanvas"]),
-        .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", keyframeEngine]),
+        .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", "MpvfxTheme", keyframeEngine]),
         .testTarget(name: "MpvfxStartupTests", dependencies: [keyframeEngine, "MpvfxShared", "MpvfxRuntime"]),
         .testTarget(name: "MpvfxAudioTests", dependencies: ["MpvfxAudio", "MpvfxAudioGraph", "MpvfxShared"]),
         .testTarget(name: "MpvfxAudioGraphTests", dependencies: ["MpvfxAudioGraph"], exclude: ["Fixtures"]),

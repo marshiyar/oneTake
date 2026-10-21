@@ -217,6 +217,9 @@ public final class TimelineView {
     public var scrubbing = false
     public var scrollX = 0.0, scrollY = 0.0
     public var theme = TimelineTheme.default
+    /// Assets whose media file was missing when the preview composition was last rebuilt: their clips draw hatched
+    /// with "Media offline" in place of the timecode (issue #102).
+    public var offlineAssetIds: Set<String> = []
     /// Clips whose property lanes are expanded (U / auto-expand).
     public var expandedClips: Set<String> = []
     public var groups: [TimelineGroupModel] = []
@@ -471,7 +474,8 @@ public final class TimelineView {
         if dragging { r.y -= 1 }                                    // transform: translateY(-1px)
         let squareLeft = clip.start <= 0 && !dragging               // startsAtTimelineOrigin: square left corners
         let path = Self.clipPath(r, radius: t.clipRadius, squareLeft: squareLeft)
-        c.fill(path, Self.clipBackground(audio: clip.kind == .audio, hovered: hovered, dragging: dragging))
+        let offline = clip.assetId.map(offlineAssetIds.contains) ?? false
+        c.fill(path, offline ? Self.offlineClipFill : Self.clipBackground(audio: clip.kind == .audio, hovered: hovered, dragging: dragging))
         // .is-selected: outline 2px rgba(255,255,255,.98), offset 2px; #60a5fa when also active.
         if selected {
             let o = r.insetBy(-3)   // offset 2 + half the 2px stroke
@@ -481,7 +485,9 @@ public final class TimelineView {
         // Clip content (useRenderClipContent), clipped to the rounded clip: waveform for audio, filmstrip for video/image.
         c.withState {
             c.clip(path)
-            if clip.kind == .audio, let id = clip.assetId, let peaks = waveforms[id], !peaks.isEmpty {
+            if offline {
+                Self.drawOfflineHatch(c, in: r)
+            } else if clip.kind == .audio, let id = clip.assetId, let peaks = waveforms[id], !peaks.isEmpty {
                 Self.drawWaveform(c, peaks, in: r, startFraction: clip.sourceStartFraction, endFraction: clip.sourceEndFraction)
             } else if thumbnailsEnabled, clip.kind == .video || clip.kind == .image, let id = clip.assetId, let strip = thumbnails[id], !strip.frames.isEmpty {
                 Self.drawFilmstrip(c, strip, in: r)
@@ -502,9 +508,10 @@ public final class TimelineView {
                 }
                 // Timecode: bottom 6, left 12, mono 9px, "start-ends", at clipTimecodeAlpha.
                 let tf = CanvasFont(family: Self.clipMonoFamily, size: 9)
-                let tc = String(format: "%.1f-%.1fs", clip.start, clip.end)
+                let tc = offline ? Self.offlineLabel : String(format: "%.1f-%.1fs", clip.start, clip.end)
+                let tcColor = offline ? Self.offlineLabelColor : CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipTimecodeAlpha))
                 if let tcs = Self.ellipsize(c, tc, font: tf, maxWidth: r.width - 12) {
-                    c.drawText(tcs, at: .init(r.x + 12, r.maxY - 6 - 9), font: tf, color: CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipTimecodeAlpha)))
+                    c.drawText(tcs, at: .init(r.x + 12, r.maxY - 6 - 9), font: tf, color: tcColor)
                 }
             }
             if clip.effectCount > 0 {
@@ -528,6 +535,21 @@ public final class TimelineView {
     }
 
     static let hiddenTrackOpacity = 0.35, lockedTrackOpacity = 0.7
+
+    /// An offline clip (its media file is missing): a red-950 card with red-500 stripes and a red-300 label, per theme.
+    static let offlineLabel = "Media offline"
+    static var offlineClipFill: CanvasColor { CanvasColor(ThemeTokens.red950Pair.now) }
+    static var offlineLabelColor: CanvasColor { CanvasColor(ThemeTokens.red300Pair.now) }
+    /// 45° stripes, 3 px wide every 8 px, across `r` (the caller clips to the clip's shape).
+    static func drawOfflineHatch(_ c: CanvasContext, in r: CanvasRect) {
+        var p = CanvasPath()
+        var x = r.x - r.height
+        while x < r.maxX {
+            p.move(to: CanvasPoint(x, r.maxY)); p.line(to: CanvasPoint(x + r.height, r.y))
+            x += 8
+        }
+        c.stroke(p, CanvasColor(ThemeTokens.red500Pair.now.alpha(0.35)), StrokeStyle(width: 3))
+    }
 
     /// Audio waveform: 2px bars every 3px, bottom-aligned, height max(2, amp * h),
     /// rgba(75,163,210, 0.45 + amp * 0.4), peaks windowed to the trimmed source slice.

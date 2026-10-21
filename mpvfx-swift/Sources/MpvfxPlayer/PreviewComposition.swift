@@ -25,7 +25,8 @@ import MpvfxColor
 /// whole canvas); the media is fitted inside the box keeping its aspect (contain, nativeMediaRect), then scaled and rotated about the box centre, at `opacity`.
 /// `crop` insets the untransformed box (canvas px) and travels with the box's scale and rotation.
 public struct PreviewLayer: Equatable, Sendable {
-    public enum Kind: Sendable, Equatable { case video, image, text }
+    /// `offline`: a video or image clip whose media file is missing, drawn as a slate naming the file, never decoded.
+    public enum Kind: Sendable, Equatable { case video, image, text, offline }
     public var clipId: String
     /// Absolute media path.
     public var source: String
@@ -54,6 +55,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
+    /// File name of an offline layer's missing media (kind .offline), shown on its slate.
+    public var offlineFileName: String?
 
     public init(clipId: String, source: String, kind: Kind, start: Double, end: Double, sourceIn: Double, rate: Double = 1,
                 startFrame: Int = 0, endFrame: Int = Int.max, box: CanvasRect, scaleX: Double = 1, scaleY: Double = 1,
@@ -94,13 +97,18 @@ public struct PreviewComposition {
         public var layer: Double
         /// The clip's active grade, built once per document.
         public var grade: ColorGradeRenderer? = nil
+        /// The missing file's name when the clip is offline (kind .offline).
+        public var offlineFileName: String? = nil
     }
 
     public let canvas: CanvasSize
     public let background: CanvasColor
     public let fps: Double
-    /// Visual clips with a readable media file, bottom-most first.
+    /// Visual clips, bottom-most first: those with a media file on disk, and offline ones (kind .offline).
     public let entries: [Entry]
+    /// Assets whose media file was missing when the composition was built. Each source is statted once per build,
+    /// never per frame; a rebuild after the file comes back clears its mark.
+    public let offlineAssetIds: Set<String>
     public let engine: KeyframeEngine?
 
     /// `naturalSize`: the media's natural pixel size (default: the size cached on the asset). A clip with no size
@@ -117,6 +125,7 @@ public struct PreviewComposition {
         let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var ordered: [(Entry, Int)] = []
         var n = 0
+        var exists: [String: Bool] = [:], offline = Set<String>()
         let trackLayers = nativeTrackStackingLayers(document.sequence.tracks)
         for (index, track) in document.sequence.tracks.enumerated() {
             for clip in track.clips {
@@ -132,17 +141,28 @@ public struct PreviewComposition {
                 guard let asset = assets[clip.assetId], asset.kind == .video || asset.kind == .image,
                       let src = asset.source, !src.isEmpty else { continue }
                 let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
-                guard fileExists(path) else { continue }
-                // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
-                guard !sizePending(asset) else { continue }
+                let present = exists[path] ?? fileExists(path)
+                exists[path] = present
                 var layer = trackLayers[index]
                 if case .number(let z)? = clip.staticParameters?["layout.zIndex"] { layer = z }
+                guard present else {
+                    // Missing media: a slate in the clip's box (the cached natural size, else the default box).
+                    offline.insert(asset.id)
+                    let clip = nativeClipWithNaturalLayout(clip, natural: naturalSize(asset),
+                                                           canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
+                    ordered.append((Entry(clip: clip, kind: .offline, path: path, layer: layer,
+                                          offlineFileName: URL(fileURLWithPath: src).lastPathComponent), n))
+                    continue
+                }
+                // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
+                guard !sizePending(asset) else { continue }
                 let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
                 let clip = nativeClipWithNaturalLayout(clip, natural: naturalSize(asset),
                                                        canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
                 ordered.append((Entry(clip: clip, kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade), n))
             }
         }
+        offlineAssetIds = offline
         entries = ordered.sorted { a, b in
             if a.0.layer != b.0.layer { return a.0.layer < b.0.layer }
             if a.0.clip.startFrame != b.0.clip.startFrame { return a.0.clip.startFrame < b.0.clip.startFrame }
@@ -226,6 +246,7 @@ public struct PreviewComposition {
         out.grade = e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.text = e.kind == .text ? c.text : nil
+        out.offlineFileName = e.offlineFileName
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
         return out
