@@ -41,7 +41,7 @@ public enum KeyframeEase {
         case .linear: return t
         case .cubicBezier(let p):
             guard let c = Curve(p) else { return t }
-            return c.y(c.solve(t))
+            return finite(c.y(c.solve(t)))   // a huge finite handle height can overflow the cubic
         }
     }
 
@@ -57,22 +57,45 @@ public enum KeyframeEase {
         }
     }
 
-    /// The influence / slope form of a curve; nil when a control point is not finite.
+    /// One end of a segment's timing curve: the out handle leaves the key (x1, y1), the in handle reaches the next.
+    public enum End: Sendable { case out, `in` }
+
+    /// The influence / slope form of a curve; nil when a control point is not finite. Slopes stay finite (a huge
+    /// finite height over a 0.1 % reach would overflow).
     public static func handles(_ p: CubicBezierControlPoints) -> Handles? {
         guard [p.x1, p.y1, p.x2, p.y2].allSatisfy(\.isFinite) else { return nil }
         let outReach = clamp(p.x1, influenceRange), inReach = clamp(1 - p.x2, influenceRange)
-        return Handles(outInfluence: clamp(p.x1, 0...1), outSlope: p.y1 / outReach,
-                       inInfluence: clamp(1 - p.x2, 0...1), inSlope: (1 - p.y2) / inReach)
+        return Handles(outInfluence: clamp(p.x1, 0...1), outSlope: finite(p.y1 / outReach),
+                       inInfluence: clamp(1 - p.x2, 0...1), inSlope: finite((1 - p.y2) / inReach))
     }
 
     /// Control points for handles, clamped so the engine accepts them (x in 0…1) and y stays in `yRange`.
     public static func points(_ h: Handles) -> CubicBezierControlPoints {
-        let outReach = clamp(h.outInfluence, influenceRange), inReach = clamp(h.inInfluence, influenceRange)
-        return CubicBezierControlPoints(x1: outReach, y1: clamp(finite(h.outSlope) * outReach, yRange),
-                                        x2: 1 - inReach, y2: clamp(1 - finite(h.inSlope) * inReach, yRange))
+        var p = CubicBezierControlPoints(x1: 0, y1: 0, x2: 1, y2: 1)
+        setHandle(&p, .out, influence: h.outInfluence, slope: h.outSlope)
+        setHandle(&p, .in, influence: h.inInfluence, slope: h.inSlope)
+        return p
+    }
+
+    /// `p` with one end's handle replaced (clamped as `points` does); the other end's two numbers and any unknown
+    /// keys the document carried stay exactly as they were.
+    public static func setting(_ end: End, of p: CubicBezierControlPoints, influence: Double, slope: Double) -> CubicBezierControlPoints {
+        var q = p
+        setHandle(&q, end, influence: influence, slope: slope)
+        return q
+    }
+
+    static func setHandle(_ p: inout CubicBezierControlPoints, _ end: End, influence: Double, slope: Double) {
+        let reach = clamp(influence, influenceRange)
+        switch end {
+        case .out: p.x1 = reach; p.y1 = clamp(finite(slope) * reach, yRange)
+        case .in: p.x2 = 1 - reach; p.y2 = clamp(1 - finite(slope) * reach, yRange)
+        }
     }
 
     /// Speed in property units per second for a slope on a segment that changes by `valueChange` over `seconds`.
+    /// Signed like the slope: a negative speed runs back toward the leaving key's value (an overshoot curve), and
+    /// `slope(velocity:valueChange:seconds:)` is its exact inverse.
     public static func velocity(slope: Double, valueChange: Double, seconds: Double) -> Double {
         guard seconds > 0, seconds.isFinite else { return 0 }
         return finite(slope * abs(valueChange) / seconds)
