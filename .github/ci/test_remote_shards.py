@@ -69,7 +69,40 @@ class Plan(unittest.TestCase):
         run = step(changes, "Changed files")["run"]
         self.assertIn(r"grep -qE '^\.github/(workflows/mpvfx-ci(-tests-source)?\.yml|ci/source_workflows\.py)$'", run)
         self.assertIn('[ "$n" -ge 3000 ]', run)
-        self.assertIn('remote_ok = bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"', self.pick["run"])
+        gate = 'remote_ok = (bool(os.environ["APP_ID"]) and bool(os.environ["APP_KEY"]) and os.environ["OWN"] == "true"'
+        self.assertIn(gate, self.pick["run"])
+
+    def test_nothing_is_sent_unless_the_app_is_installed_here(self):
+        # Without the installation the runners repository cannot report back: remote shards would time out.
+        app = step(self.jobs["plan"], "Runners App installed here")
+        self.assertEqual(app["run"], 'bash ../.github/ci/runners_app_installed.sh >> "$GITHUB_OUTPUT"')
+        self.assertEqual(self.pick["env"]["INSTALLED"], "${{ steps.app.outputs.installed }}")
+        self.assertIn('and os.environ["INSTALLED"] == "true")', self.pick["run"])
+        self.assertEqual(self.jobs["plan"]["outputs"]["runners_ok"], "${{ steps.app.outputs.installed }}")
+        macos = self.jobs["macos-runners"]
+        self.assertIn("plan", macos["needs"])
+        self.assertIn("needs.plan.outputs.runners_ok == 'true'", macos["if"])
+
+    def test_the_installation_check_never_fails_and_says_false_without_secrets(self):
+        with open(os.path.join(ROOT, ".github", "ci", "runners_app_installed.sh"), encoding="utf-8") as f:
+            script = f.read()
+        self.assertIn("installed=false", script)
+        self.assertIn('echo "installed=$installed"', script)
+        # Installed and able to set statuses and upload here: the token it asks for is granted (201).
+        self.assertIn('[ "$code" = 201 ] && installed=true', script)
+        self.assertIn('"permissions":{"statuses":"write","contents":"write"}', script)
+        self.assertNotIn("set -e", script)
+
+    def test_the_installation_check_writes_only_its_output_line_to_stdout(self):
+        # Its stdout goes to $GITHUB_OUTPUT: an annotation there breaks the plan job ("Invalid format '::notice::...'").
+        with open(os.path.join(ROOT, ".github", "ci", "runners_app_installed.sh"), encoding="utf-8") as f:
+            lines = [line.strip() for line in f]
+        annotations = [line for line in lines if 'echo "::' in line]
+        self.assertTrue(annotations)
+        for line in annotations:
+            self.assertTrue(line.endswith(">&2"), line)
+        self.assertEqual([line for line in lines if line.startswith("echo ") and ">&2" not in line],
+                         ['echo "installed=$installed"'])
 
     def test_a_sent_shard_is_not_in_the_local_lists(self):
         run = self.pick["run"]
