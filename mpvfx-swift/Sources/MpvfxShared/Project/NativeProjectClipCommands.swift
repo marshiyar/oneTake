@@ -37,6 +37,10 @@ public indirect enum NativeProjectClipCommand: Equatable {
     case split(address: NativeProjectClipAddress, splitFrame: Double, rightBinding: NativeClipDomBinding? = nil)
     case delete(address: NativeProjectClipAddress)
     case deleteMany([NativeProjectClipAddress])
+    /// Move the clip's source in-point by `deltaFrames` timeline frames (NativeTimelineSlipRoll.swift).
+    case slip(address: NativeProjectClipAddress, deltaFrames: Double)
+    /// Move the cut between two touching clips (NativeTimelineSlipRoll.swift).
+    case roll(NativeProjectClipRoll)
     case restoreDocument(NativeProjectDocument)
 }
 
@@ -47,6 +51,7 @@ public enum NativeProjectClipFailureCode: String, Codable, Sendable {
     case invalidSplit = "invalid-split", nonIntegralSourceBoundary = "non-integral-source-boundary"
     case missingSplitBinding = "missing-split-binding", invalidSplitBinding = "invalid-split-binding"
     case duplicateSplitBinding = "duplicate-split-binding", generatedIdCollision = "generated-id-collision", documentMismatch = "document-mismatch"
+    case invalidSlip = "invalid-slip", invalidRoll = "invalid-roll"
 }
 
 public struct NativeProjectClipFailure: Equatable, Error {
@@ -85,9 +90,9 @@ private func nativeSplitBaselineKeyframeId(_ trackId: String, _ splitFrame: Doub
     "native-split-baseline:\(trackId)|frame:\(jsNumberString(splitFrame))"
 }
 
-private struct ClipLocation { let trackIndex: Int; let clipIndex: Int; let track: NativeProjectTrack; let clip: NativeProjectClip }
+struct ClipLocation { let trackIndex: Int; let clipIndex: Int; let track: NativeProjectTrack; let clip: NativeProjectClip }
 
-private func locate(_ d: NativeProjectDocument, _ a: NativeProjectClipAddress) -> Result<ClipLocation, NativeProjectClipFailure> {
+func locate(_ d: NativeProjectDocument, _ a: NativeProjectClipAddress) -> Result<ClipLocation, NativeProjectClipFailure> {
     if d.sequence.id != a.sequenceId { return .failure(.init(code: .missingSequence, message: "Sequence \(a.sequenceId) does not exist")) }
     guard let t = d.sequence.tracks.firstIndex(where: { $0.id == a.trackId }) else {
         return .failure(.init(code: .missingSourceTrack, message: "Track \(a.trackId) does not exist"))
@@ -170,13 +175,13 @@ private func applyTrimIn(_ d: NativeProjectDocument, _ a: NativeProjectClipAddre
     do {
         // Overflow mapping: a 64-bit overflow is a NativeSourceTimeRangeError and lands in this catch like the other
         // range errors; both become an invalid-trim rejection.
-        if let ramp = clip.speedRamp, ramp.isSupported, delta != 0, kind.map({ nativeClipConsumesSourceFrames(clip, $0) }) == true {
+        if let ramp = clip.speedRamp, ramp.isSupported, delta != 0, kind.map({ nativeAssetConsumesSourceFrames($0) }) == true {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
                                                  playbackRate: rationalFromNumber(delta > 0 ? ramp.sourcePosition(atClipFrame: delta) / delta : ramp.speed(atClipFrame: 0)),
                                                  timelineFrames: delta)
         } else {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-                playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeClipConsumesSourceFrames(clip, $0) } == true ? 0 : delta)
+                playbackRate: clip.playbackRate, timelineFrames: kind.map { !nativeAssetConsumesSourceFrames($0) } == true ? 0 : delta)
         }
     } catch { return reject(d, .invalidTrim, errorMessage(error) ?? "Invalid source boundary") }
     let tracks = try rebasedTracks(clip, delta, clip.durationFrames, engine) { $0.id }
@@ -197,7 +202,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     if !isSafeInteger(end) || nextDuration <= 0 { return reject(d, .invalidTrim, "Trim-out end must be an integer after the clip start") }
     let clip = loc.clip
     let asset = d.assets.first { $0.id == clip.assetId }!
-    if nativeClipConsumesSourceFrames(clip, asset.kind) {
+    if nativeAssetConsumesSourceFrames(asset.kind) {
         let fits: Bool
         do {
             if let ramp = clip.speedRamp, ramp.isSupported {
@@ -240,12 +245,12 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     do {
         let asset = d.assets.first { $0.id == clip.assetId }!
         // Overflow mapping: as in trim-in, a 64-bit overflow is rejected like the other range errors (invalid-split).
-        if let ramp = clip.speedRamp, ramp.isSupported, nativeClipConsumesSourceFrames(clip, asset.kind) {
+        if let ramp = clip.speedRamp, ramp.isSupported, nativeAssetConsumesSourceFrames(asset.kind) {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
                                                  playbackRate: rationalFromNumber(ramp.sourcePosition(atClipFrame: local) / local), timelineFrames: local)
         } else {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-                playbackRate: clip.playbackRate, timelineFrames: nativeClipConsumesSourceFrames(clip, asset.kind) ? local : 0)
+                playbackRate: clip.playbackRate, timelineFrames: nativeAssetConsumesSourceFrames(asset.kind) ? local : 0)
         }
     } catch { return reject(d, .invalidSplit, errorMessage(error) ?? "Invalid source boundary") }
     if clip.binding != nil && rightBinding == nil {
@@ -315,6 +320,7 @@ public func applyNativeProjectClipCommand(_ d: NativeProjectDocument, _ command:
     case .deleteMany(let list): return try applyDeleteMany(d, list, engine)
     case let .move(a, dest): moves = [.init(address: a, destination: dest)]
     case .moveMany(let list): moves = list
+    default: return try applyNativeSlipOrRoll(d, command, engine)   // .slip, .roll (NativeTimelineSlipRoll.swift)
     }
     let located: [LocatedMove]
     switch locateMoves(d, moves) { case .failure(let f): return reject(d, f.code, f.message); case .success(let l): located = l }

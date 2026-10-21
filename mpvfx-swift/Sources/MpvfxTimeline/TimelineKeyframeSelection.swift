@@ -29,14 +29,20 @@ public struct TimelineKeyframeRef: Hashable, Sendable {
 /// A parameter track's keyframe frames (clip-local), with its property group (the lane it shows in).
 public struct TimelineKeyframeChannel: Equatable, Sendable {
     public var parameterId: String, group: String, frames: [Double]
-    public init(parameterId: String, group: String, frames: [Double]) { self.parameterId = parameterId; self.group = group; self.frames = frames }
+    /// Each key's outgoing interpolation by frame (missing: linear), drawn as the mark's variant.
+    public var eases: [Double: TimelineKeyframeEase]
+    public init(parameterId: String, group: String, frames: [Double], eases: [Double: TimelineKeyframeEase] = [:]) {
+        self.parameterId = parameterId; self.group = group; self.frames = frames; self.eases = eases
+    }
 }
 
-/// A diamond under the pointer: on the clip bar (`lane` nil, every channel) or on an expanded lane (one group).
+/// A mark under the pointer: on the clip bar (`lane` nil, every channel) or on a lane row (`laneRow`: the summary,
+/// a kind or one property; `lane` is the property's index in the clip's lanes when the row is one property's).
 public struct TimelineKeyframeHit: Equatable, Sendable {
     public var clipId: String, row: Int, lane: Int?, frame: Double
-    /// Every channel keyed at `frame` in the diamond's scope (one group diamond moves them together).
+    /// Every channel keyed at `frame` in the mark's scope (one summary or group mark moves them together).
     public var refs: Set<TimelineKeyframeRef>
+    public var laneRow: TimelineLaneRow? = nil
 }
 
 /// Live retime preview: `refs` drawn `deltaFrames` away from their authored frames.
@@ -49,20 +55,22 @@ extension TimelineView {
     public static let keyframeDiamondSize = (TimelineLayout.laneHeight * 0.8).rounded()
     public static let keyframeHitHeight = 24.0, keyframeMinHitWidth = 12.0
 
-    /// Channels of a clip in a scope (nil = the whole clip bar, else one lane group). Demo models without channels
-    /// fall back to their merged keyframe times on one anonymous channel.
-    func keyframeChannels(_ clip: TimelineClipModel, group: String?) -> [TimelineKeyframeChannel] {
+    /// Channels of a clip in a scope of property groups (nil = every channel: the clip bar and the summary row).
+    /// Demo models without channels fall back to their merged keyframe times on one anonymous channel.
+    func keyframeChannels(_ clip: TimelineClipModel, scope: Set<String>?) -> [TimelineKeyframeChannel] {
         if clip.channels.isEmpty {
-            let times = group.map { g in clip.lanes.first { $0.group == g }?.keyframes ?? [] } ?? clip.keyframes
-            return [TimelineKeyframeChannel(parameterId: "", group: group ?? "", frames: times.map { ($0 * frameRate).rounded() })]
+            let times = scope.map { s in clip.lanes.filter { s.contains($0.group) }.flatMap(\.keyframes) } ?? clip.keyframes
+            return [TimelineKeyframeChannel(parameterId: "", group: scope?.first ?? "", frames: Array(Set(times.map { ($0 * frameRate).rounded() })).sorted())]
         }
-        return group.map { g in clip.channels.filter { $0.group == g } } ?? clip.channels
+        return scope.map { s in clip.channels.filter { s.contains($0.group) } } ?? clip.channels
     }
+    func keyframeChannels(_ clip: TimelineClipModel, group: String?) -> [TimelineKeyframeChannel] { keyframeChannels(clip, scope: group.map { [$0] }) }
 
     /// Diamond frames of a scope, with the live drag preview applied, unique and sorted.
-    func diamondFrames(_ clip: TimelineClipModel, group: String?) -> [Double] {
+    func diamondFrames(_ clip: TimelineClipModel, group: String?) -> [Double] { diamondFrames(clip, scope: group.map { [$0] }) }
+    func diamondFrames(_ clip: TimelineClipModel, scope: Set<String>?) -> [Double] {
         var out = Set<Double>()
-        for ch in keyframeChannels(clip, group: group) {
+        for ch in keyframeChannels(clip, scope: scope) {
             for f in ch.frames { out.insert(previewFrame(TimelineKeyframeRef(clipId: clip.id, parameterId: ch.parameterId, frame: f))) }
         }
         return out.sorted()
@@ -74,9 +82,9 @@ extension TimelineView {
     }
 
     /// Refs keyed at a displayed frame in a scope (preview applied).
-    func diamondRefs(_ clip: TimelineClipModel, group: String?, frame: Double) -> Set<TimelineKeyframeRef> {
+    func diamondRefs(_ clip: TimelineClipModel, scope: Set<String>?, frame: Double) -> Set<TimelineKeyframeRef> {
         var out = Set<TimelineKeyframeRef>()
-        for ch in keyframeChannels(clip, group: group) {
+        for ch in keyframeChannels(clip, scope: scope) {
             for f in ch.frames {
                 let r = TimelineKeyframeRef(clipId: clip.id, parameterId: ch.parameterId, frame: f)
                 if previewFrame(r) == frame { out.insert(r) }
@@ -87,18 +95,21 @@ extension TimelineView {
 
     /// Selected when every channel of the diamond is selected (the same key in the clip row and in its lanes).
     func isDiamondSelected(_ clip: TimelineClipModel, group: String?, frame: Double) -> Bool {
-        let refs = diamondRefs(clip, group: group, frame: frame)
+        isDiamondSelected(clip, scope: group.map { [$0] }, frame: frame)
+    }
+    func isDiamondSelected(_ clip: TimelineClipModel, scope: Set<String>?, frame: Double) -> Bool {
+        let refs = diamondRefs(clip, scope: scope, frame: frame)
         return !refs.isEmpty && refs.isSubset(of: selectedKeyframes.union(keyframeDrag?.refs ?? []))
     }
 
     /// Authored frames of a scope with no preview (the neighbours a single dragged diamond stays between).
-    func authoredDiamondFrames(_ clip: TimelineClipModel, group: String?) -> [Double] {
-        Array(Set(keyframeChannels(clip, group: group).flatMap(\.frames))).sorted()
+    func authoredDiamondFrames(_ clip: TimelineClipModel, scope: Set<String>?) -> [Double] {
+        Array(Set(keyframeChannels(clip, scope: scope).flatMap(\.frames))).sorted()
     }
 
     /// Hit boxes of a scope's diamonds: centre x, half width (neighbour gap clamp, floor 12).
-    func diamondHitBoxes(_ clip: TimelineClipModel, group: String?, barX: Double) -> [(frame: Double, cx: Double, halfWidth: Double)] {
-        let frames = diamondFrames(clip, group: group)
+    func diamondHitBoxes(_ clip: TimelineClipModel, scope: Set<String>?, barX: Double) -> [(frame: Double, cx: Double, halfWidth: Double)] {
+        let frames = diamondFrames(clip, scope: scope)
         let xs = frames.map { barX + $0 / max(frameRate, 1e-9) * pixelsPerSecond }
         return frames.indices.map { i in
             let prev = i > 0 ? xs[i] - xs[i - 1] : .infinity, next = i + 1 < xs.count ? xs[i + 1] - xs[i] : .infinity
@@ -117,22 +128,24 @@ extension TimelineView {
                 if r.width >= 20 {
                     let cy = r.y + r.height / 2, half = min(Self.keyframeHitHeight, r.height) / 2
                     if abs(y - cy) <= half, x >= r.x - Self.keyframeDiamondSize / 2, x <= r.maxX + Self.keyframeDiamondSize / 2,
-                       let h = nearest(diamondHitBoxes(clip, group: nil, barX: r.x), x) {
-                        return TimelineKeyframeHit(clipId: clip.id, row: i, lane: nil, frame: h, refs: diamondRefs(clip, group: nil, frame: h))
+                       let h = nearest(diamondHitBoxes(clip, scope: nil, barX: r.x), x) {
+                        return TimelineKeyframeHit(clipId: clip.id, row: i, lane: nil, frame: h, refs: diamondRefs(clip, scope: nil, frame: h))
                     }
                 }
-                guard expandedClips.contains(clip.id), !clip.lanes.isEmpty else { continue }
-                let laneBase = r.y - TimelineLayout.clipY + trackHeight + Double(effectLaneCount(track: i)) * TimelineLayout.effectStripHeight
-                for (j, lane) in clip.lanes.enumerated() {
-                    let cy = laneBase + Double(j) * TimelineLayout.laneHeight + TimelineLayout.laneHeight / 2
-                    guard abs(y - cy) <= TimelineLayout.laneHeight / 2 else { continue }
-                    if let h = nearest(diamondHitBoxes(clip, group: lane.group, barX: r.x), x) {
-                        return TimelineKeyframeHit(clipId: clip.id, row: i, lane: j, frame: h, refs: diamondRefs(clip, group: lane.group, frame: h))
-                    }
-                }
+                if let hit = laneRowHit(clip, track: i, barX: r.x, at: CanvasPoint(x, y)) { return hit }
             }
         }
         return nil
+    }
+
+    /// The mark under (x, y) on one of `clip`'s lane rows.
+    func laneRowHit(_ clip: TimelineClipModel, track i: Int, barX: Double, at p: CanvasPoint) -> TimelineKeyframeHit? {
+        let x = p.x
+        guard let lr = laneRow(clip, track: i, y: p.y) else { return nil }
+        let scope = rowScope(lr.row, clip)
+        guard let h = nearest(diamondHitBoxes(clip, scope: scope, barX: barX), x) else { return nil }
+        return TimelineKeyframeHit(clipId: clip.id, row: i, lane: propertyLaneIndex(lr.row, clip), frame: h,
+                                   refs: diamondRefs(clip, scope: scope, frame: h), laneRow: lr.row)
     }
 
     private func nearest(_ boxes: [(frame: Double, cx: Double, halfWidth: Double)], _ x: Double) -> Double? {
@@ -142,50 +155,28 @@ extension TimelineView {
     /// Diamond hit boxes overlapping a view rect (keyframe marquee).
     func keyframeRefs(in rect: CanvasRect) -> Set<TimelineKeyframeRef> {
         var out = Set<TimelineKeyframeRef>()
-        func add(_ clip: TimelineClipModel, group: String?, barX: Double, cy: Double) {
-            for b in diamondHitBoxes(clip, group: group, barX: barX) {
+        func add(_ clip: TimelineClipModel, scope: Set<String>?, barX: Double, cy: Double) {
+            for b in diamondHitBoxes(clip, scope: scope, barX: barX) {
                 let box = CanvasRect(x: b.cx - b.halfWidth, y: cy - Self.keyframeHitHeight / 2, width: 2 * b.halfWidth, height: Self.keyframeHitHeight)
                 if box.x < rect.maxX && box.maxX > rect.x && box.y < rect.maxY && box.maxY > rect.y {
-                    out.formUnion(diamondRefs(clip, group: group, frame: b.frame))
+                    out.formUnion(diamondRefs(clip, scope: scope, frame: b.frame))
                 }
             }
         }
         for (i, track) in tracks.enumerated() {
             for clip in track.clips {
                 let r = clipRect(track: i, clip, preview: false)
-                if r.width >= 20 { add(clip, group: nil, barX: r.x, cy: r.y + r.height / 2) }
-                guard expandedClips.contains(clip.id) else { continue }
-                let laneBase = r.y - TimelineLayout.clipY + trackHeight + Double(effectLaneCount(track: i)) * TimelineLayout.effectStripHeight
-                for (j, lane) in clip.lanes.enumerated() {
-                    add(clip, group: lane.group, barX: r.x, cy: laneBase + Double(j) * TimelineLayout.laneHeight + TimelineLayout.laneHeight / 2)
+                if r.width >= 20 { add(clip, scope: nil, barX: r.x, cy: r.y + r.height / 2) }
+                for row in laneRows(clip) {
+                    guard let top = laneTop(row, track: i) else { continue }
+                    add(clip, scope: rowScope(row, clip), barX: r.x, cy: top + TimelineLayout.laneHeight / 2)
                 }
             }
         }
         return out
     }
 
-    /// One diamond (TimelineDiamondLane svg, viewBox 10): fill `M5 1L9 5L5 9L1 5Z` in #a3a3a3 at .55, the accent at 1
-    /// when selected, .9 at the playhead; selected / playhead keys add the `M5 0L10 5L5 10L0 5Z` accent outline (.5 when selected).
-    func drawDiamonds(_ c: CanvasContext, _ clip: TimelineClipModel, group: String?, barX: Double, cy: Double) {
-        let s = Self.keyframeDiamondSize / 10
-        let clipSelected = selection.contains(clip.id)
-        // Native playhead key: the clip-local frame under the playhead, only on a selected clip.
-        let playheadFrame: Double? = clipSelected && currentTime >= clip.start && currentTime < clip.end
-            ? ((currentTime - clip.start) * frameRate + 1e-9).rounded(.down) : nil
-        for frame in diamondFrames(clip, group: group) {
-            let cx = barX + frame / max(frameRate, 1e-9) * pixelsPerSecond
-            let selected = isDiamondSelected(clip, group: group, frame: frame), atPlayhead = frame == playheadFrame
-            func diamond(_ r: Double) -> CanvasPath {
-                var p = CanvasPath()
-                p.move(to: .init(cx, cy - r * s)); p.line(to: .init(cx + r * s, cy)); p.line(to: .init(cx, cy + r * s)); p.line(to: .init(cx - r * s, cy)); p.close()
-                return p
-            }
-            if selected || atPlayhead {
-                c.stroke(diamond(5), theme.accent.withAlpha(selected ? 0.5 : 1), StrokeStyle(width: 0.8 * s))
-            }
-            c.fill(diamond(4), selected ? theme.accent : CanvasColor(ThemeTokens.neutral400.alpha(atPlayhead ? 0.9 : 0.55)))
-        }
-    }
+    /// The marks of a scope along one row (`scope` nil: every channel, the clip bar and the summary row).
 }
 
 public extension TimelineController {
@@ -311,8 +302,8 @@ public extension TimelineController {
         if var range = keyframeDeltaRange(g.moving) {
             // One diamond stays strictly between its row neighbours (clampToNeighbors), so it never lands on another key.
             if g.moving == g.hit.refs, let (_, c) = clip(g.hit.clipId) {
-                let group = g.hit.lane.flatMap { c.lanes.indices.contains($0) ? c.lanes[$0].group : nil }
-                let row = view.authoredDiamondFrames(c, group: group)
+                let scope = g.hit.laneRow.flatMap { view.rowScope($0, c) } ?? g.hit.lane.flatMap { c.lanes.indices.contains($0) ? [c.lanes[$0].group] : nil }
+                let row = view.authoredDiamondFrames(c, scope: scope)
                 let lo = max(range.lowerBound, (row.filter { $0 < g.hit.frame }.max() ?? -.infinity) + 1 - g.hit.frame)
                 let hi = min(range.upperBound, (row.filter { $0 > g.hit.frame }.min() ?? .infinity) - 1 - g.hit.frame)
                 range = lo <= hi ? lo...hi : 0...0

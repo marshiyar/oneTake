@@ -107,6 +107,11 @@ public final class TimelineRegion {
     public var now: () -> Double = { Date().timeIntervalSinceReferenceDate }
 
     public func pointerDown(x: Double, y: Double, shift: Bool = false, alt: Bool = false, clickCount: Int = 1) {
+        pointerDown(x: x, y: y, keys: TimelineGestureKeys(shift: shift, alt: alt), clickCount: clickCount)
+    }
+
+    /// A press with every modifier (⌘/Ctrl too, for the slip gesture).
+    public func pointerDown(x: Double, y: Double, keys: TimelineGestureKeys, clickCount: Int = 1) {
         if y < top {
             toolbarCapture = true
             var clicks = clickCount
@@ -117,7 +122,7 @@ public final class TimelineRegion {
             controller.needsDisplay?()
             return
         }
-        controller.pointerDown(x: x, y: y - top, shift: shift, alt: alt)
+        controller.pointerDown(x: x, y: y - top, keys: keys)
     }
 
     public func pointerMove(x: Double, y: Double) {

@@ -111,6 +111,11 @@ public enum TimelineKeyframeCatalog {
         return out
     }
 
+    /// Lane order inside a kind: the inspector's row order, then any other group (by label, at the caller).
+    static let groupOrder = ["position", "size", "rotation", "scale", "opacity", "depth", "tiltX", "tiltY", "perspective", "audio"]
+        + NativeGradeParameter.allIds
+    public static func order(ofGroup group: String) -> Int { groupOrder.firstIndex(of: group) ?? groupOrder.count }
+
     /// The kind of a lane's property group (the group ids `property(_:)` returns).
     public static func kind(ofGroup group: String) -> TimelineKeyframeKind {
         let named = Array(exact.values) + prefixes.map(\.property)
