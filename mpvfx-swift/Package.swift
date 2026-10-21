@@ -160,7 +160,7 @@ let package = Package(
         ]),
         // Custom-drawn editor timeline on MpvfxCanvas.
         // Dependency-free colour tokens, shared across UI modules.
-        .target(name: "MpvfxTheme"),
+        .target(name: "MpvfxTheme", swiftSettings: [.swiftLanguageMode(.v6)]),
         .target(name: "MpvfxTimeline", dependencies: ["MpvfxCanvas", "MpvfxShared", "MpvfxTheme"]),
         // Custom-drawn player/canvas stage + transport chrome.
         .target(name: "MpvfxPlayer", dependencies: ["MpvfxCanvas", "MpvfxTimeline", "MpvfxShared", "MpvfxPanels", "MpvfxColor", "MpvfxTheme", mediaEngine]),
