@@ -178,7 +178,7 @@ public final class PreviewCompositor: FrameSource {
             }
         }
         for (k, lane) in lanes where !used.contains(k) { lane.stop(); lanes[k] = nil }
-        lastShown = shown
+        lastShown = shown; cache.fitBudget(); grader.fitBudget()   // the caches count drawables this draw made
 
         // Element clips (no media of their own) keep their labelled box; video/image clips whose file is missing
         // draw nothing, like a media element with an unreadable source.

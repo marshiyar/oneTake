@@ -16,8 +16,9 @@ import MpvfxCanvas
 import MpvfxShared
 
 /// Decoded preview frames keyed by (lane, timeline frame index), bounded by a byte budget (least recently used
-/// frames go first; `MemoryBudget.previewFrames`: min(2 GB, 10% of RAM) by default). A memory-pressure warning
-/// halves it for the moment, a critical one empties it. Thread-safe: decoders store from their queues, the UI
+/// frames go first; `MemoryBudget.previewFrames`: min(2 GB, 10% of RAM) by default). A frame costs its pixels plus
+/// the canvas drawable a draw made from them (`CanvasImage.heldBytes`), which appears after `store`, so the preview
+/// calls `fitBudget()` after each draw. A memory-pressure warning halves it for the moment, a critical one empties it. Thread-safe: decoders store from their queues, the UI
 /// thread looks frames up.
 public final class PreviewFrameCache: @unchecked Sendable {
     public struct Key: Hashable, Sendable { public var lane: String; public var frame: Int }
@@ -32,8 +33,10 @@ public final class PreviewFrameCache: @unchecked Sendable {
     var frames: [Key: (image: CanvasImage, tick: UInt64)] = [:]
     var byLane: [String: Set<Int>] = [:]
     var tick: UInt64 = 0
-    public private(set) var bytes = 0
-    /// Most bytes ever held at once (tests: never above the budget).
+    /// Bytes the frames hold now: pixels plus the drawables made from them. Counted live, because a frame's drawable
+    /// is made when it is first drawn, after it was stored. Never read it with `lock` held (NSLock is not recursive).
+    public var bytes: Int { lock.lock(); defer { lock.unlock() }; return heldLocked() }
+    /// Most bytes held after a store or a `fitBudget()` (tests: never above the budget).
     public private(set) var peakBytes = 0
     var pressureToken: MemoryPressureMonitor.Token?
 
@@ -47,38 +50,50 @@ public final class PreviewFrameCache: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         switch level {
         case .warning: evict(to: budget / 2, protecting: nil)
-        case .critical: frames = [:]; byLane = [:]; bytes = 0
+        case .critical: frames = [:]; byLane = [:]
         }
     }
 
     public var count: Int { lock.lock(); defer { lock.unlock() }; return frames.count }
 
-    static func size(_ i: CanvasImage) -> Int { i.width * i.height * 4 }
+    static func size(_ i: CanvasImage) -> Int { i.heldBytes }
+
+    /// What the frames hold. Call with `lock` held.
+    func heldLocked() -> Int { frames.values.reduce(0) { $0 + Self.size($1.image) } }
+
+    /// Evicts least recently used frames until what they hold (drawables made since they were stored included) fits
+    /// the budget again. The preview calls it after every draw.
+    public func fitBudget() {
+        lock.lock(); defer { lock.unlock() }
+        peakBytes = max(peakBytes, evict(to: budget, protecting: nil))
+    }
 
     public func store(_ image: CanvasImage, lane: String, frame: Int) {
         lock.lock(); defer { lock.unlock() }
         let key = Key(lane: lane, frame: frame)
-        if let old = frames[key] { bytes -= Self.size(old.image) }
         tick += 1
         frames[key] = (image, tick)
         byLane[lane, default: []].insert(frame)
-        bytes += Self.size(image)
-        if bytes > budget { evict(to: budget, protecting: key) }   // least recently used first
-        peakBytes = max(peakBytes, bytes)
+        peakBytes = max(peakBytes, evict(to: budget, protecting: key))   // least recently used first
     }
 
-    func evict(to limit: Int, protecting keep: Key?) {
-        guard bytes > limit else { return }
+    /// Removes least recently used frames (not `keep`) until they hold at most `limit`; returns what they hold then.
+    /// Call with `lock` held.
+    @discardableResult
+    func evict(to limit: Int, protecting keep: Key?) -> Int {
+        var held = heldLocked()
+        guard held > limit else { return held }
         let victims = frames.filter { $0.key != keep }.sorted { $0.value.tick < $1.value.tick }
         for v in victims {
-            if bytes <= limit { break }
+            if held <= limit { break }
+            held -= Self.size(v.value.image)
             remove(v.key)
         }
+        return held
     }
 
     func remove(_ key: Key) {
-        guard let old = frames.removeValue(forKey: key) else { return }
-        bytes -= Self.size(old.image)
+        guard frames.removeValue(forKey: key) != nil else { return }
         byLane[key.lane]?.remove(key.frame)
         if byLane[key.lane]?.isEmpty == true { byLane[key.lane] = nil }
     }
@@ -129,6 +144,6 @@ public final class PreviewFrameCache: @unchecked Sendable {
 
     public func removeAll() {
         lock.lock(); defer { lock.unlock() }
-        frames = [:]; byLane = [:]; bytes = 0
+        frames = [:]; byLane = [:]
     }
 }

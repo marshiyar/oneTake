@@ -52,6 +52,28 @@ final class PreviewMemoryTests: XCTestCase {
         XCTAssertEqual(cache.laneKeys, ["b"])
     }
 
+    /// A drawable of `bytes`, as a canvas backend makes on a frame's first draw.
+    final class StandInDrawable: CanvasDrawable { let byteCount: Int; init(_ bytes: Int) { byteCount = bytes } }
+
+    func storeFrames(_ cache: PreviewFrameCache, _ count: Int) { (0..<count).forEach { cache.store(Self.image(64, 36, 1), lane: "a", frame: $0) } }
+
+    /// Issue #95: the frame cache counts the drawable a draw made from a cached frame, and the budget stays the same.
+    func testFrameCacheCountsTheDrawableADrawMadeWithinTheSameBudget() throws {
+        let frameBytes = 64 * 36 * 4
+        let cache = PreviewFrameCache(budgetBytes: frameBytes * 10, pressure: nil)
+        storeFrames(cache, 10)
+        XCTAssertEqual(cache.count, 10)
+        let drawn = try XCTUnwrap(cache.frame(lane: "a", frame: 9))
+        _ = drawn.drawable(StandInDrawable.self, make: { StandInDrawable(frameBytes) })
+        XCTAssertEqual(cache.bytes, frameBytes * 11, "the drawable is counted with its frame")
+        cache.fitBudget()
+        XCTAssertEqual(cache.budgetBytes, frameBytes * 10, "the budget is unchanged")
+        XCTAssertEqual(cache.count, 9, "one frame fewer fits beside the drawable")
+        XCTAssertLessThanOrEqual(cache.bytes, cache.budgetBytes)
+        XCTAssertNotNil(cache.frame(lane: "a", frame: 9), "the frame just drawn is kept")
+        XCTAssertNil(cache.frame(lane: "a", frame: 0), "the least recently used one went")
+    }
+
     func testMemoryPressureEmptiesTheFrameCacheAndAReleasedCacheStopsObserving() {
         let monitor = MemoryPressureMonitor()
         var cache: PreviewFrameCache? = PreviewFrameCache(budgetBytes: 100 * 64 * 36 * 4, pressure: monitor)
@@ -89,6 +111,33 @@ final class PreviewMemoryTests: XCTestCase {
         XCTAssertEqual(grader.bytes, frame)
         monitor.simulate(.critical)
         XCTAssertEqual(grader.bytes, 0, "critical pressure drops idle pictures")
+    }
+
+    func gradeTwoClips(_ grader: PreviewGrader) throws {
+        guard case .object(let o) = try NativeJSONValue.parse(#"{"adjust":{"exposure":0.4}}"#), let params = ColorGradeParams(json: o)
+        else { return XCTFail("grade json") }
+        let grade = ColorGradeRenderer(params: params, seedKey: "clip:x")
+        ["clip0", "clip1"].forEach {
+            grader.request($0, PreviewGrader.Request(key: $0, sourceKey: $0, image: Self.image(64, 36, 100), target: nil, grade: grade, time: 0))
+            grader.waitUntilIdle()
+        }
+    }
+
+    /// Issue #95: the grader counts the drawable a draw made from a graded picture, and the budget stays the same.
+    func testGraderCountsTheDrawableADrawMadeWithinTheSameBudget() throws {
+        let frame = 64 * 36 * 4
+        let grader = PreviewGrader(renderer: CPUColorRenderer(), pressure: nil)
+        grader.budgetBytes = frame * 2
+        try gradeTwoClips(grader)
+        XCTAssertEqual(grader.bytes, frame * 2)
+        let shown = try XCTUnwrap(grader.latest("clip1")).image
+        _ = shown.drawable(StandInDrawable.self, make: { StandInDrawable(frame) })
+        XCTAssertEqual(grader.bytes, frame * 3, "the drawable is counted with its picture")
+        grader.fitBudget()
+        XCTAssertEqual(grader.budgetBytes, frame * 2, "the budget is unchanged")
+        XCTAssertNotNil(grader.latest("clip1"), "the picture just shown is kept")
+        XCTAssertNil(grader.latest("clip0"), "the least recently used one went")
+        XCTAssertLessThanOrEqual(grader.bytes, grader.budgetBytes)
     }
 
     /// Playing a graded clip on the CPU renderer: each new frame is graded once at full size. A draft first is for an

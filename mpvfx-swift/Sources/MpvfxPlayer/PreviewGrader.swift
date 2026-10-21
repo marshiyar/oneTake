@@ -35,7 +35,8 @@ import MpvfxShared
 /// at draft cost and settles on the exact full-size look. A new picture (playback, a seek) after a finished one is
 /// graded at full size straight away: a draft there would only double the work per frame.
 ///
-/// Memory: the pictures every slot holds (finished look, reduced source, draft) stay within `budgetBytes`
+/// Memory: the pictures every slot holds (finished look, reduced source, draft), with the canvas drawable a draw made
+/// from each (`CanvasImage.heldBytes`), stay within `budgetBytes`
 /// (`MemoryBudget.gradedFrames`); past it the idle slots asked for least recently are dropped (never the one just
 /// graded, never one with a grade running or waiting). A memory-pressure warning drops every idle slot but the most
 /// recent; critical drops every idle slot. Slots of clips that left the timeline go with `keepOnly`.
@@ -70,7 +71,7 @@ public final class PreviewGrader: @unchecked Sendable {
         /// When the slot was last asked for a picture (eviction order).
         var used: UInt64 = 0
         var bytes: Int {
-            (result?.image.rgba.count ?? 0) + (reduced?.image.rgba.count ?? 0) + (draft?.image.rgba.count ?? 0)
+            (result?.image.heldBytes ?? 0) + (reduced?.image.heldBytes ?? 0) + (draft?.image.heldBytes ?? 0)
         }
         var busy: Bool { runningKey != nil || pending != nil }
     }
@@ -124,6 +125,14 @@ public final class PreviewGrader: @unchecked Sendable {
             total -= slot.bytes
             slots[clip] = nil
         }
+    }
+
+    /// Drops least recently used idle slots until the pictures, with the canvas drawables their draws made, fit the
+    /// budget again (never the slot asked for last). The preview calls it after every draw.
+    public func fitBudget() {
+        lock.lock(); defer { lock.unlock() }
+        guard let newest = slots.max(by: { $0.value.used < $1.value.used })?.key else { return }
+        trimLocked(keep: newest)
     }
 
     /// The latest finished picture for `clip`, if any.

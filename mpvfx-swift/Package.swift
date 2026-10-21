@@ -199,7 +199,7 @@ let package = Package(
         // with the media engine (no FFmpeg).
         .testTarget(name: "MpvfxRuntimeTests", dependencies: ["MpvfxRuntime", "MpvfxShared", keyframeEngine, "MpvfxColor", "MpvfxPlayer", mediaEngine, "MpvfxCanvas"],
                     exclude: ["Library/Fixtures", "Media/Fixtures", "Projects/Fixtures"]),
-        .testTarget(name: "MpvfxCanvasTests", dependencies: ["MpvfxCanvas"]),
+        .testTarget(name: "MpvfxCanvasTests", dependencies: ["MpvfxCanvas", .target(name: "CGtk3", condition: .when(platforms: [.linux]))]),
         .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", keyframeEngine]),
         .testTarget(name: "MpvfxStartupTests", dependencies: [keyframeEngine, "MpvfxShared", "MpvfxRuntime"]),
         .testTarget(name: "MpvfxAudioTests", dependencies: ["MpvfxAudio", "MpvfxAudioGraph", "MpvfxShared"]),
