@@ -455,17 +455,22 @@ def shots(run_id, out_dir):
 # --- bench ------------------------------------------------------------------------------------------------------------
 
 def bench_compare(mine, theirs, threshold=0.15):
-    """Markdown rows: each metric in both reports, its p50 and p95 then and now, flagged when p50 moved > threshold."""
+    """Markdown rows: flag p50 moves > threshold, or any move away from a zero baseline."""
     rows, flagged = [], 0
     for name, m in sorted(mine.get("metrics", {}).items()):
         t = theirs.get("metrics", {}).get(name)
-        if not t or not t.get("p50") or t.get("unit") != m.get("unit"):  # a changed unit is not comparable
+        if not t or t.get("p50") is None or t.get("unit") != m.get("unit"):  # a changed unit is not comparable
             continue
-        change = (m["p50"] - t["p50"]) / t["p50"]
-        flag = abs(change) > threshold
+        if t["p50"] == 0:
+            flag = m["p50"] != 0
+            change_text = "from zero" if flag else "+0.0%"
+        else:
+            change = (m["p50"] - t["p50"]) / t["p50"]
+            flag = abs(change) > threshold
+            change_text = f"{change * 100:+.1f}%"
         flagged += flag
         rows.append(f"| `{name}` | {m['unit']} | {t['p50']:g} → {m['p50']:g} | {t['p95']:g} → {m['p95']:g} | "
-                    f"{change * 100:+.1f}%{' **⚑**' if flag else ''} |")
+                    f"{change_text}{' **⚑**' if flag else ''} |")
     return rows, flagged
 
 
@@ -476,7 +481,8 @@ def bench(run_id):
         print("bench: the run belongs to no open pull request")
         return
     parts = [f"### Benchmarks of `{run['head_sha'][:7]}` against main\n",
-             "p50 and p95, main → this PR, per OS; ⚑ marks a p50 change over 15%. Hosted runners are shared machines: "
+             "p50 and p95, main → this PR, per OS; ⚑ marks a p50 change over 15% or away from zero. "
+             "Hosted runners are shared machines: "
              "read a flag as a reason to look, not a verdict.\n"]
     for os_name in ("linux", "windows", "macos"):
         art = f"bench-{os_name}"

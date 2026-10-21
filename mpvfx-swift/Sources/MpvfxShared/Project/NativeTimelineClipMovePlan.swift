@@ -28,7 +28,7 @@ public struct NativeTimelineClipMovePlanInput {
     }
 }
 
-public enum NativeTimelineClipMovePlanFailureCode: String {
+public enum NativeTimelineClipMovePlanFailureCode: String, Sendable {
     case unsupportedLaneChange = "unsupported-lane-change", invalidStart = "invalid-start", clipNotFound = "clip-not-found"
     case ambiguousClip = "ambiguous-clip", missingSelectionId = "missing-selection-id", nativeCommandRejected = "native-command-rejected"
 }
@@ -42,7 +42,7 @@ public struct NativeTimelineClipMovePlan: Equatable {
     public var destination: NativeTimelineLaneDestination
 }
 public typealias NativeTimelineClipMovePlanResult = Result<NativeTimelineClipMovePlan, NativeTimelinePlanFailureError<NativeTimelineClipMovePlanFailureCode>>
-public struct NativeTimelinePlanFailureError<Code: Equatable>: Error, Equatable { public var code: Code; public var message: String }
+public struct NativeTimelinePlanFailureError<Code: Equatable & Sendable>: Error, Equatable { public var code: Code; public var message: String }
 
 extension Result {
     public var ok: Bool { if case .success = self { return true }; return false }
