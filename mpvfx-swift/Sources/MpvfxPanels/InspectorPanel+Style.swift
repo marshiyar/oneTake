@@ -22,23 +22,10 @@ extension InspectorPanel {
     func styleRows(_ editor: TimelineEditor, _ s: Selected) -> [InspectorRow] {
         let st = s.clip.style ?? NativeClipStyle()
         let id = s.id
-        func colorField(key: String, label: String, value: String?, placeholder: String,
-                        apply: @escaping (String?) -> Bool) -> InspectorRow.Number {
-            InspectorRow.Number(
-                key: key, label: label, text: value ?? placeholder, tier: value == nil ? .default : .explicitCustom,
-                commit: { [weak self] text in
-                    let t = text.trimmingCharacters(in: .whitespaces).lowercased()
-                    let cleared = t.isEmpty || t == "transparent" || t == "none"
-                    guard cleared || normalizedHexColor(t) != nil else { return }   // not a color: keep the value
-                    self?.edited(apply(cleared ? nil : t), label: "Edit style")
-                },
-                reset: value == nil ? nil : { [weak self] in self?.edited(apply(nil), label: "Edit style") })
-        }
         var rows: [InspectorRow] = []
-        // Fill (Solid)
-        rows.append(.init(.number(colorField(key: "fill", label: "Fill", value: st.fill, placeholder: "transparent") {
-            editor.setClipFill(clipId: id, $0)
-        })))
+        // Fill (Solid): the renderer reads an alpha byte here, so the picker offers alpha.
+        rows += colorRows(ColorFieldSpec(key: "fill", label: "Fill", value: st.fill, placeholder: "transparent", allowAlpha: true,
+                                         historyLabel: "Edit style") { editor.setClipFill(clipId: id, $0) }, clipId: id)
         // Stroke
         rows.append(.init(.heading("Stroke", trailing: nil)))
         let width = st.strokeWidth ?? 0
@@ -52,10 +39,9 @@ extension InspectorPanel {
         rows.append(.init(.segmented(.init(key: "strokeStyle", label: "Stroke style",
             options: NativeClipStyle.strokeStyles.map { (key: $0, label: $0.prefix(1).uppercased() + $0.dropFirst(), active: $0 == styleNow) },
             select: { [weak self] k in self?.edited(editor.setClipStrokeStyle(clipId: id, k), label: "Edit style") }))))
-        rows.append(.init(.number(colorField(key: "strokeColor", label: "Stroke color", value: st.strokeColor,
-                                             placeholder: NativeClipStyle.defaultStrokeColor) {
-            editor.setClipStrokeColor(clipId: id, $0)
-        })))
+        rows += colorRows(ColorFieldSpec(key: "strokeColor", label: "Stroke color", value: st.strokeColor,
+                                         placeholder: NativeClipStyle.defaultStrokeColor, allowAlpha: false,
+                                         historyLabel: "Edit style") { editor.setClipStrokeColor(clipId: id, $0) }, clipId: id)
         // Shadow (presets; a shadow list that is no preset shows none active, "custom")
         let preset = NativeClipShadowPreset.infer(st.shadows)
         rows.append(.init(.segmented(.init(key: "shadow", label: "Shadow",

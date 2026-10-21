@@ -112,6 +112,7 @@ public final class RightPanel {
         self.layout = layout
         // The group the user left open last time; Transform when nothing was saved.
         inspector.openGroupId = layout.prefs.openInspectorGroup ?? "layout"
+        inspector.scopeSource = layout.prefs.scopeSource ?? .clip
         inspector.layout = layout
         inspector.onOpenEasing = { [weak self] clipId, refs in
             guard let self else { return }

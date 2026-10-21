@@ -76,6 +76,21 @@ final class NativeProjectKeyframeCommandsTests: XCTestCase {
         d = reversible(d, upsertNumber(30, -90)); return reversible(d, upsertNumber(60, -180))
     }
 
+    /// Issue #179 A1: a grade value animates as an ordinary parameter track, `grade.adjust.exposure`, which survives
+    /// the command, its inverse and a serialize / parse round trip.
+    func testGradeExposureTrackRoundTrips() throws {
+        let a = withParameter(NativeGradeParameter.adjustId("exposure"))
+        XCTAssertEqual(a.parameterId, "grade.adjust.exposure")
+        var d = makeKeyframeCommandDocument(engine)
+        d = reversible(d, .batch([upsertNumber(at: a, 0, 0), upsertNumber(at: a, 60, 1.5)]))
+        let track = try XCTUnwrap(clipById(d, "clip:first").parameterTracks.first { $0.parameterId == "grade.adjust.exposure" })
+        XCTAssertEqual(track.keyframes.map(\.frame), [0, 60])
+        XCTAssertEqual(track.keyframes.map(\.value), [.number(0), .number(1.5)])
+        let reparsed = try parseNativeProjectDocument(try NativeJSONValue.parse(serialize(d)), engine: engine)
+        XCTAssertEqual(serialize(reparsed), serialize(d))
+        XCTAssertEqual(NativeGradeParameter.animatedIds(clipById(reparsed, "clip:first")), ["grade.adjust.exposure"])
+    }
+
     func testCreatesExactlyOneRotationKey() {
         let original = makeKeyframeCommandDocument(engine)
         let unrelatedBefore = jsonText(clipById(original, "clip:first").parameterTracks)
