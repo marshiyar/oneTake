@@ -28,6 +28,9 @@ public struct GradeUIState: Equatable {
     /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
+    /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
+    /// past the drag threshold (a click that only selects a point never moves it).
+    var curveGrab: (dx: Double, dy: Double, start: CanvasPoint, moved: Bool)?
     /// Geometry from the last draw (rows are rebuilt per event, so it lives here).
     var curveBox = CanvasRect(x: 0, y: 0, width: 1, height: 1)
     /// Scopes disclosure (closed by default) and its mode (waveform first).
@@ -53,6 +56,7 @@ public struct GradeUIState: Equatable {
 /// Grade group: presets, Amount, Primary, Color wheels, Curves (7 modes),
 /// Secondary color, Custom LUT, Finish, Copy grade to. Edits write the clip's color-grading effect (undoable).
 extension InspectorPanel {
+    typealias CurveTab = (key: String, label: String, color: ThemePair, hue: Bool, min: Double, max: Double)
     var isGradePasteEnabled: Bool {
         guard onPasteGrade != nil, gradeClipboardAvailable, let editor else { return false }
         let kinds = Dictionary(editor.document.assets.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first })
@@ -63,7 +67,7 @@ extension InspectorPanel {
     }
 
     /// Curve tabs; `color` is the tab's line/point token (ThemeTokens.curve*Pair), so light mode draws dark ink.
-    static let curveTabs: [(key: String, label: String, color: ThemePair, hue: Bool, min: Double, max: Double)] = [
+    static let curveTabs: [CurveTab] = [
         ("master", "Master", ThemeTokens.curveMasterPair, false, 0, 1), ("red", "R", ThemeTokens.curveRedPair, false, 0, 1),
         ("green", "G", ThemeTokens.curveGreenPair, false, 0, 1), ("blue", "B", ThemeTokens.curveBluePair, false, 0, 1),
         ("hueVsHue", "Hue/Hue", ThemeTokens.curveHueHuePair, true, -180, 180),
@@ -124,10 +128,7 @@ extension InspectorPanel {
         gap(6)
         rows.append(.init(.custom(curveTabsRow())))
         gap(8)
-        var graph = curveGraph(g, commit: commit)
-        // Enter on the focused graph adds the midpoint (as with no focus); Space never adds a point (issue #171).
-        graph.keyPress = { [weak self] _, k in k.code == .space || (k.code == .enter && (self?.gradeKey(k) ?? true)) }
-        rows.append(.init(.custom(graph)))
+        rows.append(.init(.custom(curveGraph(g, commit: commit))))
         gap(8)
         rows.append(.init(.custom(curveFooter(g, commit: commit))))
         gap(6)
@@ -417,154 +418,257 @@ extension InspectorPanel {
         })
     }
 
+    /// The open curve tab; a key that names no tab (the field is public) reads as Master.
+    var openCurveTab: CurveTab { Self.curveTabs.first { $0.key == grade.curveTab } ?? Self.curveTabs[0] }
+    /// The point rules of the open tab.
+    var curveEditing: CurveEditing { let t = openCurveTab; return CurveEditing(hue: t.hue, limit: t.min...t.max) }
+    /// A curve point's pointer target: a circle of this radius, so 24 pt across.
+    static let curvePointHitRadius = 12.0
+    /// The smallest pointer target of a curve control, in points.
+    static let curveMinTarget = 24.0
+
+    /// The open tab's points as they render (`CurveEditing.displayed`), or the live points while one is dragged.
     func currentCurvePoints(_ g: ColorGrading) -> [[Double]] {
         if let d = grade.curveDraft { return d }
-        let tab = Self.curveTabs.first { $0.key == grade.curveTab }!
-        return tab.hue ? g.hueCurve(tab.key) : g.curve(tab.key)
+        let tab = openCurveTab
+        return curveEditing.displayed(tab.hue ? g.hueCurve(tab.key) : g.curve(tab.key))
     }
 
     func writeCurve(_ g: ColorGrading, _ pts: [[Double]]) -> ColorGrading {
         var n = g
-        let tab = Self.curveTabs.first { $0.key == grade.curveTab }!
-        let sorted = pts.sorted { $0[0] < $1[0] }
-        if tab.hue { n.hueCurves[tab.key] = sorted.isEmpty ? nil : sorted }
-        else { n.curves[tab.key] = sorted == [[0, 0], [1, 1]] ? nil : sorted }
+        let tab = openCurveTab, stored = curveEditing.stored(pts)
+        if tab.hue { n.hueCurves[tab.key] = stored } else { n.curves[tab.key] = stored }
         return n
     }
 
+    /// A point of the open tab in view coordinates; a stored point outside the range sits on the edge.
+    func curveToView(_ pt: [Double]) -> CanvasPoint {
+        let tab = openCurveTab, box = grade.curveBox
+        let nx = tab.hue ? pt[0] / 360 : pt[0], ny = (pt[1] - tab.min) / (tab.max - tab.min)
+        return CanvasPoint(box.x + max(0, min(1, nx)) * box.width, box.maxY - max(0, min(1, ny)) * box.height)
+    }
+
+    /// The open tab's (input, output) under a view point, clamped to the graph, at 1/1000.
+    func curveFromView(_ p: CanvasPoint) -> [Double] {
+        let tab = openCurveTab, box = grade.curveBox
+        let nx = max(0, min(1, (p.x - box.x) / box.width)), ny = max(0, min(1, (box.maxY - p.y) / box.height))
+        let x = tab.hue ? min(359.9, nx * 360) : nx
+        return [(x * 1000).rounded() / 1000, ((tab.min + ny * (tab.max - tab.min)) * 1000).rounded() / 1000]
+    }
+
     func curveGraph(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorCustomRow {
-        let tab = Self.curveTabs.first { $0.key == grade.curveTab }!
-        var box: CanvasRect { grade.curveBox }   // the plot area: view box 8…152 of 160 over the svg's 198px content
-        func toView(_ pt: [Double]) -> CanvasPoint {   // clamped: a stored point outside the range sits on the edge
-            let nx = tab.hue ? pt[0] / 360 : pt[0], ny = (pt[1] - tab.min) / (tab.max - tab.min)
-            return CanvasPoint(box.x + max(0, min(1, nx)) * box.width, box.maxY - max(0, min(1, ny)) * box.height)
-        }
-        func fromView(_ p: CanvasPoint) -> [Double] {
-            let nx = max(0, min(1, (p.x - box.x) / box.width)), ny = max(0, min(1, (box.maxY - p.y) / box.height))
-            let x = tab.hue ? min(359.9, nx * 360) : nx
-            return [(x * 1000).rounded() / 1000, ((tab.min + ny * (tab.max - tab.min)) * 1000).rounded() / 1000]
-        }
-        return InspectorCustomRow(id: "grade:curve", height: 200, draw: { [weak self] c, r, panel in
-            guard let self else { return }
-            // CurveGraph: `max-w-[200px] rounded border border-panel-border-input bg-black/20`, view box 160.
-            let size = min(r.width, 200)
-            let frame = CanvasRect(x: r.x + (r.width - size) / 2, y: r.y, width: size, height: size)
-            let u = (size - 2) / 160
-            func v(_ x: Double, _ y: Double) -> CanvasPoint { CanvasPoint(frame.x + 1 + x * u, frame.y + 1 + y * u) }
-            self.grade.curveBox = CanvasRect(x: frame.x + 1 + 8 * u, y: frame.y + 1 + 8 * u, width: 144 * u, height: 144 * u)
-            c.fillRoundedRect(frame, radius: 4, PanelTheme.stageScrim.withAlpha(Theme.mode == .light ? 0.05 : 0.2))
-            c.strokeRoundedRect(frame.insetBy(0.5), radius: 3.5, PanelTheme.panelBorderInput, width: 1)
-            for ratio in [0.25, 0.5, 0.75] {   // rgba(255,255,255,.08), 0.5 wide
-                var h = CanvasPath(); h.move(to: v(8, 8 + ratio * 144)); h.line(to: v(152, 8 + ratio * 144))
-                var w = CanvasPath(); w.move(to: v(8 + ratio * 144, 8)); w.line(to: v(8 + ratio * 144, 152))
-                c.stroke(h, PanelTheme.white.withAlpha(0.08), StrokeStyle(width: 0.5 * u))
-                c.stroke(w, PanelTheme.white.withAlpha(0.08), StrokeStyle(width: 0.5 * u))
-            }
-            if tab.hue {   // hue axis: 3-unit line at y 157 through #f33 #ff3 #3f3 #3ff #33f #f3f #f33
-                let stops: [(Double, Double, Double)] = [(1, 0.2, 0.2), (1, 1, 0.2), (0.2, 1, 0.2), (0.2, 1, 1), (0.2, 0.2, 1), (1, 0.2, 1), (1, 0.2, 0.2)]
-                let n = 72
-                for k in 0..<n {
-                    let t = (Double(k) + 0.5) / Double(n) * 6, i = min(5, Int(t)), f = t - Double(i)
-                    let a = stops[i], b = stops[i + 1]
-                    let x0 = v(8 + 144 * Double(k) / Double(n), 155.5), x1 = v(8 + 144 * Double(k + 1) / Double(n), 158.5)
-                    c.fillRect(CanvasRect(x: x0.x, y: x0.y, width: x1.x - x0.x + 0.3, height: x1.y - x0.y),
-                               CanvasColor(r: a.0 + (b.0 - a.0) * f, g: a.1 + (b.1 - a.1) * f, b: a.2 + (b.2 - a.2) * f))
-                }
-            }
-            let pts = self.currentCurvePoints(g)
-            let color = CanvasColor(tab.color.now)
-            // The line is the curve the grade applies (ColorCurveMath = the renderer's GradeCurve): normalized,
-            // monotone and inside the range. Line and points are clipped to the graph so nothing reaches the rows around it.
-            c.save()
-            c.clip(.roundedRect(frame.insetBy(1), radius: 3))
-            var path = CanvasPath()
-            for (k, s) in ColorCurveMath.samples(pts, hue: tab.hue, limit: tab.min...tab.max, count: 144).enumerated() {
-                let vp = toView([s.x, s.y])
-                if k == 0 { path.move(to: vp) } else { path.line(to: vp) }
-            }
-            c.stroke(path, color, StrokeStyle(width: 1.5 * u))
-            for (i, pt) in pts.enumerated() {   // r 2.5 (selected 3.5 white), #111 1-unit outline
-                let vp = toView(pt)
-                let sel = self.grade.selectedPoint == i
-                let rad = (sel ? 3.5 : 2.5) * u
-                let dot = CanvasPath.roundedRect(CanvasRect(x: vp.x - rad, y: vp.y - rad, width: 2 * rad, height: 2 * rad), radius: rad)
-                c.fill(dot, sel ? PanelTheme.white : color)
-                c.stroke(dot, CanvasColor(ThemeTokens.curvePointOutlinePair.now), StrokeStyle(width: u))
-            }
-            c.restore()
-            panel.addHit(box.insetBy(-6), .custom("grade:curve", 0))
+        InspectorCustomRow(id: "grade:curve", height: 200, draw: { [weak self] c, r, panel in
+            self?.drawCurveGraph(c, r, panel, g)
         }, pointer: { [weak self] _, p, phase in
             guard let self else { return }
-            var pts = self.currentCurvePoints(g)
-            if phase == 0 {
-                if let i = pts.indices.min(by: { hypot(toView(pts[$0]).x - p.x, toView(pts[$0]).y - p.y) < hypot(toView(pts[$1]).x - p.x, toView(pts[$1]).y - p.y) }),
-                   hypot(toView(pts[i]).x - p.x, toView(pts[i]).y - p.y) < 8 {
-                    self.grade.selectedPoint = i
-                } else if pts.count < ColorGrading.maxCurvePoints {
-                    pts.append(fromView(p)); pts.sort { $0[0] < $1[0] }
-                    let added = pts.firstIndex { $0 == fromView(p) }
-                    if let a = added { pts[a] = Self.draggedCurvePoint(pts[a], index: a, in: pts, hue: tab.hue) }   // not on a neighbour's input
-                    self.grade.selectedPoint = added
-                }
-                self.grade.curveDraft = pts
-            } else if let i = self.grade.selectedPoint, pts.indices.contains(i) {
-                pts[i] = Self.draggedCurvePoint(fromView(p), index: i, in: pts, hue: tab.hue)
-                self.grade.curveDraft = pts
-                if phase == 2 { self.grade.curveDraft = nil; commit(self.writeCurve(g, pts)) }
-            } else if phase == 2 { self.grade.curveDraft = nil; commit(self.writeCurve(g, pts)) }
-        })
+            switch phase {
+            case 0: self.curvePress(g, p)
+            case 1: self.curveDrag(p)
+            default: self.curveRelease(g, commit: commit)
+            }
+        }, key: { [weak self] _, k in self?.curveKey(g, k, commit: commit) ?? false })
+    }
+
+    /// Keys on the focused curve graph (issue #171): Left / Right select the previous / next point, Up / Down move
+    /// the selected point's output and Alt+Left / Alt+Right its input, by 1% of the axis (Shift: 10%); Enter adds a
+    /// point (`addCurvePoint`), Delete / Backspace removes the selected one, Space does nothing (a replayed press
+    /// would add a point at the graph's centre). A held arrow folds into one undo step.
+    func curveKey(_ g: ColorGrading, _ k: EditorKey, commit: @escaping (ColorGrading) -> Void) -> Bool {
+        let step = k.shift ? 0.1 : 0.01
+        switch k.code {
+        case .space: return true
+        case .enter: addCurvePoint(g, commit: commit); return true
+        case .delete, .backspace: deleteSelectedCurvePoint(g, commit: commit); return true
+        case .left, .right:
+            let d = k.code == .left ? -1.0 : 1.0
+            if k.alt { nudgeCurvePoint(g, dx: d * step, dy: 0, commit: commit) } else { selectNextCurvePoint(g, by: Int(d)) }
+            return true
+        case .up, .down: nudgeCurvePoint(g, dx: 0, dy: (k.code == .up ? 1 : -1) * step, commit: commit); return true
+        default: return false
+        }
+    }
+
+    /// Selects the point `by` places from the selected one (from the first or last when none is selected).
+    func selectNextCurvePoint(_ g: ColorGrading, by: Int) {
+        let n = currentCurvePoints(g).count
+        guard n > 0 else { return }
+        let i = grade.selectedPoint.map { $0 + by } ?? (by > 0 ? 0 : n - 1)
+        grade.selectedPoint = min(n - 1, max(0, i))
+    }
+
+    /// Moves the selected point by fractions of the tab's axes, through `CurveEditing.moving`.
+    func nudgeCurvePoint(_ g: ColorGrading, dx: Double, dy: Double, commit: @escaping (ColorGrading) -> Void) {
+        let tab = openCurveTab, pts = currentCurvePoints(g)
+        guard let i = grade.selectedPoint, pts.indices.contains(i), let editor else { return }
+        let span = tab.hue ? 360.0 : 1.0
+        let moved = curveEditing.moving(i, to: [pts[i][0] + dx * span, pts[i][1] + dy * (tab.max - tab.min)], in: pts)
+        guard moved != pts else { return }
+        editor.withHistory("Edit color grade", coalesceKey: "grade:curve:nudge:\(tab.key):\(i)") { commit(writeCurve(g, moved)) }
+    }
+
+    /// CurveGraph: `max-w-[200px] rounded border border-panel-border-input bg-black/20`, view box 160 with the plot
+    /// area at 8…152. The line is the curve the grade applies (ColorCurveMath = the renderer's GradeCurve):
+    /// normalized, monotone and inside the range. Line and points are clipped to the graph.
+    func drawCurveGraph(_ c: CanvasContext, _ r: CanvasRect, _ panel: InspectorPanel, _ g: ColorGrading) {
+        let tab = openCurveTab
+        let size = min(r.width, 200)
+        let frame = CanvasRect(x: r.x + (r.width - size) / 2, y: r.y, width: size, height: size)
+        let u = (size - 2) / 160
+        grade.curveBox = CanvasRect(x: frame.x + 1 + 8 * u, y: frame.y + 1 + 8 * u, width: 144 * u, height: 144 * u)
+        c.fillRoundedRect(frame, radius: 4, PanelTheme.stageScrim.withAlpha(Theme.mode == .light ? 0.05 : 0.2))
+        c.strokeRoundedRect(frame.insetBy(0.5), radius: 3.5, PanelTheme.panelBorderInput, width: 1)
+        Self.drawCurveGrid(c, frame: frame, u: u)
+        if tab.hue { Self.drawHueAxis(c, frame: frame, u: u) }
+        let pts = currentCurvePoints(g)
+        let color = CanvasColor(tab.color.now)
+        c.save()
+        c.clip(.roundedRect(frame.insetBy(1), radius: 3))
+        var path = CanvasPath()
+        for (k, s) in ColorCurveMath.samples(pts, hue: tab.hue, limit: tab.min...tab.max, count: 144).enumerated() {
+            let vp = curveToView([s.x, s.y])
+            if k == 0 { path.move(to: vp) } else { path.line(to: vp) }
+        }
+        c.stroke(path, color, StrokeStyle(width: 1.5 * u))
+        for (i, pt) in pts.enumerated() {   // r 2.5 (selected 3.5 white), #111 1-unit outline
+            let vp = curveToView(pt)
+            let sel = grade.selectedPoint == i
+            let rad = (sel ? 3.5 : 2.5) * u
+            let dot = CanvasPath.roundedRect(CanvasRect(x: vp.x - rad, y: vp.y - rad, width: 2 * rad, height: 2 * rad), radius: rad)
+            c.fill(dot, sel ? PanelTheme.white : color)
+            c.stroke(dot, CanvasColor(ThemeTokens.curvePointOutlinePair.now), StrokeStyle(width: u))
+        }
+        c.restore()
+        // The target reaches a point's full hit radius past the plot area, so the end points are as easy to grab.
+        panel.addHit(grade.curveBox.insetBy(-Self.curvePointHitRadius), .custom("grade:curve", 0))
+    }
+
+    /// Quarter lines (rgba(255,255,255,.08), 0.5 wide) over the plot area of a graph `frame` at `u` per view unit.
+    static func drawCurveGrid(_ c: CanvasContext, frame: CanvasRect, u: Double) {
+        func v(_ x: Double, _ y: Double) -> CanvasPoint { CanvasPoint(frame.x + 1 + x * u, frame.y + 1 + y * u) }
+        for ratio in [0.25, 0.5, 0.75] {
+            var h = CanvasPath(); h.move(to: v(8, 8 + ratio * 144)); h.line(to: v(152, 8 + ratio * 144))
+            var w = CanvasPath(); w.move(to: v(8 + ratio * 144, 8)); w.line(to: v(8 + ratio * 144, 152))
+            c.stroke(h, PanelTheme.white.withAlpha(0.08), StrokeStyle(width: 0.5 * u))
+            c.stroke(w, PanelTheme.white.withAlpha(0.08), StrokeStyle(width: 0.5 * u))
+        }
+    }
+
+    /// The hue axis: a 3-unit line at y 157 through #f33 #ff3 #3f3 #3ff #33f #f3f #f33.
+    static func drawHueAxis(_ c: CanvasContext, frame: CanvasRect, u: Double) {
+        func v(_ x: Double, _ y: Double) -> CanvasPoint { CanvasPoint(frame.x + 1 + x * u, frame.y + 1 + y * u) }
+        let stops: [(Double, Double, Double)] = [(1, 0.2, 0.2), (1, 1, 0.2), (0.2, 1, 0.2), (0.2, 1, 1), (0.2, 0.2, 1), (1, 0.2, 1), (1, 0.2, 0.2)]
+        let n = 72
+        for k in 0..<n {
+            let t = (Double(k) + 0.5) / Double(n) * 6, i = min(5, Int(t)), f = t - Double(i)
+            let a = stops[i], b = stops[i + 1]
+            let x0 = v(8 + 144 * Double(k) / Double(n), 155.5), x1 = v(8 + 144 * Double(k + 1) / Double(n), 158.5)
+            c.fillRect(CanvasRect(x: x0.x, y: x0.y, width: x1.x - x0.x + 0.3, height: x1.y - x0.y),
+                       CanvasColor(r: a.0 + (b.0 - a.0) * f, g: a.1 + (b.1 - a.1) * f, b: a.2 + (b.2 - a.2) * f))
+        }
+    }
+
+    /// The nearest point within `curvePointHitRadius` of `p`, if any.
+    func nearestCurvePoint(_ pts: [[Double]], to p: CanvasPoint) -> Int? {
+        let d = pts.map { pt -> Double in let v = curveToView(pt); return hypot(v.x - p.x, v.y - p.y) }
+        guard let i = d.indices.min(by: { d[$0] < d[$1] }), d[i] <= Self.curvePointHitRadius else { return nil }
+        return i
+    }
+
+    /// A press selects the point under it, or adds one there (where the curve has room for it).
+    func curvePress(_ g: ColorGrading, _ p: CanvasPoint) {
+        grade.curveDraft = nil
+        let pts = currentCurvePoints(g)
+        if let i = nearestCurvePoint(pts, to: p) {
+            let v = curveToView(pts[i])
+            grade.selectedPoint = i; grade.curveDraft = pts
+            grade.curveGrab = (v.x - p.x, v.y - p.y, p, false)
+        } else if let added = curveEditing.inserting(curveFromView(p), into: pts) {
+            grade.selectedPoint = added.index; grade.curveDraft = added.points
+            grade.curveGrab = (0, 0, p, true)
+        } else {
+            grade.selectedPoint = nil; grade.curveGrab = nil
+        }
+    }
+
+    /// A drag moves the pressed point by the pointer's motion, once it is 3 pt from the press.
+    func curveDrag(_ p: CanvasPoint) {
+        guard var grab = grade.curveGrab, let i = grade.selectedPoint, let pts = grade.curveDraft else { return }
+        if !grab.moved && hypot(p.x - grab.start.x, p.y - grab.start.y) < 3 { return }
+        grab.moved = true
+        grade.curveGrab = grab
+        grade.curveDraft = curveEditing.moving(i, to: curveFromView(CanvasPoint(p.x + grab.dx, p.y + grab.dy)), in: pts)
+    }
+
+    /// The release commits the edited curve as one undo step; a press that changed nothing commits nothing.
+    func curveRelease(_ g: ColorGrading, commit: (ColorGrading) -> Void) {
+        let draft = grade.curveDraft
+        grade.curveDraft = nil; grade.curveGrab = nil
+        guard let draft, draft != currentCurvePoints(g) else { return }
+        commit(writeCurve(g, draft))
     }
 
     /// The tab's curve at `x` as the grade applies it (an RGB curve, or a hue curve: flat below three points).
     static func curveValue(hue: Bool, limit: ClosedRange<Double>, _ pts: [[Double]], at x: Double) -> Double {
-        hue ? ColorCurveMath.sampleHue(pts, at: x, limit: limit) : ColorCurveMath.sample(pts, at: x)
+        CurveEditing(hue: hue, limit: limit).value(pts, at: x)
     }
 
     /// A dragged point keeps its place in the order: it stays at least 0.01 (RGB) / 1° (hue) inside its neighbours,
     /// so no two points share an input (which the renderer rejects, dropping the whole curve) and the selection
-    /// index keeps naming the dragged point.
+    /// index keeps naming the dragged point. (`CurveEditing.moving` adds the pinned RGB end points.)
     static func draggedCurvePoint(_ p: [Double], index i: Int, in pts: [[Double]], hue: Bool) -> [Double] {
-        let gap = hue ? 1.0 : 0.01
-        var x = p[0]
-        if i > 0 { x = max(x, pts[i - 1][0] + gap) }
-        if i < pts.count - 1 { x = min(x, pts[i + 1][0] - gap) }
-        return [(x * 1000).rounded() / 1000, p[1]]   // stored at fromView's 1/1000 precision
+        [CurveEditing(hue: hue, limit: 0...1).constrainedInput(i, p[0], in: pts), p[1]]
     }
 
-    /// Footer (`flex min-h-7 items-end gap-2`): the hint (9px text-5) or, with a point selected, a `Delete` text
-    /// button; the 11px reset at the right (`pb-0.5`).
+    /// At least `curveMinTarget` square around `glyph`, kept inside `row`.
+    static func curveTarget(_ glyph: CanvasRect, in row: CanvasRect) -> CanvasRect {
+        let w = max(glyph.width + 6, curveMinTarget), h = max(glyph.height + 6, curveMinTarget)
+        let x = min(max(glyph.midX - w / 2, row.x), row.maxX - w), y = min(max(glyph.midY - h / 2, row.y), row.maxY - h)
+        return CanvasRect(x: x, y: y, width: w, height: h)
+    }
+
+    /// Footer (`flex min-h-7 items-end gap-2`): the hint (9px text-5) or, with a removable point selected, a
+    /// `Delete` text button; the 11px reset at the right (`pb-0.5`).
     func curveFooter(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> InspectorCustomRow {
         InspectorCustomRow(id: "grade:curvefoot", height: 28, draw: { [weak self] c, r, panel in
-            let line = CanvasRect(x: r.x, y: r.maxY - 13.5, width: r.width - 19, height: 13.5)
-            if self?.grade.selectedPoint != nil {
-                let w = c.measureText("Delete", font: PanelTheme.font(9)).width
-                let del = CanvasRect(x: line.x, y: line.y - 2, width: w, height: 15.5)
-                PanelDraw.text(c, "Delete", in: CanvasRect(x: del.x, y: line.y - 2, width: w, height: 13.5), font: PanelTheme.font(9),
-                               color: panel.hovered == .custom("grade:curvefoot", 1) ? PanelTheme.text1 : PanelTheme.text4)
-                panel.addHit(del.insetBy(-3), .custom("grade:curvefoot", 1))
-            } else {
-                PanelDraw.text(c, "Click the graph or press Enter to add a point", in: line, font: PanelTheme.font(9), color: PanelTheme.text5)
-            }
-            let reset = CanvasRect(x: r.maxX - 11, y: r.maxY - 13, width: 11, height: 11)
-            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("grade:curvefoot", 0) ? PanelTheme.text1 : PanelTheme.text4)
-            panel.addHit(reset.insetBy(-3), .custom("grade:curvefoot", 0))
+            self?.drawCurveFooter(c, r, panel, g)
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
-            if part == 0 { self.grade.selectedPoint = nil; commit(self.writeCurve(g, Self.curveTabs.first { $0.key == self.grade.curveTab }!.hue ? [] : [[0, 0], [1, 1]])) }
+            if part == 0 { self.grade.selectedPoint = nil; commit(self.writeCurve(g, self.openCurveTab.hue ? [] : GradeCurve.identity)) }
             else { self.deleteSelectedCurvePoint(g, commit: commit) }
         })
     }
 
+    func drawCurveFooter(_ c: CanvasContext, _ r: CanvasRect, _ panel: InspectorPanel, _ g: ColorGrading) {
+        let line = CanvasRect(x: r.x, y: r.maxY - 13.5, width: r.width - 19, height: 13.5)
+        if let i = grade.selectedPoint, curveEditing.canRemove(i, in: currentCurvePoints(g)) {
+            let w = c.measureText("Delete", font: PanelTheme.font(9)).width
+            let del = CanvasRect(x: line.x, y: line.y - 2, width: w, height: 15.5)
+            PanelDraw.text(c, "Delete", in: CanvasRect(x: del.x, y: line.y - 2, width: w, height: 13.5), font: PanelTheme.font(9),
+                           color: panel.hovered == .custom("grade:curvefoot", 1) ? PanelTheme.text1 : PanelTheme.text4)
+            panel.addHit(Self.curveTarget(del, in: r), .custom("grade:curvefoot", 1))
+        } else {
+            PanelDraw.text(c, "Click the graph or press Enter to add a point", in: line, font: PanelTheme.font(9), color: PanelTheme.text5)
+        }
+        let reset = CanvasRect(x: r.maxX - 11, y: r.maxY - 13, width: 11, height: 11)
+        PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("grade:curvefoot", 0) ? PanelTheme.text1 : PanelTheme.text4)
+        panel.addHit(Self.curveTarget(reset, in: r), .custom("grade:curvefoot", 0))
+    }
+
     func deleteSelectedCurvePoint(_ g: ColorGrading, commit: (ColorGrading) -> Void) {
-        var pts = currentCurvePoints(g)
-        guard let i = grade.selectedPoint, pts.indices.contains(i) else { return }
-        let hue = Self.curveTabs.first { $0.key == grade.curveTab }!.hue
-        if !hue && pts.count <= 2 { return }
-        pts.remove(at: i); grade.selectedPoint = nil
+        guard let i = grade.selectedPoint, let pts = curveEditing.removing(i, from: currentCurvePoints(g)) else { return }
+        grade.selectedPoint = nil
         commit(writeCurve(g, pts))
     }
 
-    /// Keys with no text field focused: Delete/Backspace removes the selected curve point; Enter adds a midpoint.
+    /// Enter: a point in the middle of the widest gap, on the curve, selected.
+    func addCurvePoint(_ g: ColorGrading, commit: (ColorGrading) -> Void) {
+        let edit = curveEditing, pts = currentCurvePoints(g)
+        guard let added = edit.inserting(edit.insertionPoint(pts), into: pts) else { return }
+        grade.selectedPoint = added.index
+        commit(writeCurve(g, added.points))
+    }
+
+    /// Keys with no text field focused: Delete/Backspace removes the selected curve point; Enter adds a point.
     func gradeKey(_ k: EditorKey) -> Bool {
         guard openGroupId == "grade", let editor, let s = selected() else { return false }
         let g = editor.colorGrading(clipId: s.id) ?? ColorGrading()
@@ -574,12 +678,7 @@ extension InspectorPanel {
             guard grade.selectedPoint != nil else { return false }
             deleteSelectedCurvePoint(g, commit: commit); return true
         case .enter:
-            var pts = currentCurvePoints(g)
-            guard pts.count < ColorGrading.maxCurvePoints else { return true }
-            let tab = Self.curveTabs.first { $0.key == grade.curveTab }!
-            let x = tab.hue ? 180.0 : 0.5
-            pts.append([x, Self.curveValue(hue: tab.hue, limit: tab.min...tab.max, pts, at: x)])
-            commit(writeCurve(g, pts)); return true
+            addCurvePoint(g, commit: commit); return true
         default: return false
         }
     }
