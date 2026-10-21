@@ -195,8 +195,10 @@ let package = Package(
         .testTarget(name: "MpvfxDesktopCoreTests", dependencies: ["MpvfxDesktopCore", "MpvfxTheme"]),
         // The whole editor (EditorSession, shell router, panels) rendered through a canvas: live appearance switching.
         // MpvfxBackend + MpvfxTimeline: the quit test saves through RuntimeDesktopBackend and reads the editor's undo stack.
+        // MpvfxPlayer, MpvfxRuntime, MpvfxShared + OneTakeMedia: the sample project test draws the sample's media, exports
+        // it with the app's frame renderer and reads the file back.
         .testTarget(name: "MpvfxDesktopTests", dependencies: ["MpvfxDesktop", "MpvfxDesktopCore", "MpvfxCanvas", "MpvfxPanels", "MpvfxTheme",
-                                                             "MpvfxBackend", "MpvfxTimeline"]),
+                                                             "MpvfxBackend", "MpvfxTimeline", "MpvfxPlayer", "MpvfxRuntime", "MpvfxShared", mediaEngine]),
         // MpvfxPlayer + OneTakeMedia: the end-to-end export installs the app's frame renderer and decodes what it wrote.
         .testTarget(name: "MpvfxBackendTests", dependencies: ["MpvfxBackend", "MpvfxDesktopCore", "MpvfxRuntime", "MpvfxShared", "MpvfxPlayer", mediaEngine]),
         .testTarget(name: "CSQLiteTests", dependencies: ["CSQLite", "MpvfxRuntime"]),
