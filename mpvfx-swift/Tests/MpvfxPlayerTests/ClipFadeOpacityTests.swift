@@ -111,6 +111,27 @@ final class ClipFadeOpacityTests: XCTestCase {
         XCTAssertFalse(keyedOff.needsDecoder, "keyed to 0 opacity: not decoded, as before")
     }
 
+    /// Playing forward or backward from a fade-in's first frame reads ahead, as for a visible clip.
+    func testAFadeInsFirstFrameStillReadsAhead() throws {
+        let comp = Self.videoOnly(try Self.document(fades: #","fadeInFrames":10"#))
+        let layers = comp.layers(at: 0)
+        XCTAssertEqual(layers.map(\.clipId), ["V"]); XCTAssertFalse(layers[0].isVisible)
+        let cx = PreviewCompositor(decodesMedia: false, cacheBudgetBytes: 1 << 30)
+        XCTAssertGreaterThan(cx.lookahead(layers, comp: comp, scale: 1, backing: 1, speed: 1), 0)
+        XCTAssertGreaterThan(cx.reverseChunk(layers, comp: comp, scale: 1, backing: 1, speed: 1), 1, "1 means no video")
+    }
+
+    /// A live opacity gesture during a fade shows the gesture's value faded, as the committed take will play.
+    func testALiveOpacityOverrideKeepsTheFade() throws {
+        let comp = Self.videoOnly(try Self.document(fades: #","fadeInFrames":10"#))
+        let frame = CanvasRect(x: 0, y: 0, width: 200, height: 100)
+        let el = StageElement(id: "V", name: "V", rect: frame, kind: .video, opacity: 0.8)
+        let half = PreviewCompositor.applyStage([el], to: comp.layers(at: 0.5), frame: frame, scale: 1)
+        XCTAssertEqual(half[0].opacity, 0.4, accuracy: 1e-9, "0.8 live × 0.5 fade")
+        let first = PreviewCompositor.applyStage([el], to: comp.layers(at: 0), frame: frame, scale: 1)
+        XCTAssertEqual(first[0].opacity, 0); XCTAssertTrue(first[0].hiddenByFade)
+    }
+
     func testClipsWithoutFadesRenderAsBefore() throws {
         let comp = Self.composition(try Self.document())
         for time in [0.0, 0.5, 1.9] {

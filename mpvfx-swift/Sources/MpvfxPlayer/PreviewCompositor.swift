@@ -259,7 +259,7 @@ public final class PreviewCompositor: FrameSource {
 
     /// Frames to decode past the playhead per clip: about a third of a second, bounded by the cache budget.
     func lookahead(_ layers: [PreviewLayer], comp: PreviewComposition, scale s: Double, backing: Double, speed: Double) -> Int {
-        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.isVisible }
+        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.needsDecoder }
         guard !videos.isEmpty else { return 0 }
         let bytes = videos.reduce(0) { acc, l in let d = decodeSize(l, scale: s, backing: backing); return acc + d.width * d.height * 4 }
         let byBudget = cache.budgetBytes / 2 / max(bytes, 1)
@@ -269,7 +269,7 @@ public final class PreviewCompositor: FrameSource {
 
     /// Frames per reverse chunk: about two thirds of a second of playback, bounded by the cache budget.
     func reverseChunk(_ layers: [PreviewLayer], comp: PreviewComposition, scale s: Double, backing: Double, speed: Double) -> Int {
-        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.isVisible }
+        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.needsDecoder }
         guard !videos.isEmpty else { return 1 }
         let bytes = videos.reduce(0) { acc, l in let d = decodeSize(l, scale: s, backing: backing); return acc + d.width * d.height * 4 }
         let byBudget = cache.budgetBytes / 3 / max(bytes, 1)
@@ -303,7 +303,11 @@ public final class PreviewCompositor: FrameSource {
                                width: e.rect.width / s, height: e.rect.height / s)
             l.rotation = e.rotation + layer.motionRotation
             l.crop = CropInsets(top: e.crop.top / s, right: e.crop.right / s, bottom: e.crop.bottom / s, left: e.crop.left / s)
-            if let o = e.opacity { l.opacity = max(0, min(1, o)) }
+            if let o = e.opacity {   // the live value replaces the keyed one; the clip's fade still applies
+                let keyed = max(0, min(1, o))
+                l.opacity = keyed * layer.fadeGain
+                l.hiddenByFade = layer.fadeGain == 0 && keyed > 0
+            }
             if let k = e.scale { l.scaleX = k; l.scaleY = k }
             return l
         }

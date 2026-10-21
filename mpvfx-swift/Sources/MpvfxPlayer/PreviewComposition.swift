@@ -47,6 +47,9 @@ public struct PreviewLayer: Equatable, Sendable {
     /// Degrees, clockwise, about the box centre (includes auto-rotate along the motion path).
     public var rotation: Double
     public var opacity: Double
+    /// The clip's fade gain at this frame (`NativeClipFade`), already in `opacity`; a live opacity override is
+    /// multiplied by it too (`PreviewCompositor.applyStage`).
+    public var fadeGain = 1.0
     /// True when only the clip's fade hides the layer at this frame (a fade-in's first frame): it is not drawn, but
     /// its decoder is kept ready for the frames that follow (`needsDecoder`).
     public var hiddenByFade = false
@@ -344,6 +347,7 @@ public struct PreviewComposition {
                             startFrame: Int(c.startFrame.rounded()), endFrame: Int((c.startFrame + c.durationFrames).rounded()),
                             box: box, scaleX: sx, scaleY: sy,
                             rotation: (num("transform.rotation") ?? 0) + autoRotate, opacity: opacity, crop: crop)
+        out.fadeGain = fade
         out.hiddenByFade = fade == 0 && keyed > 0
         out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
         out.timelineFPS = fps
