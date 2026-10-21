@@ -90,6 +90,11 @@ struct GradeUniforms: Sendable {
     var lutEnabled = false, lutIntensity: Float = 0
     /// Warmth and Tint as channel gains (grade contract 3) instead of the older additive offsets (contract 2).
     var whiteBalanceGains = false
+    var keyEnabled = false
+    var keyColor = V3(0, 1, 0)
+    var keySimilarity: Float = 0.1
+    var keySmoothness: Float = 0.1
+    var keySpill: Float = 0
     var intensity: Float = 1
     var e = [Float](repeating: 0, count: EK.allCases.count)
     var palette: [V3] = []
@@ -846,8 +851,20 @@ struct GradeProgram: Sendable {
             color *= 1 - mask * clampf(u.vignette, 0, 1) * 0.75
         }
         if crtCurvature > 0 { color *= displayMask }
-        let graded = clamp3(color, 0, 1)
-        return V4(graded.x, graded.y, graded.z, sampleColor.w)
+        var graded = clamp3(color, 0, 1)
+        var alpha = sampleColor.w
+        if u.keyEnabled {
+            func chroma(_ value: V3) -> V2 {
+                let y = lumaOf(value)
+                return V2((value.z - y) / 1.8556, (value.x - y) / 1.5748)
+            }
+            let distance = length2(chroma(graded) - chroma(u.keyColor))
+            let matte = smoothstep(u.keySimilarity, u.keySimilarity + Swift.max(u.keySmoothness, 0.000001), distance)
+            alpha *= matte
+            let excessGreen = Swift.max(0, graded.y - Swift.max(graded.x, graded.z))
+            graded.y -= excessGreen * u.keySpill
+        }
+        return V4(graded.x, graded.y, graded.z, alpha)
     }
 
     // MARK: Multipass (blur / bloom, Kuwahara)

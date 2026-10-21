@@ -267,6 +267,21 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                     if effect["parameters"] != nil && !isRecordValue(effect["parameters"]) {
                         pushIssue(&issues, .invalidEffect, "\(effectPath).parameters", "Effect parameters must be an object")
                     }
+                    if str(effect["effectId"]) == "color-key", let parameters = effect["parameters"], parameters.isRecord,
+                       parameters["v"]?.numberValue == 1, str(parameters["kind"]) == "chroma" {
+                        let base = "\(effectPath).parameters"
+                        if let color = parameters["color"] {
+                            let valid = color.arrayValue.map { channels in
+                                channels.count == 3 && channels.allSatisfy { $0.numberValue.map { $0.isFinite && (0...1).contains($0) } ?? false }
+                            } ?? false
+                            if !valid { pushIssue(&issues, .invalidEffect, "\(base).color", "Colour-key color must contain three finite values from 0 through 1") }
+                        }
+                        for name in ["similarity", "smoothness", "spill"] {
+                            if let value = parameters[name], !(value.numberValue.map { $0.isFinite && (0...1).contains($0) } ?? false) {
+                                pushIssue(&issues, .invalidEffect, "\(base).\(name)", "Colour-key \(name) must be a finite value from 0 through 1")
+                            }
+                        }
+                    }
                 }
             } else {
                 pushIssue(&issues, .invalidEffect, "\(clipPath).effects", "Effects must be an array")
