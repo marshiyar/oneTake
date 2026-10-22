@@ -89,6 +89,7 @@ protocol CrossPaneDrag: AnyObject {
 /// one full-window canvas (GtkCanvasHost / MacCanvasHost / WindowsCanvasHost) and forwards that canvas's events here,
 /// so dragging, swapping, closing and opening panels work the same on Linux, macOS and Windows.
 final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
+    var globalVoiceKey: ((EditorKey) -> Bool)?
     /// A pane: a dock panel's content, except the Preview, whose content is two panes (top bar, player).
     struct Region: Hashable, Sendable {
         let id: String

@@ -49,6 +49,8 @@ extension EditorSession {
         var values = SettingsPanel.Values(appearance: appearance?.appearance ?? .system, audioDevice: prefs.audioOutputDevice,
                                           previewCacheMB: prefs.previewCacheMB, exportFolder: prefs.defaultExportFolder,
                                           interfaceScalePercent: prefs.interfaceScalePercent)
+        values.inputDevice = prefs.audioInputDevice
+        values.voiceCountIn = prefs.voiceCountIn
         values.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
         return values
     }
@@ -58,6 +60,8 @@ extension EditorSession {
 
     /// A change on the card: persist it and apply it now.
     func applySettings(_ v: SettingsPanel.Values, _ prefs: DesktopPreferences) {
+        prefs.audioInputDevice = v.inputDevice
+        prefs.voiceCountIn = v.voiceCountIn
         if v.appearance != appearance?.appearance { setAppearance(v.appearance) }
         if v.interfaceScalePercent != prefs.interfaceScalePercent {
             prefs.interfaceScalePercent = v.interfaceScalePercent
@@ -73,12 +77,13 @@ extension EditorSession {
 
     /// Lists the output devices off the UI thread (asking the sound server can take a moment).
     func refreshAudioDevices() {
-        guard audio?.output is AudioDeviceSelecting else { return }
         let post = postToUI
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let inputs = AudioInputDevices.list().map { SettingsPanel.Device(id: $0.id, name: $0.name) }
             let devices = AudioOutputDevices.list().map { SettingsPanel.Device(id: $0.id, name: $0.name) }
             post {
-                guard let self, devices != self.settingsPanel.devices || !self.settingsPanel.devicesListed else { return }
+                guard let self else { return }
+                self.settingsPanel.inputDevices = inputs
                 self.settingsPanel.devices = devices
                 self.redraw()
             }

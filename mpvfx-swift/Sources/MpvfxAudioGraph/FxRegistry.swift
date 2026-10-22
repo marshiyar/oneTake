@@ -87,7 +87,7 @@ private func num(_ key: String, _ label: String, _ unit: String, _ min: Double, 
 
 public enum AudioFx {
     public static let attribute = "data-fx-chain"
-    public static let chainVersion = 1
+    public static let chainVersion = 2
 
     /// Every effect, in panel order (HF_AUDIO_FX).
     public static let definitions: [FxDef] = [
@@ -150,10 +150,23 @@ public enum AudioFx {
     public static let ids: [String] = definitions.map(\.id)
     private static let byId: [String: FxDef] = Dictionary(uniqueKeysWithValues: definitions.map { ($0.id, $0) })
 
-    public static func definition(_ id: String) -> FxDef? { byId[id] }
+    public static func definition(_ id: String, version: Int = 1) -> FxDef? {
+        guard let def = byId[id] else { return nil }
+        if version >= 2, id == "limiter" {
+            return FxDef(id: def.id, label: def.label, group: def.group, params: [
+                num("limit", "Ceiling", "dB", -24, 0, 0.1, -1),
+                num("lookahead", "Lookahead", "ms", 0.5, 5, 0.1, 1.5),
+                num("release", "Release", "ms", 10, 1000, 1, 50, scale: .log),
+            ], implementation: def.implementation)
+        }
+        guard version >= 2, id == "compressor" || id == "gate" else { return def }
+        return FxDef(id: def.id, label: def.label, group: def.group, params: def.params.map {
+            $0.key == "knee" ? num("knee", "Knee", "dB", 0, 36, 0.1, 9) : $0
+        }, implementation: def.implementation)
+    }
 
-    public static func defaultParams(_ id: String) -> FxParams {
-        guard let def = byId[id] else { return FxParams() }
+    public static func defaultParams(_ id: String, version: Int = 1) -> FxParams {
+        guard let def = definition(id, version: version) else { return FxParams() }
         return FxParams(def.params.map { p in
             switch p {
             case let .number(key, _, _, _, _, _, d, _, _): return (key, .number(d))
@@ -163,32 +176,47 @@ public enum AudioFx {
     }
 
     /// `normalizeAudioFxParams`: drop unknown keys, fill defaults, clamp numbers, validate enums.
-    public static func normalize(_ id: String, _ values: [String: JSONValue]?) -> FxParams {
-        guard let def = byId[id] else { return FxParams() }
+    public static func normalize(_ id: String, _ values: [String: JSONValue]?, version: Int = 1) -> FxParams {
+        guard let def = definition(id, version: version) else { return FxParams() }
         var out = FxParams()
         for p in def.params {
-            let raw = values?[p.key]
-            switch p {
-            case let .enumeration(key, _, options, d):
-                if case let .string(s)? = raw, options.contains(where: { $0.value == s }) { out.entries.append((key, .string(s))) }
-                else { out.entries.append((key, .string(d))) }
-            case let .number(key, _, _, mn, mx, _, d, _, _):
-                var n = Double.nan
-                if case let .number(v)? = raw { n = v }
-                else if case let .string(s)? = raw, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { n = jsStringToNumber(s) }
-                out.entries.append((key, .number(n.isFinite ? Swift.min(mx, Swift.max(mn, n)) : d)))
-            }
+            out.entries.append((p.key, normalizedValue(p, raw: values?[p.key])))
         }
         return out
     }
 
-    public static func normalize(_ id: String, _ params: FxParams?) -> FxParams {
-        normalize(id, params.map { Dictionary($0.entries.map { ($0.0, $0.1.json) }, uniquingKeysWith: { _, b in b }) })
+    private static func normalizedValue(_ parameter: FxParamDef, raw: JSONValue?) -> FxParamValue {
+        switch parameter {
+        case let .enumeration(_, _, options, fallback):
+            if case let .string(value)? = raw, options.contains(where: { $0.value == value }) {
+                return .string(value)
+            }
+            return .string(fallback)
+        case let .number(_, _, _, minimum, maximum, _, fallback, _, _):
+            let value = numericValue(raw)
+            return .number(value.isFinite ? Swift.min(maximum, Swift.max(minimum, value)) : fallback)
+        }
+    }
+
+    private static func numericValue(_ raw: JSONValue?) -> Double {
+        switch raw {
+        case let .number(value)?: return value
+        case let .string(value)? where !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            return jsStringToNumber(value)
+        default: return .nan
+        }
+    }
+
+    public static func normalize(_ id: String, _ params: FxParams?, version: Int = 1) -> FxParams {
+        normalize(id, params.map { Dictionary($0.entries.map { ($0.0, $0.1.json) }, uniquingKeysWith: { _, b in b }) }, version: version)
     }
 }
 
 public struct FxNode: Equatable, Sendable {
     public var type: String
+    /// Sound algorithm override. V2 documents retain `1` on existing nodes when new effects are appended.
+    /// Nil inherits the containing chain; its initializer pins that inheritance before nodes are copied elsewhere.
+    public var version: Int?
     public var id: String?
     public var fromCarve: Bool?
     public var fromPreset: String?
@@ -199,9 +227,9 @@ public struct FxNode: Equatable, Sendable {
     public var enabled: Bool?
     public var params: FxParams?
 
-    public init(type: String, id: String? = nil, fromCarve: Bool? = nil, fromPreset: String? = nil, label: String? = nil, fromEq: String? = nil,
+    public init(type: String, version: Int? = nil, id: String? = nil, fromCarve: Bool? = nil, fromPreset: String? = nil, label: String? = nil, fromEq: String? = nil,
                 fromLeveller: Bool? = nil, presetAmount: Double? = nil, enabled: Bool? = nil, params: FxParams? = nil) {
-        self.type = type; self.id = id; self.fromCarve = fromCarve; self.fromPreset = fromPreset; self.label = label; self.fromEq = fromEq
+        self.type = type; self.version = version; self.id = id; self.fromCarve = fromCarve; self.fromPreset = fromPreset; self.label = label; self.fromEq = fromEq
         self.fromLeveller = fromLeveller; self.presetAmount = presetAmount; self.enabled = enabled; self.params = params
     }
 }
@@ -209,7 +237,26 @@ public struct FxNode: Equatable, Sendable {
 public struct FxChain: Equatable, Sendable {
     public var version: Int = AudioFx.chainVersion
     public var nodes: [FxNode]
-    public init(nodes: [FxNode] = []) { self.nodes = nodes }
+    public init(version: Int = AudioFx.chainVersion, nodes: [FxNode] = []) {
+        self.version = version
+        self.nodes = nodes.map { node in var copy = node; copy.version = node.version ?? version; return copy }
+    }
+
+    public var needsSoundUpdate: Bool { version == 1 || nodes.contains { ($0.version ?? version) == 1 } }
+
+    /// Opt-in sound migration; the rack commits this entire value as one undoable edit.
+    public func updatedSound() -> FxChain {
+        FxChain(nodes: nodes.map { node in
+            var copy = node
+            if (node.version ?? version) == 1 {
+                var p = AudioFx.normalize(node.type, node.params, version: 1)
+                if node.type == "compressor" || node.type == "gate" { p["knee"] = .number(20 * log10(max(1, p.num("knee")))) }
+                copy.params = AudioFx.normalize(node.type, p, version: 2)
+            }
+            copy.version = 2
+            return copy
+        })
+    }
 
     /// `enabledAudioFxNodes`.
     public var enabledNodes: [FxNode] { nodes.filter { $0.enabled != false } }
@@ -241,14 +288,14 @@ extension AudioFx {
         default: throw AudioFxChainError(message: "Chain file must be a JSON object.")
         }
         let obj = Dictionary(pairs, uniquingKeysWith: { _, b in b })
-        guard case .number(Double(chainVersion))? = obj["version"] else {
+        guard case let .number(rawVersion)? = obj["version"], rawVersion == 1 || rawVersion == 2 else {
             throw AudioFxChainError(message: "Unsupported chain version: \(jsDisplay(obj["version"]))")
         }
         guard case let .array(items)? = obj["nodes"] else { throw AudioFxChainError(message: "Chain file is missing a `nodes` array.") }
-        return FxChain(nodes: try items.enumerated().map { try parseNode($0.element, $0.offset) })
+        return FxChain(version: Int(rawVersion), nodes: try items.enumerated().map { try parseNode($0.element, $0.offset, version: Int(rawVersion)) })
     }
 
-    private static func parseNode(_ n: JSONValue, _ i: Int) throws -> FxNode {
+    private static func parseNode(_ n: JSONValue, _ i: Int, version: Int) throws -> FxNode {
         let pairs: [(String, JSONValue)]
         switch n {
         case let .object(p): pairs = p
@@ -259,21 +306,32 @@ extension AudioFx {
         guard case let .string(type)? = o["type"], definition(type) != nil else {
             throw AudioFxChainError(message: "Node \(i) has unknown effect type: \(jsDisplay(o["type"]))")
         }
+        let nodeVersion = try soundVersion(o["version"], chainVersion: version, index: i)
         var params: [String: JSONValue]? = nil
         if case let .object(pp)? = o["params"] { params = Dictionary(pp, uniquingKeysWith: { _, b in b }) }
-        return FxNode(type: type, id: nonEmpty(o["id"]), fromCarve: onlyTrue(o["fromCarve"]), fromPreset: nonEmpty(o["fromPreset"]),
+        return FxNode(type: type, version: nodeVersion, id: nonEmpty(o["id"]), fromCarve: onlyTrue(o["fromCarve"]), fromPreset: nonEmpty(o["fromPreset"]),
                       label: nonEmpty(o["label"]), fromEq: nonEmpty(o["fromEq"]), fromLeveller: onlyTrue(o["fromLeveller"]),
                       presetAmount: clampedAmount(o["presetAmount"]), enabled: o["enabled"] != .bool(false),
-                      params: normalize(type, params))
+                      params: normalize(type, params, version: nodeVersion))
+    }
+
+    private static func soundVersion(_ value: JSONValue?, chainVersion: Int, index: Int) throws -> Int {
+        guard let value else { return chainVersion }
+        guard chainVersion == 2, case let .number(version) = value, version == 1 || version == 2 else {
+            throw AudioFxChainError(message: "Node \(index) has unsupported sound version.")
+        }
+        return Int(version)
     }
 
     /// `serializeAudioFxChain`.
     public static func serializeChain(_ chain: FxChain) -> String {
-        stringifyJSON(.object([("version", .number(Double(chainVersion))), ("nodes", .array(chain.nodes.map(nodeJSON)))]))
+        let version = chain.nodes.contains { $0.version == 2 } ? 2 : chain.version
+        return stringifyJSON(.object([("version", .number(Double(version))), ("nodes", .array(chain.nodes.map { nodeJSON($0, version: version) }))]))
     }
 
-    static func nodeJSON(_ node: FxNode) -> JSONValue {
+    static func nodeJSON(_ node: FxNode, version: Int = 1) -> JSONValue {
         var pairs: [(String, JSONValue)] = [("type", .string(node.type))]
+        if version == 2, let v = node.version, v != version { pairs.append(("version", .number(Double(v)))) }
         if let id = node.id, !id.isEmpty { pairs.append(("id", .string(id))) }
         if node.fromCarve == true { pairs.append(("fromCarve", .bool(true))) }
         if let p = node.fromPreset, !p.isEmpty { pairs.append(("fromPreset", .string(p))) }
@@ -282,7 +340,7 @@ extension AudioFx {
         if node.fromLeveller == true { pairs.append(("fromLeveller", .bool(true))) }
         if let a = node.presetAmount, a != 1, a.isFinite { pairs.append(("presetAmount", .number(min(1, max(0, a))))) }
         if node.enabled == false { pairs.append(("enabled", .bool(false))) }
-        pairs.append(("params", normalize(node.type, node.params).json))
+        pairs.append(("params", normalize(node.type, node.params, version: node.version ?? version).json))
         return .object(pairs)
     }
 

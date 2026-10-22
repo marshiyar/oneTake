@@ -63,6 +63,8 @@ public enum AudioInputError: Error, Equatable, CustomStringConvertible, Sendable
 public protocol AudioInput: AnyObject {
     /// What `read` returns: interleaved float32 at this rate and channel count.
     var format: AudioFormat { get }
+    /// Measured capture latency in seconds (zero when the backend cannot report it).
+    var latencySeconds: Double { get }
     /// Opens the device and starts capturing.
     func start() throws
     /// Up to `frames` interleaved frames, waiting until at least one is available. An empty result means the stream
@@ -72,6 +74,8 @@ public protocol AudioInput: AnyObject {
     var droppedFrames: Int { get }
     func stop()
 }
+
+public extension AudioInput { var latencySeconds: Double { 0 } }
 
 /// An input that can record from a chosen device instead of the system default.
 public protocol AudioInputDeviceSelecting: AnyObject {
@@ -120,6 +124,7 @@ public final class ScriptedAudioInput: AudioInput {
     public var onRead: ((Int) -> Void)?
     /// Throws this from `start` instead of starting (a missing device or a refused permission).
     public var startError: AudioInputError?
+    public var latencySeconds = 0.0
     public private(set) var droppedFrames = 0
 
     public init(format: AudioFormat = AudioFormat(sampleRate: 48_000, channels: 1), samples: [Float]) {

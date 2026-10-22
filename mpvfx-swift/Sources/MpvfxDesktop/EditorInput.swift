@@ -51,7 +51,10 @@ extension CanvasInput {
 /// through to playback (global shortcuts work from either view).
 final class TimelineInput: CanvasInput {
     let s: EditorSession; let region: TimelineRegion; let afterKey: () -> Void
-    init(_ s: EditorSession, region: TimelineRegion, afterKey: @escaping () -> Void) { self.s = s; self.region = region; self.afterKey = afterKey }
+    init(_ s: EditorSession, region: TimelineRegion, afterKey: @escaping () -> Void) {
+        self.s = s; self.region = region; self.afterKey = afterKey
+        s.installSceneSplitHook()
+    }
     func pointerDown(x: Double, y: Double, shift: Bool) { region.pointerDown(x: x, y: y, shift: shift) }
     func pointerMove(x: Double, y: Double) { region.pointerMove(x: x, y: y) }
     func pointerUp(x: Double, y: Double) { region.pointerUp(x: x, y: y) }
@@ -72,7 +75,7 @@ final class TimelineInput: CanvasInput {
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { region.scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift) }
     func keyDown(_ k: EditorKey) -> Bool {
         // Record's Esc comes before the timeline, which consumes Esc.
-        let h = s.player.recordEscapeKey(k) || s.commandKey(k) || s.keyframeKey(k) || s.timeline.keyDown(k) || s.player.globalKey(k)
+        let h = s.player.recordEscapeKey(k) || s.sceneSplitKey(k) || s.commandKey(k) || s.keyframeKey(k) || s.timeline.keyDown(k) || s.player.globalKey(k)
         afterKey(); return h
     }
     func keyUp(_ k: EditorKey) { s.playback.keyUp(k) }
@@ -105,7 +108,7 @@ final class PlayerInput: CanvasInput {
     func keyDown(_ k: EditorKey) -> Bool {
         // Stage text editing gets first refusal; an unhandled M only adds markers in the timeline pane.
         let markerKey = !k.command && !k.alt && (k.code == .char("m") || k.code == .char("M"))
-        let h = s.commandKey(k) || s.playerKey(k) || s.keyframeKey(k) || s.player.keyDown(k) || (!markerKey && s.timeline.keyDown(k)) || s.player.globalKey(k)
+        let h = s.sceneSplitKey(k) || s.commandKey(k) || s.playerKey(k) || s.keyframeKey(k) || s.player.keyDown(k) || (!markerKey && s.timeline.keyDown(k)) || s.player.globalKey(k)
         afterKey(); return h
     }
     func keyUp(_ k: EditorKey) { s.playback.keyUp(k) }
