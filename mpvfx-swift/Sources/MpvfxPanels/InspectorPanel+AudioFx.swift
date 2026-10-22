@@ -88,24 +88,15 @@ extension InspectorPanel {
         let ui = audioFxUI
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
-<<<<<<< HEAD
         let write: (FxChain) -> Void = { [weak self] next in
             guard let self else { return }
             if self.previewFxGesture(next) { return }
             self.edited(commit(next))
-=======
-        let write: (FxChain) -> Void = { [weak self] next in self?.edited(commit(next)) }
+        }
 
         if chain.needsSoundUpdate {
             rows.append(.init(.buttons([.init(key: "fx:update-sound", label: "Update to current sound", style: .muted) { write(chain.updatedSound()) }])))
             gap(Self.afxSectionGap)
-        }
-        // Tone EQ modules lead the rack.
-        let eqIds = AudioEq.ids(chain)
-        for (k, eqId) in eqIds.enumerated() {
-            if !rows.isEmpty { gap(Self.afxGap) }
-            rows.append(afxEqModule(chain, eqId: eqId, first: k == 0, open: ui.openEq == eqId, write: write))
->>>>>>> origin/main
         }
         let eqIds = AudioEq.ids(chain)
         let runs = Self.afxRuns(chain)

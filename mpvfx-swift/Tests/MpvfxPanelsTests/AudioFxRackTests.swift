@@ -59,7 +59,6 @@ final class AudioFxRackTests: XCTestCase {
     }
     func texts(_ c: PanelMeasureCanvas) -> [String] { c.texts.map(\.0) }
 
-<<<<<<< HEAD
     func liveFixture(_ chain: FxChain) throws -> (TimelineEditor, InspectorPanel) {
         let json = TimelineEditor.demoJSON.replacingOccurrences(of: "\"name\":\"music.wav\"", with: "\"name\":\"music.wav\",\"source\":\"/music.wav\"")
         let editor = try TimelineEditor(json: json, engine: try? KeyframeRuntime())
@@ -257,8 +256,6 @@ final class AudioFxRackTests: XCTestCase {
         }
     }
 
-=======
->>>>>>> origin/main
     func testUpdateCurrentSoundIsOneUndoStep() throws {
         let old = try AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"highpass","id":"n1"},{"type":"compressor","id":"n2"}]}"#)
         let (editor, panel) = try fixture(old)

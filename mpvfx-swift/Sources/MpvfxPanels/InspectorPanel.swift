@@ -30,15 +30,12 @@ public final class InspectorPanel {
 
     public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch() } } }
     /// Selected clip ids (the timeline/stage selection).
-<<<<<<< HEAD
     public var selection: [String] = [] {
         willSet { if newValue != selection { cancelFxGesture() } }
+        didSet { if selection != oldValue { cancelLookMatch() } }
     }
-=======
-    public var selection: [String] = [] { didSet { if selection != oldValue { cancelLookMatch() } } }
     /// Presentation choice; the resulting positions are ordinary saved document parameters.
     public var alignmentReference = TimelineAlignmentReference.frame
->>>>>>> origin/main
     /// Playhead (composition seconds).
     public var time = 0.0 { didSet { if time != oldValue { cancelLookMatch() } } }
     /// The open accordion group ("" when all are closed). Every change, from a header click or a host reveal, is saved
