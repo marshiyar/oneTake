@@ -28,7 +28,7 @@ final class RenderParityTests: XCTestCase {
             let type = c["type"]!.str
             var params = FxParams()
             if case let .object(e) = c["params"]! { for (k, v) in e { params[k] = v.stringValue.map(FxParamValue.string) ?? .number(v.num) } }
-            let chain = FxChain(nodes: [FxNode(type: type, params: params)])
+            let chain = FxChain(version: 1, nodes: [FxNode(type: type, params: params)])
             let frames = Int(c["frames"]!.num)
             let out = renderChain(chain, input, frames: frames)
             let d = peakDiffDb(out, Fixtures.f32(c["file"]!.str))
