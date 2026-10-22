@@ -1,7 +1,38 @@
 # Changelog
 
 All notable changes to oneTake. Versions follow `mpvfx-swift/packaging/VERSION`; a `v<version>` tag publishes that
-version's installers as the latest release.
+version's installers as the latest release. Changes that have landed on `main` since the last release collect under
+Unreleased; nightly builds of `main` are published as pre-releases named `nightly-<commit>` (see
+[`docs/PACKAGING.md`](docs/PACKAGING.md)).
+
+## Unreleased
+
+Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binaries.lock`); no version tag yet.
+
+### Editing
+- Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels
+  and dock beside the preview; Design groups can be dragged out into their own panels.
+- Sequence markers: M drops a named marker at the playhead; the Markers panel jumps, renames, recolours and deletes
+  them, each edit one undo step.
+- Cut transitions grow up: directional wipe and push join dissolve and dip, with direction, softness and duration
+  in Design > Transition.
+- Background generator clips (solid, linear gradient, radial gradient) from the Media panel menu, edited under
+  Design > Background; canvas fills behind clips that do not cover the frame.
+- Align and distribute selected visual clips against the frame or the selection.
+- Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
+  that land as ordinary editable text.
+- Layer moves (in, out, loop) evaluated the same in preview and export.
+
+### Grading
+- Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.
+- Auto balance and reference-clip look matching fit exposure, warmth, tint, contrast and offset from frame
+  statistics in one undo step.
+- Clip blend modes, a colour key with hue-following spill, and spill/GPU parity coverage.
+- The media bin keeps its filter and sort between launches.
+
+### Fixes and polish
+- Stage system cursors stay synchronised with the transform box without pointer motion.
+- The mask rasterizer meets its 1080p budget; Windows gains an on-device speech-to-captions adapter.
 
 ## 0.1.0
 

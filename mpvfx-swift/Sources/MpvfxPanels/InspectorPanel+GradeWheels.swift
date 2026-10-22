@@ -39,7 +39,7 @@ struct GradeWheelSet {
 
 /// The wheel cell's geometry, shared by the row height, the draw and the pointer.
 struct GradeWheelLayout {
-    static let gap = 8.0, rowGap = 12.0, labelH = 15.0, levelH = 20.0, fieldLabelH = 14.0, fieldH = 24.0
+    static let gap = 8.0, rowGap = 12.0, labelH = 15.0, levelH = 20.0, fieldLabelH = 24.0, fieldH = 24.0
     var columns: Int, cellW: Double, wheel: Double
     init(width: Double, count: Int) {
         columns = count >= 4 ? 2 : max(1, count)
@@ -174,7 +174,16 @@ extension InspectorPanel {
         case (.left, false), (.right, false): w = Self.wheel(w, setting: "level", to: w.level * 100 + (k.code == .right ? 1 : -1) * (big ? 10 : 1))
         default: return false
         }
-        var n = g; set.write(&n, set.keys[index], w); commit(n)
+        var n = g; set.write(&n, set.keys[index], w)
+        guard let editor else { return false }
+        let control = "\(set.id):\(part):\(k.code):\(k.shift)"
+        if grade.wheelKeyCode != k.code || grade.wheelKeyControl != control || grade.wheelKeyHistory == nil {
+            grade.wheelKeyControl = control
+            grade.wheelKeyCode = k.code
+            grade.wheelKeyHistory = "grade:wheel:key:\(UUID().uuidString)"
+        }
+        editor.withHistory("Edit color grade", coalesceKey: grade.wheelKeyHistory,
+                           coalesceWindow: .infinity) { commit(n) }
         return true
     }
 }

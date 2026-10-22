@@ -31,6 +31,7 @@ public enum PanelIcon: Equatable, Sendable {
     case selectCaret
     case close, eye, eyeOff, layers, film, image, music, text, font, reset, trash, plus, upload, download, help, spinnerArc, diamond, diamondFilled
     case chevronLeft, chevronRight, check, keyframeNav
+    case alignLeft, alignCenter, alignRight, alignJustify, textUppercase, textLowercase, textCapitalize, textItalic
     /// Audition: play and stop on a tile.
     case play, stop
     /// Three dots in a row: a panel's menu button (the end of its tab strip).
@@ -50,6 +51,14 @@ public extension PanelIcon {
         func stroke(_ d: [String], _ w: Double = lineWidth) { c.strokeSVG(d, viewBox: 24, in: box, color, width: w) }
         func fill(_ d: [String], _ vb: Double = 24) { c.fillSVG(d, viewBox: vb, in: box, color) }
         switch self {
+        case .alignLeft: stroke(["M4 5h16M4 10h10M4 15h16M4 20h10"])
+        case .alignCenter: stroke(["M4 5h16M7 10h10M4 15h16M7 20h10"])
+        case .alignRight: stroke(["M4 5h16M10 10h10M4 15h16M10 20h10"])
+        case .alignJustify: stroke(["M4 5h16M4 10h16M4 15h16M4 20h16"])
+        case .textUppercase: stroke(["M3 19 8 5l5 14M5 14h6M15 19V5h5M15 12h4M15 19h5"])
+        case .textLowercase: stroke(["M4 11c8-4 8 8 1 8c-5 0-3-6 4-4M10 10v9M15 5v14M15 12c8-5 8 10 0 6"])
+        case .textCapitalize: stroke(["M3 19 8 5l5 14M5 14h6M16 11c7-3 7 8 1 8c-4 0-3-5 3-4M21 10v9"])
+        case .textItalic: stroke(["M10 5h9M5 19h9M15 5 9 19"])
         case .sidebarShowLeft: stroke(["M5 4v16", "m10 7 5 5-5 5"])
         case .sidebarHideLeft: stroke(["m14 7-5 5 5 5", "M19 4v16"])
         // Chromium's disclosure marker: a solid triangle ~0.6em, the em box being the 12px summary text.

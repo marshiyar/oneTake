@@ -53,6 +53,11 @@ final class EditorSession {
     var naturalSizePending: Set<String> = []
     var animationFramePending = false
     let transport = TransportPopovers()
+    let voice = VoiceTransport()
+    var makeVoiceInput: () -> AudioInput? = { AudioInputDevices.makeSystemInput() }
+    var voiceStart = 0.0
+    var voiceGeneration = 0
+    var voiceImporting = false
     /// Window regions and input routing (EditorShellLayout.swift); set by the shell via installShell.
     var shell: EditorShellRouter?
     var shellInputs: [CanvasInput] = []
@@ -64,6 +69,8 @@ final class EditorSession {
     var panels: SessionPanels?
     /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
     var clipInfoFeed: ClipInfoFeed?
+    /// The router holds its cross-pane drag weakly; the bin and effects drags live here (EditorSession+DockedPanels.swift).
+    var crossPaneDrags: CrossPaneDragGroup?
     var desktopPreferences: DesktopPreferences?
     /// System / Light / Dark setting (EditorSession+Appearance); set by the shell via installAppearance.
     var appearance: AppearanceSettings?
@@ -371,6 +378,7 @@ final class EditorSession {
 
     /// For the save barrier on close/quit: nil when saved, else the message to show (the window stays open).
     func flushSave() -> String? {
+        if voice.state != .idle || voiceImporting { return "Stop recording and wait for the take to be kept before closing this project." }
         do { try save(); return nil } catch { return "\(error)" }
     }
 

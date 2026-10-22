@@ -85,8 +85,9 @@ public enum Theme {
     public static func removeObserver(_ id: Int) { state.removeObserver(id) }
 
     // SAFETY: storedMode is accessed only under modeLock. Observers (including their non-Sendable
-    // captures) and nextObserver are accessed only after a main-thread precondition. Native GTK,
-    // AppKit and Win32 callbacks use this synchronous API without requiring actor-isolated callers.
+    // captures) and nextObserver run on the main thread: off-main callers are bounced there synchronously
+    // below, so delivery order and observer identity stay exact. Native GTK, AppKit and Win32 callbacks
+    // use this synchronous API without requiring actor-isolated callers.
     private final class State: @unchecked Sendable {
         private let modeLock = NSLock()
         private var storedMode: ThemeMode = .dark
@@ -100,7 +101,7 @@ public enum Theme {
         }
 
         func setMode(_ m: ThemeMode) {
-            precondition(Thread.isMainThread, "Theme mutations must run on the main thread")
+            if !Thread.isMainThread { return DispatchQueue.main.sync { setMode(m) } }
             guard m != mode else { return }
             modeLock.lock()
             storedMode = m
@@ -112,14 +113,17 @@ public enum Theme {
         }
 
         func addObserver(_ fn: @escaping (ThemeMode) -> Void) -> Int {
-            precondition(Thread.isMainThread, "Theme observers must be registered on the main thread")
+            // Boxed Sendable: the synchronous hop delivers fn to the main thread before any use,
+            // so no race is possible; the box only satisfies the Sendable closure boundary.
+            final class Box: @unchecked Sendable { let fn: (ThemeMode) -> Void; init(_ fn: @escaping (ThemeMode) -> Void) { self.fn = fn } }
+            if !Thread.isMainThread { let box = Box(fn); return DispatchQueue.main.sync { addObserver(box.fn) } }
             nextObserver += 1
             observers.append((nextObserver, fn))
             return nextObserver
         }
 
         func removeObserver(_ id: Int) {
-            precondition(Thread.isMainThread, "Theme observers must be removed on the main thread")
+            if !Thread.isMainThread { return DispatchQueue.main.sync { removeObserver(id) } }
             observers.removeAll { $0.id == id }
         }
     }
@@ -220,6 +224,10 @@ public enum ThemeTokens {
         ThemePair(0xFAFAFA, 0x09090B), ThemePair(0xE4E4E7, 0x27272A), ThemePair(0xA1A1AA, 0x4A4A52),
         ThemePair(0x71717A, 0x63636B), ThemePair(0x52525B, 0x8E8E96), ThemePair(0x3F3F46, 0xB4B4BB),
     ]
+    /// Inspector secondary text remains readable on inset, panel and raised field surfaces in both modes.
+    public static let inspectorTextPair = ThemePair(0xA1A1AA, 0x4A4A52)
+    /// Essential control edges: slider tracks/thumbs and field underlines, at least 3:1 on panel surfaces.
+    public static let inspectorControlPair = ThemePair(0x85858D, 0x72727A)
     public static let dangerPair = ThemePair(0xEF4444, 0xC81E1E)
     public static let mediaPair = ThemePair(0x00E3FF, 0x0A6F8A)
     public static let containerPair = ThemePair(0xF5A623, 0x955600)
@@ -305,6 +313,7 @@ public enum ThemeTokens {
     public static let scopeLuma = ThemeColor(0xE2E8F0), scopeRed = ThemeColor(0xF87171)
     public static let scopeGreen = ThemeColor(0x4ADE80), scopeBlue = ThemeColor(0x60A5FA)
     public static let scopeVector = ThemeColor(0x6EE7B7), scopeInk = ThemeColor(0xFFFFFF)
+    public static let scopeLabel = ThemeColor(0xA1A1AA)
     public static let scopeSkin = ThemeColor(0xFBBF24), scopeClip = ThemeColor(0xFF3B30)
     /// Timeline band edge colours (identity, both modes).
     public static let bandEdges: [ThemeColor] = [0x3CE6AC, 0x5BA6FF, 0xBE77FF, 0xFFB04D, 0xFF6799].map { ThemeColor($0) }

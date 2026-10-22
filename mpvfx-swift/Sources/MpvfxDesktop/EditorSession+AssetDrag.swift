@@ -25,6 +25,9 @@ final class BinAssetDrag: CrossPaneDrag {
     unowned let panels: SessionPanels
     private var window: CanvasPoint?
     private var overPlayer = false
+    private var replacesMedia = false
+
+    func updateDragModifiers(_ modifiers: PointerModifiers) { replacesMedia = modifiers.contains(.alt) }
     /// Over the timeline's tracks: the tracks area gets the drop outline (isDragOver).
     private(set) var overTimeline = false
     /// A file drag from the desktop is over the timeline's tracks (same outline).
@@ -50,8 +53,12 @@ final class BinAssetDrag: CrossPaneDrag {
     }
 
     func dragEnded(over region: EditorShellRouter.Region?, local: CanvasPoint) {
-        defer { window = nil; overPlayer = false; overTimeline = false; session.player.assetDragEnded() }
+        defer { window = nil; overPlayer = false; overTimeline = false; replacesMedia = false; session.player.assetDragEnded() }
         guard let path = panels.left.lastDraggedAssetId else { return }
+        if let look = TextLookPreset.draggedPreset(path) {
+            if region == .player || region == .timeline && local.y >= TimelineToolbar.height { session.addTextLook(look) }
+            return
+        }
         switch region {
         case .player?: dropOnStage(path, local)
         case .timeline?: dropOnTimeline(path, local)
@@ -74,6 +81,13 @@ final class BinAssetDrag: CrossPaneDrag {
     }
 
     private func dropOnTimeline(_ path: String, _ p: CanvasPoint) {
+        if replacesMedia {
+            guard case .clip(let id, _, _) = session.timeline.hitTest(x: p.x, y: p.y - TimelineToolbar.height) else {
+                session.player.view.showToast("Drop onto a clip to replace its media", isError: true); session.redraw(); return
+            }
+            panels.replaceMedia(path: path, clipId: id)
+            return
+        }
         guard let place = timelinePlacement(p, kind: panels.assetKind(path: path)) else { return }
         panels.addToTimeline(path: path, at: place.time, trackId: place.trackId)
     }
@@ -147,7 +161,7 @@ final class BinAssetDrag: CrossPaneDrag {
             AssetDropOutline.draw(c, timeline: router.rect(.timeline, f))
         }
         guard let w = window, let id = panels.left.draggingAssetId else { return }
-        let name = panels.left.items.first { $0.id == id }?.name ?? (id as NSString).lastPathComponent
+        let name = TextLookPreset.draggedPreset(id)?.name ?? panels.left.items.first { $0.id == id }?.name ?? (id as NSString).lastPathComponent
         let font = PanelTheme.font(11, .medium)
         let width = min(220, c.measureText(name, font: font).width + 16)
         let r = CanvasRect(x: w.x + 10, y: w.y + 10, width: width, height: 22)

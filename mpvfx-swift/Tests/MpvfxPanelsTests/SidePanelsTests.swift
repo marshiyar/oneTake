@@ -116,6 +116,8 @@ final class InspectorPanelTests: XCTestCase {
         XCTAssertEqual(p.groups.map(\.title), ["Transform", "Style", "Grade", "Effects", "Audio FX", "Media"])
         XCTAssertEqual(p.openGroupId, "layout")
         XCTAssertTrue(c.drawnStrings.contains("Rotation"))
+        XCTAssertTrue(c.drawnStrings.contains("3D transform"))
+        XCTAssertFalse(c.drawnStrings.contains("Roll"))
         let header = try XCTUnwrap(p.hits.rect { $0 == .group("media") })
         XCTAssertTrue(p.pointerDown(center(header)))
         XCTAssertEqual(p.openGroupId, "media")
@@ -546,8 +548,8 @@ final class MediaBinTests: XCTestCase {
             XCTAssertFalse(c.drawnStrings.contains(t), "\(t) is a menu item now, not a row")
         }
         _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
-        XCTAssertEqual(s.dropdown.options.map(\.label), ["New library…", "Open library…", "New event…", "Import into Media…", "Copy files into the library",
-                                                         "Link to the original files", LeftSidebarPanel.revealLabel, "jk", "New project…", "Open project…",
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["New library…", "Open library…", "New event…", "Rename event…", "Import into Media…", "Copy files into the library",
+                                                         "Link to the original files", LeftSidebarPanel.revealLabel, "jk", "New project…", "Rename project…", "Open project…",
                                                          "Open existing standalone project"])
         s.dropdown.pick("reveal")
         _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
@@ -868,7 +870,7 @@ final class PanelTabStripTests: XCTestCase {
         XCTAssertEqual(tab.y, 0); XCTAssertEqual(tab.height, PanelTabStrip.height)
         let menu = try XCTUnwrap(s.hits.rect { $0 == .panelMenu })
         _ = s.pointerDown(center(menu))
-        XCTAssertEqual(s.dropdown.options.map(\.label), ["Import media…", "Hide panel"])
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["Import media…", "Add solid colour", "Add linear gradient", "Add radial gradient", "Hide panel"])
         s.dropdown.pick("import")
         XCTAssertEqual(imports, 1)
         let importButton = try XCTUnwrap(s.hits.rect { $0 == .importMedia })

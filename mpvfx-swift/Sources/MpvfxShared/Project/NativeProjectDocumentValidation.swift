@@ -40,6 +40,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         pushIssue(&issues, .invalidCanvas, "canvas", "Canvas must be an object")
     }
     validateNativeEasingPresets(input["easingPresets"], &issues)
+    let textStyleIds = validateNativeTextStyles(input["textStyles"], &issues)
 
     var assetsById: [String: NativeJSONValue] = [:]
     let kinds = ["video", "audio", "image", "element"]
@@ -79,6 +80,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         pushIssue(&issues, .invalidTrack, "sequence.durationFrames", "Sequence duration must be a positive integer")
     }
     validateNativeCaptionTrack(sequence["captions"], "sequence.captions", &issues)
+    validateNativeSequenceMarkers(sequence["markers"], &issues)
     validateNativeFill(input["compositionFill"], "compositionFill", allowInherit: false, assets: assetsById, &issues)
     guard let tracks = sequence["tracks"]?.arrayValue else {
         pushIssue(&issues, .invalidTrack, "sequence.tracks", "Tracks must be an array"); return issues
@@ -97,6 +99,11 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         if trackKind == nil { pushIssue(&issues, .invalidTrack, "\(trackPath).kind", "Track kind must be video, audio, or mixed") }
         for flag in ["hidden", "locked", "soloed"] where track[flag] != nil && track[flag]?.boolValue == nil {
             pushIssue(&issues, .invalidTrack, "\(trackPath).\(flag)", "Track \(flag) must be a boolean")
+        }
+        for (field, range) in [("mixerGainDB", -60.0...12.0), ("mixerPan", -1.0...1.0)] {
+            if let raw = track[field], raw.numberValue.map({ $0.isFinite && range.contains($0) }) != true {
+                pushIssue(&issues, .invalidTrack, "\(trackPath).\(field)", "Mixer value is outside its supported range")
+            }
         }
         if let lane = validateTrackLane(track["lane"], trackIndex, "\(trackPath).lane", &issues) {
             if displayLaneIds.contains(lane.displayTrack) {
@@ -162,6 +169,9 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["hidden"] != nil && clip["hidden"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).hidden", "Hidden must be a boolean")
             }
+            if clip["scaleRatioLocked"] != nil && clip["scaleRatioLocked"]?.boolValue == nil {
+                pushIssue(&issues, .invalidClip, "\(clipPath).scaleRatioLocked", "Scale ratio lock must be a boolean")
+            }
             if clip["preservesPitch"] != nil && clip["preservesPitch"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).preservesPitch", "Preserves pitch must be a boolean")
             }
@@ -216,8 +226,21 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             validateNativeClipMoves(clip["moves"], clipDuration: clip["durationFrames"]?.numberValue, "\(clipPath).moves", &issues)
             validateNativeClipPresentation(clip, clipPath, &issues)
             validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
+            if let generator = clip["generator"] {
+                let path = "\(clipPath).generator"
+                validateNativeFill(generator, path, allowInherit: false, assets: assetsById, &issues)
+                if assetKind != "element" || clip["text"] != nil {
+                    pushIssue(&issues, .invalidClip, path, "Generators need an element clip without text")
+                }
+                if generator["v"]?.numberValue == 1, let kind = generator["kind"]?.stringValue,
+                   NativeFill.clipKinds.contains(kind), !["color", "gradient"].contains(kind) {
+                    pushIssue(&issues, .invalidFill, path, "Generators support solid colours and gradients")
+                }
+            }
             validateNativeFill(clip["fill"], "\(clipPath).fill", allowInherit: true, assets: assetsById, &issues)
+            validateNativeClipBeats(clip, asset, clipPath, &issues)
             validateNativeClipNarration(clip["narration"], assetKind: asset == nil ? nil : assetKind, "\(clipPath).narration", &issues)
+            validateNativeTextStyleLink(clip, textStyleIds, clipPath, &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }

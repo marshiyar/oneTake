@@ -166,6 +166,7 @@ mpvfx_hresult mpvfx_wasapi_capture_stop(MpvfxWasapiCapture *c);
 mpvfx_hresult mpvfx_wasapi_capture_read(MpvfxWasapiCapture *c, float *out, uint32_t max_frames, uint32_t timeout_ms, uint32_t *got);
 /// Packets the device flagged as a data discontinuity (audio lost between two packets).
 mpvfx_hresult mpvfx_wasapi_capture_discontinuities(MpvfxWasapiCapture *c, uint64_t *count);
+mpvfx_hresult mpvfx_wasapi_capture_latency(MpvfxWasapiCapture *c, int64_t *ticks);
 void mpvfx_wasapi_capture_close(MpvfxWasapiCapture *c);
 
 // MARK: Speech recognition (SAPI 5, in-process, from a WAV file)
