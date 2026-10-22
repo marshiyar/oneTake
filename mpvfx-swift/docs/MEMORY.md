@@ -15,7 +15,8 @@ big cache. It was thousands of small buffers that were never freed:
 
 Linux never showed this because Foundation there has no autorelease pools; the same code freed each chunk at once.
 
-The app no longer runs FFmpeg: the in-house media engine (a prebuilt library loaded in-process, `binaries.lock`) hands decoded frames
+The app no longer runs FFmpeg: the in-house media engine (a prebuilt library loaded in-process, `binaries.lock`;
+media 0.2.0, keyframes 1.0.0 at this revision) hands decoded frames
 and samples over in memory, so no pipe is read any more. The pool and budget rules below still apply to every long
 background loop.
 
