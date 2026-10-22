@@ -755,8 +755,9 @@ jobs:
     needs: [changes, plan]
     # Owner ruling 2026-10-22: no macOS in CI at all — no GitHub-hosted runs, no hand-off to the
     # runner pool. The owner builds and tests macOS locally. Jobs stay defined so workflow-lint's
-    # gate-coverage still sees ci-ok waiting for every job; they always skip.
-    if: false
+    # gate-coverage still sees ci-ok waiting for every job. Re-enable by setting the MACOS_IN_CI
+    # repository variable to 'true' (unset or anything else skips both jobs).
+    if: vars.MACOS_IN_CI == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -802,8 +803,9 @@ jobs:
     # Owner ruling 2026-10-22: no macOS in CI at all. The owner builds and tests macOS locally
     # (`sh packaging/macos/package.sh dist`, docs/PACKAGING.md); mpvfx-macos.yml stays for hand runs.
     # Jobs stay defined so workflow-lint's gate-coverage still sees ci-ok waiting for every job.
+    # Re-enable by setting the MACOS_IN_CI repository variable to 'true'.
     needs: [changes, checks, macos-runners]
-    if: false
+    if: vars.MACOS_IN_CI == 'true'
     uses: ./.github/workflows/mpvfx-macos.yml
     secrets: inherit   # only the optional Apple signing secrets; unset, the disk image is ad-hoc signed
     with:
