@@ -58,6 +58,17 @@ final class AudioFxRackTests: XCTestCase {
     }
     func texts(_ c: PanelMeasureCanvas) -> [String] { c.texts.map(\.0) }
 
+    func testUpdateCurrentSoundIsOneUndoStep() throws {
+        let old = try AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"highpass","id":"n1"},{"type":"compressor","id":"n2"}]}"#)
+        let (editor, panel) = try fixture(old)
+        XCTAssertTrue(texts(draw(panel)).contains("Update to current sound"))
+        try press(panel, .button("fx:update-sound"))
+        XCTAssertEqual(chain(editor), old.updatedSound())
+        XCTAssertFalse(texts(draw(panel)).contains("Update to current sound"))
+        XCTAssertTrue(editor.undo())
+        XCTAssertEqual(chain(editor), old)
+    }
+
     func testRackRowsReadLikeTheStudio() throws {
         let (_, p) = try fixture()
         let t = texts(draw(p))
