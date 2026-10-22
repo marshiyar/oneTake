@@ -85,7 +85,7 @@ extension InspectorPanel {
         InspectorCustomRow(id: "3d:toggle", height: 24, draw: { [weak self] c, r, panel in
             guard let self else { return }
             let hot = panel.hovered == .custom("3d:toggle", 0)
-            PanelDraw.text(c, "3D TRANSFORM", in: CanvasRect(x: r.x, y: r.y, width: r.width - 16, height: r.height),
+            PanelDraw.text(c, "3D transform", in: CanvasRect(x: r.x, y: r.y, width: r.width - 16, height: r.height),
                            font: PanelTheme.font(11, .medium), color: hot ? PanelTheme.text2 : PanelTheme.inspectorText)
             let caret = CanvasRect(x: r.maxX - 9, y: r.y + (r.height - 9) / 2, width: 9, height: 9)
             (self.transform3DOpen ? PanelIcon.groupCaretDown : PanelIcon.groupCaretRight).draw(c, in: caret, color: hot ? PanelTheme.text2 : PanelTheme.inspectorText)
