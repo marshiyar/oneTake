@@ -25,7 +25,9 @@ The grade is one entry of the clip's `effects` array (`NativeClipEffect`):
 - The stylize effects are not separate effect entries: they are the `effects` object **inside** the grade.
 - Any other `effectId` on a clip is kept in the document and listed in the inspector's Clip effects group, but
   neither renderer draws it, and export refuses a clip that has one enabled (`exportSupportsEffect`).
-- Grades are not keyframed: a clip has one grade for its whole length. Grain, film dust, tape damage, glitch and
+- Grade values can be keyframed: Amount, the Primary values, the tonal wheels, Vignette, Grain and each stylize
+  amount are `grade.*` parameter tracks (`NativeGradeParameters.swift`), evaluated per frame in preview and
+  export; a grade with no keys holds its values for the clip's whole length. Grain, film dust, tape damage, glitch and
   waving hatch lines move with the clip's timeline time (`isTimeVarying`), seeded per clip (`colorGradeSeed`,
   FNV-1a of the clip key).
 
