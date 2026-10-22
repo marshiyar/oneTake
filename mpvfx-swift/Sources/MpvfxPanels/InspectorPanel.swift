@@ -30,7 +30,14 @@ public final class InspectorPanel {
 
     public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch() } } }
     /// Selected clip ids (the timeline/stage selection).
-    public var selection: [String] = [] { didSet { if selection != oldValue { cancelLookMatch() } } }
+    public var selection: [String] = [] {
+        didSet {
+            if selection != oldValue {
+                endWheelKeyHold()
+                cancelLookMatch()
+            }
+        }
+    }
     /// Presentation choice; the resulting positions are ordinary saved document parameters.
     public var alignmentReference = TimelineAlignmentReference.frame
     /// Playhead (composition seconds).
@@ -95,6 +102,8 @@ public final class InspectorPanel {
     }
     public var hovered: Hit?
     public private(set) var field: PanelTextField?
+    var sliderInputError: String?
+    var sliderKeySequence: (key: String, selection: [String], time: Double, code: EditorKey.Code, token: String)?
     /// The body's scroll (wheel glides, trackpad 1:1, clamped) and its scrollbar fade.
     public internal(set) var bodyScroller = PanelScroller()
     public internal(set) var bodyScroll: Double {
@@ -146,7 +155,11 @@ public final class InspectorPanel {
     public internal(set) var cubeDrag: CubeDrag?
     public internal(set) var cubeBox: CanvasRect?
     /// Keyboard focus (Tab / ⇧Tab, Enter / Space) and its ring.
-    public var focus = PanelFocus<Hit>()
+    public var focus = PanelFocus<Hit>() {
+        didSet {
+            if focus.current != oldValue.current || focus.visible != oldValue.visible { endWheelKeyHold() }
+        }
+    }
     /// Groups whose header (and body, when open) play the 120 ms entrance (`hf-flat-group-enter`: opacity 0→1,
     /// translateY -4→0, ease-out): the one just toggled and the one it closed.
     public private(set) var enteringGroups: [String] = []
@@ -587,7 +600,15 @@ public final class InspectorPanel {
     @discardableResult
     public func commitField() -> Bool {
         guard let f = field else { return false }
+        if number(f.key) == nil, let s = slider(f.key), f.draft != f.original {
+            guard let value = sliderInput(f.draft, s), value.isFinite else {
+                sliderInputError = f.key
+                return true
+            }
+            s.commit(max(s.min, min(s.max, value)))
+        }
         field = nil
+        sliderInputError = nil
         if f.draft != f.original { number(f.key)?.commit(f.draft) }
         return true
     }
@@ -600,6 +621,7 @@ public final class InspectorPanel {
         let hit = hits.hit(p)
         if case .field(let k)? = hit, field?.key == k { return true }
         commitField()
+        if field != nil { return true }
         guard let hit else { return true }
         if !pressValue(hit, p, time: time) && !pressControl(hit, p) { pressChrome(hit, p) }
         return true
@@ -618,8 +640,12 @@ public final class InspectorPanel {
     }
 
     func openField(_ k: String) {
-        guard let n = number(k) else { return }
-        field = PanelTextField(key: k, value: n.text, readOnly: n.readOnly)
+        sliderInputError = nil
+        if let n = number(k) {
+            field = PanelTextField(key: k, value: n.text, readOnly: n.readOnly)
+        } else if let s = slider(k), !s.disabled {
+            field = PanelTextField(key: k, value: s.display)
+        }
     }
 
     func startScrub(_ k: String, at p: CanvasPoint) {
@@ -759,10 +785,22 @@ public final class InspectorPanel {
         return true
     }
 
+    /// End a physical wheel/level arrow hold on release, even on hosts without repeat flags.
+    public func keyUp(_ key: EditorKey) {
+        if grade.wheelKeyCode == key.code { endWheelKeyHold() }
+    }
+
+    private func endWheelKeyHold() {
+        grade.wheelKeyCode = nil
+        grade.wheelKeyControl = nil
+        grade.wheelKeyHistory = nil
+    }
+
     /// Keys go to a focused field first. Tab moves to the next field of the open group.
     public func keyDown(_ k: EditorKey) -> Bool {
         if k.code == .tab {   // Tab from a field commits it, then focus moves on
             if field != nil { commitField(); onEdited?() }
+            if field != nil { return true }
             let moved = focus.move(hits, forward: !k.shift) { [unowned self] in self.isFocusable($0) }
             if moved { revealFocus() }
             onEdited?(); return moved
@@ -771,7 +809,7 @@ public final class InspectorPanel {
         guard var f = field else { return unfocusedKey(k) }
         switch f.key(k) {
         case .commit: field = f; commitField(); onEdited?(); return true
-        case .cancel: field = nil; onEdited?(); return true
+        case .cancel: field = nil; sliderInputError = nil; onEdited?(); return true
         case .editing: field = f; onEdited?(); return true
         case .none: return false
         }
@@ -791,7 +829,7 @@ extension InspectorPanel {
     /// What Tab stops on: buttons, toggles, segments, headers, fields, the effect controls and bespoke-row parts.
     static func focusable(_ h: Hit) -> Bool {
         switch h {
-        case .body, .scrollbar, .scrub, .slider: false
+        case .body, .scrollbar, .scrub: false
         default: true
         }
     }
@@ -807,6 +845,7 @@ extension InspectorPanel {
     /// Grade's own keys.
     func unfocusedKey(_ k: EditorKey) -> Bool {
         if let handled = pickerKey(k) { return handled }
+        if sliderKey(k) { return true }
         if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.keyPress {
             if handler(part, k) { onEdited?(); return true }
         }

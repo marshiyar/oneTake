@@ -34,7 +34,7 @@ extension InspectorPanel {
             display: "\(PanelFormat.number(width, decimals: 0))px", format: { "\(PanelFormat.number($0.rounded(), decimals: 0))px" },
             tier: width != 0 ? .explicitCustom : .default,
             commit: { [weak self] v in self?.edited(editor.setClipStrokeWidth(clipId: id, v), label: "Edit style") },
-            reset: { [weak self] in self?.edited(editor.setClipStrokeWidth(clipId: id, 0), label: "Edit style") }))))
+            reset: { [weak self] in self?.edited(editor.setClipStrokeWidth(clipId: id, 0), label: "Edit style") }, step: 1))))
         let styleNow = st.strokeStyle ?? "none"
         rows.append(.init(.segmented(.init(key: "strokeStyle", label: "Stroke style",
             options: NativeClipStyle.strokeStyles.map { (key: $0, label: $0.prefix(1).uppercased() + $0.dropFirst(), active: $0 == styleNow) },

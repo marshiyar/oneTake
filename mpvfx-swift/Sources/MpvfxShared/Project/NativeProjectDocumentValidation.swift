@@ -235,6 +235,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                 }
             }
             validateNativeFill(clip["fill"], "\(clipPath).fill", allowInherit: true, assets: assetsById, &issues)
+            validateNativeClipBeats(clip, asset, clipPath, &issues)
             validateNativeClipNarration(clip["narration"], assetKind: asset == nil ? nil : assetKind, "\(clipPath).narration", &issues)
             validateNativeTextStyleLink(clip, textStyleIds, clipPath, &issues)
             if clip["text"] != nil, assetKind != "element" {
