@@ -444,7 +444,7 @@ public final class InspectorPanel {
         PanelDraw.text(c, "×", in: clear, font: PanelTheme.font(14), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.inspectorText, align: .center)
         hits.add(clear, .headerClear)
         PanelDraw.text(c, "Align visual clips below, or select one to edit properties.", in: CanvasRect(x: row.x, y: row.maxY + 4, width: row.width, height: 16),
-                       font: PanelTheme.font(10), color: PanelTheme.text4)
+                       font: PanelTheme.font(11), color: PanelTheme.text4)
     }
 
     func drawGroupHeader(_ c: CanvasContext, _ r: CanvasRect, _ g: InspectorGroup, open: Bool) {

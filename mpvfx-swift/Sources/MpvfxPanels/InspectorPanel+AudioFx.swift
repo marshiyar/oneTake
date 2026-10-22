@@ -319,7 +319,7 @@ extension InspectorPanel {
     /// A module card: `rounded-[4px] border border-l-2 border-panel-border-input` with the tint on the left edge.
     static func afxModuleFrame(_ c: CanvasContext, _ box: CanvasRect, tint: CanvasColor, alpha: Double) {
         let r = box.snapped
-        c.strokeRoundedRect(r.insetBy(0.5), radius: 4, PanelTheme.inspectorControl, width: 1)
+        c.strokeRoundedRect(r.insetBy(0.5), radius: 4, PanelTheme.panelBorderInput.withAlpha(alpha), width: 1)
         c.withState {
             c.clip(.roundedRect(r, radius: 4))
             c.fillRect(CanvasRect(x: r.x, y: r.y, width: 2, height: r.height), tint.withAlpha(alpha))
