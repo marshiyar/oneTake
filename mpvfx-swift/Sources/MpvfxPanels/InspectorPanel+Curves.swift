@@ -248,7 +248,8 @@ extension InspectorPanel {
     static func drawDeltaAxis(_ c: CanvasContext, frame: CanvasRect, u: Double, saturation: Bool) {
         for k in 0..<72 {
             let t = (Double(k) + 0.5) / 72
-            let color = saturation ? CanvasColor(r: 1, g: 1 - t, b: 1 - t) : CanvasColor(r: t, g: t, b: t)
+            let color = saturation ? CanvasColor(ThemeTokens.curveRedPair.now).over(PanelTheme.white, opacity: t)
+                : PanelTheme.white.over(PanelTheme.black, opacity: t)
             c.fillRect(CanvasRect(x: frame.x + 1 + (8 + Double(k) * 2) * u, y: frame.y + 1 + 155.5 * u,
                                   width: 2 * u + 0.3, height: 3 * u), color)
         }
