@@ -36,6 +36,7 @@ extension EditorSession {
         region.media = makeTimelineMediaFeeder()
         installEditHistory(userData: userData)
         ensurePlayTimer = afterKey
+        router.globalVoiceKey = { [weak self] key in self?.voiceKey(key) ?? false }
         let ti = TimelineInput(self, region: region, afterKey: afterKey), pi = PlayerInput(self, afterKey: afterKey)
         shellInputs = [ti, pi]
         router.panes[.player] = ShellPane(input: pi) { [weak self] c, size in self?.drawPlayer(c, size: size) }

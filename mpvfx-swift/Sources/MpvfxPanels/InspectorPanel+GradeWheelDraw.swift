@@ -35,7 +35,8 @@ extension InspectorPanel {
         if panel.focus.visible, panel.focus.current == .custom(id, i) { PanelDraw.focusRing(c, wr, radius: wr.width / 2) }
         let lt = l.levelRect(cell)
         Self.drawLevel(c, lt, level: w.level)
-        panel.addHit(lt, .custom(id, 10 + i))
+        // The drawn level is a thin track; its hit target stays 24 pt tall like the reset glyph's.
+        panel.addHit(CanvasRect(x: lt.x, y: lt.y - 2, width: lt.width, height: lt.height + 4), .custom(id, 10 + i))
         if panel.focus.visible, panel.focus.current == .custom(id, 10 + i) { PanelDraw.focusRing(c, lt, radius: 3) }
         for (j, f) in GradeWheelSet.fields.enumerated() {
             drawWheelField(c, l.fieldRect(cell, j), key: set.fieldKey(set.keys[i], f.key), label: f.label,

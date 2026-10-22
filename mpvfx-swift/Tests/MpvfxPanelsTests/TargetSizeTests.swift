@@ -256,8 +256,9 @@ final class TargetSizeTests: XCTestCase {
     }
 
     /// Codex review of #152: at every right-panel width, down to `PanelFit.minRight`, a keyed slider row (opacity,
-    /// volume) keeps its track a pointer target wide, between its label and its value: the label ends before the
-    /// track starts and the value text starts after the track ends, so the knob never draws over either.
+    /// volume) keeps its track a pointer target wide. Beside the track the label ends before the track starts;
+    /// stacked at narrow widths the label sits on its own line above the full-width track. Either way the value
+    /// text starts after the track ends, so the knob never draws over either.
     func testKeyedSliderRowsKeepTheirTrackClearAtEveryWidth() throws {
         for width in [409.0, 364, 320, PanelFit.minRight] {
             for (group, key, label) in [("style", "opacity", "Opacity"), ("media", "volume", "Volume")] {
@@ -269,9 +270,15 @@ final class TargetSizeTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(track.width, Self.minimum, "\(key) track @\(width)")
                 let row = { (t: (String, CanvasPoint, CanvasFont, CanvasColor)) in abs(t.1.y - track.midY) < track.height / 2 }
                 let texts = c.texts.filter { row($0) && $0.1.x >= 0 && $0.1.x < width }
-                let drawnLabel = try XCTUnwrap(texts.first { $0.0 == label }, "\(key) label drawn in full @\(width)")
-                XCTAssertLessThanOrEqual(drawnLabel.1.x + c.measureText(label, font: drawnLabel.2).width, track.x, "\(key) label clear of the track @\(width)")
-                let value = try XCTUnwrap(texts.first { $0.1.x > track.x && $0.1.x < stopwatch.x }, "\(key) value drawn @\(width)")
+                let drawnLabel = try XCTUnwrap(c.texts.first { $0.0 == label && $0.1.x >= 0 && $0.1.x < width }, "\(key) label drawn in full @\(width)")
+                if row(drawnLabel) {
+                    XCTAssertLessThanOrEqual(drawnLabel.1.x + c.measureText(label, font: drawnLabel.2).width, track.x, "\(key) label clear of the track @\(width)")
+                } else {
+                    XCTAssertLessThan(drawnLabel.1.y, track.y, "\(key) label above the stacked track @\(width)")
+                }
+                // Stacked at narrow widths the keyframe gutter stays on the label line, so the value sits right of
+                // the stopwatch column instead of left of it.
+                let value = try XCTUnwrap(texts.first { $0.1.x > track.x && (row(drawnLabel) ? $0.1.x < stopwatch.x : true) }, "\(key) value drawn @\(width)")
                 XCTAssertGreaterThanOrEqual(value.1.x, track.maxX, "\(key) value \(value.0) clear of the track @\(width)")
             }
         }

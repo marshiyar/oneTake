@@ -38,6 +38,13 @@ reason = "Pinned to an untagged commit of compnerd/gha-setup-swift main; no vers
 
 [[allow]]
 rule = "no-version-comment"
+workflow = "mpvfx-ci.yml"
+job = "windows-build"
+count = 1
+reason = "Pinned to an untagged commit of compnerd/gha-setup-swift main; no version exists to name (see the comment above)."
+
+[[allow]]
+rule = "no-version-comment"
 workflow = "bench.yml"
 job = "windows"
 count = 1

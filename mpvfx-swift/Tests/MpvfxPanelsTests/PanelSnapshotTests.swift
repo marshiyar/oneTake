@@ -212,10 +212,10 @@ final class PanelSnapshotTests: XCTestCase {
     func testGradeCurveLinesShowInLightMode() throws {
         Theme.setMode(.light); defer { Theme.setMode(.dark) }
         for scale in [1.0, 2.0] {
-            let r = try Self.rightFixture(open: "grade", h: 1900)
+            let r = try Self.rightFixture(open: "grade", h: 3000)
             for tab in InspectorPanel.curveTabs {
                 r.inspector.grade.curveTab = tab.key
-                let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 1900, scale: scale) { r.draw($0, size: CanvasSize(409, 1900)) }
+                let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 3000, scale: scale) { r.draw($0, size: CanvasSize(409, 3000)) }
                 let box = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:curve", 0) }).insetBy(6)
                 // Default curves: Master/R/G/B the identity diagonal, hue curves flat at 0 (mid-height).
                 let lineY = tab.hue ? box.midY : box.maxY - 0.375 * box.height
@@ -520,8 +520,8 @@ final class PanelSnapshotTests: XCTestCase {
                 }
                 r.inspector.focus.visible = false
                 let t = snapshot(tag, w: w, h: height, scale: 1) { r.draw($0, size: size) }
-                // Rotation sits on a key: the diamond is filled mint at the centre of its own target.
-                assertPixel(t, diamond.midX, diamond.midY, PanelTheme.mint, tol: 12)
+                // Rotation sits on a key: the diamond is its kind's mark (#201), transform here.
+                assertPixel(t, diamond.midX, diamond.midY, CanvasColor(ThemeTokens.keyframeTransformPair.value(mode)), tol: 12)
             }
             // The slider rows with keyframe controls (opacity, volume) at the 1440 × 900 width and the narrowest panel.
             let widths = [(PanelFit.defaults(1440).right, "1440x900"), (PanelFit.minRight, "min\(Int(PanelFit.minRight))")]
