@@ -126,8 +126,11 @@ class Workflow(unittest.TestCase):
         self.assertIn("macos_gate.py classify", mac["run"])
 
     def test_macos_code_builds_without_the_label(self):
+        # Owner ruling 2026-10-22: no macOS in CI at all. Both jobs stay defined but always
+        # skip; the owner builds macOS locally. macos_code is still published (above) for
+        # documentation, but nothing consumes it.
         for name in ("macos-runners", "macos"):
-            self.assertIn("needs.changes.outputs.macos_code == 'true'", self.jobs[name]["if"], name)
+            self.assertIs(self.jobs[name]["if"], False, name)
 
     def test_ci_ok_fails_only_on_a_red_macos_build_and_never_waits(self):
         # Owner ruling 2026-10-21: CI never holds a merge back waiting for the remote macOS build.

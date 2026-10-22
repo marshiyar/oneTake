@@ -81,7 +81,8 @@ class Plan(unittest.TestCase):
         self.assertEqual(self.jobs["plan"]["outputs"]["runners_ok"], "${{ steps.app.outputs.installed }}")
         macos = self.jobs["macos-runners"]
         self.assertIn("plan", macos["needs"])
-        self.assertIn("needs.plan.outputs.runners_ok == 'true'", macos["if"])
+        # Owner ruling 2026-10-22: no macOS in CI at all, so the hand-off never runs.
+        self.assertIs(macos["if"], False)
 
     def test_the_installation_check_never_fails_and_says_false_without_secrets(self):
         with open(os.path.join(ROOT, ".github", "ci", "runners_app_installed.sh"), encoding="utf-8") as f:
