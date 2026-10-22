@@ -128,7 +128,8 @@ extension SessionPanels {
                 guard let self, self.projectId == projectId else { return }
                 switch result {
                 case .success(let list): self.renders.history = list; self.renders.loadError = nil
-                case .failure(let e): self.renders.loadError = "Couldn't load render history (\(e))."
+                case .failure(let e):
+                    self.renders.loadError = (e as? DesktopError)?.message ?? "Couldn't load render history."
                 }
                 self.publishRenders()
             }
