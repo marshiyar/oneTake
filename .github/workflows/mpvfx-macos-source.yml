@@ -11,6 +11,10 @@ name: mpvfx-macos-source
       full_tests:
         type: boolean
         default: false
+      shards:
+        description: Comma list of test shards the changed files can affect (module_shards.py); empty runs every shard
+        type: string
+        default: ''
       source_repository:
         type: string
         required: true
@@ -49,15 +53,26 @@ jobs:
         ALL: ${{ steps.keys.outputs.all }}
         FULL: ${{ github.event_name == 'schedule' || inputs.full_tests }}
         HITS: false,false,false,false
+        MODULE_SHARDS: ${{ inputs.shards }}
       run: |
         python3 -I -B - <<'PY'
         import json, os
         shards, hits = json.loads(os.environ["ALL"]), os.environ["HITS"].split(",")
         assert len(hits) == len(shards), f"{len(shards)} shards, {len(hits)} lookups"
         full = os.environ["FULL"] == "true"
+        raw = os.environ.get("MODULE_SHARDS", "")
+        only = set(raw.split(",")) if raw else None
         run = [s for s, hit in zip(shards, hits) if full or hit != "true"]
-        for s in shards:
-            print(f"::notice::macos shard {s['shard']}: {'runs' if s in run else 'passed before on these exact inputs, not rerun'}")
+        if not full and only is not None:
+            run = [s for s in run if s["shard"] in only]
+        for s, hit in zip(shards, hits):
+            if s in run:
+                reason = "runs"
+            elif hit == "true" and (full or only is None or s["shard"] in only):
+                reason = "passed before on these exact inputs, not rerun"
+            else:
+                reason = "no changed file can affect it, not run"
+            print(f"::notice::macos shard {s['shard']}: {reason}")
         with open(os.environ["GITHUB_OUTPUT"], "a") as out:
             out.write(f"shards={json.dumps(run)}\n")
         PY
@@ -118,6 +133,7 @@ jobs:
     - name: Record the pass for these inputs
       run: cp "$RUNNER_TEMP/test.log" .test-pass
   package:
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
     runs-on: xcode-27
     timeout-minutes: 30
     defaults:

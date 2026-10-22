@@ -17,6 +17,8 @@ reproduce. You will get an acknowledgement, and a fix or an explanation, in the 
   code hidden in data files) and in the shipped installers (every binary's imports against forbidden sets and the
   recorded baseline, so a new import never ships unnoticed). Allow list with reasons: `.github/sentinel.toml`.
 - **`strip-check`**: every shipped binary is stripped.
+- **Docs checks**: `doc-refs` verifies that every path, link and issue reference in the tracked Markdown files
+  exists, and `doc-links` checks the external links weekly (see [.github/CHECKS.md](CHECKS.md)).
 - **Dependabot**: the GitHub Actions the workflows run, one grouped pull request a week.
 
 ## What the app does not do
