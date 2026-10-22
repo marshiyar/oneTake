@@ -41,7 +41,7 @@ final class TimelineZoomFitTests: XCTestCase {
     }
 
     func testFitShowsTheWholeSequenceAndNothingPastItsMargin() throws {
-        let c = try make()
+        let c = try Self.make()
         XCTAssertEqual(c.zoomMode, .fit)
         XCTAssertEqual(c.view.x(for: c.view.rulerEnd), Self.width - 2, accuracy: 1e-6, "end + margin at the right edge")
         XCTAssertLessThan(c.view.x(for: c.view.duration), Self.width - 2, "the sequence end is on screen")
@@ -51,14 +51,14 @@ final class TimelineZoomFitTests: XCTestCase {
         XCTAssertEqual(TimelineZoom.clamp(10, fit: 20), 100)
         XCTAssertEqual(TimelineZoom.next(false, mode: .fit, manual: 100, fit: 20), 100)
         XCTAssertEqual(TimelineZoom.pinch(deltaY: 500, mode: .manual, manual: 150, fit: 20), 100, "a pinch out stops at fit")
-        let c = try make()
+        let c = try Self.make()
         c.zoom(in: false); c.zoom(in: false)
         XCTAssertEqual(c.view.pixelsPerSecond, c.fitPixelsPerSecond, accuracy: 1e-9)
         XCTAssertGreaterThan(c.view.x(for: c.view.rulerEnd), c.view.x(for: c.view.duration), "room after the end to drop a clip")
     }
 
     func testButtonsAndKeysZoomAboutThePlayhead() throws {
-        let c = try make(playhead: 8)
+        let c = try Self.make(playhead: 8)
         let before = c.view.x(for: 8)
         c.zoom(in: true)
         XCTAssertEqual(c.view.x(for: 8), before, accuracy: 0.5, "+ keeps the playhead where it was")
@@ -69,7 +69,7 @@ final class TimelineZoomFitTests: XCTestCase {
     }
 
     func testAPlayheadOutOfViewZoomsAboutTheMiddleOfTheLanes() throws {
-        let c = try make(playhead: 0)
+        let c = try Self.make(playhead: 0)
         c.setZoom(percent: 800, anchorX: Self.width)          // scrolled to the end, playhead off the left edge
         XCTAssertLessThan(c.view.x(for: 0), TimelineLayout.contentOrigin)
         let middle = (TimelineLayout.contentOrigin + Self.width) / 2, t = c.view.time(forX: middle)
@@ -78,7 +78,7 @@ final class TimelineZoomFitTests: XCTestCase {
     }
 
     func testPointerZoomAnchorsAtThePointer() throws {
-        let c = try make(playhead: 1)
+        let c = try Self.make(playhead: 1)
         let t = c.view.time(forX: 900)
         c.scroll(dx: 0, dy: -60, x: 900, ctrl: true, shift: false)
         XCTAssertGreaterThan(c.view.pixelsPerSecond, c.fitPixelsPerSecond)
@@ -86,7 +86,7 @@ final class TimelineZoomFitTests: XCTestCase {
     }
 
     func testScrollingStopsAtTheRulerEnd() throws {
-        let c = try make()
+        let c = try Self.make()
         c.setZoom(percent: 400)
         c.scroll(dx: 1e6, dy: 0, x: 700, ctrl: false, shift: false)
         XCTAssertEqual(c.view.x(for: c.view.rulerEnd), Self.width, accuracy: 1e-6)
