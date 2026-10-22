@@ -67,9 +67,9 @@ extension InspectorPanel {
             let s = self.grade.qualifierDraft ?? secondary
             let (lo, hi) = channel.bounds(s)
             PanelDraw.text(c, channel.label, in: CanvasRect(x: r.x, y: r.y, width: 85, height: 16),
-                           font: PanelTheme.font(10), color: PanelTheme.text2)
+                           font: PanelTheme.font(11), color: PanelTheme.text2)
             PanelDraw.text(c, "\(channel.text(lo)) – \(channel.text(hi))", in: CanvasRect(x: r.x + 85, y: r.y, width: r.width - 85, height: 16),
-                           font: PanelTheme.mono(10), color: PanelTheme.text1, align: .right)
+                           font: PanelTheme.mono(11), color: PanelTheme.text1, align: .right)
             let track = CanvasRect(x: r.x + 12, y: r.y + 32, width: max(1, r.width - 24), height: 12)
             self.grade.qualifierTracks[id] = track
             let span = channel.domain.upperBound - channel.domain.lowerBound
