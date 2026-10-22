@@ -318,8 +318,8 @@ extension InspectorPanel {
         let hov = hovered == .keyframe(key)
         switch kf.state {
         case .onKey:
-            // On a key the diamond is the mint accent (docs/DESIGN.md "Tabs"); the ease variant stays visible.
-            TimelineKeyframeGlyph.draw(c, .init(shape: shape, ease: kf.ease, color: PanelTheme.mint), at: at, r: 5)
+            // On a key the diamond is the property kind's mark (#201), like the timeline's; the ease variant stays visible.
+            TimelineKeyframeGlyph.draw(c, .init(kf.kind, ease: kf.ease), at: at, r: 5)
         case .animated:
             TimelineKeyframeGlyph.drawOutline(c, .init(shape: shape, color: kf.kind.color.withAlpha(hov ? 1 : 0.75)), at: at, r: 5)
         case .none:

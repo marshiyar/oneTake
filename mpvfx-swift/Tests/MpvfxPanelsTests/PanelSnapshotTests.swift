@@ -520,8 +520,8 @@ final class PanelSnapshotTests: XCTestCase {
                 }
                 r.inspector.focus.visible = false
                 let t = snapshot(tag, w: w, h: height, scale: 1) { r.draw($0, size: size) }
-                // Rotation sits on a key: the diamond is filled mint at the centre of its own target.
-                assertPixel(t, diamond.midX, diamond.midY, PanelTheme.mint, tol: 12)
+                // Rotation sits on a key: the diamond is its kind's mark (#201), transform here.
+                assertPixel(t, diamond.midX, diamond.midY, CanvasColor(ThemeTokens.keyframeTransformPair.value(mode)), tol: 12)
             }
             // The slider rows with keyframe controls (opacity, volume) at the 1440 × 900 width and the narrowest panel.
             let widths = [(PanelFit.defaults(1440).right, "1440x900"), (PanelFit.minRight, "min\(Int(PanelFit.minRight))")]
