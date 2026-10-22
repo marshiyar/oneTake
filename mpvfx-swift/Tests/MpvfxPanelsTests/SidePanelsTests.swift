@@ -116,6 +116,8 @@ final class InspectorPanelTests: XCTestCase {
         XCTAssertEqual(p.groups.map(\.title), ["Transform", "Style", "Grade", "Effects", "Audio FX", "Media"])
         XCTAssertEqual(p.openGroupId, "layout")
         XCTAssertTrue(c.drawnStrings.contains("Rotation"))
+        XCTAssertTrue(c.drawnStrings.contains("3D transform"))
+        XCTAssertFalse(c.drawnStrings.contains("Roll"))
         let header = try XCTUnwrap(p.hits.rect { $0 == .group("media") })
         XCTAssertTrue(p.pointerDown(center(header)))
         XCTAssertEqual(p.openGroupId, "media")

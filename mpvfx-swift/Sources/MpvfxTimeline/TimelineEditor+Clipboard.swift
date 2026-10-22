@@ -139,7 +139,8 @@ public extension TimelineEditor {
         for t in document.sequence.tracks {
             for c in t.clips where ids.contains(c.id) {
                 let clip = TimelineClipboard.mapLuts(c) { TimelineClipboard.absolute($0, in: projectDirectory) }
-                items.append(.init(trackId: t.id, trackKind: t.kind, trackRow: order.firstIndex(of: t.id) ?? 0, clip: clip))
+                items.append(.init(trackId: t.id, trackKind: t.kind, trackRow: order.firstIndex(of: t.id) ?? 0, clip: clip,
+                                   resolvedText: resolvedText(c, document.textStyles ?? [])))
             }
         }
         if items.isEmpty { return nil }
@@ -259,6 +260,13 @@ public extension TimelineEditor {
         for item in board.items {
             let ti = d.sequence.tracks.firstIndex { $0.id == destination[item.trackId] }!
             var c = item.clip
+            if !sameProject, c.textStyle != nil {
+                guard let text = item.resolvedText else {
+                    return refuse("This text style is from a newer editor and cannot be pasted into another project")
+                }
+                c.text = text
+                c.textStyle = nil
+            }
             c.id = newIds[item.clip.id]!
             c.startFrame = base + (item.clip.startFrame - first)
             c.assetId = assetIds[item.clip.assetId]!
@@ -324,6 +332,9 @@ public struct TimelineClipboard: Equatable {
         /// The track's display row in the copied-from project.
         public var trackRow: Int
         public var clip: NativeProjectClip
+        /// Typography at copy time, independent of project style IDs. Cross-project paste detaches this snapshot;
+        /// same-project paste retains the live style link. Nil for an unsupported style that cannot be detached.
+        public var resolvedText: NativeClipText? = nil
     }
     public var projectId: String
     /// The copied-from project's folder (standardized path); nil when it had none.

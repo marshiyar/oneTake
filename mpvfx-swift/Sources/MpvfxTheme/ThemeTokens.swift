@@ -224,6 +224,10 @@ public enum ThemeTokens {
         ThemePair(0xFAFAFA, 0x09090B), ThemePair(0xE4E4E7, 0x27272A), ThemePair(0xA1A1AA, 0x4A4A52),
         ThemePair(0x71717A, 0x63636B), ThemePair(0x52525B, 0x8E8E96), ThemePair(0x3F3F46, 0xB4B4BB),
     ]
+    /// Inspector secondary text remains readable on inset, panel and raised field surfaces in both modes.
+    public static let inspectorTextPair = ThemePair(0xA1A1AA, 0x4A4A52)
+    /// Essential control edges: slider tracks/thumbs and field underlines, at least 3:1 on panel surfaces.
+    public static let inspectorControlPair = ThemePair(0x85858D, 0x72727A)
     public static let dangerPair = ThemePair(0xEF4444, 0xC81E1E)
     public static let mediaPair = ThemePair(0x00E3FF, 0x0A6F8A)
     public static let containerPair = ThemePair(0xF5A623, 0x955600)
@@ -311,6 +315,7 @@ public enum ThemeTokens {
     public static let scopeLuma = ThemeColor(0xE2E8F0), scopeRed = ThemeColor(0xF87171)
     public static let scopeGreen = ThemeColor(0x4ADE80), scopeBlue = ThemeColor(0x60A5FA)
     public static let scopeVector = ThemeColor(0x6EE7B7), scopeInk = ThemeColor(0xFFFFFF)
+    public static let scopeLabel = ThemeColor(0xA1A1AA)
     public static let scopeSkin = ThemeColor(0xFBBF24), scopeClip = ThemeColor(0xFF3B30)
     /// Timeline band edge colours (identity, both modes).
     public static let bandEdges: [ThemeColor] = [0x3CE6AC, 0x5BA6FF, 0xBE77FF, 0xFFB04D, 0xFF6799].map { ThemeColor($0) }
