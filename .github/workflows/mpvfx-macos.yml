@@ -5,6 +5,11 @@ name: mpvfx-macos
 # releases all platforms together (this workflow never publishes itself); also run by hand on any branch (Run
 # workflow), where "skip_tests" gives a packaging-only run (artifact only, never published).
 #
+# Cost rule: pull requests (and the merge queue) run the test shards only — never the package job, which is skipped
+# for them below. Disk images come from main, tags, the schedule and hand runs, or from the owner's machine
+# (`sh packaging/macos/package.sh dist adhoc` in mpvfx-swift/, docs/PACKAGING.md). The shards input narrows the
+# test run to the shards the pull request's files can affect (module_shards.py, via mpvfx-ci.yml).
+#
 # The suite runs as 4 test shards beside the package job (.github/ci/test-shards.py, the same shards as Linux and
 # Windows). A shard that passed is recorded under the hash of every file its tests are built from; while none of those
 # files change it is not run again. The nightly run and full_tests run every shard. Every job downloads the prebuilt
@@ -25,6 +30,10 @@ on:
       full_tests:
         type: boolean
         default: false
+      shards:
+        description: Comma list of test shards the changed files can affect (module_shards.py); empty runs every shard
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -55,6 +64,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Shards and their input keys
         id: keys
         run: |
@@ -94,15 +105,28 @@ jobs:
           ALL: ${{ steps.keys.outputs.all }}
           FULL: ${{ github.event_name == 'schedule' || inputs.full_tests }}
           HITS: ${{ steps.c0.outputs.cache-hit }},${{ steps.c1.outputs.cache-hit }},${{ steps.c2.outputs.cache-hit }},${{ steps.c3.outputs.cache-hit }}
+          # Leaf-only pull requests run only the shards their files can affect (mpvfx-ci
+          # passes module_shards.py's list in). Empty: every shard runs.
+          MODULE_SHARDS: ${{ inputs.shards }}
         run: |
           python3 -I -B - <<'PY'
           import json, os
           shards, hits = json.loads(os.environ["ALL"]), os.environ["HITS"].split(",")
           assert len(hits) == len(shards), f"{len(shards)} shards, {len(hits)} lookups"
           full = os.environ["FULL"] == "true"
+          raw = os.environ.get("MODULE_SHARDS", "")
+          only = set(raw.split(",")) if raw else None
           run = [s for s, hit in zip(shards, hits) if full or hit != "true"]
-          for s in shards:
-              print(f"::notice::macos shard {s['shard']}: {'runs' if s in run else 'passed before on these exact inputs, not rerun'}")
+          if not full and only is not None:
+              run = [s for s in run if s["shard"] in only]
+          for s, hit in zip(shards, hits):
+              if s in run:
+                  reason = "runs"
+              elif hit == "true" and (full or only is None or s["shard"] in only):
+                  reason = "passed before on these exact inputs, not rerun"
+              else:
+                  reason = "no changed file can affect it, not run"
+              print(f"::notice::macos shard {s['shard']}: {reason}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"shards={json.dumps(run)}\n")
           PY
@@ -123,6 +147,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           # Pinned, not "newest": the image's newest folder can hold a beta whose Metal Toolchain does not install.
@@ -179,6 +205,10 @@ jobs:
           key: macos27-debug-${{ github.ref_name }}-${{ github.sha }}
 
   package:
+    # Bundling runs only where a disk image is needed: main, tags, the nightly schedule and
+    # hand runs. Pull requests (and the merge queue) run the test shards only; the owner
+    # builds disk images locally with `sh packaging/macos/package.sh dist adhoc` (docs/PACKAGING.md).
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
     runs-on: xcode-27
     timeout-minutes: 30
     defaults:
@@ -187,6 +217,8 @@ jobs:
         working-directory: mpvfx-swift
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Xcode ${{ env.XCODE_VERSION }}
         run: |
           x=/Applications/Xcode_${XCODE_VERSION}.app

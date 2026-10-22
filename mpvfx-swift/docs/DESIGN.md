@@ -20,11 +20,13 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
    colour, which also carries the hover state. The name is drawn at 92% ink (4.5:1 on the fill), the timecode at
    72% (3:1).
 4. **Dense, not cramped.** 12 px body text, 11 px secondary text, 24–28 px rows. Empty space is a sign that a panel
-   has nothing to show; show a short hint there instead.
+   has nothing to show; show a short hint there instead. Design inspector values and hints have an 11 px floor;
+   section headings are 11.5 px below 12 px group titles. Essential slider tracks/thumbs and field underlines use
+   `inspectorControl` (dark #85858D, light #72727A); secondary text uses `inspectorText` (#A1A1AA / #4A4A52).
 5. **Time is timecode.** Times read `HH:MM:SS:FF` (or `MM:SS:FF` under an hour) in tabular figures, in the accent
    colour where the user can scrub them. The timeline ruler always reads `HH:MM:SS:FF`, so a minute never looks
    like an hour ([TIMELINE.md](TIMELINE.md)).
-6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; muted text at least 3:1.
+6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; all required secondary text (labels, hints, status and summaries) also reaches 4.5:1. Disabled text is exempt.
    Light mode keeps the same contrast; its structure is tuned separately (see "Light mode").
 
 ## Colour tokens (dark mode)
@@ -44,6 +46,10 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
 | `timelineSurface` | `#1D1D1D` | Timeline background, ruler and toolbar strip |
 | `timelineRow` | `#1D1D1D` | Track lanes (separated by `rowBorder` lines) |
 | `timelineGutter` | `#212121` | Track headers (label column) |
+| `trackControlIdle` | `#8C8C8C` | Track header lock, eye, speaker and solo while off (3:1 on the header) |
+| `trackControlHover` | `#2E2E2E` | Under a track header control in the pointer |
+| `trackTagText` | `#B4B4B4` | Track tag (`V1`, `A1`) of an untargeted track |
+| `trackTagOutline` | `#4A4A4A` | Outline of an untargeted track tag |
 | `viewport` | `#141414` | Around the picture in the viewer |
 | `studioAccent` | `#4C8DF0` | The accent: active tool, selection, focus, changed values |
 | `mint` | `#5A98F0` | The accent's line form: playhead, drop slots, timeline highlights |
@@ -76,18 +82,48 @@ text reaches 4.5:1 on every light surface. That caps how dark the shell can go (
 Each step is its own pull request, small enough to review on screenshots.
 
 1. **Palette** — the token values above, the editor defaulting to the dark appearance, and clips filled by media
-   kind. Light mode keeps working. *(this change)*
+   kind. Light mode keeps working. *(done)*
 2. **Flat panels** — remove the rounded cards and gaps between the shell's panels; 1 px black seams; tab strips
    with an underlined active tab and a panel menu button; a status line at the bottom of the window for hints.
+   *(done: flat panels with tab strips and a status line; see [FEATURES.md](FEATURES.md) §11)*
 3. **Clips show content** — frame thumbnails across video clips, waveforms across audio clips, the clip name in a
    18 px header strip, clip durations and the ruler as timecode. *(done)*
 4. **Track headers** — compact headers with a track tag (`V1`, `A1`) in the accent when targeted, lock, visibility,
-   mute and solo, 28 px tall by default.
+   mute and solo, 28 px tall by default. Left to right: tag, name, clip count; right-aligned FX and solo (audio
+   rows), eye or speaker, lock, each a 24 x 24 target in a column shared by every row. A control that is on is drawn
+   in `mint` and changes shape (filled lock and headphones, slashed eye, crossed speaker, filled tag), so its state
+   is never colour alone. Video tags count from the bottom (`V1` is the base layer), audio tags from the top. *(done)*
 5. **Inspector** — label in grey, value in the accent when changed, a stopwatch toggle for animated properties and
    the previous/add/next keyframe buttons on the same row. Labels are `text2`, not `text3`: 11 px labels are body
    text and `text3` stays under 4.5:1 on the inspector's inset. *(done)*
 6. **Timeline extras** — coloured markers on the ruler, timecode on the playhead, audio meters docked beside the
-   timeline.
+   timeline. *(partial: sequence markers and the Markers panel have landed, and the Mixer carries live per-track
+   meters; meters docked beside the timeline itself are still to come — see [TIMELINE.md](TIMELINE.md) and
+   [STATUS.md](STATUS.md))*
+
+## Words
+
+The editor speaks plainly, in the user's terms, and tells them what to do next.
+
+1. **Errors say what failed and what to do.** A message never shows a raw Swift error (`"\(error)"` prints its
+   debug form, such as `DesktopError(code: …, message: …)`); it uses the error's own message, or a sentence the user
+   can act on.
+2. **One ellipsis character.** Write "…" (U+2026), never three full stops: "Search assets…", "Rendering…".
+3. **"…" on a command that asks for more before it acts** (opens a dialog, a file picker or a form): "Settings…",
+   "Import media…", "Save as…". A title or a command that acts at once has none.
+4. **Sentence case in the panels** ("Import media", "Remove silence from selected video"); the macOS menu bar keeps
+   the platform's title case ("Close Window").
+
+## Accessibility floors
+
+- **Target size** (WCAG 2.2 SC 2.5.8, <https://www.w3.org/TR/WCAG22/#target-size-minimum>, read 2026-10-21): every
+  pointer target is at least 24 × 24 pt, or spaced so a 24 pt circle on its centre touches no other target. A hit
+  rect may be larger than the glyph it draws. The inspector's keyframe controls (stopwatch, previous, diamond, next)
+  are four 24 pt squares laid edge to edge with each glyph centred, so none of them overlaps the next; a value's
+  reset target is a 24 pt square ending 3 pt past its glyph.
+- **Non-text contrast** (WCAG 2.2 SC 1.4.11, <https://www.w3.org/TR/WCAG22/#non-text-contrast>, read 2026-10-21):
+  the focus ring, selected and active states, signal colours and field outlines reach 3:1 against the surfaces next
+  to them.
 
 ## Layout grid
 
@@ -135,5 +171,24 @@ Media) in the `.strip` style, and the tab rows inside a panel (curve modes, scop
 
 - Unit tests: `VisualSpecTests` (this table, single accent, contrast) and `ThemeTokensTests` (light mode, no raw
   colours outside the tokens, no colour captured once).
+- `NonTextContrastTests` (focus ring, states and field outlines at 3:1), `UICopyTests` (the rules under "Words":
+  raw errors as a ratchet that only shrinks, the one-character ellipsis) and `TargetSizeTests` (MpvfxPanelsTests: the
+  hit regions of the sidebar, inspector groups, Renders tab and Settings card at the default window widths, both
+  appearances). Each keeps today's known findings in a list in the test that may only shrink: fix the UI, then
+  remove the entry; never add one to make a change pass.
 - Screenshots: the screenshot bot posts before/after images on each pull request that touches the UI; a reviewer
   compares them against the principles above.
+
+### Design tab wording (#186)
+
+Control labels, toggles, section headings and disclosure headings use sentence case. Preserve established
+abbreviations (ASCII, CRT, LUT, RGB, FX) and coordinate axes (X, Y, Z). Named looks are proper names, so their
+catalog spelling (for example Warm Daylight) also appears in group summaries. Never change document keys to
+match display wording. The primary and secondary correction label is Temperature; both retain `temperature`.
+
+Align, case, style and crop reset draw vector icons from `PanelIcon`. Each option's word label supplies both its
+hover tooltip and its native accessibility name. Group summaries use the 11 px label font and `text3`, including
+position/dimensions (`X 0 · Y 0 · 640 × 360`), fill/opacity, and the human grade preset name.
+
+`python3 scripts/check-design-wording.py` scans Design display-label literals and rejects title case in
+multi-word controls. It is run by `scripts/check.sh`; named preset catalog entries are exempt.

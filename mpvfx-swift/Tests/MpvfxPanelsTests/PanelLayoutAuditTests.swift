@@ -219,13 +219,13 @@ final class PanelLayoutAuditTests: XCTestCase {
         }
     }
 
-    /// Issue #154: at 280 pt the "Ease" label ends before the first option.
-    func testEaseLabelEndsBeforeItsOptionsAtTheMinimumWidth() throws {
+    /// Issue #154: at 280 pt the "Easing…" button sits under its heading, clear of it (the Ease row it replaced is gone).
+    func testEasingButtonIsClearOfItsHeadingAtTheMinimumWidth() throws {
         let (r, c) = try Self.panel(clip: "clip:a", group: "media", width: PanelFit.minRight)
-        let label = try XCTUnwrap(Self.textBoxes(c).first { $0.0 == "Ease" })
-        let options = r.inspector.hits.regions.filter { if case .segment("easing", _) = $0.action { return true }; return false }
-        XCTAssertEqual(options.count, 6)
-        for o in options { XCTAssertFalse(Self.overlap(label.1, o.rect), "Ease label \(label.1) under option \(o.action) \(o.rect)") }
+        let heading = try XCTUnwrap(Self.textBoxes(c).first { $0.0.lowercased() == "keyframe easing" }, "texts: \(Self.textBoxes(c).map(\.0))")
+        let button = try XCTUnwrap(Self.textBoxes(c).first { $0.0 == "Easing…" }, "texts: \(Self.textBoxes(c).map(\.0))")
+        XCTAssertFalse(Self.overlap(heading.1, button.1), "heading \(heading.1) over button \(button.1)")
+        XCTAssertTrue(r.inspector.hits.regions.contains { if case .button("openEasing") = $0.action { return true }; return false })
     }
 
     // MARK: The rules on hand-made inputs
@@ -251,6 +251,9 @@ final class PanelLayoutAuditTests: XCTestCase {
             switch row.kind {
             case .pair(_, let a, let b): return a.key == k || b.key == k
             case .quad(let ns): return ns.contains { $0.key == k }
+            // A colour field's value starts after its 24 pt swatch target (the two partition the row so they do
+            // not overlap): the value, not the row edge, is the control's start.
+            case .number(let n): return n.key == k && n.swatch != nil
             default: return false
             }
         }

@@ -46,7 +46,7 @@ private func checkNode(_ node: DockNode, parentAxis: DockAxis?, isRoot: Bool, fi
 
 final class DockRegistryTests: XCTestCase {
     func testRegisterAPanelWithIdTitleDefaultDockAndMinimumSize() throws {
-        var r = DockRegistry.editor
+        var r = DockRegistry.corePanels
         try r.register(DockPanelSpec(id: "easing", title: "Easing", defaultDock: .right, minSize: CanvasSize(240, 160)))
         let spec = try XCTUnwrap(r.spec("easing"))
         XCTAssertEqual(spec.title, "Easing")
@@ -57,7 +57,7 @@ final class DockRegistryTests: XCTestCase {
     }
 
     func testInvalidRegistrationsAreTypedErrors() {
-        var r = DockRegistry.editor
+        var r = DockRegistry.corePanels
         func attempt(_ spec: DockPanelSpec) -> DockRegistryError? {
             do { try r.register(spec); return nil } catch let e as DockRegistryError { return e } catch { return nil }
         }
@@ -71,11 +71,11 @@ final class DockRegistryTests: XCTestCase {
         for size in [CanvasSize(.nan, 1), CanvasSize(-1, 1), CanvasSize(1, .infinity), CanvasSize(5000, 1)] {
             XCTAssertEqual(attempt(DockPanelSpec(id: "x", title: "T", defaultDock: .left, minSize: size)), .invalidSize("x"))
         }
-        XCTAssertEqual(r, DockRegistry.editor, "a refused registration adds nothing")
+        XCTAssertEqual(r, DockRegistry.corePanels, "a refused registration adds nothing")
     }
 
     func testPreviewAndTimelineAreNotClosable() {
-        let r = DockRegistry.editor
+        let r = DockRegistry.corePanels
         XCTAssertFalse(r.isClosable(DockPanels.preview))
         XCTAssertFalse(r.isClosable(DockPanels.timeline))
         for id in [DockPanels.media, DockPanels.inspector, DockPanels.renders] { XCTAssertTrue(r.isClosable(id), id) }
@@ -83,7 +83,7 @@ final class DockRegistryTests: XCTestCase {
 }
 
 final class DockLayoutTests: XCTestCase {
-    let registry = DockRegistry.editor
+    let registry = DockRegistry.corePanels
     var layout: DockLayout { DockDefaults.layout(registry) }
 
     func group(_ l: DockLayout, _ panel: DockPanelID) throws -> DockGroup { try XCTUnwrap(l.root.group(containing: panel), panel) }

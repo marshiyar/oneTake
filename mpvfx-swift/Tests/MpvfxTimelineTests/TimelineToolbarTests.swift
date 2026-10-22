@@ -34,11 +34,11 @@ final class TimelineToolbarTests: XCTestCase {
     func testLayoutOrderAndGeometry() throws {
         let (tb, _, _) = try make()
         let items = tb.layout(width: Self.width)
-        XCTAssertEqual(items.map(\.item), [.select, .razor, .snap, .keyframe, .autoKeyframe, .split, .addBeat,
+        XCTAssertEqual(items.map(\.item), [.select, .razor, .slip, .roll, .snap, .keyframe, .autoKeyframe, .split, .addBeat,
                                            .trackHeight, .zoomOut, .zoomSlider, .zoomIn, .zoomPercent])
         XCTAssertEqual(items[0].rect, CanvasRect(x: 8, y: 2, width: 28, height: 28))
         XCTAssertEqual(items[1].rect.x, 38)
-        XCTAssertEqual(items[2].rect.x, 38 + 28 + 2 + 9 + 2, "divider mx-1 w-px between tools and actions")
+        XCTAssertEqual(items[4].rect.x, 38 + 3 * (28 + 2) + 9 + 2, "divider mx-1 w-px between the four tools and the actions")
         XCTAssertEqual(items.last!.rect.maxX, Self.width - 8, accuracy: 1e-9)
         tb.onRemoveSilence = { _ in }
         XCTAssertTrue(tb.layout(width: Self.width).contains { $0.item == .removeSilence }, "silence button only when wired")
@@ -90,8 +90,8 @@ final class TimelineToolbarTests: XCTestCase {
         click(tb, .removeSilence); XCTAssertEqual(silenced, "clip:a")
         tb.isRemovingSilence = true; XCTAssertFalse(tb.canRemoveSilence)
 
-        XCTAssertFalse(tb.canAddBeat, "no analysis")
-        tb.beatMusicClipId = "clip:music"; c.playback.seek(3)
+        XCTAssertFalse(tb.canAddBeat, "select an audio clip")
+        c.view.selection = ["clip:music"]; c.playback.seek(3)
         XCTAssertTrue(tb.canAddBeat)
         click(tb, .addBeat)
         XCTAssertEqual(c.view.beats.map(\.time), [3])
@@ -105,13 +105,15 @@ final class TimelineToolbarTests: XCTestCase {
         let (tb, c, _) = try make()
         var saved: Double?
         c.onTrackHeightChange = { saved = $0 }
-        XCTAssertEqual(c.view.trackHeight, 48)
+        XCTAssertEqual(c.view.trackHeight, 28, "compact rows by default (docs/DESIGN.md step 4)")
         let r = tb.layout(width: Self.width).first { $0.item == .trackHeight }!.rect
         let track = tb.sliderTrack(.trackHeight, in: r)
         tb.pointerDown(x: track.maxX - 1, y: r.centerY, width: Self.width); tb.pointerUp()
         XCTAssertEqual(c.view.trackHeight, 96); XCTAssertEqual(saved, 96)
+        tb.pointerDown(x: track.centerX, y: r.centerY, width: Self.width); tb.pointerUp()
+        XCTAssertEqual(c.view.trackHeight.truncatingRemainder(dividingBy: 4), 0, "the slider steps by 4 px")
         tb.pointerDown(x: track.x, y: r.centerY, width: Self.width); tb.pointerUp()
-        XCTAssertEqual(c.view.trackHeight, 32)
+        XCTAssertEqual(c.view.trackHeight, 28)
         c.setTrackHeight(61); XCTAssertEqual(c.view.trackHeight, 61, "rounded, clamped (the store keeps any integer)")
         c.setTrackHeight(200); XCTAssertEqual(c.view.trackHeight, 96)
         c.setTrackHeight(64)

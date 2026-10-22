@@ -88,7 +88,7 @@ extension InspectorPanel {
 
     /// The handle a filter module's graph shows for `node` at chain index `i`.
     static func afxFilterHandle(_ node: FxNode, _ i: Int) -> AfxGraphHandle {
-        let p = AudioFx.normalize(node.type, node.params)
+        let p = AudioFx.normalize(node.type, node.params, version: node.version ?? 1)
         let hasGain = p["gain"] != nil
         let f = p.num("frequency")
         let level = hasGain ? p.num("gain") : (AudioFxResponse.gainDb(node, at: f) ?? 0)
@@ -104,7 +104,7 @@ extension InspectorPanel {
         let h = spec.handles[d.handle - 1]
         return spec.nodes.map { item in
             guard item.i == h.node else { return item.node }
-            var n = item.node, p = AudioFx.normalize(n.type, n.params)
+            var n = item.node, p = AudioFx.normalize(n.type, n.params, version: n.version ?? 1)
             if h.movesFrequency { p["frequency"] = .number(d.frequency) }
             if h.movesGain { p["gain"] = .number(d.gain) }
             n.params = p
@@ -159,7 +159,7 @@ extension InspectorPanel {
             c.stroke(l, faint, StrokeStyle(width: 0.5))
             guard [100.0, 1000, 10000].contains(f) else { continue }
             PanelDraw.text(c, AfxGraphScale.label(f), in: CanvasRect(x: x - 12, y: box.maxY + 1, width: 24, height: 12),
-                           font: PanelTheme.mono(8), color: PanelTheme.text2.withAlpha(alpha), align: .center)
+                           font: PanelTheme.mono(11), color: PanelTheme.text2.withAlpha(alpha), align: .center)
         }
         for db in [-g.range / 2, 0, g.range / 2] {
             let y = AfxGraphScale.y(db, range: g.range, in: box)
@@ -167,16 +167,16 @@ extension InspectorPanel {
             c.stroke(l, db == 0 ? faint.withAlpha(2.5 * faint.a) : faint, StrokeStyle(width: db == 0 ? 1 : 0.5))
         }
         let span = jsNumberToString(g.range)
-        PanelDraw.text(c, "+" + span, in: CanvasRect(x: rect.x + 2, y: box.y - 2, width: 20, height: 12), font: PanelTheme.mono(8),
+        PanelDraw.text(c, "+" + span, in: CanvasRect(x: rect.x + 2, y: box.y - 2, width: 20, height: 12), font: PanelTheme.mono(11),
                        color: PanelTheme.text2.withAlpha(alpha))
-        PanelDraw.text(c, "−" + span, in: CanvasRect(x: rect.x + 2, y: box.maxY - 10, width: 20, height: 12), font: PanelTheme.mono(8),
+        PanelDraw.text(c, "−" + span, in: CanvasRect(x: rect.x + 2, y: box.maxY - 10, width: 20, height: 12), font: PanelTheme.mono(11),
                        color: PanelTheme.text2.withAlpha(alpha))
     }
 
     /// The plot's rounded backdrop and border (the ease graph's, so the rack's pictures read as one family).
     static func afxGraphBackdrop(_ c: CanvasContext, _ rect: CanvasRect, alpha: Double) {
         c.fillRoundedRect(rect, radius: 4, PanelTheme.stageScrim.withAlpha((Theme.mode == .light ? 0.05 : 0.2) * alpha))
-        c.strokeRoundedRect(rect.insetBy(0.5), radius: 3.5, PanelTheme.panelBorderInput.withAlpha(alpha), width: 1)
+        c.strokeRoundedRect(rect.insetBy(0.5), radius: 3.5, PanelTheme.inspectorControl, width: 1)
     }
 
     /// The summed response of `nodes`: a filled band from 0 dB to the curve, and the curve itself.
@@ -222,10 +222,10 @@ extension InspectorPanel {
 
     /// A filter module's graph commit: frequency to the Hz and gain to 0.1 dB, inside the effect's ranges.
     static func afxFilterParams(_ node: FxNode, _ h: AfxGraphHandle, frequency: Double, gain: Double) -> FxParams {
-        var p = AudioFx.normalize(node.type, node.params)
+        var p = AudioFx.normalize(node.type, node.params, version: node.version ?? 1)
         if h.movesFrequency { p["frequency"] = .number(frequency.rounded()) }
         if h.movesGain { p["gain"] = .number((gain * 10).rounded() / 10) }
-        return AudioFx.normalize(node.type, p)   // clamps into the registry's ranges
+        return AudioFx.normalize(node.type, p, version: node.version ?? 1)   // clamps into the registry's ranges
     }
 
     // MARK: Where the graphs sit
@@ -254,7 +254,7 @@ extension InspectorPanel {
     static func afxEqGraphParts(_ chain: FxChain, eqId: String) -> (nodes: [(i: Int, node: FxNode)], handles: [AfxGraphHandle]) {
         let nodes = chain.nodes.enumerated().filter { $0.element.fromEq == eqId }.map { (i: $0.offset, node: $0.element) }
         let handles = nodes.map { item -> AfxGraphHandle in
-            let p = AudioFx.normalize(item.node.type, item.node.params)
+            let p = AudioFx.normalize(item.node.type, item.node.params, version: item.node.version ?? 1)
             return AfxGraphHandle(node: item.i, frequency: p.num("frequency"), gain: p.num("gain"), movesGain: true,
                                   movesFrequency: false, band: item.node.label)
         }
@@ -276,7 +276,7 @@ extension InspectorPanel {
         }
         var unity = CanvasPath(); unity.move(to: pt(lo, lo)); unity.line(to: pt(0, 0))
         c.stroke(unity, PanelTheme.white.withAlpha((Theme.mode == .light ? 0.25 : 0.1) * alpha), StrokeStyle(width: 0.5))
-        let threshold = AudioFx.normalize(node.type, node.params)[node.type == "limiter" ? "limit" : "threshold"]?.number ?? 0
+        let threshold = AudioFx.normalize(node.type, node.params, version: node.version ?? 1)[node.type == "limiter" ? "limit" : "threshold"]?.number ?? 0
         let tx = pt(threshold, 0).x
         var tick = CanvasPath(); tick.move(to: CanvasPoint(tx, box.y)); tick.line(to: CanvasPoint(tx, box.maxY))
         c.stroke(tick, PanelTheme.text2.withAlpha(0.6 * alpha), StrokeStyle(width: 0.5, dash: [2, 2]))
@@ -288,10 +288,10 @@ extension InspectorPanel {
         }
         c.withState { c.clip(box); c.stroke(curve, PanelTheme.accent.withAlpha(alpha), StrokeStyle(width: 1.5)) }
         let label = PanelTheme.text2.withAlpha(alpha)
-        PanelDraw.text(c, "in", in: CanvasRect(x: box.maxX - 20, y: box.maxY + 1, width: 20, height: 12), font: PanelTheme.mono(8),
+        PanelDraw.text(c, "in", in: CanvasRect(x: box.maxX - 20, y: box.maxY + 1, width: 20, height: 12), font: PanelTheme.mono(11),
                        color: label, align: .right)
-        PanelDraw.text(c, "out", in: CanvasRect(x: plot.x + 2, y: box.y - 2, width: 20, height: 12), font: PanelTheme.mono(8), color: label)
+        PanelDraw.text(c, "out", in: CanvasRect(x: plot.x + 2, y: box.y - 2, width: 20, height: 12), font: PanelTheme.mono(11), color: label)
         PanelDraw.text(c, String(format: "%.0f", threshold), in: CanvasRect(x: tx - 12, y: box.maxY + 1, width: 24, height: 12),
-                       font: PanelTheme.mono(8), color: label, align: .center)
+                       font: PanelTheme.mono(11), color: label, align: .center)
     }
 }

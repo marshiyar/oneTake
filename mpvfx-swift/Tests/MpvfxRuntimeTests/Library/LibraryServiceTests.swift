@@ -223,6 +223,72 @@ final class LibraryServiceTests: XCTestCase {
         XCTAssertEqual(String(decoding: try read(destination), as: UTF8.self), "keep me")
     }
 
+    /// "Save to…" (#40): a file already at the destination is kept and named in the error, unless the dialog approved
+    /// replacing it; a folder that cannot be written is a typed error that names the file; no staged copy is left behind.
+    func testSaveOutputKeepsAnExistingFileUnlessApprovedAndReportsAnUnwritableFolder() async throws {
+        let f = try await fixture()
+        let snapshot = try await f.engine.snapshot(f.first)!
+        let output = PosixPath.join(try f.engine.outputDirectory(f.first)!, "output.mp4")
+        try FileManager.default.createDirectory(atPath: PosixPath.join(f.library, "renders", f.first), withIntermediateDirectories: true)
+        try write(output, "encoded-fixture")
+        f.engine.trackExport(snapshot, { LibraryExportStatus(status: "complete", outputPath: output) })
+        await f.engine.exportTrackingFinished()
+        let destination = PosixPath.join(f.root, "saved.mp4")
+        try write(destination, "keep me")
+        await assertThrows({ try await f.engine.saveOutput(f.libraryId, snapshot.id, destination) },
+                           "A file named saved.mp4 already exists there. It was left unchanged; choose another name.")
+        XCTAssertEqual(String(decoding: try read(destination), as: UTF8.self), "keep me")
+        try await f.engine.saveOutput(f.libraryId, snapshot.id, destination, replaceApproved: true)
+        XCTAssertEqual(String(decoding: try read(destination), as: UTF8.self), "encoded-fixture")
+        let missing = PosixPath.join(f.root, "no-such-folder", "saved.mp4")
+        await assertThrows({ try await f.engine.saveOutput(f.libraryId, snapshot.id, missing) }, "Could not save the export as saved.mp4: ENOENT")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missing))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: f.root).filter { $0.hasPrefix(".mpvfx-output-") }, [])
+        XCTAssertEqual(String(decoding: try read(output), as: UTF8.self), "encoded-fixture", "the library's render is untouched")
+    }
+
+    /// Rename (#40): an event and a project take the trimmed new name in the catalog and keep it after a reopen; the
+    /// project's identity, folder and document are unchanged.
+    func testRenamesAnEventAndAProjectInTheCatalogOnly() async throws {
+        let f = try await fixture()
+        let dir = try XCTUnwrap(f.engine.resolveProject(f.first)).dir
+        let document = try read(PosixPath.join(dir, ".studio/project.json"))
+        try await f.engine.renameEvent(f.libraryId, f.eventId, "  Day 1 – interviews ")
+        try await f.engine.renameProject(f.libraryId, f.first, "Director's cut")
+        let view = await f.engine.views()[0]
+        XCTAssertEqual(view.events.first { $0.id == f.eventId }?.name, "Day 1 – interviews")
+        XCTAssertEqual(view.projects.first { $0.id == f.first }?.name, "Director's cut")
+        XCTAssertEqual(view.projects.first { $0.id == f.second }?.name, "Short Version")
+        XCTAssertEqual(f.engine.resolveProject(f.first), LibraryProjectEntry(id: f.first, title: "Director's cut", dir: dir))
+        XCTAssertEqual(try read(PosixPath.join(dir, ".studio/project.json")), document)
+        await f.engine.close()
+        let reopened = service(f.root)
+        try await reopened.open(f.library)
+        let after = await reopened.views()[0]
+        XCTAssertEqual(after.events.first { $0.id == f.eventId }?.name, "Day 1 – interviews")
+        XCTAssertEqual(after.projects.first { $0.id == f.first }?.name, "Director's cut")
+    }
+
+    /// Rename refuses an empty or over-long name, a malformed id, an unknown id and an id from another library, and
+    /// changes nothing when it does.
+    func testRenameRefusesBadNamesAndUnknownIdsWithoutChangingTheCatalog() async throws {
+        let f = try await fixture()
+        let otherId = try await f.engine.create(PosixPath.join(f.root, "Other.mpvfxlibrary"))
+        let views = await f.engine.views()
+        let otherEvent = try XCTUnwrap(views.first { $0.id == otherId }?.events.first?.id)
+        let otherProject = try await f.engine.createProject(otherId, otherEvent, "Other")
+        let before = await f.engine.views().first { $0.id == f.libraryId }
+        await assertThrows({ try await f.engine.renameProject(f.libraryId, f.first, "   ") }, "Enter a name (1–200 characters)")
+        await assertThrows({ try await f.engine.renameEvent(f.libraryId, f.eventId, String(repeating: "x", count: 201)) }, "Enter a name")
+        await assertThrows({ try await f.engine.renameEvent(f.libraryId, "not-an-id", "X") }, "Invalid library identity")
+        await assertThrows({ try await f.engine.renameProject(f.libraryId, UUID().uuidString.lowercased(), "X") }, "Library project not found")
+        await assertThrows({ try await f.engine.renameEvent(f.libraryId, UUID().uuidString.lowercased(), "X") }, "Library event not found")
+        await assertThrows({ try await f.engine.renameProject(f.libraryId, otherProject, "X") }, "Library project not found")
+        await assertThrows({ try await f.engine.renameEvent(f.libraryId, otherEvent, "X") }, "Library event not found")
+        let after = await f.engine.views().first { $0.id == f.libraryId }
+        XCTAssertEqual(after, before)
+    }
+
     func testRejectsProjectAndAssetIdentitiesFromAnotherLibrary() async throws {
         let f = try await fixture()
         let otherId = try await f.engine.create(PosixPath.join(f.root, "Other.mpvfxlibrary"))

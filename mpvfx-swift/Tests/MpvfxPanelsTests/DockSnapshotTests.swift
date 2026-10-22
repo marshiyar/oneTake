@@ -22,7 +22,7 @@ import MpvfxTheme
 /// the default layout, each drop overlay, a closed panel and a narrow window. Pixels asserted are font independent
 /// (tab underline, seams, overlay tint, fills). `MPVFX_SNAPSHOT_DIR` also writes `dock-<state>-<mode>-<w>x<h>.png`.
 final class DockSnapshotTests: XCTestCase {
-    let registry = DockRegistry.editor
+    let registry = DockRegistry.corePanels
     override func tearDown() { Theme.setMode(.dark) }
 
     static let sizes: [(Double, Double)] = [(1440, 900), (1280, 800)]

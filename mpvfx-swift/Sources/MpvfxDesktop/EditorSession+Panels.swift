@@ -18,6 +18,7 @@ import MpvfxTimeline
 import MpvfxPlayer
 import MpvfxPanels
 import MpvfxDesktopCore
+import MpvfxAudio
 
 /// Host-side wiring of the side panels:
 /// the left sidebar (the Media panel) gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms
@@ -50,8 +51,11 @@ final class SessionPanels {
     private(set) var presetPreviews: PresetPreviewRenderer?
     /// Effects catalog and look tile demos on the built-in sample picture.
     private(set) var effectPreviews: EffectPreviewRenderer?
-    private var presetPreviewTime = 0.0
+    private(set) var presetPreviewTime = 0.0
     private var panelsAnimating = false
+    /// The bin's audition (SessionPanels+Audition.swift): the player and the project it started in.
+    var auditionPlayer: AssetAuditionPlayer?
+    var auditionProjectId: String?
 
     init(session: EditorSession, layout: PanelLayoutState, userData: String) {
         self.session = session
@@ -61,6 +65,16 @@ final class SessionPanels {
         right.dockedTab = .design
         rendersPanel = RightPanel(layout: layout)
         rendersPanel.dockedTab = .renders
+        let filterStore = MediaFilterStore(url: URL(fileURLWithPath: userData).appendingPathComponent("media-bin.json"))
+        left.filter = filterStore.load()
+        left.onFilterChange = { filterStore.save($0) }
+        do {
+            right.inspector.userLookStore = try UserLookStore(path: URL(fileURLWithPath: userData).appendingPathComponent("looks.json").path) { data, path in
+                try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+                try NativeDurableWrite().write(data, to: path)
+            }
+        } catch { session.onError("Saved looks unavailable", error.localizedDescription) }
+        right.inspector.resolveUserLookLut = { [weak session] source in session?.absoluteMediaPath(source) ?? source }
         wireLeft()
         wireRight()
     }
@@ -96,12 +110,23 @@ final class SessionPanels {
         left.thumbnail = { [weak self] id in self?.thumbnail(id) }
         left.bars = { [weak self] id in self?.bars(id) }
         left.onImport = { [weak self] in self?.session.onImportRequested?() }
+        left.onAddGenerator = { [weak self] kind in
+            guard let self, let id = self.session.editor.addGenerator(kind, at: self.session.playback.currentTime) else { return }
+            self.session.timeline.view.selection = [id]
+            self.session.syncStage()
+            self.right.inspector.selection = [id]; self.right.inspector.audioGroupId = nil
+            self.right.inspector.openGroupId = "generator"
+            self.right.layout.setRightCollapsed(false); self.right.layout.setRightTab(.design)
+            self.redraw()
+        }
         left.onAddAtPlayhead = { [weak self] id in self?.addToTimeline(path: id, at: nil) }
+        left.onAddTextLook = { [weak self] look in self?.session.addTextLook(look) }
         left.onRenameAsset = { [weak self] id, name in self?.renameAsset(path: id, newName: name) }
         left.onDeleteAsset = { [weak self] id, removeUsages in self?.deleteAsset(path: id, removeUsages: removeUsages) }
         left.onCopyPath = { [weak self] path in self?.copyToClipboard?(path) }
         left.onLibrary = { [weak self] cmd in self?.runLibrary(cmd) }
         left.library.available = backend?.libraries != nil
+        wireAudition()
     }
 
     /// Re-reads the project's media (after import, rename, delete, a project switch, or an external change).
@@ -194,7 +219,7 @@ final class SessionPanels {
             guard let assetId = existing ?? editor.addAsset(kind: kind, name: entry.name, source: path, durationFrames: frames,
                                                             naturalSize: natural) else { return }
             let t = time ?? self.session.playback.currentTime
-            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: trackId) else {
+            guard let clipId = editor.insertClip(assetId: assetId, at: t, trackId: self.insertTrack(trackId, time, assetId, t)) else {
                 if existing == nil { editor.undo() }
                 return
             }
@@ -229,6 +254,13 @@ final class SessionPanels {
                 else { post { self?.session.onError("Could not add media", "\(error)") } }
             }
         }
+    }
+
+    /// Where `addToTimeline` puts its clip: the track asked for; for an add at the playhead (no `time`) the targeted
+    /// track when it is free there (the accent V / A tag); else nil, the first free lane.
+    func insertTrack(_ trackId: String?, _ time: Double?, _ assetId: String, _ t: Double) -> String? {
+        if let trackId { return trackId }
+        return time == nil ? session.timeline.targetedInsertTrack(assetId: assetId, at: t) : nil
     }
 
     /// AssetContextMenu rename: the file is renamed in place (same folder) and the document's assets follow it.
@@ -330,8 +362,7 @@ final class SessionPanels {
         switch cmd {
         case .createLibrary: command = ["type": .string("create")]
         case .openLibrary: command = ["type": .string("open")]
-        case .createEvent(let l, let name): command = ["type": .string("event"), "libraryId": .string(l), "name": .string(name)]
-        case .createProject(let l, let e, let name): command = ["type": .string("project"), "libraryId": .string(l), "eventId": .string(e), "name": .string(name)]
+        case .createEvent, .createProject, .renameEvent, .renameProject: command = Self.namedItemCommand(cmd)
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
             if left.library.currentProjectId != nil, let id = projectId,
@@ -397,6 +428,7 @@ final class SessionPanels {
 
     /// After the session opened another project: everything per-project is re-read.
     func projectSwitched() {
+        stopAudition()
         media = []; probedDurations = [:]; probing = []; session.mediaThumbnails.reset()
         renders.reset()
         effectPreviews?.reset()   // sample tiles resolve LUT paths against the project folder
@@ -427,13 +459,17 @@ final class SessionPanels {
         inspector.onCopyGrade = { [weak self] in self?.session.timeline.copyGradeSelection() ?? false }
         inspector.onPasteGrade = { [weak self] in self?.session.timeline.pasteGradeSelection() ?? false }
         inspector.onOpenGroupChanged = { [weak self] _ in self?.redraw() }
+        right.easing.editor = session.editor
+        right.easing.onEdited = inspector.onEdited   // the same save, duration and stage refresh as an inspector edit
         inspector.onAudition = { [weak self] request in self?.session.audition(request) }
         right.onAnimate = { [weak self] in self?.animatePanels() }
         rendersPanel.onChange = { [weak self] in self?.redraw() }
         rendersPanel.onAnimate = { [weak self] in self?.animatePanels() }
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
+        inspector.lutStatus = { [weak self] src in LutStatusReader.status(src, projectDir: self?.session.projectDir?.path) }
         wirePresetPreviews(inspector)
+        wireCrop(inspector)
         wireEffectPreviews(inspector)
         wireRenders()
     }
@@ -446,14 +482,14 @@ final class SessionPanels {
         var last = Date()
         func step() {
             let now = Date(), dt = now.timeIntervalSince(last); last = now
-            let a = right.tick(dt), b = left.tick(dt), r = rendersPanel.tick(dt)
+            let a = right.tick(dt), b = left.tick(dt), r = rendersPanel.tick(dt), p = pollAudition()
             redraw()
-            if a || b || r { _ = schedule(1.0 / 60, step) } else { panelsAnimating = false }
+            if a || b || r || p { _ = schedule(1.0 / 60, step) } else { panelsAnimating = false }
         }
         _ = schedule(1.0 / 60, step)
     }
 
-    /// Grade preset tiles and scopes: the selected clip's frame graded with each preset, or its own grade (PresetPreviewRenderer). While playing
+    /// Grade preset tiles: the selected clip's frame graded with each preset (PresetPreviewRenderer). While playing
     /// the tiles keep the frame they showed when playback started, so playback does not re-grade 18 thumbnails a frame.
     private func wirePresetPreviews(_ inspector: InspectorPanel) {
         let renderer = PresetPreviewRenderer(compositor: session.compositor)
@@ -473,15 +509,8 @@ final class SessionPanels {
         }
         inspector.presetPreviewsAvailable = { renderer.isAvailable(clipId: $0) }
         inspector.onRetryPresetPreviews = { [weak self] in renderer.reset(); self?.effectPreviews?.reset() }
-        inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
-            guard let self, let inspector else { return .unavailable }
-            let t = self.session.playback.isPlaying ? self.presetPreviewTime : inspector.time
-            switch renderer.gradedFrame(clipId: clipId, time: t, pixelWidth: w, pixelHeight: h) {
-            case .ready(let img): return .ready(img)
-            case .rendering: return .rendering
-            case .unavailable: return .unavailable
-            }
-        }
+        wireStageFrame(inspector, renderer)
+        wireScopes(inspector, clip: renderer)
     }
 
     /// Effects catalog tiles: the selected clip's frame with its grade plus each effect or look (the preset tiles'
@@ -553,6 +582,10 @@ final class SessionPanels {
         let keys = session.timeline.view.selectedKeyframes
         if inspector.selectedKeyframes != keys { inspector.selectedKeyframes = keys }
         inspector.time = session.playback.currentTime
+        let easing = right.easing   // the Keyframe Easing panel follows the same clip, keys and playhead
+        if easing.clipId != sel.first { easing.clipId = sel.first }
+        if easing.selectedKeyframes != keys { easing.selectedKeyframes = keys }
+        easing.time = session.playback.currentTime
         right.canvasSize = CanvasSize(session.editor.document.canvas.width, session.editor.document.canvas.height)
         rendersPanel.canvasSize = right.canvasSize
     }
@@ -589,13 +622,14 @@ final class RightPanelInput: CanvasInput {
     func secondaryClick(x: Double, y: Double) {}
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false) }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {
-        if panel.scroll(.init(x, last.y), dy: dy, precise: precise) { panels.redraw() }
+        // ctrl: the host's zoom modifier (as the timeline reads it) zooms the Easing tab's graph.
+        if panel.scroll(.init(x, last.y), dy: dy, precise: precise, zoom: ctrl) { panels.redraw() }
     }
     func keyDown(_ k: EditorKey) -> Bool {
         // Typing into a field stays in the panel; everything else falls through to the timeline/playback shortcuts.
         let h = panel.keyDown(k); if h { panels.redraw() }; return h
     }
-    func keyUp(_ k: EditorKey) {}
+    func keyUp(_ k: EditorKey) { panel.keyUp(k) }
     func resized(_ size: CanvasSize) {}
 }
 

@@ -18,18 +18,26 @@ import MpvfxTheme
 public struct ShortcutHint: Equatable, Sendable { public let key: String, label: String }
 public struct ShortcutSection: Equatable, Sendable { public let title: String; public let hints: [ShortcutHint] }
 
-/// SHORTCUT_SECTIONS, plus "⌥ Drag clip" (the clip swap on drop).
+/// SHORTCUT_SECTIONS, plus "⌥ Drag clip" (the clip swap on drop) and the slip and roll edits.
 public let shortcutSections: [ShortcutSection] = {
     func s(_ t: String, _ h: [(String, String)]) -> ShortcutSection { ShortcutSection(title: t, hints: h.map { ShortcutHint(key: $0.0, label: $0.1) }) }
     return [
-        s("Playback", [("Space", "Play / Pause"), ("J", "Play backward"), ("K", "Stop"), ("L", "Play forward"), ("M", "Toggle mute"),
+        s("Playback", [("⌥Space", "Record / stop voice"), ("Esc", "Discard voice take"), ("Space", "Play / Pause; keep voice take"), ("J", "Play backward"), ("K", "Stop"), ("L", "Play forward"), ("M", "Add sequence marker"),
                        ("⇧L", "Toggle loop"), ("←/→", "Step 1 frame"), ("⇧←/⇧→", "Step 10 frames"), ("F", "Toggle fullscreen")]),
-        s("Keyframes (when an element is selected)", [("K", "Add keyframe at playhead"), ("Del", "Delete selected keyframe"),
+        s("Keyframes (when an element is selected)", [("K", "Toggle position keyframe at playhead"),
+                       ("⌘K", "Key every property at playhead"), ("⇧⌘K", "Key animated properties at playhead"),
+                       ("Del", "Delete selected keyframe"),
                        (", / .", "Move selected keyframes 1 frame"), ("⇧, / ⇧.", "Move selected keyframes 10 frames"),
-                       ("H", "Toggle hold / bezier"), ("U", "Expand / collapse properties"), ("R", "Arm Record motion")]),
+                       ("H", "Toggle hold / bezier"), ("F9", "Easy ease selected keyframes"),
+                       ("⇧F9", "Easy ease in"), ("⌘⇧F9", "Easy ease out"), ("U", "Expand / collapse properties"), ("R", "Arm Record motion")]),
         s("Editing", [("⌘C", "Copy element"), ("⌘V", "Paste element"), ("⌥⌘C", "Copy grade"), ("⌥⌘V", "Paste grade"), ("⌘X", "Cut element"), ("S", "Split clip at playhead"),
+                      ("⌥⌘F", "Reveal clip in media bin"), ("⌥⇧⌘F", "Show clip in file manager"),
+                      ("⇧H", "Hold frame at playhead"), ("⌥⇧H", "Hold frame, overwriting what follows"),
                       ("Shift + click/drag", "Selection tool: add clips to selection"), ("⌥ Drag clip", "Drop without swapping"), ("⇧Click", "Razor tool: split all tracks"),
+                      ("Y", "Slip tool"), ("⌘⌥ Drag clip", "Slip: change which media plays"),
+                      ("⇧ Drag edge", "Roll the cut between two clips"),
                       ("⌘G", "Group elements"), ("⌘⇧G", "Ungroup"), ("Del", "Delete selected element (no keyframe selected)")]),
+        s("Beat marks", [("B", "Add beat on selected audio clip"), ("⌥, / ⌥.", "Jump to previous / next beat"), ("Drag beat", "Move beat"), ("⌥Click beat", "Delete beat")]),
         s("Gesture recording modifiers", [("Drag", "Record x / y position"), ("Scroll", "Record z depth"), ("⇧ Drag", "Record rotationX / rotationY"),
                                           ("⌥ Drag", "Record rotation"), ("⌘ Drag↕", "Record opacity"), ("⌘ Scroll", "Record scale")]),
         s("Canvas", [("\\", "Toggle before / after compare"), ("Drag", "Move element / add keyframe"), ("⌥ Drag", "Move entire animation path"), ("⇧ Drag", "Uniform resize")]),
@@ -206,7 +214,7 @@ public final class ShortcutsPanel {
                 y += 20 + (hi == sec.hints.count - 1 ? 0 : 4)
             }
         }
-        y += 12
+        y = Self.layoutKeyframeLegend(&L, from: y) + 12
         L.height = y
         return L
     }

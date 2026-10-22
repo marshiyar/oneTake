@@ -883,8 +883,15 @@ struct GradeProgram: Sendable {
             let distance = length2(chroma(V3(sampleColor.x, sampleColor.y, sampleColor.z)) - chroma(u.keyColor))
             let matte = smoothstep(u.keySimilarity, u.keySimilarity + Swift.max(u.keySmoothness, 0.000001), distance)
             alpha *= matte
-            let excessGreen = Swift.max(0, graded.y - Swift.max(graded.x, graded.z))
-            graded.y -= excessGreen * u.keySpill
+            // Spill is the key hue's excess over the other two channels (green, else blue, else red), pulled out of the graded colour.
+            let key = u.keyColor
+            if key.y >= key.x && key.y >= key.z {
+                graded.y -= Swift.max(0, graded.y - Swift.max(graded.x, graded.z)) * u.keySpill
+            } else if key.z >= key.x {
+                graded.z -= Swift.max(0, graded.z - Swift.max(graded.x, graded.y)) * u.keySpill
+            } else {
+                graded.x -= Swift.max(0, graded.x - Swift.max(graded.y, graded.z)) * u.keySpill
+            }
         }
         return V4(graded.x, graded.y, graded.z, alpha)
     }

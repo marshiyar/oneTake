@@ -66,10 +66,24 @@ final class ShortcutsPanelTests: XCTestCase {
     func ctx() -> CairoImageTarget { CairoImageTarget(width: 400, height: 400) }
     let trigger = CanvasRect(x: 300, y: 360, width: 28, height: 28)
     func testSectionsMatchSource() {
-        XCTAssertEqual(shortcutSections.map(\.title), ["Playback", "Keyframes (when an element is selected)", "Editing", "Gesture recording modifiers", "Canvas", "Crop", "Panels", "Work area"])
-        XCTAssertEqual(shortcutSections.reduce(0) { $0 + $1.hints.count }, 9 + 7 + 12 + 6 + 4 + 2 + 2 + 6)
+        XCTAssertEqual(shortcutSections.map(\.title), ["Playback", "Keyframes (when an element is selected)", "Editing", "Beat marks", "Gesture recording modifiers", "Canvas", "Crop", "Panels", "Work area"])
+        // Playback gained voice keys (Record/stop voice, issue #317): 9 + 2; Editing gained ⇧H and ⌥⇧H (Hold frame, issue #292): 15 + 2.
+        // Editing gained reveal-source hints (Reveal clip in media bin / file manager, issue #446): 17 + 2.
+        // Beat marks section added (editable beat marks in source time, issue #289): 0 + 4.
+        XCTAssertEqual(shortcutSections.reduce(0) { $0 + $1.hints.count }, 11 + 12 + 19 + 4 + 6 + 4 + 2 + 2 + 6)
+        let editing = shortcutSections.first { $0.title == "Editing" }?.hints.map(\.key) ?? []
+        XCTAssertTrue(editing.contains("⇧H") && editing.contains("⌥⇧H"), "\(editing)")
+        XCTAssertTrue(editing.contains("⌥⌘F") && editing.contains("⌥⇧⌘F"), "\(editing)")
+        let beats = shortcutSections.first { $0.title == "Beat marks" }?.hints.map(\.key) ?? []
+        XCTAssertTrue(beats.contains("B") && beats.contains("⌥Click beat"), "\(beats)")
         XCTAssertEqual(formatPanelTime(44.9), "00:44"); XCTAssertEqual(formatPanelTime(7200), "120:00"); XCTAssertEqual(formatPanelTime(-1), "00:00")
         XCTAssertEqual(historyShortcutLabel(true, mac: false), "Ctrl+Shift+Z"); XCTAssertEqual(historyShortcutLabel(false, mac: true), "Cmd+Z")
+    }
+    func testShortcutsCardListsCmdKAndShiftCmdK() throws {
+        let keys = try XCTUnwrap(shortcutSections.first { $0.title.hasPrefix("Keyframes") }).hints
+        XCTAssertTrue(keys.contains(ShortcutHint(key: "⌘K", label: "Key every property at playhead")))
+        XCTAssertTrue(keys.contains(ShortcutHint(key: "⇧⌘K", label: "Key animated properties at playhead")))
+        XCTAssertTrue(keys.contains(ShortcutHint(key: "K", label: "Toggle position keyframe at playhead")), "K keys position only, and says so")
     }
     func testOpenScrollJumpAndClear() {
         let t = ctx(); let c = t.canvas; let p = ShortcutsPanel()

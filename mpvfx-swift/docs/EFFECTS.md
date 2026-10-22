@@ -25,7 +25,9 @@ The grade is one entry of the clip's `effects` array (`NativeClipEffect`):
 - The stylize effects are not separate effect entries: they are the `effects` object **inside** the grade.
 - Any other `effectId` on a clip is kept in the document and listed in the inspector's Clip effects group, but
   neither renderer draws it, and export refuses a clip that has one enabled (`exportSupportsEffect`).
-- Grades are not keyframed: a clip has one grade for its whole length. Grain, film dust, tape damage, glitch and
+- Grade values can be keyframed: Amount, the Primary values, the tonal wheels, Vignette, Grain and each stylize
+  amount are `grade.*` parameter tracks (`NativeGradeParameters.swift`), evaluated per frame in preview and
+  export; a grade with no keys holds its values for the clip's whole length. Grain, film dust, tape damage, glitch and
   waving hatch lines move with the clip's timeline time (`isTimeVarying`), seeded per clip (`colorGradeSeed`,
   FNV-1a of the clip key).
 
@@ -228,8 +230,9 @@ An enabled clip effect with `effectId: "color-key"` stores this versioned object
 have the displayed defaults. RGB and all three amounts are finite numbers in `0...1`.
 The matte is `smoothstep(similarity, similarity + smoothness, distance)` where distance
 is Euclidean distance in BT.709 Cb/Cr coordinates. It multiplies the source alpha.
-Spill suppresses green above `max(red, blue)`; at `1` it removes all such excess without
-changing neutral pixels. Preview and export consume the same RGBA result.
+Spill suppresses the key colour's own hue in the graded colour: for the key's strongest
+channel (green, else blue, else red) it removes the amount by which that channel exceeds the
+larger of the other two; at `1` it removes all such excess without changing neutral pixels. Preview and export consume the same RGBA result.
 
 Objects with an unknown `v` or `kind` remain in the project unchanged but are not drawn.
 They do not change `schemaVersion`, which remains `1`.

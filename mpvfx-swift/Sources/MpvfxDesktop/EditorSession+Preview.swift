@@ -39,7 +39,8 @@ extension EditorSession {
             return true
         }
         player.onInsertAsset = { [weak self] assetId, time in
-            guard let self, let id = self.editor.insertClip(assetId: assetId, at: time) else { return nil }
+            guard let self, let id = self.editor.insertClip(assetId: assetId, at: time,
+                                                            trackId: self.timeline.targetedInsertTrack(assetId: assetId, at: time)) else { return nil }
             self.timeline.view.selection = [id]
             self.syncStage(); self.redraw()
             return id

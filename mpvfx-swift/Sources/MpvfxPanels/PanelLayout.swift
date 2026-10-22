@@ -68,7 +68,8 @@ public enum PanelFit {
     }
 }
 
-public enum RightPanelTab: String, Codable, Sendable { case design, renders }
+/// `easing` is the Keyframe Easing panel, a tab until a docking model hosts it (KeyframeEasingPanel.dock).
+public enum RightPanelTab: String, Codable, Sendable { case design, easing, renders }
 public enum LeftSidebarTab: String, Codable, Sendable, CaseIterable { case assets, compositions, blocks }
 
 /// The UI preferences and the sidebar tab key. Stored as JSON in the app's data directory.
@@ -80,8 +81,14 @@ public struct PanelPreferences: Codable, Equatable, Sendable {
     public var rightPanelTab: RightPanelTab?
     public var sidebarTab: LeftSidebarTab?
     public var openInspectorGroup: String?
+    /// The Design tab's order of its detachable groups (`DesignGroups` panel ids).
+    public var designGroupOrder: [String]?
     /// Timeline section height (NLEContext / studioUiPreferences `timelineHeight`).
     public var timelineHeight: Double?
+    /// What the Grade scopes read (`clip` | `program`); nothing saved is `clip`.
+    public var scopeSource: ColorScopes.Source?
+    /// The dockable Scopes panel's selected scope; unknown future names fall back without discarding the layout.
+    public var scopePanelKind: String?
     public init() {}
 }
 

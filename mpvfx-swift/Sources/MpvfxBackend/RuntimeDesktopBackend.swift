@@ -116,7 +116,8 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     public func saveProject(id: String, content: String) throws {
         try checkOpen()
         let s = try store(id)
-        try exclusive(s) { try s.save(content) }
+        do { try access.runBlocking(s.directory) { try s.save(content) } }
+        catch { throw Self.desktopError(error, savingTo: s.directory) }
     }
 
     /// Runs a synchronous write to `s` on the project's access queue, after the operations already queued on it
@@ -261,6 +262,16 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         return try await blocking { c in
             try analyzeProjectVideoSilence(dir, SilenceAnalysisRequest(source: source, sourceStart: sourceStart, sourceDuration: sourceDuration),
                                            cancellation: c).map { DesktopTimeRange(start: $0.start, end: $0.end) }
+        }
+    }
+
+    public func sceneCuts(projectId: String, source: String, sourceStart: Double, sourceDuration: Double,
+                          framesPerSecond: Double, threshold: Double, onProgress: @escaping @Sendable (Double) -> Void) async throws -> [Double] {
+        let dir = try store(projectId).directory
+        return try await blocking { cancellation in
+            try analyzeProjectScenes(dir, source: source, sourceStart: sourceStart, sourceDuration: sourceDuration,
+                                     framesPerSecond: framesPerSecond, threshold: threshold,
+                                     cancellation: cancellation, onProgress: onProgress)
         }
     }
 
@@ -488,9 +499,25 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     private func mapErrorsAsync<T>(_ body: () async throws -> T) async throws -> T {
         do { return try await body() } catch { throw Self.desktopError(error) }
     }
-    static func desktopError(_ error: Error) -> DesktopError {
+    /// Recognizes only supported filesystem failures during a save; other errors keep their usual translation.
+    private static func saveFailureError(_ error: Error, folder: String?) -> DesktopError? {
+        guard let folder,
+              let code = (error as? ProjectFSError)?.code ?? (error as? DurableWriteError)?.filesystemCode,
+              let failure = DesktopError.SaveFailure(rawValue: code == "EPERM" ? "EACCES" : code) else { return nil }
+        return DesktopError(saveFailure: failure, folder: folder)
+    }
+
+    static func desktopError(_ error: Error, savingTo folder: String? = nil) -> DesktopError {
+        if let failure = saveFailureError(error, folder: folder) { return failure }
         switch error {
         case let e as DesktopError: return e
+        case let e as ProjectDocumentError where e.kind == .missing:
+            guard let folder else { return DesktopError(e.message, name: desktopErrorName(e.kind)) }
+            // A save into a moved or deleted folder: the editor's moved-folder flow dispatches on the name, and
+            // the status line on the save failure, so the error carries both.
+            var moved = DesktopError(saveFailure: .folderMissing, folder: folder)
+            moved.name = desktopErrorName(e.kind)
+            return moved
         case let e as ProjectDocumentError: return DesktopError(e.message, name: desktopErrorName(e.kind))
         case let e as ProjectMediaOperationError:
             return DesktopError(e.message, name: e.kind == .inUse ? "MediaInUseError" : e.kind == .exists ? "ConflictError" : "Error")

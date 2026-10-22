@@ -19,7 +19,7 @@ import MpvfxTimeline
 /// Gestures on the dock through its public pointer and key entry points, resolved against a real draw (on the
 /// font-independent measuring canvas, so they run on every OS).
 final class DockViewTests: XCTestCase {
-    let registry = DockRegistry.editor
+    let registry = DockRegistry.corePanels
     let bounds = CanvasRect(x: 0, y: 0, width: 1440, height: 877)
     var clock = 100.0
     var commits: [DockLayout] = []

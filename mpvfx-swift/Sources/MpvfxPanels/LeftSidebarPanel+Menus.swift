@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
 
 /// The panel's menus: the tab strip's panel menu, the switcher (libraries and events), "…" (library and project
 /// actions, recent projects), the filter menu, and a tile's context menu.
@@ -20,8 +21,10 @@ extension LeftSidebarPanel {
     typealias Option = PanelDropdown.Option
 
     func openPanelMenu() {
-        openDropdown(.panelMenu, [.init(value: "import", label: "Import media…"), .init(value: "hide", label: "Hide panel")], nil) { [weak self] v in
-            if v == "import" { self?.onImport?() } else { self?.layout.toggleLeft() }
+        let generators = NativeGeneratorKind.allCases.map { Option(value: "generator:" + $0.rawValue, label: "Add " + $0.label.lowercased(), group: "Background generators") }
+        openDropdown(.panelMenu, [.init(value: "import", label: "Import media…")] + generators + [.init(value: "hide", label: "Hide panel")], nil) { [weak self] v in
+            if v.hasPrefix("generator:"), let kind = NativeGeneratorKind(rawValue: String(v.dropFirst(10))) { self?.onAddGenerator?(kind) }
+            else if v == "import" { self?.onImport?() } else { self?.layout.toggleLeft() }
         }
     }
 
@@ -79,6 +82,7 @@ extension LeftSidebarPanel {
         guard library.available, activeLibrary != nil else { return o }
         let busy = library.busy, g = "Library"
         o += [Option(value: "newEvent", label: "New event…", group: g, disabled: busy),
+              Option(value: "renameEvent", label: "Rename event…", group: g, disabled: !canRename("renameEvent")),
               Option(value: "importIntoEvent", label: "Import into \(activeEvent?.name ?? "event")…", group: g, disabled: busy || activeEvent == nil),
               Option(value: "storage:managed", label: "Copy files into the library", group: g, checked: !linkedImport),
               Option(value: "storage:linked", label: "Link to the original files", group: g, checked: linkedImport),
@@ -92,6 +96,7 @@ extension LeftSidebarPanel {
             Option(value: "project:\($0.id)", label: $0.name, group: g, checked: $0.id == library.currentProjectId, disabled: busy)
         }
         if library.available, activeLibrary != nil { o.append(Option(value: "newProject", label: "New project…", group: g, disabled: busy || activeEvent == nil)) }
+        if library.available, activeLibrary != nil { o.append(Option(value: "renameProject", label: "Rename project…", group: g, disabled: !canRename("renameProject"))) }
         o.append(Option(value: "openProject", label: "Open project…", group: g, disabled: busy))
         if !library.isStandalone { o.append(Option(value: "standalone", label: "Open existing standalone project", group: g, disabled: busy)) }
         return o
@@ -111,6 +116,7 @@ extension LeftSidebarPanel {
         switch v {
         case "newLibrary": onLibrary?(.createLibrary)
         case "openLibrary": onLibrary?(.openLibrary)
+        case "renameEvent": startRename(v)
         case "newEvent": creating = ("event", PanelTextField(key: "create", value: ""))
         case "importIntoEvent": if let l, let e = activeEvent { onLibrary?(.importIntoEvent(libraryId: l.id, eventId: e.id, linked: linkedImport)) }
         case "storage:managed", "storage:linked": linkedImport = v == "storage:linked"
@@ -122,6 +128,7 @@ extension LeftSidebarPanel {
 
     func runProjectOption(_ v: String) {
         switch v {
+        case "renameProject": startRename(v)
         case "newProject": creating = ("project", PanelTextField(key: "create", value: ""))
         case "openProject": onLibrary?(.openProject)
         case "standalone": onLibrary?(.openStandalone)
@@ -165,6 +172,8 @@ extension LeftSidebarPanel {
         case .library(let id):
             guard let l = activeLibrary, libraryAsset(id)?.available == true, !library.busy else { return }
             onLibrary?(.attach(libraryId: l.id, assetId: id))
+        case .textLook(let id):
+            if let look = TextLookPreset.preset(id) { onAddTextLook?(look) }
         case .export(let id):
             guard let l = activeLibrary, export(id)?.status == "complete", !library.busy else { return }
             onLibrary?(.saveOutput(libraryId: l.id, jobId: id))
@@ -180,7 +189,8 @@ extension LeftSidebarPanel {
         switch ref {
         case .media(let id): return mediaItem(id).map(mediaEntries) ?? []
         case .library(let id): return libraryAsset(id).map(libraryEntries) ?? []
-        case .export(let id): return export(id)?.status == "complete" ? [MenuEntry(label: "Save as…", shortcut: "Enter", action: .primary)] : []
+        case .export(let id): return export(id)?.status == "complete" ? [MenuEntry(label: "Save to…", shortcut: "Enter", action: .primary)] : []
+        case .textLook: return [MenuEntry(label: "Add at playhead", shortcut: "Enter", action: .primary)]
         }
     }
 
@@ -305,15 +315,6 @@ extension LeftSidebarPanel {
         default: break
         }
         return false
-    }
-
-    func confirmCreate() {
-        guard let cr = creating, let l = activeLibrary else { return }
-        let name = cr.field.draft.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        if cr.kind == "event" { onLibrary?(.createEvent(libraryId: l.id, name: name)) }
-        else if let e = activeEvent { onLibrary?(.createProject(libraryId: l.id, eventId: e.id, name: name)) }
-        creating = nil
     }
 
     func commitRename() {

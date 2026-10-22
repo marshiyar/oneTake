@@ -41,15 +41,36 @@ extension InspectorPanel {
         return editor.audioGroup(id)
     }
 
+    /// The groups this panel shows: the Design tab's, minus the ones living in their own dock panel and in the
+    /// user's order; or, for a detached panel (`pinnedPanel`), only that panel's groups.
     func buildGroups() -> [InspectorGroup] {
+        let all = buildAllGroups()
+        if let pinned = pinnedPanel { return all.filter { DesignGroups.panel(forGroup: $0.id) == pinned } }
+        let shown = all.filter { g in DesignGroups.panel(forGroup: g.id).map { !detachedPanels.contains($0) } ?? true }
+        let rank = DesignGroups.sanitized(order: designOrder)
+        // The ranked groups are reordered among their own slots; Text and Composition keep theirs.
+        func rankOf(_ g: InspectorGroup) -> Int? { DesignGroups.panel(forGroup: g.id).flatMap(rank.firstIndex(of:)) }
+        let ranked = shown.enumerated().compactMap { i, g in rankOf(g).map { (rank: $0, index: i, group: g) } }
+            .sorted { ($0.rank, $0.index) < ($1.rank, $1.index) }.map(\.group)
+        var next = ranked.makeIterator()
+        return shown.map { rankOf($0) == nil ? $0 : (next.next() ?? $0) }
+    }
+
+    private func buildAllGroups() -> [InspectorGroup] {
         if let editor, let g = selectedBus() { return [busFxGroup(editor, g)] }
         if let editor, showsComposition { return [compositionGroup(editor)] }
+        if let editor, selection.count > 1 {
+            return [alignmentGroup(editor)] + (hasUserLookSelection ? [userLooksGroup(editor)] : [])
+        }
         guard let editor, let s = selected() else { return [] }
         var groups: [InspectorGroup] = []
+        if let generator = generatorGroup(editor, s) { groups.append(generator) }
         if let text = textGroup(editor, s) { groups.append(text) }
         if s.isVisual { groups.append(transformGroup(editor, s)); groups.append(styleGroup(editor, s)) }
+        if let transition = transitionGroup(editor, s) { groups.append(transition) }
         if s.kind == .video || s.kind == .image {
             groups.append(gradeGroup(editor, s))
+            if userLookStore != nil { groups.append(userLooksGroup(editor)) }
             groups.append(stylizeGroup(editor, s))
         }
         if s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId }) { groups.append(effectsGroup(editor, s)) }
@@ -68,12 +89,12 @@ extension InspectorPanel {
     func edited(_ op: @autoclosure () -> Bool, label: String? = nil) {
         let title = label ?? buildGroupTitle()
         let ok = editor?.withHistory(title) { op() } ?? op()
-        if ok { onEdited?() }
+        if ok { colorFieldError = nil; onEdited?() }
     }
     private func buildGroupTitle() -> String {
-        switch openGroupId {
+        switch pinnedPanel.flatMap({ DesignGroups.groups(of: $0).first }) ?? openGroupId {
         case "text": "Edit text"; case "layout": "Edit transform"; case "style": "Edit style"; case "grade": "Edit color grade"
-        case "effects": "Edit effects"; case "audio-fx": "Edit audio effects"; case "media": "Edit media"; default: "Edit properties"
+        case "effects", "clip-effects": "Edit effects"; case "audio-fx": "Edit audio effects"; case "media": "Edit media"; default: "Edit properties"
         }
     }
 
@@ -81,13 +102,16 @@ extension InspectorPanel {
         let animated = editor.isAnimated(clipId: s.id, pid)
         let on = editor.hasKeyframe(clipId: s.id, pid, time: time)
         let t = time
-        return InspectorRow.Keyframe(
+        var kf = InspectorRow.Keyframe(
             state: on ? .onKey : (animated ? .animated : .none),
             toggle: { [weak self] in self?.edited(editor.toggleKeyframe(clipId: s.id, pid, time: t, fallback: fallback)) },
             stopwatch: { [weak self] in self?.edited(editor.setAnimated(clipId: s.id, [(pid, fallback)], !animated, time: t)) },
             // KeyframeNavigation: a stepper is live only when there is a keyframe that way.
             prev: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: false) : nil).map { v in { [weak self] in self?.onSeek?(v) } },
             next: (animated ? editor.adjacentKeyframeTime(clipId: s.id, pid, time: t, forward: true) : nil).map { v in { [weak self] in self?.onSeek?(v) } })
+        kf.kind = TimelineKeyframeCatalog.property(pid).kind
+        kf.ease = TimelineKeyframeEase(on ? editor.interpolation(clipId: s.id, pid, time: t) : nil)
+        return kf
     }
 
     /// Position's controls cover the vec2 track and the scalar x/y tracks (older and recorded projects), which preview
@@ -140,9 +164,12 @@ extension InspectorPanel {
         // Media: the fit of its natural size is the default box; an untouched size reads as that default.
         let fit = editor.defaultLayout(clipId: s.id), natural = editor.naturalLayout(clipId: s.id) != nil
         func sizeTier(_ pid: String, _ isDefault: Bool) -> PropertyValueTier { natural ? .default : tier(editor, s, pid, isDefault: isDefault) }
-        var scale = 1.0
-        if case .vec2(let v)? = editor.parameterValue(clipId: s.id, parameterId: TimelineEditor.scaleId, time: t) { scale = v.x }
-        else if case .number(let v)? = editor.parameterValue(clipId: s.id, parameterId: TimelineEditor.scaleId, time: t) { scale = v }
+        let scale = editor.inspectorScale(clipId: s.id, time: t)
+        let ratioLocked = editor.scaleRatioLocked(clipId: s.id)
+        func ratioLock(_ key: String, _ label: String) -> InspectorRow {
+            .init(.toggle(.init(key: key, label: label, on: ratioLocked, tier: ratioLocked ? .explicitCustom : .default,
+                               set: { [weak self] in self?.edited(editor.setScaleRatioLocked(clipId: s.id, $0)) })))
+        }
         let pos = TimelineEditor.positionId
         let posTier = tier(editor, s, pos, isDefault: x == 0 && y == 0)
         let posKf = positionKeyframe(editor, s, x: x, y: y)
@@ -174,33 +201,40 @@ extension InspectorPanel {
             },
             prev: wk.prev ?? hk.prev, next: wk.next ?? hk.next)
         let pw = numberRow(key: "w", label: "W", value: w, decimals: 0, suffix: "px", tier: sizeTier(TimelineEditor.widthId, w == fit.width), step: 1,
-                           apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(width: max(1, $0))) },
+                           apply: { editor.setInspectorSize(clipId: s.id, time: t, width: true, value: max(1, $0)) },
                            reset: { editor.resetSize(clipId: s.id) },
                            keyframe: sizeKf)
         let ph = numberRow(key: "h", label: "H", value: h, decimals: 0, suffix: "px", tier: sizeTier(TimelineEditor.heightId, h == fit.height), step: 1,
-                           apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(height: max(1, $0))) },
+                           apply: { editor.setInspectorSize(clipId: s.id, time: t, width: false, value: max(1, $0)) },
                            reset: { editor.resetSize(clipId: s.id) })
         let rot = numberRow(key: "rotation", label: "Rotation", value: r, decimals: 0, suffix: "°",
                             tier: tier(editor, s, TimelineEditor.rotationId, isDefault: r == 0), step: 0.5,
                             apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(rotation: $0)) },
                             reset: { editor.clearStaticParameter(clipId: s.id, TimelineEditor.rotationId) },
                             keyframe: keyframe(editor, s, TimelineEditor.rotationId, fallback: .number(r)))
-        let sc = numberRow(key: "scale", label: "Scale", value: scale * 100, decimals: 0, suffix: "%",
-                           tier: tier(editor, s, TimelineEditor.scaleId, isDefault: scale == 1), step: 1,
-                           apply: { editor.setParameter(clipId: s.id, TimelineEditor.scaleId, .vec2(Vec2Value(x: max(0.01, $0 / 100), y: max(0.01, $0 / 100))), time: t) },
-                           reset: { editor.clearStaticParameter(clipId: s.id, TimelineEditor.scaleId) },
-                           keyframe: keyframe(editor, s, TimelineEditor.scaleId, fallback: .vec2(Vec2Value(x: scale, y: scale))))
+        let scaleKf = keyframe(editor, s, TimelineEditor.scaleId, fallback: .vec2(scale))
+        let scaleTier = tier(editor, s, TimelineEditor.scaleId, isDefault: scale.x == 1 && scale.y == 1)
+        let sc = numberRow(key: "scale", label: "X", value: scale.x * 100, decimals: 0, suffix: "%",
+                           tier: scaleTier, step: 1,
+                           apply: { editor.setInspectorScale(clipId: s.id, time: t, x: true, value: max(0.01, $0 / 100)) },
+                           reset: { editor.clearStaticParameter(clipId: s.id, TimelineEditor.scaleId) }, keyframe: scaleKf)
+        let sy = numberRow(key: "scaleY", label: "Y", value: scale.y * 100, decimals: 0, suffix: "%",
+                           tier: scaleTier, step: 1,
+                           apply: { editor.setInspectorScale(clipId: s.id, time: t, x: false, value: max(0.01, $0 / 100)) },
+                           reset: { editor.clearStaticParameter(clipId: s.id, TimelineEditor.scaleId) })
         var rows: [InspectorRow] = [
             .init(.pair(label: "Position", px, py)), .init(.pair(label: "Size", pw, ph), padY: 4),
-            .init(.number(rot)), .init(.number(sc)), layerOrderRow(editor, s),
+            ratioLock("sizeRatioLocked", "Lock size ratio"), .init(.number(rot)),
+            .init(.pair(label: "Scale", sc, sy)), ratioLock("scaleRatioLocked", "Lock scale ratio"), layerOrderRow(editor, s),
         ]
         rows += transform3DRows(editor, s)
         // Keyframe easing (NativeInterpolationEditor) for the eased channels: the selected keys, else the playhead's.
         let channels = TimelineEditor.transformEasedParameterIds.filter { editor.isAnimated(clipId: s.id, $0) }
         if !channels.isEmpty { rows += easingRows(editor, s, channels: channels) }
         rows += arcMotionRows(editor, s)
+        rows += [.init(.heading("Align and distribute", trailing: nil))] + alignmentGroup(editor).rows
         return InspectorGroup(id: "layout", title: "Transform",
-                              summary: "\(PanelFormat.number(x, decimals: 0))px,\(PanelFormat.number(y, decimals: 0))px · \(Int(w.rounded()))×\(Int(h.rounded()))",
+                              summary: "X \(PanelFormat.number(x, decimals: 0)) · Y \(PanelFormat.number(y, decimals: 0)) · \(Int(w.rounded())) × \(Int(h.rounded()))",
                               rows: rows)
     }
 
@@ -217,7 +251,7 @@ extension InspectorPanel {
             reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.opacityId)) },
             keyframe: keyframe(editor, s, TimelineEditor.opacityId, fallback: .number(op)))
         return InspectorGroup(id: "style", title: "Style", summary: Self.styleSummary(s.clip.style, opacityPercent: pct),
-                              rows: styleRows(editor, s) + [.init(.slider(slider))])
+                              rows: styleRows(editor, s) + [.init(.slider(slider)), blendRow(editor, s)])
     }
 
     // MARK: Effects
@@ -270,7 +304,7 @@ extension InspectorPanel {
             display: AudioGainFader.text(gv), format: { AudioGainFader.text(AudioGainFader.gain(position: $0)) },
             tier: gv == 1 ? .default : .explicitCustom, centerTick: true,
             commit: { [weak self] p in self?.edited(editor.setAudioGroupVolume(gid, AudioGainFader.gain(position: p))) },
-            reset: { [weak self] in self?.edited(editor.setAudioGroupVolume(gid, 1)) })))]
+            reset: { [weak self] in self?.edited(editor.setAudioGroupVolume(gid, 1)) }, parseInput: Self.gainSliderInput)))]
     }
 
     static func audioFxSummary(_ chain: FxChain) -> String {
@@ -300,16 +334,11 @@ extension InspectorPanel {
                                  : editor.setClipVolume(clipId: s.id, (g * 1_000_000).rounded() / 1_000_000), label: "Set volume")
                 },
                 reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.volumeId)) },
-                keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol))))))
+                keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol)), parseInput: Self.gainSliderInput))))
             if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
         }
         if s.kind == .video || s.kind == .audio {
-            let rate = editor.playbackRate(clipId: s.id)
-            rows.append(.init(.slider(.init(
-                key: "rate", label: "Rate", position: rate * 100, min: 25, max: 300, display: "\(PanelFormat.number(rate))x",
-                format: { "\(PanelFormat.number($0 / 100))x" }, tier: rate == 1 ? .default : .explicitCustom,
-                commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, (p).rounded() / 100)) },
-                reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }))))
+            rows.append(rateRow(editor, s))
             // A detached video plays no sound (its linked audio clip does, with its own pitch option), like the clip menu.
             let detached = s.kind == .video && editor.document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == s.id } }
             if !detached {
@@ -317,52 +346,34 @@ extension InspectorPanel {
                 rows.append(.init(.toggle(.init(key: "keepPitch", label: "Keep audio pitch", on: keeps, tier: keeps ? .default : .explicitCustom,
                                                 set: { [weak self] v in self?.edited(editor.setPreservesPitch(clipId: s.id, v)) }))))
             }
-            let fps = editor.fps
-            rows.append(.init(.number(.init(key: "mediaStart", label: "Media start", text: String(format: "%.2fs", s.clip.sourceInFrame / fps),
-                                            tier: s.clip.sourceInFrame == 0 ? .default : .explicitCustom, commit: { _ in }, disabled: true))))
-            let label = s.kind == .video ? "Play video sound" : "Muted"
-            let on = s.kind == .video ? !s.clip.muted : s.clip.muted
-            rows.append(.init(.toggle(.init(key: "muted", label: label, on: on, tier: s.clip.muted ? .explicitCustom : .default, set: { [weak self] v in
-                self?.edited(editor.setMuted(clipId: s.id, s.kind == .video ? !v : v))
-            }))))
+            rows.append(.init(.number(.init(key: "mediaStart", label: "Media start", text: Self.mediaStartTimecode(s.clip, editor.document.frameRate),
+                                            tier: s.clip.sourceInFrame == 0 ? .default : .explicitCustom, commit: { _ in }, readOnly: true))))
+            // One switch for every clip kind (issue #188): on means the clip is heard, so it writes `muted` inverted.
+            rows.append(.init(.toggle(.init(key: "muted", label: "Sound", on: !s.clip.muted, tier: s.clip.muted ? .explicitCustom : .default,
+                                            set: { [weak self] v in self?.edited(editor.setMuted(clipId: s.id, !v)) }))))
         }
         return InspectorGroup(id: "media", title: "Media", summary: s.kind.rawValue, rows: rows)
     }
 
-    func cropRows(_ editor: TimelineEditor, _ s: Selected) -> [InspectorRow] {
-        let crop = editor.crop(clipId: s.id) ?? NativeClipCrop()
-        guard cropActive == s.id else {
-            return [.init(.subheader("Crop", buttons: [.init(key: "crop:start", label: "Crop", style: .accent) { [weak self] in
-                self?.cropActive = s.id; self?.cropLinkAll = false; self?.onEdited?()
-            }]))]
-        }
-        var rows: [InspectorRow] = [.init(.subheader("Crop", buttons: [
-            .init(key: "crop:reset", label: "↺", style: .muted) { [weak self] in self?.edited(editor.setCrop(clipId: s.id, nil)) },
-            .init(key: "crop:cancel", label: "Cancel", style: .muted) { [weak self] in
-                if let before = self?.cropBefore { _ = editor.setCrop(clipId: s.id, before) }
-                self?.cropActive = nil; self?.onEdited?()
-            },
-            .init(key: "crop:apply", label: "Apply", style: .accent) { [weak self] in self?.cropActive = nil; self?.cropBefore = nil; self?.onEdited?() },
-        ]))]
-        rows.append(.init(.segmented(.init(key: "crop:links", label: "Link edges",
-                                           options: [(key: "all", label: "All", active: cropLinkAll), (key: "sides", label: "Sides", active: !cropLinkAll)],
-                                           select: { [weak self] k in self?.cropLinkAll = k == "all"; self?.onEdited?() }))))
-        func set(_ edge: String, _ v: Double) -> Bool {
-            var c = editor.crop(clipId: s.id) ?? NativeClipCrop()
-            let px = max(0, v)
-            if cropLinkAll { c = NativeClipCrop(top: px, right: px, bottom: px, left: px) }
-            else { switch edge { case "top": c.top = px; case "right": c.right = px; case "bottom": c.bottom = px; default: c.left = px } }
-            return editor.setCrop(clipId: s.id, c)
-        }
-        if cropLinkAll {
-            rows.append(.init(.quad([numberRow(key: "crop:all", label: "All", value: crop.top, decimals: 0, suffix: "px",
-                                               tier: crop.isZero ? .default : .explicitCustom, step: 1, apply: { set("top", $0) })])))
-        } else {
-            rows.append(.init(.quad([("top", "T", crop.top), ("right", "R", crop.right), ("bottom", "B", crop.bottom), ("left", "L", crop.left)].map { e in
-                numberRow(key: "crop:\(e.0)", label: e.1, value: e.2, decimals: 0, suffix: "", tier: e.2 == 0 ? .default : .explicitCustom,
-                          step: 1, apply: { set(e.0, $0) })
-            })))
-        }
-        return rows
+    /// Rate (25 %…300 %): 1x is a detent within 3 % of the track while dragging, a double-click returns to it, and
+    /// the value reads "1.00×".
+    func rateRow(_ editor: TimelineEditor, _ s: Selected) -> InspectorRow {
+        let rate = editor.playbackRate(clipId: s.id)
+        return InspectorRow(.slider(InspectorRow.Slider(
+            key: "rate", label: "Rate", position: rate * 100, min: 25, max: 300, display: Self.rateText(rate),
+            format: { Self.rateText($0 / 100) }, tier: rate == 1 ? .default : .explicitCustom,
+            commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, p.rounded() / 100)) },
+            reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }, detent: 100, step: 1, parseInput: { PanelFormat.parse($0.replacingOccurrences(of: "×", with: "x")).map { $0 * 100 } })))
+    }
+
+    static func rateText(_ rate: Double) -> String { String(format: "%.2f×", rate) }
+
+    /// The source in-point as timecode at the project rate, from the integer frame count (docs/DESIGN.md
+    /// principle 5). A count or rate that is not a whole number (fractional, NaN, too big for `Int`) reads as the
+    /// zero timecode rather than a rounded guess.
+    static func mediaStartTimecode(_ clip: NativeProjectClip, _ rate: RationalFrameRate) -> String {
+        let frame = Int(exactly: clip.sourceInFrame) ?? 0
+        let num = Int(exactly: rate.numerator) ?? 0, den = Int(exactly: rate.denominator) ?? 0
+        return TimelineRuler.timecode(frame: frame, numerator: num, denominator: den)
     }
 }

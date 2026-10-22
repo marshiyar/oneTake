@@ -53,15 +53,32 @@ public final class ExportFramePainter {
 
     /// The layers visible at `time`, with the output pixel size each one is drawn at (what to decode).
     public func layers(at time: Double) -> [(layer: PreviewLayer, width: Int, height: Int)] {
-        let s = frame.scale
-        return composition.layers(at: time).filter(\.isVisible).map { layer in
-            let px = PreviewPainter.screenPixels(layer, viewScale: s, backingScale: 1)
-            return (layer, max(1, Int(px.width.rounded(.up))), max(1, Int(px.height.rounded(.up))))
+        Self.layers(composition, at: time, scale: frame.scale)
+    }
+
+    /// The layers of `composition` visible at `time`, with the pixel size each one is drawn at when the project canvas
+    /// is painted at `scale` output pixels per canvas pixel.
+    public static func layers(_ composition: PreviewComposition, at time: Double,
+                              scale s: Double) -> [(layer: PreviewLayer, width: Int, height: Int)] {
+        // Offline layers are never exported: startExport refuses missing media before it renders.
+        composition.layers(at: time).filter { $0.isVisible && $0.kind != .offline }.map { layer in
+            // The stage's decode size rule (whole even pixels, rounded up): a scaled layer decodes to the same
+            // picture as in preview, so its letterbox bars, if any, are the same too. No cap: exports above 4K keep
+            // full resolution.
+            let size = PreviewDecodeSize.fitting(PreviewPainter.screenPixels(layer, viewScale: s, backingScale: 1), maxSide: Int.max)
+            return (layer, size.width, size.height)
         }
     }
 
     /// One output frame as straight-alpha RGBA8 (`width` × `height` × 4 bytes); throws the first drawing failure.
     public func paint(time: Double, frames: FrameProvider) throws -> CanvasImage {
+        try paint(layers(at: time), time: time, frames: frames)
+    }
+
+    /// `paint(time:frames:)` with the layers already resolved by `layers(at:)`: a caller can resolve them on one
+    /// thread and paint on another (the program scopes, `ProgramScopeRenderer`), and both paint the same pixels.
+    public func paint(_ layers: [(layer: PreviewLayer, width: Int, height: Int)], time: Double,
+                      frames: FrameProvider) throws -> CanvasImage {
         let (rect, s) = frame
         if singlePassBackground && fillsTheOutput(rect) && composition.background.a >= 1 {
             // The opaque background covers every pixel the pad would: one pass instead of two over the frame (about
@@ -72,8 +89,8 @@ public final class ExportFramePainter {
             canvas.fillRect(rect, composition.background)
         }
         let frameIndex = composition.frameIndex(at: time)
-        for (layer, w, h) in layers(at: time) {
-            if layer.kind == .text {
+        for (layer, w, h) in layers {
+            if layer.isProcedural {
                 PreviewPainter.drawText(layer, on: canvas, frame: rect, scale: s)
                 continue
             }
@@ -105,6 +122,8 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
     public let painter: ExportFramePainter
     private var lanes: [String: Lane] = [:]
     private var failure: ExportFrameError?
+    /// Pictures asked of the engine so far (a still or a held frame is asked for once per lane).
+    public private(set) var framesDecoded = 0
 
     public init(_ request: NativeExportFrameRequest) throws {
         let composition = PreviewComposition(document: request.document, projectDir: URL(fileURLWithPath: request.projectDir),
@@ -131,11 +150,13 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
         do {
             var lane = try lanes[layer.laneKey] ?? Lane(reader: VideoFrameReader(path: layer.source), still: nil)
             defer { lanes[layer.laneKey] = lane }
-            let still = layer.kind == .image || lane.reader.info.isStill
+            let still = layer.isStill || lane.reader.info.isStill
             if still, let cached = lane.still, cached.width == width, cached.height == height { return cached }
             // The clip was checked against its media's length before export started; a last-frame rounding overshoot
-            // shows the final frame.
-            let t = still ? 0 : max(0, min(sourceTime, lane.reader.info.duration - 1e-6))
+            // shows the final frame. A held frame is read at its own source time, as the preview's still lane reads it.
+            let onePicture = layer.kind == .image || lane.reader.info.isStill
+            let t = onePicture ? 0 : max(0, min(sourceTime, lane.reader.info.duration - 1e-6))
+            framesDecoded += 1
             let frame = try lane.reader.frame(at: t, width: width, height: height)
             let image = CanvasImage(width: width, height: height, rgba: frame.rgba)
             if still { lane.still = image }
