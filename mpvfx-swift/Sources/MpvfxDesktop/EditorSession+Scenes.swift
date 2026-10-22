@@ -73,7 +73,7 @@ extension EditorSession {
                         toast("Project changed during scene analysis; run it again", true); return
                     }
                     switch result {
-                    case .failure(let error): toast((error as? DesktopError)?.message ?? "Scene analysis failed: \(error)", true)
+                    case .failure(let error): toast((error as? DesktopError)?.message ?? "Scene analysis failed; run it again", true)
                     case .success(let cuts):
                         guard !cuts.isEmpty else { toast("No scene changes found at this threshold", false); return }
                         guard self.editor.splitScenes(clipId: id, sourceTimes: cuts) else {
