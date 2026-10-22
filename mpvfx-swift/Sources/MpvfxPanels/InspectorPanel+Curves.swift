@@ -28,8 +28,8 @@ extension InspectorPanel {
         ("hueVsHue", "Hue/Hue", ThemeTokens.curveHueHuePair, true, -180, 180),
         ("hueVsSaturation", "Hue/Sat", ThemeTokens.curveHueSatPair, true, -1, 1),
         ("hueVsLuma", "Hue/Luma", ThemeTokens.curveHueLumaPair, true, -1, 1),
-        ("lumaVsSaturation", "Luma/Sat", ThemeTokens.curveMasterPair, false, -1, 1),
-        ("saturationVsSaturation", "Sat/Sat", ThemeTokens.curveHueSatPair, false, -1, 1),
+        ("lumaVsSaturation", "Luma/Sat", ThemeTokens.curveLumaSatPair, false, -1, 1),
+        ("saturationVsSaturation", "Sat/Sat", ThemeTokens.curveSatSatPair, false, -1, 1),
     ]
 
     // MARK: Curves (the curve modes and the curve graph)
