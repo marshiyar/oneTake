@@ -629,7 +629,7 @@ final class RightPanelInput: CanvasInput {
         // Typing into a field stays in the panel; everything else falls through to the timeline/playback shortcuts.
         let h = panel.keyDown(k); if h { panels.redraw() }; return h
     }
-    func keyUp(_ k: EditorKey) {}
+    func keyUp(_ k: EditorKey) { panel.keyUp(k) }
     func resized(_ size: CanvasSize) {}
 }
 

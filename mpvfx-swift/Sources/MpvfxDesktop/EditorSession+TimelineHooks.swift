@@ -33,8 +33,7 @@ extension EditorSession {
         timeline.importForPaste = { [weak self] paths, done in self?.importForPaste(paths, done) }
         timeline.onAddText = { [weak self] time in self?.addText(at: time) }
         timeline.onEditKeyframeEasing = { [weak self] clipId, refs in self?.openKeyframeEasing(clipId: clipId, refs: refs) }
-        // onAddBeat stays unset: the toolbar's own addBeat(at:) is used, and the button is enabled only once a music clip
-        // has beat analysis (beatMusicClipId), which the native app does not produce yet.
+        // The timeline stores hand-placed beats directly on the selected audio clip (no analysis needed).
     }
 
     /// T: a new text layer at the playhead, selected, with its Text section open in Design.

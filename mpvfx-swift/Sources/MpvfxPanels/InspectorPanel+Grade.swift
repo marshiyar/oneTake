@@ -29,6 +29,10 @@ public struct GradeUIState: Equatable {
     /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
+    /// A fresh physical arrow press starts a history group; its repeats reuse it.
+    var wheelKeyControl: String?
+    var wheelKeyCode: EditorKey.Code?
+    var wheelKeyHistory: String?
     /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
     /// past the drag threshold (a click that only selects a point never moves it).
     var curveGrab: (dx: Double, dy: Double, start: CanvasPoint, moved: Bool)?
@@ -172,7 +176,8 @@ extension InspectorPanel {
                                             tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
                                             commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
                                             reset: { var n = g; n.adjust[a.key] = 0; commit(n) },   // 0, not nil: a missing key reads the preset's value
-                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g)))))
+                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g), step: 1,
+                                            parseInput: { PanelFormat.parse($0).map { $0 * (a.key == "exposure" ? 100 : 1) } }))))
             if a.key == "contrast" { rows.append(.init(.spacer(2))); rows.append(pivotSlider(g, commit: commit)) }
         }
         return rows
@@ -249,6 +254,7 @@ extension InspectorPanel {
                                       commit: { x in var n = g; n.details[key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
                                       reset: { var n = g; n.details[key] = ColorGrading.defaultDetail(key); commit(n) })   // explicit, as above
         row.keyframe = keyframe
+        row.step = 1
         if gear {   // Vignette settings / Grain settings
             row.settings = (grade.finishSettings == key, { [weak self] in
                 guard let self else { return }
@@ -412,7 +418,7 @@ extension InspectorPanel {
                     _ apply: @escaping (inout ColorGrading.Secondary, Double) -> Void) -> InspectorRow {
             .init(.slider(.init(key: key, label: label, position: v, min: lo, max: hi, display: fmt(v), format: fmt,
                                 tier: abs(v - def) > 1e-6 ? .explicitCustom : .default, centerTick: center, commit: set(apply),
-                                reset: { var n = g; apply(&n.secondaries[sel], def); commit(n) })))
+                                reset: { var n = g; apply(&n.secondaries[sel], def); commit(n) }, step: 1)))
         }
         let deg: (Double) -> String = { "\(Int($0.rounded()))°" }, pct: (Double) -> String = { "\(Int($0.rounded()))%" }
         rows.append(.init(.heading("Qualifier", trailing: nil)))

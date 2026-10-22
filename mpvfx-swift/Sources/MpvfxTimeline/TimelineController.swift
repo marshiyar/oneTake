@@ -56,6 +56,7 @@ public final class TimelineController {
     /// Clip menu "Show thumbnails" flipped the timeline-wide thumbnail mode.
     public var onThumbnailModeChange: ((Bool) -> Void)?
     var gesture: Gesture?
+    var beatDrag: (clipId: String, source: Double, time: Double)?
     /// A press on a keyframe diamond (select on click, retime on drag); takes priority over every clip gesture.
     var keyframeGesture: KeyframeGesture?
     /// Keys selected when a marquee started (⇧ marquee adds to them).
@@ -128,6 +129,9 @@ public final class TimelineController {
             return (g.id, before)
         }
         view.tracks = visible; view.allTracks = all
+        view.beats = all.flatMap(\.clips).flatMap { clip in
+            clip.beatTimes.map { TimelineBeat(time: $0, clipId: clip.id) }
+        }
         view.markers = e.document.sequence.markers ?? []
         // A keyed clip starts with its one summary row; expanded rows and folded kinds are kept per clip while it exists.
         let clipIds = Set(all.flatMap(\.clips).map(\.id))
@@ -263,6 +267,7 @@ public final class TimelineController {
         }
         // Diamonds sit above the clip body and trim handles (TimelineClipDiamonds z-index 5, pointerdown stops there).
         if let kh = view.keyframeHit(x: x, y: y) { keyframePointerDown(kh, x: x, y: y, shift: shift); return }
+        if tool == .select, beatPointerDown(x: x, y: y, alt: keys.alt) { return }
         hitPointerDown(hit, x: x, y: y, keys: keys)
         needsDisplay?()
     }
@@ -278,6 +283,11 @@ public final class TimelineController {
     }
 
     public func pointerMove(x: Double, y: Double) {
+        if beatDrag != nil {
+            beatDrag?.time = view.time(forX: x)
+            view.beatDragTime = beatDrag?.time
+            needsDisplay?(); return
+        }
         if view.gapMenu != nil { gapMenuHover(x: x, y: y); return }
         if let m = view.clipMenu {
             let a = m.item(atX: x, y: y)?.action
@@ -329,7 +339,7 @@ public final class TimelineController {
             lastMovePoint = (x, y)
             guard let lead = ids.compactMap({ clip($0) }).min(by: { $0.clip.start < $1.clip.start }) else { return }
             let raw = lead.clip.start + (x - x0) / view.pixelsPerSecond
-            let targets = snapEnabled ? TimelineSnapping.targets(clips: snapClips, playhead: playback.currentTime, beats: view.beats.map(\.time), excluding: Set(ids)) : []
+            let targets = snapEnabled ? TimelineSnapping.targets(clips: snapClips, playhead: playback.currentTime, beats: beatSnapTimes(excluding: Set(ids)), excluding: Set(ids)) : []
             let groupEnd = ids.compactMap { clip($0)?.clip.end }.max() ?? lead.clip.end
             let snapped = TimelineSnapping.snapMove(start: raw, duration: groupEnd - lead.clip.start, targets, pps: view.pixelsPerSecond,
                                                     timelineDuration: .greatestFiniteMagnitude)
@@ -359,6 +369,11 @@ public final class TimelineController {
     }
 
     public func pointerUp(x: Double, y: Double) {
+        if let drag = beatDrag {
+            beatDrag = nil; view.beatDragTime = nil
+            _ = editor?.editBeat(clipId: drag.clipId, sourceFrame: drag.source, to: view.time(forX: x))
+            needsDisplay?(); return
+        }
         if keyframeGesture != nil { keyframePointerUp(); return }
         let rippleTrim: Bool = { if case .trim(_, _, true)? = gesture { return true }; return false }()
         defer { gesture = nil; movePlan = nil; view.dropTarget = nil; view.dragLiftY = 0; view.drag = nil; view.snapType = nil; view.marquee = nil; view.scrubbing = false; cursor = .normal; needsDisplay?() }
@@ -425,6 +440,9 @@ public final class TimelineController {
             }
         }
         if let held = holdKey(k) { return held }
+        if k.alt, !k.command, case .char(let ch) = k.code, ch == "." || ch == "," {
+            _ = jumpBeat(forward: ch == "."); return true
+        }
         if !k.command && !k.alt {
             switch k.code {
             case .delete where !view.selectedKeyframes.isEmpty, .backspace where !view.selectedKeyframes.isEmpty:
@@ -436,6 +454,7 @@ public final class TimelineController {
                 // ⇧Delete: ripple delete (the lane closes up behind the removed clips).
                 return k.shift ? rippleDeleteSelection() : deleteSelection()
             case .escape:
+                if beatDrag != nil { beatDrag = nil; view.beatDragTime = nil; needsDisplay?(); return true }
                 if view.gapMenu != nil { view.gapMenu = nil; view.gapHighlight = [] }
                 else if view.clipMenu != nil { view.clipMenu = nil }
                 else if view.keyframeMenu != nil { view.keyframeMenu = nil }
@@ -448,6 +467,10 @@ public final class TimelineController {
             case .char(let ch) where (ch == "m" || ch == "M") && !k.shift:
                 if !k.isRepeat { _ = editor?.addMarker(at: playback.currentTime) }; return true
             case .char(let ch) where (ch == "b" || ch == "B") && !k.shift:
+                if selectedBeatClipId != nil {
+                    if !k.isRepeat { _ = addSelectedBeat() }
+                    return true
+                }
                 tool = tool == .razor ? .select : .razor; return true
             case .char(let ch) where (ch == "v" || ch == "V") && !k.shift:
                 tool = .select; return true
