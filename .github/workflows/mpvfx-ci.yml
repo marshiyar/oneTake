@@ -836,8 +836,11 @@ jobs:
           for r in $MACOS; do
             case "$r" in success|skipped) ;; *) echo "::warning::a macos job ended $r; it is not required for ci-ok" ;; esac
           done
+          # A cancelled job never gates: cancellation always comes from outside the code (a newer push
+          # superseding this run, or a hand stop), and every push is a new head SHA with its own fresh run,
+          # so the merge decision keys off the latest run, not this one. Only failure holds the gate.
           for r in $REQUIRED; do
-            case "$r" in success|skipped) ;; *) echo "::error::a required job ended $r"; exit 1 ;; esac
+            case "$r" in success|skipped) ;; cancelled) echo "::warning::a required job ended cancelled; superseded or stopped, not a code failure" ;; *) echo "::error::a required job ended $r"; exit 1 ;; esac
           done
       # A pull request that touches macOS code must pass its macOS build: the local macos job, or the status the runners
       # repository reports (a macOS-only compile error once merged because this was only a warning).

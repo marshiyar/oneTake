@@ -16,6 +16,7 @@
 // panel where the file is each frame.
 import Foundation
 import MpvfxAudio
+import MpvfxDesktopCore
 import MpvfxPanels
 
 extension SessionPanels {
