@@ -136,27 +136,23 @@ final class PanelTabBarTests: XCTestCase {
         XCTAssertEqual(stops, [.tab(.assets), .hideSidebar, .panelMenu, .importMedia])   // drawn order: the strip, then the header's Import
     }
 
-    /// The Grade curve tabs: one Tab stop (the selected tab), Right selects the next, and at 280 pt the tabs that do
-    /// not fit are behind the overflow button, whose menu lists them.
-    func testCurveTabsAreOneStopWithArrowsAndOverflowAtTheMinimumWidth() throws {
-        let (r, c) = try PanelLayoutAuditTests.panel(clip: "clip:a", group: "grade", width: PanelFit.minRight)
+    /// The Grade curve tabs (issue #357): two legible lines, so every tab is drawn even at 280 pt and there is no
+    /// overflow button. Every tab is its own Tab stop, and Enter on the focused tab selects it.
+    func testCurveTabsAreAllVisibleAndEnterSelectsAtTheMinimumWidth() throws {
+        let (r, _) = try PanelLayoutAuditTests.panel(clip: "clip:a", group: "grade", width: PanelFit.minRight)
         let p = r.inspector
-        let bar = try XCTUnwrap(p.tabBars["grade:curvetabs"])
-        XCTAssertFalse(bar.hidden.isEmpty, "seven curve tabs do not fit in 248 pt")
-        XCTAssertNotNil(p.hits.rect { $0 == .custom("grade:curvetabs", bar.ids.count) }, "the overflow button is a part of the row")
+        let count = InspectorPanel.curveTabs.count
+        let tabs = (0..<count).compactMap { i in p.hits.rect { $0 == .custom("grade:curvetabs", i) } }
+        XCTAssertEqual(tabs.count, count, "every curve tab is drawn")
+        XCTAssertNil(p.hits.rect { $0 == .custom("grade:curvetabs", count) }, "no overflow button")
         let order = PanelFocus.order(p.hits) { p.isFocusable($0) }
-        let tabStops = order.filter { if case .custom("grade:curvetabs", let i) = $0 { return i < bar.ids.count }; return false }
-        XCTAssertEqual(tabStops, [.custom("grade:curvetabs", 0)])
-        p.focus.current = .custom("grade:curvetabs", 0); p.focus.visible = true
-        XCTAssertTrue(p.keyDown(Self.key(.right)))
+        let tabStops = order.filter { if case .custom("grade:curvetabs", let i) = $0 { return i < count }; return false }
+        XCTAssertEqual(tabStops, (0..<count).map { InspectorPanel.Hit.custom("grade:curvetabs", $0) })
+        p.focus.current = .custom("grade:curvetabs", 1); p.focus.visible = true
+        XCTAssertTrue(p.keyDown(Self.key(.enter)))
         XCTAssertEqual(p.grade.curveTab, InspectorPanel.curveTabs[1].key)
-        var offered: [String] = []
-        p.onOpenDropdown = { _, options, _, _, pick in offered = options.map(\.value); pick(options.last?.value ?? "") }
-        c.reset(); r.draw(c, size: CanvasSize(PanelFit.minRight, PanelLayoutAuditTests.height))
-        let hidden = try XCTUnwrap(p.tabBars["grade:curvetabs"]).hidden.map(\.id)
-        let more = try XCTUnwrap(p.hits.rect { $0 == .custom("grade:curvetabs", bar.ids.count) })
-        XCTAssertTrue(p.pointerDown(CanvasPoint(more.midX, more.midY))); p.pointerUp(CanvasPoint(more.midX, more.midY))
-        XCTAssertEqual(offered, hidden)
-        XCTAssertEqual(p.grade.curveTab, offered.last, "a pick from the menu selects that tab")
+        p.focus.current = .custom("grade:curvetabs", 4); p.focus.visible = true
+        XCTAssertTrue(p.keyDown(Self.key(.space)))
+        XCTAssertEqual(p.grade.curveTab, InspectorPanel.curveTabs[4].key)
     }
 }

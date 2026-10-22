@@ -32,7 +32,11 @@ final class PureModuleParityTests: XCTestCase {
         for c in ref["chains"]!.array {
             do {
                 let chain = try AudioFx.parseChain(c["doc"]!.str)
-                XCTAssertEqual(AudioFx.serializeChain(chain), c["ok"]?.str, c["doc"]!.str)
+                if chain.version == 2 {
+                    // This historical rejection fixture is now a supported empty v2 chain.
+                    XCTAssertEqual(chain.nodes, [])
+                    XCTAssertEqual(AudioFx.serializeChain(chain), c["doc"]!.str)
+                } else { XCTAssertEqual(AudioFx.serializeChain(chain), c["ok"]?.str, c["doc"]!.str) }
             } catch {
                 let expected = c["error"]?.str ?? "<no error>"
                 if expected.hasPrefix("Chain file is not valid JSON:") {
@@ -90,11 +94,11 @@ final class PureModuleParityTests: XCTestCase {
         XCTAssertEqual(presets.count, AudioFxPresets.all.count)
         for (c, p) in zip(presets, AudioFxPresets.all) {
             XCTAssertEqual(p.id, c["id"]!.str); XCTAssertEqual(p.family, c["family"]!.str)
-            XCTAssertEqual(AudioFx.serializeChain(AudioFxPresets.apply(FxChain(), p)), c["chain"]!.str, p.id)
+            XCTAssertEqual(AudioFx.serializeChain(AudioFxPresets.apply(FxChain(version: 1), p, version: 1)), c["chain"]!.str, p.id)
         }
         let base = try! AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"gain","id":"n1"},{"type":"limiter","id":"n2","fromPreset":"rumble-cut"},{"type":"highpass","id":"n3","fromPreset":"rumble-cut"}]}"#)
-        XCTAssertEqual(AudioFx.serializeChain(AudioFxPresets.apply(base, AudioFxPresets.preset("rumble-cut")!)), ref["presetReapply"]!.str)
-        XCTAssertEqual(AudioFx.serializeChain(AudioFxPresets.apply(base, AudioFxPresets.preset("hall")!)), ref["presetAppend"]!.str)
+        XCTAssertEqual(AudioFx.serializeChain(AudioFxPresets.apply(base, AudioFxPresets.preset("rumble-cut")!, version: 1)), ref["presetReapply"]!.str)
+        XCTAssertEqual(AudioFx.serializeChain(AudioFxPresets.apply(base, AudioFxPresets.preset("hall")!, version: 1)), ref["presetAppend"]!.str)
     }
 
     func testProfiles() {
@@ -109,6 +113,14 @@ final class PureModuleParityTests: XCTestCase {
         }
     }
 
+    /// New tools write v2 metadata; their unchanged EQ/gain parameters still match the recorded v1 payload.
+    /// DSP parity of saved v1 projects is checked separately without changing any fixture.
+    func legacyToolJSON(_ chain: FxChain) -> String {
+        AudioFx.serializeChain(FxChain(version: 1, nodes: chain.nodes.map { node in
+            var copy = node; copy.version = 1; return copy
+        }))
+    }
+
     func testEq() {
         let e = ref["eq"]!
         let a = AudioEq.add(try! AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"gain","id":"n1"}]}"#))
@@ -116,7 +128,7 @@ final class PureModuleParityTests: XCTestCase {
         XCTAssertEqual([a.eqId, b.eqId], e["ids"]!.array.map(\.str))
         let c = AudioEq.setBandGain(b.chain, eqId: "eq1", band: "Bass", gain: 30)
         let d = AudioEq.setBandGain(c, eqId: "eq2", band: "Clarity", gain: -4.26)
-        XCTAssertEqual(AudioFx.serializeChain(d), e["chain"]!.str)
+        XCTAssertEqual(legacyToolJSON(d), e["chain"]!.str)
         func bandsJSON(_ bands: [AudioEqBand]) -> String {
             "[" + bands.map { b in
                 var o: [(String, JSONValue)] = [("name", .string(b.name)), ("frequency", .number(b.frequency)), ("gain", .number(b.gain))]
@@ -130,7 +142,7 @@ final class PureModuleParityTests: XCTestCase {
         XCTAssertEqual(AudioEq.summary(AudioEq.readBands(d, eqId: "eq1")), e["summary1"]!.str)
         XCTAssertEqual(AudioEq.summary(AudioEq.readBands(d, eqId: "eq2")), e["summary2"]!.str)
         XCTAssertEqual(AudioEq.summary(AudioEq.threeBand), e["summaryFlat"]!.str)
-        XCTAssertEqual(AudioFx.serializeChain(AudioEq.remove(d, eqId: "eq1")), e["removed"]!.str)
+        XCTAssertEqual(legacyToolJSON(AudioEq.remove(d, eqId: "eq1")), e["removed"]!.str)
     }
 
     func testLeveller() {
@@ -140,7 +152,7 @@ final class PureModuleParityTests: XCTestCase {
         }
         XCTAssertEqual(AudioLeveller.summary(AudioLeveller.analyse(voice, sampleRate: 48000, strength: 0.5)), ref["levellerSummary"]!.str)
         let r = AudioLeveller.result(try! AudioFx.parseChain(#"{"version":1,"nodes":[{"type":"gain","id":"n1"},{"type":"limiter","id":"n2"}]}"#), samples: voice, sampleRate: 48000, strength: 0.5)!
-        XCTAssertEqual(AudioFx.serializeChain(r.chain), ref["levellerResult"]!["chain"]!.str)
+        XCTAssertEqual(legacyToolJSON(r.chain), ref["levellerResult"]!["chain"]!.str)
         XCTAssertEqual(AudioAutomation.serialize(r.automation), ref["levellerResult"]!["automation"]!.str)
     }
 
@@ -161,7 +173,7 @@ final class PureModuleParityTests: XCTestCase {
                 XCTAssertEqual(pointsJSON(d.points), e["points"]!.json, "dynamics @\(s) \(d.freq)")
             }
             XCTAssertEqual(pointsJSON(AudioCarve.analyseDuck(voice, bed: bed, sampleRate: 48000, profile: profile, offsetSeconds: 0.37)), c["duck"]!.json, "duck @\(s)")
-            XCTAssertEqual(AudioFx.serializeChain(AudioCarve.bandsToChain(bands)), c["chain"]!.str)
+            XCTAssertEqual(legacyToolJSON(AudioCarve.bandsToChain(bands)), c["chain"]!.str)
         }
         let mixed = AudioCarve.mixSources([.init(samples: [1, 2, 3], offsetSeconds: -1 / 48000.0), .init(samples: [0.5, 0.5], offsetSeconds: 2 / 48000.0)], sampleRate: 48000)
         XCTAssertEqual(mixed.map(Double.init), ref["carveMix"]!.array.map(\.num))

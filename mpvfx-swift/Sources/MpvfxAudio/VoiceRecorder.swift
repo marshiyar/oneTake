@@ -32,6 +32,8 @@ public struct VoiceRecording: Equatable, Sendable {
 public final class VoiceRecorder {
     public static let blockFrames = 2_400   // 50 ms at 48 kHz
 
+    /// Optional leading silence, evaluated after opening the input so measured latency is available.
+    public var leadingSilenceFrames: () -> Int = { 0 }
     private let input: AudioInput
     public let destination: String
     private let temporaryPath: String
@@ -42,6 +44,11 @@ public final class VoiceRecorder {
     private let finished = DispatchSemaphore(value: 0)
     private var running = false
     private var recordedFrames = 0
+    private var peak: Float = 0
+    private var clipped = false
+    public var meter: (peak: Float, clipped: Bool) {
+        lock.lock(); defer { lock.unlock() }; return (peak, clipped)
+    }
     private var captureFailure: AudioInputError?
     private var writeFailure: AudioInputError?
 
@@ -73,7 +80,11 @@ public final class VoiceRecorder {
         let file: WavStreamWriter
         do { file = try WavStreamWriter(path: temporaryPath, sampleRate: input.format.sampleRate, channels: input.format.channels) }
         catch { input.stop(); throw error }
-        lock.lock(); writer = file; running = true; lock.unlock()
+        do {
+            let silence = max(0, leadingSilenceFrames())
+            if silence > 0 { try file.append([Int16](repeating: 0, count: silence * input.format.channels)) }
+            lock.lock(); recordedFrames = silence; writer = file; running = true; lock.unlock()
+        } catch { input.stop(); file.abandon(); throw error }
         let loop = Thread { [weak self] in self?.capture(file) }
         loop.name = "mpvfx.voice-recorder"; thread = loop; loop.start()
     }
@@ -87,7 +98,8 @@ public final class VoiceRecorder {
                 if block.isEmpty { return }
                 try file.append(block.map(Self.sample))
                 let frames = block.count / input.format.channels
-                lock.lock(); recordedFrames += frames; lock.unlock()
+                let level = block.filter { $0.isFinite }.map { abs($0) }.max() ?? 0
+                lock.lock(); recordedFrames += frames; peak = min(1, level); clipped = clipped || level >= 1; lock.unlock()
                 sinceCheckpoint += frames
                 if sinceCheckpoint >= checkpointFrames { try file.checkpoint(); sinceCheckpoint = 0 }
             } catch let error as AudioInputError {

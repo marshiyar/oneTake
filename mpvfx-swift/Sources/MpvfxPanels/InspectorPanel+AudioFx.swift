@@ -88,6 +88,10 @@ extension InspectorPanel {
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
         let write: (FxChain) -> Void = { [weak self] next in self?.edited(commit(next)) }
 
+        if chain.needsSoundUpdate {
+            rows.append(.init(.buttons([.init(key: "fx:update-sound", label: "Update to current sound", style: .muted) { write(chain.updatedSound()) }])))
+            gap(Self.afxSectionGap)
+        }
         // Tone EQ modules lead the rack.
         let eqIds = AudioEq.ids(chain)
         for (k, eqId) in eqIds.enumerated() {
@@ -424,14 +428,14 @@ extension InspectorPanel {
         let fxKey = "fx:\(i)"
         let bypassed = node.enabled == false
         let open = ui.openNode == i
-        let params = node.params ?? AudioFx.defaultParams(node.type)
+        let params = node.params ?? AudioFx.defaultParams(node.type, version: node.version ?? chain.version)
         let summary = AudioFxCopy.summary(node.type, params)
-        let def = AudioFx.definition(node.type)
+        let def = AudioFx.definition(node.type, version: node.version ?? chain.version)
         let label = node.label ?? AudioFxCopy.effects[node.type]?.title ?? def?.label ?? node.type
         let family = Self.afxFamily(node), tint = Self.afxTint(node)
         let count = chain.nodes.count
         let nodeId = node.id ?? "\(node.type)-\(i)"
-        let update: (FxParams) -> Void = { p in var next = chain; next.nodes[i].params = AudioFx.normalize(node.type, p); write(next) }
+        let update: (FxParams) -> Void = { p in var next = chain; next.nodes[i].params = AudioFx.normalize(node.type, p, version: node.version ?? chain.version); write(next) }
         let move: (Int) -> Void = { [weak self] d in
             let t = i + d
             guard t >= 0, t < count else { return }
@@ -610,7 +614,7 @@ extension InspectorPanel {
         guard let d = p.def else {
             let s = AudioFxProfiles.strength(node.type, params: params)
             let fmt: (Double) -> String = { String(format: "%.2f", $0) }
-            let set: (Double) -> Void = { v in update(AudioFxProfiles.apply(node.type, strength: (Swift.max(0, Swift.min(1, v)) * 100).rounded() / 100, params: params)) }
+            let set: (Double) -> Void = { v in update(AudioFxProfiles.apply(node.type, strength: (Swift.max(0, Swift.min(1, v)) * 100).rounded() / 100, params: params, version: node.version ?? 1)) }
             return Self.afxParamControls(key: key, label: p.label, position: s, min: 0, max: 1, display: fmt(s), format: fmt, atDefault: s == 0.5,
                                          commitPosition: set, commitText: { t in if let v = PanelFormat.parse(t) { set(v) } }, reset: { set(0.5) })
         }

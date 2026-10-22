@@ -1,0 +1,28 @@
+# SwiftLint configuration for MpVFX. Codacy's SwiftLint engine reads this file,
+# so these settings apply to the Codacy gate as well as local `swiftlint lint`
+# runs. Only patterns that contradict the repo's established conventions are
+# disabled, each with its reason below. Every other SwiftLint rule stays at its
+# default: new violations in changed code still fail the Codacy gate.
+disabled_rules:
+  # The repo tests with XCTest exclusively; Nimble is not a dependency, so
+  # "prefer Nimble matchers" can never be satisfied.
+  - prefer_nimble
+  # Access control is explicit only where it matters (public API). The whole
+  # codebase relies on Swift's internal-by-default; annotating every
+  # declaration would be thousands of lines of noise.
+  - explicit_acl
+  - explicit_top_level_acl
+  # Type inference is idiomatic here (DSP code, closures, locals). Annotating
+  # every inferred type would be thousands of lines of noise.
+  - explicit_type_interface
+  # The codebase does not use `private extension` grouping; access levels stay
+  # on the individual declarations.
+  - extension_access_modifier
+  # Single-letter locals (i, s, x, y, e, c) and domain-standard DSP symbols
+  # (biquad coefficients b0/b1/b2/a1/a2) are used across the whole codebase; a
+  # 3-character minimum contradicts it.
+  - identifier_name
+  # Every file opens with a `//===...===//` banner with no space after the
+  # slashes; the rule cannot distinguish banners from real comments (which do
+  # use a space, per convention).
+  - comment_spacing

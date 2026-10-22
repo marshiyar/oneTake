@@ -181,7 +181,8 @@ final class InterfaceScaleTests: XCTestCase {
             XCTAssertLessThanOrEqual(r.maxX, 640, "\(region)")
             XCTAssertLessThanOrEqual(r.maxY, 400, "\(region)")
         }
-        XCTAssertEqual(router.dock.layout.openPanels, ["media", "preview", "inspector", "renders", "timeline"])
+        XCTAssertEqual(router.dock.layout.openPanels,
+                       ["media", "effects", "preview", "inspector", "renders", "history", "info", "timeline"])
         XCTAssertEqual(f.statusLine.height, ShellStatusLine.height, accuracy: 1e-9)
         let hints = Array(EditorShellRouter.regionHints.values)
         for hint in hints {
