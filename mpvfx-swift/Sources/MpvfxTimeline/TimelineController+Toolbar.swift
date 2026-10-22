@@ -75,11 +75,9 @@ public extension TimelineController {
         return true
     }
 
-    /// Add a beat to the grid at `time` unless one is already there (within a millisecond).
+    /// Add a source-time mark to the selected audio clip in one undo step.
     @discardableResult func addBeat(at time: Double) -> Bool {
-        guard time.isFinite, time >= 0, !view.beats.contains(where: { abs($0.time - time) < 0.001 }) else { return false }
-        view.beats.append(TimelineBeat(time: time))
-        view.beats.sort { $0.time < $1.time }
-        needsDisplay?(); return true
+        guard let id = selectedBeatClipId else { return false }
+        return editor?.addBeat(clipId: id, at: time) == true
     }
 }

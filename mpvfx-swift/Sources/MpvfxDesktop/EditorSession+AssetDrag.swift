@@ -25,6 +25,9 @@ final class BinAssetDrag: CrossPaneDrag {
     unowned let panels: SessionPanels
     private var window: CanvasPoint?
     private var overPlayer = false
+    private var replacesMedia = false
+
+    func updateDragModifiers(_ modifiers: PointerModifiers) { replacesMedia = modifiers.contains(.alt) }
     /// Over the timeline's tracks: the tracks area gets the drop outline (isDragOver).
     private(set) var overTimeline = false
     /// A file drag from the desktop is over the timeline's tracks (same outline).
@@ -50,7 +53,7 @@ final class BinAssetDrag: CrossPaneDrag {
     }
 
     func dragEnded(over region: EditorShellRouter.Region?, local: CanvasPoint) {
-        defer { window = nil; overPlayer = false; overTimeline = false; session.player.assetDragEnded() }
+        defer { window = nil; overPlayer = false; overTimeline = false; replacesMedia = false; session.player.assetDragEnded() }
         guard let path = panels.left.lastDraggedAssetId else { return }
         if let look = TextLookPreset.draggedPreset(path) {
             if region == .player || region == .timeline && local.y >= TimelineToolbar.height { session.addTextLook(look) }
@@ -78,6 +81,13 @@ final class BinAssetDrag: CrossPaneDrag {
     }
 
     private func dropOnTimeline(_ path: String, _ p: CanvasPoint) {
+        if replacesMedia {
+            guard case .clip(let id, _, _) = session.timeline.hitTest(x: p.x, y: p.y - TimelineToolbar.height) else {
+                session.player.view.showToast("Drop onto a clip to replace its media", isError: true); session.redraw(); return
+            }
+            panels.replaceMedia(path: path, clipId: id)
+            return
+        }
         guard let place = timelinePlacement(p, kind: panels.assetKind(path: path)) else { return }
         panels.addToTimeline(path: path, at: place.time, trackId: place.trackId)
     }

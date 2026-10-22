@@ -18,7 +18,7 @@ timing curve with no context: what the motion does over time, how fast it goes, 
 | Value at a frame, sampling | yes (`evaluate`, `sample`) | the value and speed graphs are drawn from engine-evaluated values, so the line shown is the motion rendered |
 | Spring and bounce segments | no: engine issues #4/#5 | disabled "Spring" and "Bounce" presets |
 | Direction of travel on a cubic that reverses (overshoot) | wrong today: engine issue #6 (tangentAngle) | the panel warns when an auto-rotating position key gets an overshooting curve |
-| Per-dimension (separate X/Y) curves, value-space tangents independent of time | no (one timing curve per segment; no engine issue yet) | disabled "Separate dimensions" toggle, with an issue |
+| Per-dimension (separate X/Y) curves | supported by scalar position tracks | Separate dimensions converts straight position keys exactly; rejoin requires matching frames and easing |
 
 Nothing in the panel needs an engine change: every edit is `setOutgoing` on authored keys through the existing
 keyframe commands, so preview and export read it as they read the inspector's edits today.
@@ -58,7 +58,7 @@ Layout, top to bottom:
 4. Presets: Linear, Ease in, Ease out, Ease in & out, Hold, then disabled Spring and Bounce (engine #4/#5), then the
    project's custom presets and "Save preset…".
 5. Numbers: out influence %, out velocity, in influence %, in velocity (units/s of the property), and X1 Y1 X2 Y2.
-6. Disabled "Separate dimensions" toggle (engine has one curve per segment), with its issue link in the hint.
+6. "Separate dimensions" converts straight position keys to scalar X/Y tracks in one undo step, preserving key times and timing curves. Position X and Position Y then appear in the property picker. Toggle again to join when frames and easing match. Spatial paths, auto-orient, scalar static overrides, or independent X/Y key times/easing disable conversion with a status hint; conversion never samples or approximates motion.
 
 Following the selection:
 - Clip: the timeline/inspector selection. Property: the selected keys' property; else the last chosen property;

@@ -79,6 +79,10 @@ public extension TimelineController {
     @discardableResult func runClipMenu(_ action: TimelineClipMenu.Action, clipId id: String) -> Bool {
         guard let editor, let (_, c) = clip(id) else { return false }
         switch action {
+        case .revealSource, .showSourceFile:
+            guard let onRevealSource else { return false }
+            onRevealSource(id, action == .showSourceFile)
+            return true
         case .split:
             let frame = (playback.currentTime * editor.fps).rounded()
             guard let a = editor.address(clipId: id) else { return false }

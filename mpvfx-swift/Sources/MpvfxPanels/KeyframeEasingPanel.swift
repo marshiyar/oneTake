@@ -32,7 +32,7 @@ public final class KeyframeEasingPanel {
     public static let dock = Dock(id: "keyframe-easing", title: "Keyframe Easing", defaultEdge: .bottom, minimumSize: CanvasSize(360, 300))
 
     public enum Hit: Equatable {
-        case property, graphMode(KeyframeEasingState.Graph), zoomIn, zoomOut, fit, copy, paste
+        case dimensions, property, graphMode(KeyframeEasingState.Graph), zoomIn, zoomOut, fit, copy, paste
         case graph, speedHandle(KeyframeEasing.Side), curve, curveHandle(Int), preview
         case preset(String), customPreset(String), deletePreset(String), savePreset, field(String), disabled(String)
     }
@@ -215,7 +215,7 @@ public final class KeyframeEasingPanel {
     public var hint: String? {
         switch hovered {
         case .disabled("spring")?, .disabled("bounce")?: "Spring and bounce need keyframe engine support (#192)"
-        case .disabled("dimensions")?: "One curve times every component of a value today (#193)"
+        case .disabled("dimensions")?: "Conversion requires straight position keys, no auto-orient or scalar static overrides; joining requires matching X/Y key times and easing"
         case .speedHandle?: "Drag: across sets influence, up and down sets speed"
         case .graph?: "Scroll to pan, ⌘-scroll to zoom"
         case .copy?: "Copy this key's ease"
