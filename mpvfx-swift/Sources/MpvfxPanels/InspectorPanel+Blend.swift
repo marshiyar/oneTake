@@ -70,7 +70,7 @@ extension InspectorPanel {
             font: PanelTheme.font(11),
             color: tier.labelColor
         )
-        let right = Self.valueEdge(rect)
+        var right = Self.valueEdge(rect)
         if tier != .default {
             let reset = CanvasRect(
                 x: right + PanelGrid.itemGap + (PanelGrid.minTarget - Self.blendResetGlyphSize) / 2,
@@ -79,7 +79,7 @@ extension InspectorPanel {
                 height: Self.blendResetGlyphSize
             )
             let hot = hovered == .custom(Self.blendRowId, 1)
-            PanelIcon.reset.draw(canvas, in: reset, color: hot ? PanelTheme.text1 : PanelTheme.text3)
+            PanelIcon.reset.draw(canvas, in: reset, color: hot ? PanelTheme.text1 : PanelTheme.inspectorText)
             addHit(
                 CanvasRect(
                     x: right + PanelGrid.itemGap,
@@ -89,6 +89,7 @@ extension InspectorPanel {
                 ),
                 .custom(Self.blendRowId, 1)
             )
+            right = reset.x - 6
         }
         let field = CanvasRect(
             x: rect.x,

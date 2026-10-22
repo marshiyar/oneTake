@@ -64,8 +64,8 @@ enum ScopeHistogram {
             let x = (plot.x + line.value * plot.width).rounded()
             c.fillRect(CanvasRect(x: x - 0.5, y: plot.y, width: 1, height: plot.height), PanelTheme.scopeInk.withAlpha(line.major ? 0.28 : 0.1))
             if let label = line.label {
-                PanelDraw.text(c, label, in: CanvasRect(x: x - 14, y: plot.maxY - 11, width: 28, height: 11), font: PanelTheme.font(8),
-                               color: PanelTheme.scopeInk.withAlpha(0.45), align: .center)
+                PanelDraw.text(c, label, in: CanvasRect(x: x - 14, y: plot.maxY - 11, width: 28, height: 11), font: PanelTheme.font(11),
+                               color: PanelTheme.scopeLabel, align: .center)
             }
         }
     }
@@ -78,6 +78,6 @@ enum ScopeHistogram {
         if clipped.high > 0 { parts.append(String(format: "clip %.1f%%", Double(clipped.high) / n * 100)) }
         guard !parts.isEmpty else { return }
         PanelDraw.text(c, parts.joined(separator: "  "), in: CanvasRect(x: plot.x, y: plot.y - 16, width: plot.width, height: 12),
-                       font: PanelTheme.font(8), color: PanelTheme.scopeClip, align: .right)
+                       font: PanelTheme.font(11), color: PanelTheme.scopeClip, align: .right)
     }
 }

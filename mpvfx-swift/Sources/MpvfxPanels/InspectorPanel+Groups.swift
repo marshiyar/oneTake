@@ -164,9 +164,12 @@ extension InspectorPanel {
         // Media: the fit of its natural size is the default box; an untouched size reads as that default.
         let fit = editor.defaultLayout(clipId: s.id), natural = editor.naturalLayout(clipId: s.id) != nil
         func sizeTier(_ pid: String, _ isDefault: Bool) -> PropertyValueTier { natural ? .default : tier(editor, s, pid, isDefault: isDefault) }
-        var scale = 1.0
-        if case .vec2(let v)? = editor.parameterValue(clipId: s.id, parameterId: TimelineEditor.scaleId, time: t) { scale = v.x }
-        else if case .number(let v)? = editor.parameterValue(clipId: s.id, parameterId: TimelineEditor.scaleId, time: t) { scale = v }
+        let scale = editor.inspectorScale(clipId: s.id, time: t)
+        let ratioLocked = editor.scaleRatioLocked(clipId: s.id)
+        func ratioLock(_ key: String, _ label: String) -> InspectorRow {
+            .init(.toggle(.init(key: key, label: label, on: ratioLocked, tier: ratioLocked ? .explicitCustom : .default,
+                               set: { [weak self] in self?.edited(editor.setScaleRatioLocked(clipId: s.id, $0)) })))
+        }
         let pos = TimelineEditor.positionId
         let posTier = tier(editor, s, pos, isDefault: x == 0 && y == 0)
         let posKf = positionKeyframe(editor, s, x: x, y: y)
@@ -198,25 +201,31 @@ extension InspectorPanel {
             },
             prev: wk.prev ?? hk.prev, next: wk.next ?? hk.next)
         let pw = numberRow(key: "w", label: "W", value: w, decimals: 0, suffix: "px", tier: sizeTier(TimelineEditor.widthId, w == fit.width), step: 1,
-                           apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(width: max(1, $0))) },
+                           apply: { editor.setInspectorSize(clipId: s.id, time: t, width: true, value: max(1, $0)) },
                            reset: { editor.resetSize(clipId: s.id) },
                            keyframe: sizeKf)
         let ph = numberRow(key: "h", label: "H", value: h, decimals: 0, suffix: "px", tier: sizeTier(TimelineEditor.heightId, h == fit.height), step: 1,
-                           apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(height: max(1, $0))) },
+                           apply: { editor.setInspectorSize(clipId: s.id, time: t, width: false, value: max(1, $0)) },
                            reset: { editor.resetSize(clipId: s.id) })
         let rot = numberRow(key: "rotation", label: "Rotation", value: r, decimals: 0, suffix: "°",
                             tier: tier(editor, s, TimelineEditor.rotationId, isDefault: r == 0), step: 0.5,
                             apply: { editor.applyTransform(clipId: s.id, time: t, ClipTransform(rotation: $0)) },
                             reset: { editor.clearStaticParameter(clipId: s.id, TimelineEditor.rotationId) },
                             keyframe: keyframe(editor, s, TimelineEditor.rotationId, fallback: .number(r)))
-        let sc = numberRow(key: "scale", label: "Scale", value: scale * 100, decimals: 0, suffix: "%",
-                           tier: tier(editor, s, TimelineEditor.scaleId, isDefault: scale == 1), step: 1,
-                           apply: { editor.setParameter(clipId: s.id, TimelineEditor.scaleId, .vec2(Vec2Value(x: max(0.01, $0 / 100), y: max(0.01, $0 / 100))), time: t) },
-                           reset: { editor.clearStaticParameter(clipId: s.id, TimelineEditor.scaleId) },
-                           keyframe: keyframe(editor, s, TimelineEditor.scaleId, fallback: .vec2(Vec2Value(x: scale, y: scale))))
+        let scaleKf = keyframe(editor, s, TimelineEditor.scaleId, fallback: .vec2(scale))
+        let scaleTier = tier(editor, s, TimelineEditor.scaleId, isDefault: scale.x == 1 && scale.y == 1)
+        let sc = numberRow(key: "scale", label: "X", value: scale.x * 100, decimals: 0, suffix: "%",
+                           tier: scaleTier, step: 1,
+                           apply: { editor.setInspectorScale(clipId: s.id, time: t, x: true, value: max(0.01, $0 / 100)) },
+                           reset: { editor.clearStaticParameter(clipId: s.id, TimelineEditor.scaleId) }, keyframe: scaleKf)
+        let sy = numberRow(key: "scaleY", label: "Y", value: scale.y * 100, decimals: 0, suffix: "%",
+                           tier: scaleTier, step: 1,
+                           apply: { editor.setInspectorScale(clipId: s.id, time: t, x: false, value: max(0.01, $0 / 100)) },
+                           reset: { editor.clearStaticParameter(clipId: s.id, TimelineEditor.scaleId) })
         var rows: [InspectorRow] = [
             .init(.pair(label: "Position", px, py)), .init(.pair(label: "Size", pw, ph), padY: 4),
-            .init(.number(rot)), .init(.number(sc)), layerOrderRow(editor, s),
+            ratioLock("sizeRatioLocked", "Lock size ratio"), .init(.number(rot)),
+            .init(.pair(label: "Scale", sc, sy)), ratioLock("scaleRatioLocked", "Lock scale ratio"), layerOrderRow(editor, s),
         ]
         rows += transform3DRows(editor, s)
         // Keyframe easing (NativeInterpolationEditor) for the eased channels: the selected keys, else the playhead's.
@@ -225,7 +234,7 @@ extension InspectorPanel {
         rows += arcMotionRows(editor, s)
         rows += [.init(.heading("Align and distribute", trailing: nil))] + alignmentGroup(editor).rows
         return InspectorGroup(id: "layout", title: "Transform",
-                              summary: "\(PanelFormat.number(x, decimals: 0))px,\(PanelFormat.number(y, decimals: 0))px · \(Int(w.rounded()))×\(Int(h.rounded()))",
+                              summary: "X \(PanelFormat.number(x, decimals: 0)) · Y \(PanelFormat.number(y, decimals: 0)) · \(Int(w.rounded())) × \(Int(h.rounded()))",
                               rows: rows)
     }
 
@@ -298,7 +307,7 @@ extension InspectorPanel {
             display: AudioGainFader.text(gv), format: { AudioGainFader.text(AudioGainFader.gain(position: $0)) },
             tier: gv == 1 ? .default : .explicitCustom, centerTick: true,
             commit: { [weak self] p in self?.edited(editor.setAudioGroupVolume(gid, AudioGainFader.gain(position: p))) },
-            reset: { [weak self] in self?.edited(editor.setAudioGroupVolume(gid, 1)) })))]
+            reset: { [weak self] in self?.edited(editor.setAudioGroupVolume(gid, 1)) }, parseInput: Self.gainSliderInput)))]
     }
 
     static func audioFxSummary(_ chain: FxChain) -> String {
@@ -328,7 +337,7 @@ extension InspectorPanel {
                                  : editor.setClipVolume(clipId: s.id, (g * 1_000_000).rounded() / 1_000_000), label: "Set volume")
                 },
                 reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.volumeId)) },
-                keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol))))))
+                keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol)), parseInput: Self.gainSliderInput))))
             if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
         }
         if s.kind == .video || s.kind == .audio {
@@ -357,7 +366,7 @@ extension InspectorPanel {
             key: "rate", label: "Rate", position: rate * 100, min: 25, max: 300, display: Self.rateText(rate),
             format: { Self.rateText($0 / 100) }, tier: rate == 1 ? .default : .explicitCustom,
             commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, p.rounded() / 100)) },
-            reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }, detent: 100)))
+            reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }, detent: 100, step: 1, parseInput: { PanelFormat.parse($0.replacingOccurrences(of: "×", with: "x")).map { $0 * 100 } })))
     }
 
     static func rateText(_ rate: Double) -> String { String(format: "%.2f×", rate) }

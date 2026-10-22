@@ -90,8 +90,8 @@ final class TimelineToolbarTests: XCTestCase {
         click(tb, .removeSilence); XCTAssertEqual(silenced, "clip:a")
         tb.isRemovingSilence = true; XCTAssertFalse(tb.canRemoveSilence)
 
-        XCTAssertFalse(tb.canAddBeat, "no analysis")
-        tb.beatMusicClipId = "clip:music"; c.playback.seek(3)
+        XCTAssertFalse(tb.canAddBeat, "select an audio clip")
+        c.view.selection = ["clip:music"]; c.playback.seek(3)
         XCTAssertTrue(tb.canAddBeat)
         click(tb, .addBeat)
         XCTAssertEqual(c.view.beats.map(\.time), [3])

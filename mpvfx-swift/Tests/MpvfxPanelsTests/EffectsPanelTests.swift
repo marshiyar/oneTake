@@ -45,7 +45,7 @@ final class EffectsPanelTests: XCTestCase {
         XCTAssertEqual(EffectsCatalog.entries(matching: "").count, EffectsCatalog.all.count)
         XCTAssertEqual(EffectsCatalog.entries(matching: "blur").map(\.key), ["blur"])
         XCTAssertEqual(EffectsCatalog.entries(matching: "  BLUR ").map(\.key), ["blur"])
-        XCTAssertTrue(EffectsCatalog.entries(matching: "retro").allSatisfy { $0.group == "Retro & Glitch" })
+        XCTAssertTrue(EffectsCatalog.entries(matching: "retro").allSatisfy { $0.group == "Retro & glitch" })
         XCTAssertTrue(EffectsCatalog.entries(matching: "audio").allSatisfy { $0.kind == .audio })
         XCTAssertTrue(EffectsCatalog.entries(matching: "zzzz-no-such").isEmpty)
         let (p, _) = try make()
