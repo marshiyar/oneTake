@@ -546,8 +546,8 @@ final class MediaBinTests: XCTestCase {
             XCTAssertFalse(c.drawnStrings.contains(t), "\(t) is a menu item now, not a row")
         }
         _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))
-        XCTAssertEqual(s.dropdown.options.map(\.label), ["New library…", "Open library…", "New event…", "Import into Media…", "Copy files into the library",
-                                                         "Link to the original files", LeftSidebarPanel.revealLabel, "jk", "New project…", "Open project…",
+        XCTAssertEqual(s.dropdown.options.map(\.label), ["New library…", "Open library…", "New event…", "Rename event…", "Import into Media…", "Copy files into the library",
+                                                         "Link to the original files", LeftSidebarPanel.revealLabel, "jk", "New project…", "Rename project…", "Open project…",
                                                          "Open existing standalone project"])
         s.dropdown.pick("reveal")
         _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .more })))

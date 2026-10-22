@@ -45,7 +45,7 @@ final class DesignGroupDockTests: XCTestCase {
         }
         let layout = DockDefaults.layout(registry)
         XCTAssertTrue(DesignGroups.panelIDs.allSatisfy { !layout.isOpen($0) }, "every group starts in the Design tab")
-        XCTAssertEqual(layout.openPanels, ["media", "preview", "inspector", "renders", "history", "info", "timeline"])
+        XCTAssertEqual(layout.openPanels, ["media", "effects", "preview", "inspector", "renders", "history", "info", "timeline"])
     }
 
     func testDotsAreValidInsideAnIDOnly() {
