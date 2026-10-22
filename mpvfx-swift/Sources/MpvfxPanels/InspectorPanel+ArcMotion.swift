@@ -27,10 +27,10 @@ extension InspectorPanel {
         let id = s.id
         let enabled = path.segments.contains { $0 != nil }
         var rows: [InspectorRow] = [.init(.spacer(PanelGrid.unit)),
-            .init(.toggle(.init(key: "arcMotion", label: "Arc Motion", on: enabled, tier: enabled ? .explicitCustom : .default,
+            .init(.toggle(.init(key: "arcMotion", label: "Arc motion", on: enabled, tier: enabled ? .explicitCustom : .default,
                                 set: { [weak self] on in self?.edited(editor.setArcMotion(clipId: id, on), label: "Edit arc motion") })))]
         guard enabled else { return rows }
-        rows.append(.init(.toggle(.init(key: "arcAutoRotate", label: "Auto-Rotate", on: path.autoRotate,
+        rows.append(.init(.toggle(.init(key: "arcAutoRotate", label: "Auto-rotate", on: path.autoRotate,
                                         tier: path.autoRotate ? .explicitCustom : .default,
                                         set: { [weak self] on in self?.edited(editor.setArcAutoRotate(clipId: id, on), label: "Edit arc motion") }))))
         let count = path.segments.count

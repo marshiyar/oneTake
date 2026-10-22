@@ -288,7 +288,7 @@ Every item of the owner's screenshot review, with its status now.
 | Selected clip header: name, reset, visibility, close | partial: name, reset and close work; visibility is missing (panels) |
 | Color wheels Shadows / Midtones / Highlights with wheel, slider, Hue / Amount / Level, per-wheel reset | done |
 | Curves Master, R, G, B, Hue/Hue, Hue/Sat, Hue/Luma; editable graph; reset | done |
-| Secondary color: add / delete selection | done (eyedropper missing) |
+| Secondary color: add / delete selection, eyedropper and Hue / Saturation / Luma qualifiers | done: gradient ranges with two 24 pt keyboard-adjustable handles, softness, live selection matte and one undo step per drag (#181) |
 | Custom LUT dropdown | done |
 | Finish section and the other sections (transform, crop, opacity) | done |
 | Timeline toolbar: select, blade, link/ripple, keyframe add/navigate, tools, track height, zoom | done (timeline) |
@@ -313,11 +313,21 @@ with room size, damping, stereo width, pre-delay, low cut, wet and dry controls.
 The original Room effect and presets retain the legacy reverb sound. The v2
 convolver and regression tests are implemented; Swift test execution and the
 release benchmark target remain unverified in the contribution environment.
+- Design inspector legibility (#173): labels, hints, state tags and summaries use AA secondary ink in both appearances; text/values are at least 11 px, section headings 11.5 px below 12 px group titles, and essential slider/field edges reach 3:1.
 Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
 Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.
 ### Hand-placed beat marks (#289)
 
 Select an audio clip and press B or Add beat to store a mark at the audio clock time. Marks stay on their source frames when clips move or trim, support one-step undo, snap clip edges, and persist in project.json. Drag a mark to move it, Option-click to delete, or Option-comma / Option-period to jump. Unknown beat versions remain in the project with an open notice.
+
+### Design wording (#186)
+
+**done — panels / panels-visual.** Design controls and section headings use sentence case. Align, case, style and
+crop reset use vector icons with word tooltips and native accessible names. Summaries use the 11 px label font
+and human names; Primary and secondary correction say Temperature. Rotation appears once in Transform; the
+3D transform disclosure retains tilt, depth and perspective. Document keys and editing commands are unchanged.
+Evidence: `DesignWordingTests`, the Design wording scanner and its three regressions. Native offscreen panel
+captures cover dark/light at 1440×900 and 1280×800; full application screenshot verification remains manual.
 
 ## 13. Recently landed
 
@@ -330,4 +340,3 @@ Select an audio clip and press B or Add beat to store a mark at the audio clock 
 | Voice recording (#317) | done: transport Record button and ⌥Space with 0–5 s count-in and microphone selection in Settings, live meter with clip latch, Space keeps the WAV as an ordinary audio clip on the Voice track and Esc discards it; overlapping takes are muted and retained, one undo step per kept take; sub-frame silence aligns the first sample with input latency. Punch-in and pre-roll remain #318 (`VoiceTransportTests`, `TimelineVoiceTests`) | n/a |
 | Saved looks, auto balance, reference look matching | done: Design > Saved looks stores named grades durably (`looks.json`); Auto balance and Match look fit ordinary grade values from frame statistics in one undo step (`UserLookTests`, `AutoBalanceTests`, `LookMatchTests`) | close |
 | Lookahead limiter (#205) | done: current-sound limiters hold a linked stereo sample-peak ceiling (−24 to 0 dBFS) with 0.5–5 ms lookahead (default 1.5 ms) and 10–1000 ms release; the v1 limiter and recorded fixtures keep their sound, dry mixing is delayed by run latency, tails include the lookahead; fully-wet ceiling only, no true-peak oversampling (`LimiterV2Tests`) | n/a |
->>>>>>> origin/main

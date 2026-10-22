@@ -107,15 +107,15 @@ extension InspectorPanel {
         case .section(let t):
             c.fillRect(CanvasRect(x: r.x, y: r.y, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
             PanelDraw.tracked(c, t.uppercased(), in: CanvasRect(x: r.x, y: r.y + 1, width: r.width, height: r.height - 1),
-                              font: PanelTheme.font(9, .semibold), tracking: 1.08, color: PanelTheme.text5)
+                              font: PanelTheme.font(PanelTheme.inspectorSectionSize, .semibold), tracking: 1.08, color: PanelTheme.inspectorText)
         case .heading(let t, let trailing):
-            PanelDraw.text(c, t.uppercased(), in: r, font: PanelTheme.font(10, .medium), color: PanelTheme.text2)
-            if let trailing { PanelDraw.text(c, trailing, in: r, font: PanelTheme.font(9), color: PanelTheme.text3, align: .right) }
+            PanelDraw.text(c, t.uppercased(), in: r, font: PanelTheme.font(11, .medium), color: PanelTheme.text2)
+            if let trailing { PanelDraw.text(c, trailing, in: r, font: PanelTheme.font(11), color: PanelTheme.inspectorText, align: .right) }
         case .subheader(let t, let buttons): drawSubheader(c, r, t, buttons)
         case .note(let s):
             for (i, line) in Self.wrap(s, perLine: 48).enumerated() {
                 let lr = CanvasRect(x: r.x, y: r.y + Double(i) * PanelGrid.lineHeight, width: r.width, height: PanelGrid.lineHeight)
-                PanelDraw.text(c, line, in: lr, font: PanelTheme.font(10), color: PanelTheme.text4)
+                PanelDraw.text(c, line, in: lr, font: PanelTheme.font(11), color: PanelTheme.inspectorText)
             }
         case .buttons(let bs):
             let gap = 6.0, w = (r.width - gap * Double(bs.count - 1)) / Double(max(1, bs.count))
@@ -128,7 +128,7 @@ extension InspectorPanel {
     func drawSubheader(_ c: CanvasContext, _ r: CanvasRect, _ t: String, _ buttons: [InspectorRow.Button]) {
         var x = r.maxX
         for b in buttons.reversed() {
-            let w = max(PanelGrid.minTarget, c.measureText(b.label, font: PanelTheme.font(10, .medium)).width + 8)
+            let w = max(PanelGrid.minTarget, b.icon == nil ? c.measureText(b.label, font: PanelTheme.font(11, .medium)).width + 8 : PanelGrid.minTarget)
             let br = CanvasRect(x: x - w, y: r.y, width: w, height: r.height)
             drawButton(c, br, b, plain: true)
             x = br.x - PanelGrid.itemGap
@@ -248,10 +248,9 @@ extension InspectorPanel {
         if editing { drawFieldEditing(c, tr, text: text, font: PanelTheme.mono(11), readOnly: n.readOnly) }
         PanelDraw.text(c, text, in: tr, font: PanelTheme.mono(11),
                        color: n.tier.valueInk(disabled: n.disabled, typing: editing, adjusting: scrub?.key == n.key), align: .right)
-        let hover = isHovering(n.key)
         let underline: CanvasColor = n.tier == .explicitCustom
-            ? PanelTheme.accent.withAlpha(hover ? 0.7 : 0.3)
-            : PanelTheme.panelBorderInput.withAlpha(hover ? 1 : 0.5)
+            ? PanelTheme.accent
+            : PanelTheme.inspectorControl
         c.fillRect(CanvasRect(x: field.x, y: field.maxY - 1, width: field.width, height: 1).snapped, editing ? PanelTheme.accent : underline)
         if !n.disabled {
             // The swatch's target sits on the field's left edge: start the field hit after it so the two targets
@@ -279,7 +278,7 @@ extension InspectorPanel {
     func drawResetGlyph(_ c: CanvasContext, _ cell: CanvasRect, key: String, visible: Bool) {
         guard visible else { return }
         let g = CanvasRect(x: cell.midX - 5.5, y: cell.midY - 5.5, width: 11, height: 11)
-        PanelIcon.reset.draw(c, in: g, color: hovered == .reset(key) ? PanelTheme.text1 : PanelTheme.text3)
+        PanelIcon.reset.draw(c, in: g, color: hovered == .reset(key) ? PanelTheme.text1 : PanelTheme.inspectorText)
     }
 
     /// Keyframe controls on the property's row (docs/DESIGN.md Rollout 5), four 24 pt cells right to left: next ›,
@@ -374,7 +373,7 @@ extension InspectorPanel {
         let cell = CanvasRect(x: line.maxX - PanelGrid.minTarget, y: line.midY - PanelGrid.minTarget / 2, width: PanelGrid.minTarget, height: PanelGrid.minTarget)
         let hov = hovered == .keyframe(key)
         PanelIcon.phosphor(.gear).draw(c, in: CanvasRect(x: cell.midX - 6, y: cell.midY - 6, width: 12, height: 12),
-                                       color: hov || active ? PanelTheme.text1 : PanelTheme.text4)
+                                       color: hov || active ? PanelTheme.text1 : PanelTheme.inspectorText)
         addHit(cell, .keyframe(key))
     }
 
@@ -386,18 +385,18 @@ extension InspectorPanel {
         let custom = s.tier == .explicitCustom || drag != nil
         let editing = field?.key == s.key
         let text = editing ? (field?.draft ?? s.display) : (drag != nil ? s.format(pos) : s.display)
-        if editing { drawFieldEditing(c, valueRect, text: text, font: PanelTheme.mono(10), readOnly: false) }
-        PanelDraw.text(c, text, in: valueRect, font: PanelTheme.mono(10),
+        if editing { drawFieldEditing(c, valueRect, text: text, font: PanelTheme.mono(11), readOnly: false) }
+        PanelDraw.text(c, text, in: valueRect, font: PanelTheme.mono(11),
                        color: s.tier.valueInk(disabled: s.disabled, adjusting: drag != nil), align: .right)
         let track = CanvasRect(x: trackX, y: line.midY - PanelGrid.minTarget / 2, width: max(10, valueRect.x - 8 - trackX), height: PanelGrid.minTarget)
         let pct = max(0, min(1, (pos - s.min) / max(1e-9, s.max - s.min)))
         let lineY = track.midY - 1
-        c.fillRoundedRect(CanvasRect(x: track.x, y: lineY, width: track.width, height: 2), radius: 1, PanelTheme.panelHover)
-        if s.centerTick { c.fillRect(CanvasRect(x: track.midX - 0.5, y: lineY - 1, width: 1, height: 4), PanelTheme.text5) }
-        if custom { c.fillRoundedRect(CanvasRect(x: track.x, y: lineY, width: track.width * pct, height: 2), radius: 1, PanelTheme.text5) }
+        c.fillRoundedRect(CanvasRect(x: track.x, y: lineY, width: track.width, height: 2), radius: 1, PanelTheme.inspectorControl)
+        if s.centerTick { c.fillRect(CanvasRect(x: track.midX - 0.5, y: lineY - 1, width: 1, height: 4), PanelTheme.inspectorText) }
+        if custom { c.fillRoundedRect(CanvasRect(x: track.x, y: lineY, width: track.width * pct, height: 2), radius: 1, PanelTheme.inspectorText) }
         let k = custom ? 8.0 : 7.0
         c.fill(.roundedRect(CanvasRect(x: track.x + track.width * pct - k / 2, y: track.midY - k / 2, width: k, height: k), radius: k / 2),
-               custom ? PanelTheme.white : PanelTheme.text4)
+               custom ? PanelTheme.white : PanelTheme.inspectorText)
         if !s.disabled {
             addHit(track, .slider(s.key))
             addHit(Self.target(valueRect), .field(s.key))
@@ -412,13 +411,13 @@ extension InspectorPanel {
                        font: Self.rowFont, color: t.tier.labelColor)
         c.fillRoundedRect(sw, radius: 7, t.on ? PanelTheme.accent.withAlpha(0.35) : PanelTheme.panelHover)
         let knob = CanvasRect(x: t.on ? sw.maxX - 12 : sw.x + 2, y: sw.y + 2, width: 10, height: 10)
-        c.fillRoundedRect(knob, radius: 5, t.on ? PanelTheme.accent : PanelTheme.text4)
+        c.fillRoundedRect(knob, radius: 5, t.on ? PanelTheme.accent : PanelTheme.inspectorText)
         addHit(CanvasRect(x: sw.x - 4, y: r.y, width: sw.width + 4, height: r.height), .toggle(t.key))
     }
 
     /// Each option's natural width: its label plus padding, never under a target.
     static func segmentWidths(_ c: CanvasContext, _ s: InspectorRow.Segmented) -> [Double] {
-        s.options.map { max(PanelGrid.minTarget, c.measureText($0.label, font: rowFont).width + segmentPad) }
+        s.options.map { max(PanelGrid.minTarget, s.icons[$0.key] == nil ? c.measureText($0.label, font: rowFont).width + segmentPad : PanelGrid.minTarget) }
     }
 
     /// The options' natural width side by side.
@@ -455,8 +454,13 @@ extension InspectorPanel {
         let area = stacked ? lines.1 : CanvasRect(x: cols.control.x, y: r.y, width: max(0, Self.valueEdge(r) - cols.control.x), height: r.height)
         for (o, or) in zip(s.options, Self.segmentRects(Self.segmentWidths(c, s), in: area)) {
             let hov = hovered == .segment(s.key, o.key)
-            PanelDraw.text(c, o.label, in: CanvasRect(x: or.x + 2, y: or.midY - 8.25, width: max(0, or.width - 4), height: 16.5), font: Self.rowFont,
-                           color: o.active ? PanelTheme.text0 : (hov ? PanelTheme.text2 : PanelTheme.text4), align: .center)
+            let color = o.active ? PanelTheme.text0 : (hov ? PanelTheme.text2 : PanelTheme.inspectorText)
+            if let icon = s.icons[o.key] {
+                icon.draw(c, in: CanvasRect(x: or.midX - 8, y: or.midY - 8, width: 16, height: 16), color: color)
+            } else {
+                PanelDraw.text(c, o.label, in: CanvasRect(x: or.x + 2, y: or.midY - 8.25, width: max(0, or.width - 4), height: 16.5),
+                               font: Self.rowFont, color: color, align: .center)
+            }
             if o.active { c.fillRect(CanvasRect(x: or.x, y: or.maxY - 2, width: or.width, height: 2), PanelTheme.accent) }
             addHit(or, .segment(s.key, o.key))
         }
@@ -467,9 +471,14 @@ extension InspectorPanel {
     func drawButton(_ c: CanvasContext, _ r: CanvasRect, _ b: InspectorRow.Button, plain: Bool) {
         let hov = hovered == .button(b.key)
         let font = PanelTheme.font(plain ? 10 : 11, .medium)
+        if let icon = b.icon {
+            icon.draw(c, in: CanvasRect(x: r.midX - 7, y: r.midY - 7, width: 14, height: 14), color: hov ? PanelTheme.text1 : PanelTheme.text3)
+            if !b.disabled { addHit(r, .button(b.key)) }
+            return
+        }
         switch b.style {
-        case .accent: PanelDraw.text(c, b.label, in: r, font: font, color: PanelTheme.accent.withAlpha(hov ? 1 : 0.9), align: .center)
-        case .muted: PanelDraw.text(c, b.label, in: r, font: font, color: hov ? PanelTheme.text1 : PanelTheme.text3, align: .center)
+        case .accent: PanelDraw.text(c, b.label, in: r, font: font, color: PanelTheme.accent, align: .center)
+        case .muted: PanelDraw.text(c, b.label, in: r, font: font, color: hov ? PanelTheme.text1 : PanelTheme.inspectorText, align: .center)
         case .danger: PanelDraw.text(c, b.label, in: r, font: font, color: PanelTheme.red400, align: .center)
         case .chip, .chipActive: drawChip(c, r, b, hovered: hov)
         }
@@ -480,7 +489,7 @@ extension InspectorPanel {
         let active = b.style == .chipActive
         c.fillRoundedRect(r, radius: PanelTheme.radiusMd, active ? PanelTheme.accent.withAlpha(0.18) : (hov ? PanelTheme.panelHover : PanelTheme.panelInput))
         c.strokeRoundedRect(r.insetBy(0.5), radius: PanelTheme.radiusMd - 0.5, active ? PanelTheme.accent.withAlpha(0.5) : PanelTheme.panelBorderInput, width: 1)
-        PanelDraw.text(c, b.label, in: r.insetBy(4), font: PanelTheme.font(10, .medium), color: active ? PanelTheme.text0 : PanelTheme.text2, align: .center)
+        PanelDraw.text(c, b.label, in: r.insetBy(4), font: PanelTheme.font(11, .medium), color: active ? PanelTheme.text0 : PanelTheme.text2, align: .center)
     }
 
     /// FX rack row: bypass switch, name, type, remove ×; both controls are target-sized.
@@ -488,18 +497,18 @@ extension InspectorPanel {
         let dot = CanvasRect(x: r.x, y: r.y + (r.height - 14) / 2, width: 24, height: 14)
         c.fillRoundedRect(dot, radius: 7, n.enabled ? PanelTheme.accent.withAlpha(0.35) : PanelTheme.panelHover)
         c.fillRoundedRect(CanvasRect(x: n.enabled ? dot.maxX - 12 : dot.x + 2, y: dot.y + 2, width: 10, height: 10), radius: 5,
-                          n.enabled ? PanelTheme.accent : PanelTheme.text4)
+                          n.enabled ? PanelTheme.accent : PanelTheme.inspectorText)
         addHit(Self.target(dot), .fxToggle(n.key))
         let rm = CanvasRect(x: r.maxX - PanelGrid.minTarget, y: r.midY - PanelGrid.minTarget / 2, width: PanelGrid.minTarget, height: PanelGrid.minTarget)
         PanelIcon.close.draw(c, in: CanvasRect(x: rm.maxX - 12, y: rm.midY - 5, width: 10, height: 10),
-                             color: hovered == .fxRemove(n.key) ? PanelTheme.red400 : PanelTheme.text4)
+                             color: hovered == .fxRemove(n.key) ? PanelTheme.red400 : PanelTheme.inspectorText)
         addHit(rm, .fxRemove(n.key))
         let tx = dot.maxX + 8
         let ls = PanelDraw.text(c, n.label, in: CanvasRect(x: tx, y: r.y, width: max(0, rm.x - tx - 8) * 0.6, height: r.height),
-                                font: PanelTheme.font(11, .medium), color: n.enabled ? PanelTheme.text1 : PanelTheme.text4)
+                                font: PanelTheme.font(11, .medium), color: n.enabled ? PanelTheme.text1 : PanelTheme.inspectorText)
         if n.detail != n.label {
             PanelDraw.text(c, n.detail, in: CanvasRect(x: tx + ls.width + 6, y: r.y + 1, width: max(0, rm.x - tx - ls.width - 14), height: r.height),
-                           font: PanelTheme.mono(9), color: PanelTheme.text5)
+                           font: PanelTheme.mono(11), color: PanelTheme.inspectorText)
         }
     }
 }

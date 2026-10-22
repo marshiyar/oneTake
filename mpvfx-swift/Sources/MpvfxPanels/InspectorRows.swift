@@ -42,6 +42,7 @@ public struct InspectorRow {
         /// Label drag scrubs the value: (current value, units per pixel, apply on release).
         public var scrub: (value: Double, step: Double, apply: (Double) -> Void, format: (Double) -> String)?
         public var disabled = false
+        public var icon: PanelIcon? = nil
         /// Shown in the normal ink and focusable, its text selected while focused, but never edited (Media start).
         public var readOnly = false
         /// A colour value's swatch before its text (issue #189): `color` nil draws the checkerboard; a press on its
@@ -65,6 +66,7 @@ public struct InspectorRow {
         public var reset: (() -> Void)?
         public var keyframe: Keyframe?
         public var disabled = false
+        public var icon: PanelIcon? = nil
         /// A trailing 12px settings gear after the slider (`flex items-center gap-1.5`, Finish rows).
         public var settings: (active: Bool, toggle: () -> Void)?
         /// Drags along y, bottom = min (the Tone EQ's faders).
@@ -90,6 +92,8 @@ public struct InspectorRow {
         public var label: String
         public var options: [(key: String, label: String, active: Bool)]
         public var select: (String) -> Void
+        /// Optional vector icons; option labels remain the tooltip and accessible name.
+        public var icons: [String: PanelIcon] = [:]
     }
     public struct Button {
         public enum Style { case accent, muted, danger, chip, chipActive }
@@ -98,6 +102,7 @@ public struct InspectorRow {
         public var style: Style
         public var action: () -> Void
         public var disabled = false
+        public var icon: PanelIcon? = nil
     }
     public struct FxNode {
         public var key: String
