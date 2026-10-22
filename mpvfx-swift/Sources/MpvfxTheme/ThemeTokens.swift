@@ -113,7 +113,10 @@ public enum Theme {
         }
 
         func addObserver(_ fn: @escaping (ThemeMode) -> Void) -> Int {
-            if !Thread.isMainThread { return DispatchQueue.main.sync { addObserver(fn) } }
+            // Boxed Sendable: the synchronous hop delivers fn to the main thread before any use,
+            // so no race is possible; the box only satisfies the Sendable closure boundary.
+            final class Box: @unchecked Sendable { let fn: (ThemeMode) -> Void; init(_ fn: @escaping (ThemeMode) -> Void) { self.fn = fn } }
+            if !Thread.isMainThread { let box = Box(fn); return DispatchQueue.main.sync { addObserver(box.fn) } }
             nextObserver += 1
             observers.append((nextObserver, fn))
             return nextObserver
