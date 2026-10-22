@@ -248,7 +248,7 @@ Features that only show in some states, and what the editor does with each.
 
 | Feature | Status |
 | --- | --- |
-| Flat inspector | done: the only inspector |
+| Flat inspector | done: the only inspector; sliders take Tab focus, arrows nudge (Shift ×10, Home/End for bounds), Enter edits the displayed value, and Delete/Backspace resets; repeated keys share one undo step (#174) |
 | Timeline row virtualization | n/a: the canvas timeline draws visible rows only |
 | Show thumbnails toggle | done (toggle persisted) |
 | Test hooks | `MPVFX_SMOKE_*` environment hooks |
