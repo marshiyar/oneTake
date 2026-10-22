@@ -64,6 +64,13 @@ The Grade group's Scopes row (`Sources/MpvfxPanels/InspectorPanel+Scopes.swift`,
 - Every tile is black in both appearances. Traces are bitmaps at the analysis resolution; the graticule (level lines and labels, the vectorscope's cross, 0.5 ring, targets and skin line) is drawn as vectors over them. Red marks above and below a waveform column show samples at level 255 and level 0; the histogram writes the crushed and clipped luma shares; the vectorscope writes the share of samples off a zoomed scale.
 - Trace brightness: a bin with `count` samples is drawn at `1 - exp(-gain x count / ref)`, where `ref` is a column's samples spread over 100 levels (the frame's samples over 2000 bins for the vectorscope). Brightness does not depend on the frame's own peak, so it does not flicker from frame to frame (a product convention).
 - The frame: the host's graded frame of the selected clip at the playhead, at most 960 px on its long side (the old scopes used 320 px, too coarse for single-pixel highlights). It follows the playhead while playing. `ScopeWorker` analyses it on a background queue, keeps only the newest request, and shows the last result until the next is ready.
+- The row's Clip / Program switch (saved in `panel-layout.json` as `scopeSource`, Clip by default) scopes the
+  selected clip's graded frame or the composited program at the playhead instead.
+- A dockable Scopes panel (`scopes`, Window / Panels) shows the program frame's scopes beside the preview,
+  independent of the clip selection, with the same worker and renderer; the chosen kind (waveform, RGB parade,
+  vectorscope, histogram) is chosen by click or Tab/Enter/arrows and persists in `panel-layout.json`. It starts
+  closed so existing workspaces keep their layout. Still missing everywhere: a CIE chromaticity diagram and a
+  detached full-size scope view.
 
 ## Speed
 

@@ -251,6 +251,9 @@ final class PanelLayoutAuditTests: XCTestCase {
             switch row.kind {
             case .pair(_, let a, let b): return a.key == k || b.key == k
             case .quad(let ns): return ns.contains { $0.key == k }
+            // A colour field's value starts after its 24 pt swatch target (the two partition the row so they do
+            // not overlap): the value, not the row edge, is the control's start.
+            case .number(let n): return n.key == k && n.swatch != nil
             default: return false
             }
         }

@@ -265,6 +265,16 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         }
     }
 
+    public func sceneCuts(projectId: String, source: String, sourceStart: Double, sourceDuration: Double,
+                          framesPerSecond: Double, threshold: Double, onProgress: @escaping @Sendable (Double) -> Void) async throws -> [Double] {
+        let dir = try store(projectId).directory
+        return try await blocking { cancellation in
+            try analyzeProjectScenes(dir, source: source, sourceStart: sourceStart, sourceDuration: sourceDuration,
+                                     framesPerSecond: framesPerSecond, threshold: threshold,
+                                     cancellation: cancellation, onProgress: onProgress)
+        }
+    }
+
     public func renameMedia(projectId: String, from: String, to: String, content: String) throws -> DesktopMediaOperation {
         let s = try store(projectId)
         let r = try exclusive(s) { try s.renameMedia(from, to: to, content: content) }
@@ -501,6 +511,13 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         if let failure = saveFailureError(error, folder: folder) { return failure }
         switch error {
         case let e as DesktopError: return e
+        case let e as ProjectDocumentError where e.kind == .missing:
+            guard let folder else { return DesktopError(e.message, name: desktopErrorName(e.kind)) }
+            // A save into a moved or deleted folder: the editor's moved-folder flow dispatches on the name, and
+            // the status line on the save failure, so the error carries both.
+            var moved = DesktopError(saveFailure: .folderMissing, folder: folder)
+            moved.name = desktopErrorName(e.kind)
+            return moved
         case let e as ProjectDocumentError: return DesktopError(e.message, name: desktopErrorName(e.kind))
         case let e as ProjectMediaOperationError:
             return DesktopError(e.message, name: e.kind == .inUse ? "MediaInUseError" : e.kind == .exists ? "ConflictError" : "Error")

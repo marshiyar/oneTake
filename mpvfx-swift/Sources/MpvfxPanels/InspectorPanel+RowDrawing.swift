@@ -257,8 +257,14 @@ extension InspectorPanel {
             ? PanelTheme.accent.withAlpha(hover ? 0.7 : 0.3)
             : PanelTheme.panelBorderInput.withAlpha(hover ? 1 : 0.5)
         c.fillRect(CanvasRect(x: field.x, y: field.maxY - 1, width: field.width, height: 1).snapped, editing ? PanelTheme.accent : underline)
-        if !n.disabled { addHit(CanvasRect(x: field.x, y: slot.y, width: field.width, height: slot.height), .field(n.key)) }
-        if let sw = n.swatch { addHit(Self.swatchTarget(field: field, midY: slot.midY), .button(sw.key)) }   // after the field: it wins
+        if !n.disabled {
+            // The swatch's target sits on the field's left edge: start the field hit after it so the two targets
+            // partition the row instead of overlapping (the audit forbids overlapping targets).
+            var fx = field.x
+            if n.swatch != nil { fx = Self.swatchTarget(field: field, midY: slot.midY).maxX }
+            addHit(CanvasRect(x: fx, y: slot.y, width: field.maxX - fx, height: slot.height), .field(n.key))
+        }
+        if let sw = n.swatch { addHit(Self.swatchTarget(field: field, midY: slot.midY), .button(sw.key)) }
     }
 
     // MARK: Accessories (reset, keyframes)
@@ -316,6 +322,7 @@ extension InspectorPanel {
         let hov = hovered == .keyframe(key)
         switch kf.state {
         case .onKey:
+            // On a key the diamond is the property kind's mark (#201), like the timeline's; the ease variant stays visible.
             TimelineKeyframeGlyph.draw(c, .init(kf.kind, ease: kf.ease), at: at, r: 5)
         case .animated:
             TimelineKeyframeGlyph.drawOutline(c, .init(shape: shape, color: kf.kind.color.withAlpha(hov ? 1 : 0.75)), at: at, r: 5)

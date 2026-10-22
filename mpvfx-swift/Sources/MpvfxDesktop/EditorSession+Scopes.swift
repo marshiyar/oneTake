@@ -24,6 +24,13 @@ extension SessionPanels {
         let program = ProgramScopeRenderer(compositor: session.compositor)
         program.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
         inspector.scopeWorker.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
+        // Separate renderer so look matching's sequential source/reference requests cannot supersede the scopes'
+        // own pending frame in PresetPreviewRenderer's latest-request slot.
+        let matchRenderer = PresetPreviewRenderer(compositor: session.compositor)
+        matchRenderer.onReady = { [weak self] in self?.uiPost { self?.redraw() } }
+        inspector.matchLookFrame = { clipId, time, w, h in
+            Self.panelState(matchRenderer.gradedFrame(clipId: clipId, time: time, pixelWidth: w, pixelHeight: h, exactOnly: true))
+        }
         inspector.scopeFrame = { [weak self, weak inspector] clipId, w, h in
             guard let self, let inspector else { return .unavailable }
             return Self.panelState(renderer.gradedFrame(clipId: clipId, time: self.scopeTime(inspector), pixelWidth: w, pixelHeight: h))
