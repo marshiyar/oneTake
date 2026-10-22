@@ -1,5 +1,15 @@
 # Feature inventory
 
+Text style model and commands (#282): project `textStyles` records and optional clip links share typography while
+keeping each layer's words. Save, apply to multiple layers, update from a layer and detach are validated atomic
+editor commands with undo/redo. Cross-project clip paste detaches a resolved typography snapshot so missing or
+colliding style IDs cannot change the appearance; same-project paste keeps the live style link. Inspector edits
+override only the changed fields; nil can explicitly restore a field's default, and Reset removes the override to
+follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
+style/link versions and kinds remain serialized and undrawn with an open notice. The style browser is a later UI
+slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
+and `TextStyleRenderingTests`.
+
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript
 or a web view. The design audit in §11 is the floor for how the editor looks.
@@ -66,6 +76,7 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Audio rows: icon, name, duration, waveform bars | done | exact |
 | Asset preview overlay / audition (play an asset) | missing (panels) | n/a |
 | Drag from bin to timeline (insert at drop time/track) | done: a 4 px drag starts it, the drop inserts at the pointer's time on the track under it when the kind fits and the track is unlocked (`EditorSession+AssetDrag.swift`); while over the tracks the drop outline shows (1 px accent/60 inside the tracks area, `AssetDropOutline`); edge auto-scroll during the drag is missing | close |
+| Option/Alt-drop a bin card onto a clip to replace its media | done: keeps timing, trim, transform, grade, moves and keyframes; reports missing source frames when too short; one undo step includes adding a new asset (`TimelineReplaceMediaTests`, `ReplaceMediaDragTests`). Keyboard replacement and a clip-menu chooser are not implemented | n/a |
 | Drag from bin to stage | done: the shell router keeps pointer capture and converts to player points; the player highlights the drop and inserts at the playhead | close |
 | Asset context menu: Add at playhead, Copy path, Rename, Delete (+ remove placements, undoable) | done | exact |
 | Double-click / Enter adds asset to timeline | done | n/a |
@@ -86,6 +97,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Header hide toggle, Ungroup (⌘⇧G) | missing (panels) | n/a |
 | Accordion: one open group, others as summary rows | done | exact |
 | Value tiers (default / explicit default / custom + reset ↺) | done | exact |
+| Convert layer moves to keyframes (`TimelineEditor.convertMovesToKeyframes`) | conversion API implemented: one undo step, existing keys retained; sparse move segments with frame samples where combined animation needs them (#275). Swift regression tests added; not run in the authoring environment; user-facing command entry remains to be wired | exact at project frames, pending CI |
 | Transform: X, Y, W, H, rotation, scale | done (undoable, keyframes at the playhead when animated; audit tests 0996b1e) | exact |
 | Transform: layer order | done: the Layer order field writes the clip's `layout.zIndex`, the stacking key preview and export share (the stage menu's z-order writes the same key); empty / reset returns to track order; test | close |
 | Transform: flex align/justify/direction/gap | dropped: flex layout of web containers has no native counterpart | n/a |
@@ -105,6 +117,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Clip timing: start, end, duration | removed on purpose (2026-10-13): the timeline rows move, trim and split clips; speed stays as Rate in Media (see §13) | n/a |
 | Media: volume, muted, rate, media start, play video sound | done | exact |
 | Media: fit (Fit, Fill, Stretch) | done: the Media group's Fit select on video and image clips, one undo step, with the reset back to Fit; saved as `clip.fit` (absent = Fit, so older projects open and save unchanged). Fill covers the box keeping the aspect and clips the overflow; Stretch maps the picture onto the box; an untouched Fill or Stretch clip's box is the whole frame. Preview and export draw it with one painter (`NativeClipLayout.swift` `nativeMediaRect`, `PreviewComposition.swift`, `InspectorPanel+MediaFit.swift`) | close |
+| Layout grids (#321) | partial: pure split-screen/PiP plans and one-step undo, existing transform/crop/fit fields; geometry and refusal tests. Layout menu, diagrams, shortcuts and swapping remain #322 | n/a |
 | Media: loop, object position | missing in the native document (panels + preview) | n/a |
 | Align / distribute | done (#449): six align buttons in Transform, frame/selection reference; three or more visual clips distribute with equal edge gaps. Multi-selection supports the same keyboard-operable controls. Existing position parameters are written at the playhead when animated, in one undo step. Only the changed component is keyed, preserving 2D path tangents and the untouched axis; a single selection uses the frame reference; preview/export share their existing painter (`AlignmentTests`, `AlignmentInspectorTests`, `AlignmentPainterTests`) | exact |
 | Text: content, multiple fields, font picker, size, weight, color, align, letter spacing, line height, case/style | partial: native text layers (`clip.text` on a Text element asset; T adds one at the playhead). The Text group comes first, in this order: Content (`\n` breaks a line), Font (family name), Size, Weight (number or label), Letter spacing (px/em), Line height (multiple, %, px, normal), Align L/C/R/J, Case · Style, Color (hex). Preview and export draw one layout (`TextLayout`: wrap at the box width, half-leading line boxes, justify, per-character spacing); export rasterizes it with the preview's renderer into a still the clip renders like an image, so transform, crop, style and opacity apply. Missing: several text fields per layer, the font picker popover, the colour picker | close |
@@ -246,7 +259,7 @@ Features that only show in some states, and what the editor does with each.
 
 | Feature | Status |
 | --- | --- |
-| Flat inspector | done: the only inspector |
+| Flat inspector | done: the only inspector; sliders take Tab focus, arrows nudge (Shift ×10, Home/End for bounds), Enter edits the displayed value, and Delete/Backspace resets; repeated keys share one undo step (#174) |
 | Timeline row virtualization | n/a: the canvas timeline draws visible rows only |
 | Show thumbnails toggle | done (toggle persisted) |
 | Test hooks | `MPVFX_SMOKE_*` environment hooks |
@@ -295,6 +308,12 @@ Every item of the owner's screenshot review, with its status now.
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
 
+Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
+Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.
+### Hand-placed beat marks (#289)
+
+Select an audio clip and press B or Add beat to store a mark at the audio clock time. Marks stay on their source frames when clips move or trim, support one-step undo, snap clip edges, and persist in project.json. Drag a mark to move it, Option-click to delete, or Option-comma / Option-period to jump. Unknown beat versions remain in the project with an open notice.
+
 ### Design wording (#186)
 
 **done — panels / panels-visual.** Design controls and section headings use sentence case. Align, case, style and
@@ -303,6 +322,7 @@ and human names; Primary and secondary correction say Temperature. Rotation appe
 3D transform disclosure retains tilt, depth and perspective. Document keys and editing commands are unchanged.
 Evidence: `DesignWordingTests`, the Design wording scanner and its three regressions. Native offscreen panel
 captures cover dark/light at 1440×900 and 1280×800; full application screenshot verification remains manual.
+
 ## 13. Recently landed
 
 | Ability | Swift status | Visual |
