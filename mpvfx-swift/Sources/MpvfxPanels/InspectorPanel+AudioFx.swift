@@ -51,7 +51,7 @@ extension InspectorPanel {
 
     static func afxRuns(_ chain: FxChain) -> [AudioFxRun] {
         var out: [AudioFxRun] = []
-        for (i, n) in chain.nodes.enumerated() where n.fromCarve != true && n.fromEq == nil {
+        for (i, n) in chain.nodes.enumerated() where n.fromCarve != true && n.fromEq == nil && !VoiceCleanup.contains(n) {
             if let last = out.last, last.preset == n.fromPreset, n.fromPreset != nil { out[out.count - 1].items.append((n, i)) }
             else { out.append(AudioFxRun(preset: n.fromPreset, items: [(n, i)])) }
         }
@@ -87,6 +87,8 @@ extension InspectorPanel {
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
         let write: (FxChain) -> Void = { [weak self] next in self?.edited(commit(next)) }
+        rows += voiceCleanupRows(chain, write: write)
+        gap(Self.afxSectionGap)
 
         if chain.needsSoundUpdate {
             rows.append(.init(.buttons([.init(key: "fx:update-sound", label: "Update to current sound", style: .muted) { write(chain.updatedSound()) }])))
@@ -102,7 +104,7 @@ extension InspectorPanel {
         var positions: [Int: Int] = [:]
         var at = eqIds.count
         for run in runs { for item in run.items { at += 1; positions[item.i] = at } }
-        if runs.isEmpty && eqIds.isEmpty {
+        if runs.isEmpty && eqIds.isEmpty && !VoiceCleanup.isApplied(chain) {
             rows.append(.init(.custom(InspectorCustomRow(id: "afx:empty", height: 24.5, draw: { c, r, _ in
                 PanelDraw.text(c, "No effects on this \(subject).", in: CanvasRect(x: r.x, y: r.y + 4, width: r.width, height: 16.5),
                                font: PanelTheme.font(11), color: PanelTheme.text2)
