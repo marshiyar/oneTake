@@ -20,7 +20,7 @@ import MpvfxDesktopCore
 @testable import MpvfxDesktop
 
 final class RevealClipSourceTests: XCTestCase {
-    var dir: URL!
+    private var dir: URL?
     var session: EditorSession?
     override func tearDown() {
         session?.audio?.stop()
@@ -30,25 +30,27 @@ final class RevealClipSourceTests: XCTestCase {
     }
 
     func make(source: String = "logo.png") throws -> EditorSession {
-        dir = FileManager.default.temporaryDirectory.appendingPathComponent("mpvfx-reveal-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fresh = FileManager.default.temporaryDirectory.appendingPathComponent("mpvfx-reveal-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: fresh, withIntermediateDirectories: true)
+        dir = fresh
         let demo = try EditorSession(projectPath: nil, demo: true)
         demo.audio?.stop()
         var doc = demo.editor.document
         let i = try XCTUnwrap(doc.assets.firstIndex { $0.id == "asset:logo" })
         doc.assets[i].source = source
-        let file = dir.appendingPathComponent("project.json")
+        let file = fresh.appendingPathComponent("project.json")
         try JSONEncoder().encode(doc).write(to: file)
         let s = try EditorSession(projectPath: file.path)
         session = s
         s.audio?.stop()
-        _ = s.installShell(userData: dir.path) {}
+        _ = s.installShell(userData: fresh.path) {}
         s.panels?.left.items = [.init(id: source, name: "logo.png", path: source, category: .images, duration: nil, used: true)]
         return s
     }
 
     func testRevealSelectsTheAssetAndReopensTheMediaPanelWithoutAnEdit() throws {
         let s = try make()
+        let dir = try XCTUnwrap(dir)
         try Data([0]).write(to: dir.appendingPathComponent("logo.png"))
         let shell = try XCTUnwrap(s.shell), panels = try XCTUnwrap(s.panels)
         shell.close(DockPanels.media)
@@ -67,6 +69,7 @@ final class RevealClipSourceTests: XCTestCase {
 
     func testFileManagerReceivesTheResolvedProjectRelativePath() throws {
         let s = try make()
+        let dir = try XCTUnwrap(dir)
         try Data([0]).write(to: dir.appendingPathComponent("logo.png"))
         var shown: String?
         s.panels?.revealPath = { shown = $0 }
