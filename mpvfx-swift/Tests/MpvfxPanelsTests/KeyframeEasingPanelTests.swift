@@ -100,9 +100,103 @@ final class KeyframeEasingPanelTests: XCTestCase {
         XCTAssertEqual(e.document, before, "Spring and Bounce change nothing")
         XCTAssertEqual(p.hint?.contains("#192"), true)
         p.selectedKeyframes = [ref(0, TimelineEditor.positionId)]; draw(p)
-        XCTAssertNotNil(p.hits.rect { $0 == .disabled("dimensions") }, "position shows the disabled Separate dimensions toggle")
+        XCTAssertNotNil(p.hits.rect { $0 == .dimensions }, "position offers Separate dimensions")
         p.hovered = .disabled("dimensions")
-        XCTAssertEqual(p.hint?.contains("#193"), true)
+        XCTAssertEqual(p.hint?.contains("matching X/Y"), true)
+    }
+
+    func testSeparateDimensionsPreservesEveryEngineFrameAndOneUndo() throws {
+        let (p, e) = try make()
+        p.selectedKeyframes = [ref(0, TimelineEditor.positionId)]
+        let address = try XCTUnwrap(e.parameterAddress(clipId: "clip:a", TimelineEditor.positionId))
+        for (frame, x, y) in [(0.0, -30.0, 140.0), (60, 210, -90), (120, 0, 5)] {
+            XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.updateValue(address: address, frame: frame, value: .vec2(.init(x: x, y: y)))))))
+        }
+        let cubic = NativeInterpolation.cubicBezier(.init(x1: 0.15, y1: -0.4, x2: 0.7, y2: 1.3))
+        XCTAssertTrue(e.setOutgoing([ref(0, TimelineEditor.positionId)], cubic))
+        XCTAssertTrue(e.setOutgoing([ref(60, TimelineEditor.positionId)], .hold))
+        let original = e.document
+        let frames = 0..<150
+        let values = frames.map { e.transform(clipId: "clip:a", time: Double($0) / e.fps) }
+        let count = e.undoStack.count
+        draw(p)
+        try click(p, .dimensions)
+        XCTAssertEqual(e.undoStack.count, count + 1)
+        XCTAssertEqual(p.target?.parameterId, POSITION_X_PARAMETER_ID)
+        XCTAssertTrue(p.target?.properties.contains(POSITION_Y_PARAMETER_ID) == true)
+        for f in frames {
+            let actual = e.transform(clipId: "clip:a", time: Double(f) / e.fps)
+            XCTAssertEqual(try XCTUnwrap(actual.x), try XCTUnwrap(values[f].x), accuracy: 1e-9)
+            XCTAssertEqual(try XCTUnwrap(actual.y), try XCTUnwrap(values[f].y), accuracy: 1e-9)
+        }
+        let separated = e.document
+        try click(p, .dimensions)
+        for f in frames { XCTAssertEqual(e.transform(clipId: "clip:a", time: Double(f) / e.fps), values[f]) }
+        e.undo(); XCTAssertEqual(e.document, separated)
+        e.undo(); XCTAssertEqual(e.document, original)
+        e.redo(); XCTAssertEqual(e.document, separated)
+        XCTAssertTrue(e.setOutgoing([ref(0, POSITION_X_PARAMETER_ID)], .linear))
+        let independent = e.document
+        let history = e.undoStack.count
+        XCTAssertFalse(e.canTogglePositionDimensions(clipId: "clip:a"))
+        XCTAssertFalse(e.togglePositionDimensions(clipId: "clip:a"))
+        XCTAssertEqual(e.document, independent, "independent timing cannot be rejoined without changing motion")
+        XCTAssertEqual(e.undoStack.count, history)
+    }
+
+    func testSeparateDimensionsOnSplitCubicClipPreservesEveryFrame() throws {
+        let (_, e) = try make()
+        let a = try XCTUnwrap(e.parameterAddress(clipId: "clip:a", TimelineEditor.positionId))
+        XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.updateValue(address: a, frame: 60, value: .vec2(.init(x: 270, y: -120)))))))
+        XCTAssertTrue(e.setOutgoing([ref(0, TimelineEditor.positionId)], .cubicBezier(.init(x1: 0.2, y1: -0.2, x2: 0.4, y2: 1.4))))
+        XCTAssertTrue(e.split(["clip:a"], atFrame: 37))
+        let clips = e.document.sequence.tracks.flatMap(\.clips).filter { $0.parameterTracks.contains { $0.parameterId == TimelineEditor.positionId } }
+        XCTAssertEqual(clips.count, 2)
+        for clip in clips {
+            let samples = (0..<Int(clip.durationFrames)).map { frame in
+                e.transform(clipId: clip.id, time: (clip.startFrame + Double(frame)) / e.fps)
+            }
+            XCTAssertTrue(e.togglePositionDimensions(clipId: clip.id))
+            for frame in samples.indices {
+                let value = e.transform(clipId: clip.id, time: (clip.startFrame + Double(frame)) / e.fps)
+                XCTAssertEqual(try XCTUnwrap(value.x), try XCTUnwrap(samples[frame].x), accuracy: 1e-9)
+                XCTAssertEqual(try XCTUnwrap(value.y), try XCTUnwrap(samples[frame].y), accuracy: 1e-9)
+            }
+            XCTAssertTrue(e.togglePositionDimensions(clipId: clip.id))
+        }
+    }
+
+    func testSeparatedStageEditsAndKeyframeToggleStayScalar() throws {
+        let (_, e) = try make()
+        XCTAssertTrue(e.togglePositionDimensions(clipId: "clip:a"))
+        XCTAssertTrue(e.applyTransform(clipId: "clip:a", time: 1, .init(x: 80, y: -20)))
+        XCTAssertEqual(e.transform(clipId: "clip:a", time: 1).x, 80)
+        XCTAssertEqual(e.transform(clipId: "clip:a", time: 1).y, -20)
+        XCTAssertTrue(e.positionKeyframeActive(clipId: "clip:a", time: 1))
+        XCTAssertTrue(e.togglePositionKeyframe(clipId: "clip:a", time: 1))
+        XCTAssertFalse(e.positionKeyframeActive(clipId: "clip:a", time: 1))
+        XCTAssertTrue(e.togglePositionKeyframe(clipId: "clip:a", time: 1))
+        XCTAssertTrue(e.positionKeyframeActive(clipId: "clip:a", time: 1))
+        XCTAssertNil(e.clip("clip:a")?.clip.parameterTracks.first { $0.parameterId == TimelineEditor.positionId })
+    }
+
+    func testSeparateDimensionsRejectsSpatialPathsAndMisalignedKeys() throws {
+        let (_, e) = try make()
+        let a = try XCTUnwrap(e.parameterAddress(clipId: "clip:a", TimelineEditor.positionId))
+        XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.setAutoRotate(address: a, autoRotate: true)))))
+        XCTAssertFalse(e.canTogglePositionDimensions(clipId: "clip:a"))
+        e.undo()
+        XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.setMotionPath(address: a, frame: 0, path: .curve(curviness: 1))))))
+        let curved = e.document
+        let count = e.undoStack.count
+        XCTAssertFalse(e.togglePositionDimensions(clipId: "clip:a"))
+        XCTAssertEqual(e.document, curved)
+        XCTAssertEqual(e.undoStack.count, count)
+        e.undo()
+        XCTAssertTrue(e.togglePositionDimensions(clipId: "clip:a"))
+        let x = try XCTUnwrap(e.parameterAddress(clipId: "clip:a", POSITION_X_PARAMETER_ID))
+        XCTAssertTrue(e.applyProperty(.atomic(.keyframe(.delete(address: x, frame: 60)))))
+        XCTAssertFalse(e.canTogglePositionDimensions(clipId: "clip:a"))
     }
 
     func testCurveHandleDragCommitsOnceOnRelease() throws {

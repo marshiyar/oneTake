@@ -197,6 +197,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var fadeInFrames: Double? = nil
     /// Fade-out length in project frames up to the clip end; absent means none.
     public var fadeOutFrames: Double? = nil
+    /// Inspector size and scale edits keep the current ratio when true; absent means unlocked.
+    public var scaleRatioLocked: Bool? = nil
     /// Parametric layer masks; absent means unmasked.
     public var masks: [NativeClipMask]? = nil
     /// This clip's own canvas fill, or `inherit` for the project's (`NativeFill`); nil means the project's.
