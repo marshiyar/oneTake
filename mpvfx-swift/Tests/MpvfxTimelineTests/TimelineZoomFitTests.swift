@@ -21,7 +21,7 @@ import MpvfxCanvas
 final class TimelineZoomFitTests: XCTestCase {
     static let width = 1266.0
 
-    func make(playhead: Double = 0) throws -> TimelineController {
+    static func make(playhead: Double = 0) throws -> TimelineController {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON, engine: KeyframeRuntime())   // 11 s of clips
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
         c.viewport = CanvasSize(Self.width, 300)

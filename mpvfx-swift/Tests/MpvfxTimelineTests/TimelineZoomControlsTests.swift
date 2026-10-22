@@ -19,7 +19,7 @@ import MpvfxShared
 
 final class TimelineZoomControlsTests: XCTestCase {
     func testFitShortcutReadoutAndHoverHint() throws {
-        let c = try TimelineZoomFitTests().make(playhead: 8)
+        let c = try TimelineZoomFitTests.make(playhead: 8)
         let region = TimelineRegion(controller: c)
         c.setZoom(percent: 400)
         XCTAssertTrue(c.keyDown(EditorKey(.char("Z"), shift: true)))
