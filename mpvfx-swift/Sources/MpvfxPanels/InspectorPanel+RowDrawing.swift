@@ -145,15 +145,22 @@ extension InspectorPanel {
         PanelDraw.text(c, label, in: CanvasRect(x: head.x, y: head.midY - 8.25, width: head.width, height: 16.5), font: Self.rowFont, color: PanelTheme.rowLabel)
         let line = CanvasRect(x: r.x, y: head.maxY, width: r.width, height: PanelGrid.rowHeight)
         _ = drawAccessories(c, line: line, Accessories(key: a.key, keyframe: a.keyframe, resetGlyph: false, resetHit: false))
+        // A pair's halves reset the same value: one reset serves the pair, in the row's reserved cell past
+        // the value edge (an in-half reset would cover its own field, and the first half has nothing past it
+        // but its sibling). It shows when either half is customized.
+        var a0 = a; a0.reset = nil
+        var b0 = b
+        let pairCustom = (a.tier == .explicitCustom && a.reset != nil) || (b.tier == .explicitCustom && b.reset != nil)
+        if pairCustom, b0.reset == nil { b0.reset = a.reset }
         let edge = Self.valueEdge(line), fh = PanelGrid.rowHeight - 4
         if stacked {
-            drawNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: edge - r.x, height: fh), a, compact: true)
-            drawNumber(c, CanvasRect(x: r.x, y: line.maxY + 2, width: edge - r.x, height: fh), b, compact: true)
+            drawNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: edge - r.x, height: fh), a0, compact: true)
+            drawNumber(c, CanvasRect(x: r.x, y: line.maxY + 2, width: edge - r.x, height: fh), b0, compact: true, reserveReset: pairCustom)
             return
         }
         let colW = (edge - r.x - PanelGrid.columnGap) / 2
-        drawNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: colW, height: fh), a, compact: true)
-        drawNumber(c, CanvasRect(x: r.x + colW + PanelGrid.columnGap, y: line.y + 2, width: colW, height: fh), b, compact: true)
+        drawNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: colW, height: fh), a0, compact: true)
+        drawNumber(c, CanvasRect(x: r.x + colW + PanelGrid.columnGap, y: line.y + 2, width: colW, height: fh), b0, compact: true, reserveReset: pairCustom)
     }
 
     func drawQuad(_ c: CanvasContext, _ r: CanvasRect, _ ns: [InspectorRow.Number]) {
@@ -187,8 +194,9 @@ extension InspectorPanel {
     /// FlatRow: the 11px grey label (rowLabel) in the label column, a scrub zone over it; the value field (`border-b
     /// font-mono`, its value right-aligned in the tier colour) from the control column to the accessories. Compact
     /// (`rounded bg-panel-bg px-1.5 gap-1`, the pair and quad fields): the label, then the field filling the rest.
-    func drawNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, compact: Bool, stacked: Bool = false) {
-        if compact { drawCompactNumber(c, r, n); return }
+    func drawNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, compact: Bool, stacked: Bool = false,
+                    reserveReset: Bool = false) {
+        if compact { drawCompactNumber(c, r, n, reserveReset: reserveReset); return }
         let lines = stacked ? Self.stackedLines(r) : (r, r)
         let acc = Self.numberAccessories(n, hovering: isHovering(n.key))
         let accLeft = drawAccessories(c, line: lines.0, acc)
@@ -200,15 +208,23 @@ extension InspectorPanel {
         drawNumberField(c, CanvasRect(x: fieldX, y: lines.1.y, width: max(0, fieldRight - fieldX), height: lines.1.height), n)
     }
 
-    func drawCompactNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number) {
+    func drawCompactNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, reserveReset: Bool = false) {
         c.fillRoundedRect(r.snapped, radius: PanelTheme.radius, PanelTheme.panelBg)
         let pad = Self.compactPad
         var right = r.maxX - pad
-        if n.tier == .explicitCustom, n.reset != nil {
-            let cell = CanvasRect(x: right - 11, y: r.y, width: 11, height: r.height)
-            drawResetGlyph(c, cell, key: n.key, visible: isHovering(n.key))
-            addHit(Self.target(cell), .reset(n.key))
-            right = cell.x - PanelGrid.itemGap
+        if n.reset != nil, n.tier == .explicitCustom || reserveReset {
+            if reserveReset {
+                // The pair's shared reset, in the row's reserved cell past the value edge (like every
+                // property row): an exact 24 pt hit that never covers the field.
+                let cell = CanvasRect(x: right + 10, y: r.midY - 12, width: 24, height: 24)
+                drawResetGlyph(c, cell, key: n.key, visible: isHovering(n.key))
+                addHit(cell, .reset(n.key))
+            } else {
+                let cell = CanvasRect(x: right - 11, y: r.y, width: 11, height: r.height)
+                drawResetGlyph(c, cell, key: n.key, visible: isHovering(n.key))
+                addHit(Self.target(cell), .reset(n.key))
+                right = cell.x - PanelGrid.itemGap
+            }
         }
         // The one-letter label's cell is a whole target wide (it is the scrub handle); the field starts after it.
         let cell = max(PanelGrid.minTarget - pad, c.measureText(n.label, font: Self.rowFont).width + PanelGrid.itemGap)

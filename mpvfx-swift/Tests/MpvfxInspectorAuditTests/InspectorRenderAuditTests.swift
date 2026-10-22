@@ -216,7 +216,21 @@ final class InspectorRenderAuditTests: XCTestCase {
     }
 
     func testScale() {
+        toggle("scaleRatioLocked", true)
         assertVisualEdit("Scale", { type("scale", "50") }) { c in XCTAssertTrue(c.ops.contains(.scale(0.5, 0.5))) }
+    }
+
+    func testUnlockedScaleXAndYReachPreviewAndExport() {
+        assertVisualEdit("Scale X", { type("scale", "50") }) { c in XCTAssertTrue(c.ops.contains(.scale(0.5, 1))) }
+        assertVisualEdit("Scale Y", { type("scaleY", "25") }) { c in XCTAssertTrue(c.ops.contains(.scale(0.5, 0.25))) }
+    }
+
+    func testLockedSizeReachesPreviewAndExport() {
+        toggle("sizeRatioLocked", true)
+        assertVisualEdit("Locked width", { type("w", "100") }) { c in
+            XCTAssertEqual(c.images.first?.rect.width, 200)
+            XCTAssertEqual(c.images.first?.rect.height, 100)
+        }
     }
 
     func testPositionKeyframeAndEasing() {
