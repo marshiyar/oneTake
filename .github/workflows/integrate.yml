@@ -122,6 +122,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/out"
           python3 -I -B .github/ci/integrate.py build --plan "$RUNNER_TEMP/in/plan.json" \
             --out "$RUNNER_TEMP/out/result.json" --bundle "$RUNNER_TEMP/out/batch.bundle"
+          # Stage under the workspace: upload-artifact keeps a workspace-relative directory's
+          # layout exactly, while absolute paths outside it ($RUNNER_TEMP) extract unpredictably
+          # (run 39643605962: publish could not find result.json). The download below then lands
+          # result.json and batch.bundle directly in its target directory, every time.
+          rm -rf integrate-out && mkdir -p integrate-out
+          cp "$RUNNER_TEMP/out/result.json" "$RUNNER_TEMP/out/batch.bundle" integrate-out/
       - name: Save the conflict resolutions
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -137,9 +143,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: integrate-result
-          path: |
-            ${{ runner.temp }}/out/result.json
-            ${{ runner.temp }}/out/batch.bundle
+          path: integrate-out
           if-no-files-found: error
           retention-days: 3
 
@@ -171,6 +175,10 @@ jobs:
         with:
           name: integrate-result
           path: ${{ runner.temp }}/in
+      - name: The batch files are where publish reads them
+        run: |
+          ls -R "${{ runner.temp }}/in"
+          test -f "${{ runner.temp }}/in/plan.json" -a -f "${{ runner.temp }}/in/result.json" -a -f "${{ runner.temp }}/in/batch.bundle"
       - name: Push the batch, open the pull request, merge it
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
