@@ -41,7 +41,8 @@ final class GradeWheelsTests: XCTestCase {
         let (p, _) = try inspector()
         let c = PanelMeasureCanvas(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 5000))
         for label in ["Lift", "Gamma", "Gain", "Offset", "Pivot"] { XCTAssertTrue(c.drawnStrings.contains(label), label) }
-        XCTAssertFalse(c.drawnStrings.contains("Midtones"), "a new grade has no tonal wheels")
+        // Issue #230 keeps the tonal wheels on every grade so a neutral grade can start a wheel animation.
+        for label in ["Shadows", "Midtones", "Highlights"] { XCTAssertTrue(c.drawnStrings.contains(label), label) }
         let old = try inspector(grade: ColorGrading(json: ["adjust": .object(["contrast": .number(0.1)])])).0
         XCTAssertNotNil(old.hits.rect { $0 == .custom("grade:wheels", 1) }, "a contract 2 grade keeps its tonal wheels")
     }

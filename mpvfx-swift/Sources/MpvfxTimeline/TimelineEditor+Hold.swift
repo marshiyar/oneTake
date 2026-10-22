@@ -65,7 +65,8 @@ public extension TimelineEditor {
                 return plan.holdClipId
             }
         } catch {
-            lastFailure = .init(code: .documentMismatch, message: "\(error)"); return nil
+            // Only a non-validation engine error reaches here (rejections return .failure above).
+            lastFailure = .init(code: .documentMismatch, message: "The hold frame could not be added."); return nil
         }
     }
 }

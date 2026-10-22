@@ -48,7 +48,7 @@ final class TimelineSlipRollTests: XCTestCase {
     func controller() throws -> (TimelineController, TimelineEditor) {
         let e = try editor()
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600); c.snapEnabled = false
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100); c.snapEnabled = false
         return (c, e)
     }
     func clip(_ e: TimelineEditor, _ id: String) throws -> NativeProjectClip { try XCTUnwrap(e.clip(id)?.clip) }
@@ -278,7 +278,7 @@ final class TimelineSlipRollVisualTests: XCTestCase {
     func controller() throws -> TimelineController {
         let e = try TimelineEditor(json: F.json, engine: KeyframeRuntime())
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600); c.snapEnabled = false
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100); c.snapEnabled = false
         return c
     }
     func render(_ c: TimelineController, _ name: String) -> CairoImageTarget {
