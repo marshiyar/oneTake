@@ -77,14 +77,13 @@ extension InspectorPanel {
         let tier = Self.mediaFitTier(fit)
         PanelDraw.text(c, "Fit", in: CanvasRect(x: r.x, y: r.midY - 8.25, width: 86, height: 16.5),
                        font: PanelTheme.font(11), color: tier.labelColor)
-        var right = Self.valueEdge(r)
+        let right = Self.valueEdge(r)
         if tier != .default {
             let reset = CanvasRect(x: right + PanelGrid.itemGap + (PanelGrid.minTarget - 11) / 2, y: r.midY - 5.5, width: 11, height: 11)
             let hot = hovered == .custom(Self.mediaFitRowId, 1)
             PanelIcon.reset.draw(c, in: reset, color: hot ? PanelTheme.text1 : PanelTheme.inspectorText)
             addHit(CanvasRect(x: right + PanelGrid.itemGap, y: r.midY - PanelGrid.minTarget / 2,
                               width: PanelGrid.minTarget, height: PanelGrid.minTarget), .custom(Self.mediaFitRowId, 1))
-            right = reset.x - 6
         }
         let field = CanvasRect(x: r.x + 96, y: r.midY - 14, width: max(0, right - r.x - 96), height: 28)
         PanelSelect.draw(c, field, text: Self.mediaFitLabel(fit ?? .fit),

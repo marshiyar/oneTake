@@ -70,7 +70,7 @@ extension InspectorPanel {
             font: PanelTheme.font(11),
             color: tier.labelColor
         )
-        var right = Self.valueEdge(rect)
+        let right = Self.valueEdge(rect)
         if tier != .default {
             let reset = CanvasRect(
                 x: right + PanelGrid.itemGap + (PanelGrid.minTarget - Self.blendResetGlyphSize) / 2,
@@ -89,7 +89,6 @@ extension InspectorPanel {
                 ),
                 .custom(Self.blendRowId, 1)
             )
-            right = reset.x - 6
         }
         let field = CanvasRect(
             x: rect.x,
