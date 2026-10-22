@@ -46,13 +46,16 @@ public struct NativeFill: Codable, Equatable, Sendable {
 
     /// A version-1 fill. Values left nil are omitted (they hold their default).
     public init(kind: String, color: String? = nil, stops: [Stop]? = nil, angle: Double? = nil, assetId: String? = nil,
-                blur: Double? = nil, darken: Double? = nil) {
+                blur: Double? = nil, darken: Double? = nil, gradientType: String? = nil, centerX: Double? = nil, centerY: Double? = nil) {
         var o: NativeJSONValue = .object(NativeJSONObject())
         o["v"] = .number(Double(Self.version)); o["kind"] = .string(kind)
         if let color { o["color"] = .string(color) }
         if let stops {
             var g: NativeJSONValue = .object(NativeJSONObject())
             if let angle { g["angle"] = .number(angle) }
+            if let gradientType { g["type"] = .string(gradientType) }
+            if let centerX { g["centerX"] = .number(centerX) }
+            if let centerY { g["centerY"] = .number(centerY) }
             g["stops"] = .array(stops.map { s in
                 var e: NativeJSONValue = .object(NativeJSONObject())
                 e["offset"] = .number(s.offset); e["color"] = .string(s.color)
@@ -74,6 +77,10 @@ public struct NativeFill: Codable, Equatable, Sendable {
     public var darken: Double? { raw["darken"]?.numberValue }
     public var resolvedBlur: Double { blur ?? Self.defaultBlur }
     public var resolvedDarken: Double { darken ?? Self.defaultDarken }
+    public var gradientType: String { raw["gradient"]?["type"]?.stringValue ?? "linear" }
+    public var centerX: Double { raw["gradient"]?["centerX"]?.numberValue ?? 0.5 }
+    public var centerY: Double { raw["gradient"]?["centerY"]?.numberValue ?? 0.5 }
+    public var isGenerator: Bool { isSupported && (kind == "color" || kind == "gradient") }
     public var angle: Double? { raw["gradient"]?["angle"]?.numberValue }
     public var resolvedAngle: Double { angle ?? Self.defaultAngle }
     public var stops: [Stop] {
@@ -127,6 +134,14 @@ func validateNativeFill(_ value: NativeJSONValue?, _ path: String, allowInherit:
 
 private func validateNativeFillGradient(_ g: NativeJSONValue?, _ path: String, _ issues: inout [NativeProjectDocumentValidationIssue]) {
     guard let g, g.isRecord else { return pushIssue(&issues, .invalidFill, path, "A gradient fill needs a gradient object") }
+    if let type = g["type"], type.stringValue.map({ ["linear", "radial"].contains($0) }) != true {
+        pushIssue(&issues, .invalidFill, "\(path).type", "Gradient type must be linear or radial")
+    }
+    for key in ["centerX", "centerY"] {
+        if let n = g[key], n.numberValue.map({ $0.isFinite && (0...1).contains($0) }) != true {
+            pushIssue(&issues, .invalidFill, "\(path).\(key)", "Gradient centre must be between 0 and 1")
+        }
+    }
     if let a = g["angle"], a.numberValue.map({ $0.isFinite && NativeFill.angleRange.contains($0) }) != true {
         pushIssue(&issues, .invalidFill, "\(path).angle", "Gradient angle must be a number from -360 to 360")
     }
@@ -149,7 +164,7 @@ public extension NativeProjectDocument {
     /// One notice for fills from a newer version of the editor (or an unknown kind), kept but not drawn.
     var unsupportedFillsNotice: String? {
         let clips = sequence.tracks.flatMap(\.clips)
-        let n = (compositionFill.map { $0.isSupported ? 0 : 1 } ?? 0) + clips.filter { $0.fill?.isSupported == false }.count
+        let n = (compositionFill.map { $0.isSupported ? 0 : 1 } ?? 0) + clips.filter { $0.fill?.isSupported == false }.count + clips.filter { $0.generator != nil && $0.generator?.isGenerator != true }.count
         guard n > 0 else { return nil }
         return n == 1
             ? "1 canvas fill from a newer version of the editor is kept in the project but not drawn in preview or export."

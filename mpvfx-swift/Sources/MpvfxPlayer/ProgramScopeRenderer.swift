@@ -111,7 +111,7 @@ public final class ProgramScopeRenderer: @unchecked Sendable {
         let frameIndex = comp.frameIndex(at: time)
         var parts: [Part] = [], pictures: [CanvasImage?] = []
         for (layer, lw, lh) in ExportFramePainter.layers(comp, at: time, scale: scale) {
-            let picture = (layer.kind == .text || layer.kind == .shape) ? nil : cachedPicture(layer, frameIndex: frameIndex)
+            let picture = layer.isProcedural ? nil : cachedPicture(layer, frameIndex: frameIndex)
             pictures.append(picture?.image)
             parts.append(Part(layer: layer, width: lw, height: lh, picture: picture.map {
                 PictureId(lane: layer.laneKey, frame: $0.frame, width: $0.image.width, height: $0.image.height)

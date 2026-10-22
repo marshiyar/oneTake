@@ -22,6 +22,8 @@ public enum NativeCutTransitionCommand: Equatable {
     case add(trackId: String, transition: NativeCutTransition)
     case setLength(id: String, durationFrames: Double)
     case setKind(id: String, kind: NativeCutTransitionKind)
+    case setDirection(id: String, direction: NativeTransitionDirection)
+    case setSoftness(id: String, softness: Double)
     case setAlignment(id: String, alignment: NativeCutTransitionAlignment)
     /// nil: the default dip colour (black).
     case setColor(id: String, color: String?)
@@ -80,7 +82,7 @@ private func editedTransitions(_ d: NativeProjectDocument, _ command: NativeCutT
 private func transitionId(of command: NativeCutTransitionCommand) -> String {
     switch command {
     case .add(_, let t): t.id ?? ""
-    case .setLength(let id, _), .setKind(let id, _), .setAlignment(let id, _), .setColor(let id, _), .remove(let id): id
+    case .setLength(let id, _), .setKind(let id, _), .setAlignment(let id, _), .setColor(let id, _), .setDirection(let id, _), .setSoftness(let id, _), .remove(let id): id
     }
 }
 
@@ -90,6 +92,8 @@ private func edit(_ t: inout NativeCutTransition, _ command: NativeCutTransition
     case .setKind(_, let kind): t.kind = kind
     case .setAlignment(_, let alignment): t.alignment = alignment
     case .setColor(_, let color): t.color = color
+    case .setDirection(_, let direction): t.direction = direction
+    case .setSoftness(_, let softness): t.softness = softness
     case .add, .remove: break
     }
 }
@@ -100,7 +104,7 @@ private func edit(_ t: inout NativeCutTransition, _ command: NativeCutTransition
 public func nativeDissolveShortfall(_ d: NativeProjectDocument, transitionId: String) -> String? {
     guard let at = locateTransition(d, transitionId) else { return nil }
     let track = d.sequence.tracks[at.track], entry = track.cutTransitions[at.index]
-    guard entry.isKnown, entry.kind == .dissolve, let alignment = entry.alignment, let length = entry.durationFrames,
+    guard entry.isKnown, entry.kind?.overlaps == true, let alignment = entry.alignment, let length = entry.durationFrames,
           let from = track.clips.first(where: { $0.id == entry.fromClipId }),
           let to = track.clips.first(where: { $0.id == entry.toClipId }) else { return nil }
     let asset = { (c: NativeProjectClip) in d.assets.first { $0.id == c.assetId } }

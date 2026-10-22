@@ -27,7 +27,7 @@ import MpvfxColor
 /// `crop` insets the untransformed box (canvas px) and travels with the box's scale and rotation.
 public struct PreviewLayer: Equatable, Sendable {
     /// `offline`: a video or image clip whose media file is missing, drawn as a slate naming the file, never decoded.
-    public enum Kind: Sendable, Equatable { case video, image, text, shape, offline }
+    public enum Kind: Sendable, Equatable { case video, image, text, shape, generator, offline }
     public var clipId: String
     /// Absolute media path.
     public var source: String
@@ -59,12 +59,15 @@ public struct PreviewLayer: Equatable, Sendable {
     /// Vector geometry (kind .shape), painted directly in the layer box.
     public var shape: NativeClipShape?
     /// A text layer's words and typography (kind .text): laid out in the box instead of a decoded picture.
+    public var generator: NativeFill?
+    public var isProcedural: Bool { kind == .text || kind == .shape || kind == .generator }
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
     /// A dip transition's colour laid over the picture (nil: none), and how much of it (0…1).
     public var transitionColor: CanvasColor?
     public var transitionColorAmount = 0.0
+    public var spatialTransition: PreviewSpatialTransition?
     /// Source seconds of the one frame a held clip shows for its whole length (`clip.holdSourceFrame`); nil plays the source.
     public var holdSourceTime: Double?
     /// Supported masks evaluated at this timeline time.
@@ -194,6 +197,8 @@ public struct PreviewComposition {
                 let layer = Self.stackingLayer(clip, track: trackLayers[index])
                 if asset.kind == .element, clip.shape?.isSupported == true {
                     ordered.append((Entry(clip: clip, kind: .shape, path: "shape:\(clip.id)", layer: layer), n))
+                } else if asset.kind == .element, clip.generator?.isGenerator == true, clip.text == nil {
+                    ordered.append((Entry(clip: clip, kind: .generator, path: "generator:\(clip.id)", layer: layer), n))
                 } else if asset.kind == .element, clip.text != nil {
                     // A text layer: no media, drawn from its words (NativeTextRendering), as export rasterizes it.
                     ordered.append((Entry(clip: clip, kind: .text, path: "text:\(clip.id)", layer: layer), n))
@@ -418,6 +423,7 @@ public struct PreviewComposition {
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
         out.blend = c.style?.blendMode ?? .normal
         out.shape = e.kind == .shape ? c.shape : nil
+        out.generator = e.kind == .generator ? c.generator : nil
         out.text = e.kind == .text ? c.text : nil
         out.offlineFileName = e.offlineFileName
         out.fit = c.fit
@@ -459,6 +465,10 @@ public struct PreviewComposition {
         if let s = t.incoming, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.incomingMix(atFrame: frame) }
         else if let s = t.outgoing, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.outgoingMix(atFrame: frame) }
         else { return }
+        if span.kind == .wipe || span.kind == .push {
+            layer.spatialTransition = .init(kind: span.kind, direction: span.direction, softness: span.softness,
+                                            progress: span.progress(atFrame: frame), incoming: span.toClipId == layer.clipId)
+        }
         layer.opacity *= mix.opacity
         if mix.colorAmount > 0 { layer.transitionColor = CanvasColor(hex: span.color); layer.transitionColorAmount = mix.colorAmount }
     }
@@ -515,10 +525,19 @@ public enum PreviewPainter {
         draw(layer, image: Optional(image), on: c, frame: frame, scale: s)
     }
 
-    /// Draws generated text or vector content with the layer's transform, crop and style.
+    /// Draws generated text, vector or background content with the layer's transform, crop and style.
     public static func drawText(_ layer: PreviewLayer, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
-        guard layer.text != nil || layer.shape != nil else { return }
-        draw(layer, image: nil, on: c, frame: frame, scale: s)
+        if let fill = layer.generator.flatMap(PreviewFill.init) {
+            let w = max(1, Int((layer.box.width * s * c.deviceScale).rounded())), h = max(1, Int((layer.box.height * s * c.deviceScale).rounded()))
+            let image: CanvasImage?
+            switch fill.kind {
+            case .color(let color): image = CanvasImage(width: 1, height: 1, rgba: [UInt8((color.r * 255).rounded()), UInt8((color.g * 255).rounded()), UInt8((color.b * 255).rounded()), UInt8((color.a * 255).rounded())])
+            case .gradient(let angle, let stops): image = CanvasFillPainter.gradientImage(angle: angle, stops: stops, width: w, height: h)
+            case .radial(let center, let stops): image = CanvasFillPainter.gradientImage(angle: 0, stops: stops, width: w, height: h, center: center)
+            case .blur: image = nil
+            }
+            if let image { var picture = layer; picture.fit = .stretch; draw(picture, image: image, on: c, frame: frame, scale: s) }
+        } else if layer.text != nil || layer.shape != nil { draw(layer, image: nil, on: c, frame: frame, scale: s) }
     }
 
     static func draw(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
@@ -534,6 +553,17 @@ public enum PreviewPainter {
     }
 
     private static func drawPlain(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
+        if let transition = layer.spatialTransition {
+            var plain = layer; plain.spatialTransition = nil
+            drawSpatial(transition, on: c, frame: frame) { canvas, rect, scale in
+                drawPlain(plain, image: image, on: canvas, frame: rect, scale: s * scale)
+            }
+            return
+        }
+        drawUntransitioned(layer, image: image, on: c, frame: frame, scale: s)
+    }
+
+    private static func drawUntransitioned(_ layer: PreviewLayer, image: CanvasImage?, on c: CanvasContext, frame: CanvasRect, scale s: Double) {
         if let cut = layer.fillCutout {
             // An image fill: an ordinary picture layer drawn everywhere but where the clip's own picture lands.
             let quad = CanvasFillPainter.coveredQuad(box: cut.box, crop: cut.crop, fit: cut.fit,
