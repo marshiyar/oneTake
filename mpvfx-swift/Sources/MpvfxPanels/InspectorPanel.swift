@@ -30,7 +30,14 @@ public final class InspectorPanel {
 
     public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch() } } }
     /// Selected clip ids (the timeline/stage selection).
-    public var selection: [String] = [] { didSet { if selection != oldValue { cancelLookMatch() } } }
+    public var selection: [String] = [] {
+        didSet {
+            if selection != oldValue {
+                endWheelKeyHold()
+                cancelLookMatch()
+            }
+        }
+    }
     /// Presentation choice; the resulting positions are ordinary saved document parameters.
     public var alignmentReference = TimelineAlignmentReference.frame
     /// Playhead (composition seconds).
@@ -146,7 +153,11 @@ public final class InspectorPanel {
     public internal(set) var cubeDrag: CubeDrag?
     public internal(set) var cubeBox: CanvasRect?
     /// Keyboard focus (Tab / ⇧Tab, Enter / Space) and its ring.
-    public var focus = PanelFocus<Hit>()
+    public var focus = PanelFocus<Hit>() {
+        didSet {
+            if focus.current != oldValue.current || focus.visible != oldValue.visible { endWheelKeyHold() }
+        }
+    }
     /// Groups whose header (and body, when open) play the 120 ms entrance (`hf-flat-group-enter`: opacity 0→1,
     /// translateY -4→0, ease-out): the one just toggled and the one it closed.
     public private(set) var enteringGroups: [String] = []
@@ -757,6 +768,17 @@ public final class InspectorPanel {
         guard lastRect.contains(p) else { return false }
         if bodyScroller.scroll(by: dy, precise: precise, max: bodyMaxScroll) { onAnimate?() }
         return true
+    }
+
+    /// End a physical wheel/level arrow hold on release, even on hosts without repeat flags.
+    public func keyUp(_ key: EditorKey) {
+        if grade.wheelKeyCode == key.code { endWheelKeyHold() }
+    }
+
+    private func endWheelKeyHold() {
+        grade.wheelKeyCode = nil
+        grade.wheelKeyControl = nil
+        grade.wheelKeyHistory = nil
     }
 
     /// Keys go to a focused field first. Tab moves to the next field of the open group.

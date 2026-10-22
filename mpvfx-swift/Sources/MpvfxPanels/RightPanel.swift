@@ -681,6 +681,9 @@ public final class RightPanel {
 
     public var isEditingText: Bool { field != nil || inspector.isEditingText || easing.isEditingText }
 
+    /// Release reaches the inspector even if a tab or field changed during a held arrow.
+    public func keyUp(_ key: EditorKey) { inspector.keyUp(key) }
+
     /// Keys: the open popover, then a field being typed, then keyboard focus. On the Design tab the header (tabs,
     /// hide, panel menu) comes first in the Tab order and the inspector after it; on the Renders tab one focus covers
     /// the header and the tab's controls.

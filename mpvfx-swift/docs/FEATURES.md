@@ -86,6 +86,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Header hide toggle, Ungroup (⌘⇧G) | missing (panels) | n/a |
 | Accordion: one open group, others as summary rows | done | exact |
 | Value tiers (default / explicit default / custom + reset ↺) | done | exact |
+| Convert layer moves to keyframes (`TimelineEditor.convertMovesToKeyframes`) | conversion API implemented: one undo step, existing keys retained; sparse move segments with frame samples where combined animation needs them (#275). Swift regression tests added; not run in the authoring environment; user-facing command entry remains to be wired | exact at project frames, pending CI |
 | Transform: X, Y, W, H, rotation, scale | done (undoable, keyframes at the playhead when animated; audit tests 0996b1e) | exact |
 | Transform: layer order | done: the Layer order field writes the clip's `layout.zIndex`, the stacking key preview and export share (the stage menu's z-order writes the same key); empty / reset returns to track order; test | close |
 | Transform: flex align/justify/direction/gap | dropped: flex layout of web containers has no native counterpart | n/a |
