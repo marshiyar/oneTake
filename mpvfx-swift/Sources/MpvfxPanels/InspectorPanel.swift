@@ -30,7 +30,10 @@ public final class InspectorPanel {
 
     public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch() } } }
     /// Selected clip ids (the timeline/stage selection).
-    public var selection: [String] = [] { didSet { if selection != oldValue { cancelLookMatch() } } }
+    public var selection: [String] = [] {
+        willSet { if newValue != selection { cancelFxGesture() } }
+        didSet { if selection != oldValue { cancelLookMatch() } }
+    }
     /// Presentation choice; the resulting positions are ordinary saved document parameters.
     public var alignmentReference = TimelineAlignmentReference.frame
     /// Playhead (composition seconds).
@@ -44,7 +47,9 @@ public final class InspectorPanel {
     weak var layout: PanelLayoutState?
     /// An audio group whose bus FX rack is shown while no clip is selected (timeline group header FX / name buttons).
     /// Selecting a clip retires it.
-    public var audioGroupId: String?
+    public var audioGroupId: String? {
+        willSet { if newValue != audioGroupId { cancelFxGesture() } }
+    }
     public var onEdited: (() -> Void)?
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
@@ -135,6 +140,18 @@ public final class InspectorPanel {
     var lastRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     /// Custom-row drag in flight (row id, part).
     var customDrag: (String, Int)?
+    var fxGesture: FxControlGesture?
+    var fxGestureCommit: ((Double) -> Void)?
+    var customGesturePointer: ((Int, CanvasPoint, Int) -> Void)?
+    var fxHeaderPress: (index: Int, at: CanvasPoint, key: String)?
+    var fxHeaderTarget: Int?
+    var fxHeaderMoved = false
+    var fxHeaderFocused: Int?
+    var fxHeaders: [Int: CanvasRect] = [:]
+    var fxHeaderButtons: [String: Int] = [:]
+    var fxReorder: ((Int, Int) -> Void)?
+    var fxGestureNow: () -> Double = { Date().timeIntervalSinceReferenceDate }
+
     /// Keyframes selected on the timeline (synced before each paint): the easing block's "Easing…" opens the panel
     /// on these when any are on the selected clip's eased channels, else on the keys at/before the playhead.
     public var selectedKeyframes: Set<TimelineKeyframeRef> = []
@@ -266,6 +283,7 @@ public final class InspectorPanel {
     public func draw(_ c: CanvasContext, in r: CanvasRect) {
         validateLookMatchContext()
         lastRect = r
+        fxHeaders.removeAll(keepingCapacity: true)
         hits.reset(); tabBars = [:]
         // The shelf went away (closed, the rack's owner changed, the selection or group moved on): the audition ends.
         defer { if let k = auditionKey, hits.rect(where: { $0 == .button(k) }) == nil { endAudition() } }
@@ -593,6 +611,8 @@ public final class InspectorPanel {
     }
 
     public func pointerDown(_ p: CanvasPoint, time: Double = Date().timeIntervalSinceReferenceDate) -> Bool {
+        cancelFxGesture()
+        fxHeaderPress = nil; fxHeaderTarget = nil; fxHeaderMoved = false
         focus.pointerPressed()
         // A press ends any audition first, so a pick commits on top of the stored chain, never the auditioned one.
         endAudition()
@@ -601,6 +621,10 @@ public final class InspectorPanel {
         if case .field(let k)? = hit, field?.key == k { return true }
         commitField()
         guard let hit else { return true }
+        if case .button(let key) = hit, let index = fxHeaderButtons[key] {
+            fxHeaderPress = (index, p, key); fxHeaderFocused = index; fxHeaderMoved = false
+            return true
+        }
         if !pressValue(hit, p, time: time) && !pressControl(hit, p) { pressChrome(hit, p) }
         return true
     }
@@ -655,7 +679,9 @@ public final class InspectorPanel {
 
     func pressCustom(_ id: String, _ part: Int, _ p: CanvasPoint) {
         guard let row = customRow(id) else { return }
-        customDrag = (id, part); row.pointer(part, p, 0); onEdited?()
+        customDrag = (id, part); customGesturePointer = row.pointer
+        if id.hasPrefix("afx:"), part > 0 { beginFxGesture() }
+        row.pointer(part, p, 0); onEdited?()
     }
 
     /// A press on the panel itself: a group header, the clip header's buttons, the body or the scrollbar.
@@ -694,6 +720,9 @@ public final class InspectorPanel {
         lastSliderClick = nil
         sliderDrag = SliderDrag(key: k, track: tr, min: s.min, max: s.max, current: s.position, vertical: s.vertical, detent: s.detent,
                                 start: p, time: time)
+        if k.hasPrefix("fx:") || k.hasPrefix("eq:") || k.hasPrefix("run:") {
+            beginFxGesture(); fxGestureCommit = s.commit
+        }
         sliderMove(p)
     }
 
@@ -710,16 +739,23 @@ public final class InspectorPanel {
         if hypot(p.x - d.start.x, p.y - d.start.y) > Self.doubleClickSlop { d.moved = true }
         if let detent = d.detent, abs(d.current - detent) <= InspectorRow.Slider.detentReach * (d.max - d.min) { d.current = detent }
         sliderDrag = d
+        fxGestureCommit?(d.current)
     }
 
     /// Returns true when a redraw is needed.
     public func pointerMove(_ p: CanvasPoint) -> Bool {
+        if let press = fxHeaderPress {
+            if hypot(p.x - press.at.x, p.y - press.at.y) > 4 { fxHeaderMoved = true }
+            fxHeaderTarget = fxHeaders.sorted { $0.key < $1.key }.first { p.y < $0.value.midY }?.key
+                ?? ((fxHeaders.keys.max() ?? press.index) + 1)
+            return true
+        }
         if groupPress != nil || groupDrag != nil { return groupPointerMove(p) }
         if let g = scrollbarGrab {
             bodyScroll = PanelScrollbar.offset(forThumbTop: p.y - g, track: bodyRect, content: bodyContentHeight); return true
         }
         if sliderDrag != nil { sliderMove(p); return true }
-        if let (id, part) = customDrag { customRow(id)?.pointer(part, p, 1); return true }
+        if let (_, part) = customDrag { customGesturePointer?(part, p, 1); return true }
         if var s = scrub, let n = number(s.key)?.scrub {
             let dx = p.x - s.startX
             if abs(dx) > 2 { s.moved = true }
@@ -736,13 +772,25 @@ public final class InspectorPanel {
     }
 
     public func pointerUp(_ p: CanvasPoint) {
+        if let press = fxHeaderPress {
+            fxHeaderPress = nil
+            if fxHeaderMoved, let target = fxHeaderTarget { fxReorder?(press.index, target) }
+            else { button(press.key)?.action() }
+            fxHeaderTarget = nil; fxHeaderMoved = false; onEdited?(); return
+        }
         if groupPress != nil || groupDrag != nil { groupPointerUp(p); return }
         if scrollbarGrab != nil { scrollbarGrab = nil; onEdited?() }
-        if let (id, part) = customDrag { customDrag = nil; customRow(id)?.pointer(part, p, 2); onEdited?() }
+        if let (_, part) = customDrag {
+            customDrag = nil; customGesturePointer?(part, p, 2); customGesturePointer = nil
+            finishFxGesture(); onEdited?()
+        }
+        if sliderDrag != nil { sliderMove(p) }
         if let d = sliderDrag {
             sliderDrag = nil
             lastSliderClick = d.moved ? nil : (d.key, d.time, d.start)
-            slider(d.key)?.commit(d.current); onEdited?()
+            if let commit = fxGestureCommit { commit(d.current); fxGestureCommit = nil; finishFxGesture() }
+            else { slider(d.key)?.commit(d.current) }
+            onEdited?()
         }
         if let s = scrub {
             scrub = nil
@@ -761,6 +809,24 @@ public final class InspectorPanel {
 
     /// Keys go to a focused field first. Tab moves to the next field of the open group.
     public func keyDown(_ k: EditorKey) -> Bool {
+        if k.code == .escape, fxGesture != nil || fxHeaderPress != nil {
+            cancelFxGesture(); fxHeaderPress = nil; fxHeaderTarget = nil; fxHeaderMoved = false; onEdited?(); return true
+        }
+        if k.alt, k.code == .up || k.code == .down {
+            var index = fxHeaderFocused
+            if focus.visible, case .button(let key)? = focus.current { index = fxHeaderButtons[key] }
+            if let index {
+                let order = fxHeaders.keys.sorted()
+                if let position = order.firstIndex(of: index) {
+                    let adjacent = position + (k.code == .up ? -1 : 1)
+                    if order.indices.contains(adjacent) {
+                        let target = k.code == .up ? order[adjacent] : (order.indices.contains(adjacent + 1) ? order[adjacent + 1] : (fxHeaders.keys.max() ?? index) + 1)
+                        fxReorder?(index, target)
+                    }
+                }
+                onEdited?(); return true
+            }
+        }
         if k.code == .tab {   // Tab from a field commits it, then focus moves on
             if field != nil { commitField(); onEdited?() }
             let moved = focus.move(hits, forward: !k.shift) { [unowned self] in self.isFocusable($0) }

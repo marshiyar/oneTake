@@ -214,9 +214,8 @@ extension InspectorPanel {
             if h.movesFrequency { d.frequency = AfxGraphScale.frequency(pt.x, in: g.box) }
             if h.movesGain { d.gain = max(-g.range, min(g.range, AfxGraphScale.gain(pt.y, range: g.range, in: g.box))) }
             self.audioFxUI.graphDrag = d
-            guard phase == 2 else { return }
-            self.audioFxUI.graphDrag = nil
-            if d.frequency != h.frequency || d.gain != h.gain { commit(h, d.frequency, d.gain) }
+            if phase == 2 { self.audioFxUI.graphDrag = nil }
+            commit(h, d.frequency, d.gain)
         }
     }
 

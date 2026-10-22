@@ -76,6 +76,8 @@ extension InspectorPanel {
     /// Resets the rack state when the rack's owner changes, folding every preset run already there.
     func afxSeed(owner: String, _ chain: FxChain) {
         guard audioFxUI.owner != owner else { return }
+        cancelFxGesture()
+        fxHeaders.removeAll(keepingCapacity: true)
         audioFxUI = AudioFxUIState(owner: owner)
         audioFxUI.collapsedRuns = Set(Self.afxRuns(chain).filter { $0.preset != nil }.map(\.key))
     }
@@ -86,38 +88,68 @@ extension InspectorPanel {
         let ui = audioFxUI
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
-        let write: (FxChain) -> Void = { [weak self] next in self?.edited(commit(next)) }
+        let write: (FxChain) -> Void = { [weak self] next in
+            guard let self else { return }
+            if self.previewFxGesture(next) { return }
+            self.edited(commit(next))
+        }
 
         if chain.needsSoundUpdate {
             rows.append(.init(.buttons([.init(key: "fx:update-sound", label: "Update to current sound", style: .muted) { write(chain.updatedSound()) }])))
             gap(Self.afxSectionGap)
         }
-        // Tone EQ modules lead the rack.
         let eqIds = AudioEq.ids(chain)
-        for (k, eqId) in eqIds.enumerated() {
-            if !rows.isEmpty { gap(Self.afxGap) }
-            rows.append(afxEqModule(chain, eqId: eqId, first: k == 0, open: ui.openEq == eqId, write: write))
-        }
         let runs = Self.afxRuns(chain)
+        var modules: [(slots: [Int], rows: [InspectorRow])] = []
+        fxHeaderButtons.removeAll(keepingCapacity: true)
+        for (k, eqId) in eqIds.enumerated() {
+            let slots = chain.nodes.indices.filter { chain.nodes[$0].fromEq == eqId }
+            if let first = slots.first { fxHeaderButtons["eq:\(eqId):open"] = first }
+            modules.append((slots, [afxEqModule(chain, eqId: eqId, first: k == 0, open: ui.openEq == eqId, write: write)]))
+        }
         var positions: [Int: Int] = [:]
         var at = eqIds.count
         for run in runs { for item in run.items { at += 1; positions[item.i] = at } }
-        if runs.isEmpty && eqIds.isEmpty {
+        for run in runs {
+            if let presetId = run.preset, let preset = AudioFxPresets.preset(presetId) {
+                let slots = run.items.map(\.i)
+                if let first = slots.first { fxHeaderButtons["run:\(run.key):collapse"] = first }
+                modules.append((slots, afxPresetRun(chain, run, preset, positions: positions, ui: ui, write: write)))
+            } else {
+                for item in run.items {
+                    fxHeaderButtons["fx:\(item.i):open"] = item.i
+                    modules.append(([item.i], [afxNodeRow(chain, item.node, item.i, position: positions[item.i], inRun: nil, ui: ui, write: write)]))
+                }
+            }
+        }
+        modules.sort { ($0.slots.first ?? 0) < ($1.slots.first ?? 0) }
+        let moduleSlots = Dictionary(modules.compactMap { module in module.slots.first.map { ($0, module.slots) } }, uniquingKeysWith: { a, _ in a })
+        fxReorder = { [weak self] source, insertion in
+            guard let slots = moduleSlots[source], insertion >= 0 else { return }
+            let boundary = moduleSlots[insertion]?.first ?? chain.nodes.count
+            let moving = Set(slots)
+            let target = boundary - slots.filter { $0 < boundary }.count
+            var next = chain
+            next.nodes = chain.nodes.enumerated().filter { !moving.contains($0.offset) }.map(\.element)
+            next.nodes.insert(contentsOf: slots.map { chain.nodes[$0] }, at: min(target, next.nodes.count))
+            guard next != chain else { return }
+            self?.audioFxUI.openNode = target
+            self?.fxHeaderFocused = target
+            write(next)
+        }
+        if chain.needsSoundUpdate {
+            rows.append(.init(.buttons([.init(key: "fx:update-sound", label: "Update to current sound", style: .muted) { write(chain.updatedSound()) }])))
+            gap(Self.afxSectionGap)
+        }
+        if modules.isEmpty {
             rows.append(.init(.custom(InspectorCustomRow(id: "afx:empty", height: 24.5, draw: { c, r, _ in
                 PanelDraw.text(c, "No effects on this \(subject).", in: CanvasRect(x: r.x, y: r.y + 4, width: r.width, height: 16.5),
                                font: PanelTheme.font(11), color: PanelTheme.text2)
             }))))
         }
-        for run in runs {
+        for module in modules {
             if !rows.isEmpty { gap(Self.afxGap) }
-            if let presetId = run.preset, let preset = AudioFxPresets.preset(presetId) {
-                rows += afxPresetRun(chain, run, preset, positions: positions, ui: ui, write: write)
-            } else {
-                for (k, item) in run.items.enumerated() {
-                    if k > 0 { gap(Self.afxGap) }
-                    rows.append(afxNodeRow(chain, item.node, item.i, position: positions[item.i], inRun: nil, ui: ui, write: write))
-                }
-            }
+            rows += module.rows
         }
         if ui.menu == .add { gap(Self.afxSectionGap); rows.append(afxAddMenu(chain, write: write)) }
         if ui.menu == .presets { gap(Self.afxSectionGap); rows.append(afxPresetMenu(chain, write: write)) }
@@ -258,6 +290,7 @@ extension InspectorPanel {
             PanelDraw.text(c, "Tone", in: CanvasRect(x: nameR.x, y: midY - 8.25, width: nameR.width, height: 16.5), font: PanelTheme.mono(11, .medium),
                            color: self.hovered == .button("eq:\(eqId):open") ? PanelTheme.text1 : PanelTheme.text0)
             self.addHit(nameR, .button("eq:\(eqId):open"))
+            self.afxReorderHeader(c, key: "eq:\(eqId):open", rect: r)
             let card = CanvasRect(x: r.x + 2 + 8, y: head.maxY, width: r.width - 3 - 16, height: r.maxY - 1 - head.maxY)
             guard open else {
                 PanelDraw.text(c, AudioEq.summary(bands), in: CanvasRect(x: card.x, y: card.y, width: card.width, height: 16.5),
@@ -383,6 +416,7 @@ extension InspectorPanel {
                                font: PanelTheme.mono(9), color: col.withAlpha(0.6))
             }
             self.addHit(lab, .button("run:\(key):collapse"))
+            self.afxReorderHeader(c, key: "run:\(key):collapse", rect: r)
             let ar = CanvasRect(x: inner.x, y: head.maxY + 4, width: inner.width, height: Self.runAmountH)
             self.afxParamRowDraw(c, ar, key: amountKey, label: "Amount", position: amount, display: fmt(amount), unit: "", atDefault: amount == 1,
                                  enabled: true, alpha: 1, format: fmt, min: 0, max: 1)
@@ -501,6 +535,7 @@ extension InspectorPanel {
             let a = bypassed ? 0.5 : 1.0   // `opacity-50` on a bypassed module
             Self.afxModuleFrame(c, card, tint: tint, alpha: a)
             let head = CanvasRect(x: card.x + 2 + 6, y: card.y + 1, width: card.width - 3 - 12, height: Self.nodeHeadH)
+            if inRun == nil { self.afxReorderHeader(c, key: "fx:\(i):open", rect: card) }
             let midY = head.midY
             var right = self.afxGlyph(c, right: head.maxX, midY: midY, "×", size: 11, hit: .fxRemove(fxKey), danger: true, alpha: a) - 4
             right = self.afxGlyph(c, right: right, midY: midY, "↓", size: 10, hit: .button("\(fxKey):down"), alpha: a,
