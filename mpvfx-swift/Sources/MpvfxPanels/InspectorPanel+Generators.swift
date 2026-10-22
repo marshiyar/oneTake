@@ -27,7 +27,7 @@ extension InspectorPanel {
             guard let next = NativeGeneratorKind(rawValue: key), next != kind else { return }
             self?.edited(editor.editGenerator(clipId: id) { $0 = next.fill.raw }, label: "Edit background")
         }))))
-        let colors = fill.kind == "color" ? [fill.color ?? "#4050B8"] : fill.stops.map(\.color)
+        let colors = fill.kind == "color" ? [fill.color ?? NativeGeneratorKind.defaultSolidColor] : fill.stops.map(\.color)
         for (i, color) in colors.enumerated() {
             rows += colorRows(ColorFieldSpec(key: "generatorColor\(i)", label: colors.count == 1 ? "Colour" : "Colour \(i + 1)",
                 value: color, placeholder: color, allowAlpha: true, historyLabel: "Edit background") { value in
