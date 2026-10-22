@@ -12,6 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 import XCTest
 import MpvfxCanvas
 import MpvfxTheme
@@ -59,6 +62,52 @@ final class AudioFxRackTests: XCTestCase {
     }
     func texts(_ c: PanelMeasureCanvas) -> [String] { c.texts.map(\.0) }
 
+    #if os(macOS)
+    func testModuleHeaderDarkAndLightSnapshots() throws {
+        let previous = Theme.mode
+        defer { Theme.setMode(previous) }
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            let (_, panel) = try fixture(FxChain(nodes: [FxNode(type: "gain", version: 2, id: "g", params: AudioFx.defaultParams("gain", version: 2))]))
+            panel.onSaveAudioFxPreset = { _, _ in }
+            try press(panel, .button("fx:0:presets"))
+            let canvas = try XCTUnwrap(CoreGraphicsCanvas.offscreen(width: 409, height: 600))
+            canvas.fillRect(CanvasRect(x: 0, y: 0, width: 409, height: 600), PanelTheme.studioBg)
+            panel.draw(canvas, in: CanvasRect(x: 0, y: 0, width: 409, height: 600))
+            XCTAssertNotNil(panel.hits.rect { $0 == .button("fx:0:ab") })
+            XCTAssertNotNil(panel.hits.rect { $0 == .button("fx:0:copy-ab") })
+            XCTAssertNotNil(panel.hits.rect { $0 == .button("fx:0:save") })
+            let image = try XCTUnwrap(canvas.ctx.makeImage())
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            if let output = ProcessInfo.processInfo.environment["MPVFX_SNAPSHOT_DIR"] {
+                try FileManager.default.createDirectory(atPath: output, withIntermediateDirectories: true)
+                try png.write(to: URL(fileURLWithPath: output).appendingPathComponent("audio-fx-module-\(mode.rawValue).png"))
+            }
+        }
+    }
+    #endif
+
+    func testModuleABCopyAndPresetAreSingleUndoSteps() throws {
+        let original = FxChain(nodes: [FxNode(type: "gain", version: 2, id: "g", enabled: true, params: AudioFx.normalize("gain", ["gain": .number(-12)], version: 2))])
+        let (editor, panel) = try fixture(original)
+        let documentBefore = editor.document
+        try press(panel, .button("fx:0:ab"))
+        XCTAssertTrue(chain(editor).nodes[0].activeSlotB)
+        XCTAssertTrue(editor.undo())
+        XCTAssertEqual(chain(editor), original)
+        XCTAssertEqual(editor.document, documentBefore)
+        try press(panel, .button("fx:0:copy-ab"))
+        XCTAssertEqual(chain(editor).nodes[0].paramsB, original.nodes[0].paramsA)
+        XCTAssertTrue(editor.undo())
+        XCTAssertEqual(chain(editor), original)
+        XCTAssertEqual(editor.document, documentBefore)
+        try press(panel, .button("fx:0:presets"))
+        try press(panel, .button("fx:0:preset:default-gain"))
+        XCTAssertEqual(chain(editor).nodes[0].params?.num("gain"), 0)
+        XCTAssertTrue(editor.undo())
+        XCTAssertEqual(chain(editor), original)
+        XCTAssertEqual(editor.document, documentBefore)
     func liveFixture(_ chain: FxChain) throws -> (TimelineEditor, InspectorPanel) {
         let json = TimelineEditor.demoJSON.replacingOccurrences(of: "\"name\":\"music.wav\"", with: "\"name\":\"music.wav\",\"source\":\"/music.wav\"")
         let editor = try TimelineEditor(json: json, engine: try? KeyframeRuntime())

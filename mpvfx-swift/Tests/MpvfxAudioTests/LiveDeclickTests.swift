@@ -43,6 +43,34 @@ final class LiveDeclickTests: XCTestCase {
 
     func slice(_ a: [Float], frame: Int, frames: Int) -> [Float] { Array(a[(2 * frame)..<(2 * (frame + frames))]) }
 
+    func testABSwitchUsesRebuildCrossfadeAndSettlesWithin20ms() throws {
+        var chain = try AudioFx.parseChain(#"{"version":2,"nodes":[{"type":"gain","id":"g","params":{"gain":-30}}]}"#)
+        chain.nodes[0].copyAToB()
+        chain.nodes[0].paramsB?["gain"] = .number(0)
+        func project(_ c: FxChain) -> AudioGraphProject {
+            AudioGraphProject(duration: 2, sampleRate: Self.sr, tracks: [AudioGraphTrack(id: "a", stem: Self.stem, start: 0, end: 2, fxChain: c)])
+        }
+        let source = GraphAudioSource(project: project(chain))
+        source.seek(0.5)
+        let before = source.render(frames: 1280)
+        chain.nodes[0].selectSlotB(true)
+        let edited = project(chain)
+        source.replace(edited)
+        XCTAssertEqual(source.lastReplace, .rebuilt)
+        XCTAssertLessThanOrEqual(Double(source.declickFrames) / Self.sr, 0.020)
+        let start = source.position
+        let after = source.render(frames: 960)
+        let heard = Array(before.suffix(4)) + after
+        XCTAssertLessThan(maxStep(heard), 1.2 * Self.sineStep)
+        var curvature = 0.0
+        for i in stride(from: 4, to: heard.count, by: 2) {
+            curvature = max(curvature, Double(abs(heard[i] - 2 * heard[i - 2] + heard[i - 4])))
+        }
+        XCTAssertLessThan(curvature, 1.5 * Self.amp * pow(2 * .pi * Self.tone / Self.sr, 2))
+        let offline = AudioGraphRenderer.renderOffline(edited)
+        XCTAssertEqual(source.render(frames: 128), slice(offline, frame: start + 960, frames: 128))
+    }
+
     func testBypassWhilePlayingCrossfadesInsteadOfSwitchingAtOneSample() throws {
         let src = GraphAudioSource(project: try Self.project(bypassed: false))
         src.seek(0.5)

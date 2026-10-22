@@ -299,7 +299,11 @@ final class SessionPanels {
         Task { [weak self] in
             let views = (try? await backend.libraryViews()) ?? []
             let currentLibraryProject = directory.flatMap { dir in backend.listProjects().first { $0.directory == dir }?.libraryProjectId }
-            post { self?.applyLibraries(views, currentProjectId: currentLibraryProject) }
+            let presets = currentLibraryProject.flatMap { try? backend.libraries?.audioFxPresets(projectId: $0) } ?? []
+            post {
+                self?.right.inspector.audioFxUserPresets = presets
+                self?.applyLibraries(views, currentProjectId: currentLibraryProject)
+            }
         }
     }
 
@@ -455,6 +459,21 @@ final class SessionPanels {
         inspector.onClearSelection = { [weak self] in
             guard let self else { return }
             self.session.timeline.view.selection = []; self.session.syncStage(); self.redraw()
+        }
+        inspector.onSaveAudioFxPreset = { [weak self] name, node in
+            guard let self else { return }
+            guard let service = self.backend?.libraries, let project = self.left.library.currentProjectId else {
+                self.session.onError("Could not save effect preset", "Save this project in a library to save effect presets")
+                return
+            }
+            let post = self.uiPost
+            Task { [weak self] in
+                do {
+                    try service.saveAudioFxPreset(projectId: project, name: name, node: node)
+                    let presets = try service.audioFxPresets(projectId: project)
+                    post { self?.right.inspector.audioFxUserPresets = presets; self?.redraw() }
+                } catch { post { self?.session.onError("Could not save effect preset", "\(error)") } }
+            }
         }
         inspector.onCopyGrade = { [weak self] in self?.session.timeline.copyGradeSelection() ?? false }
         inspector.onPasteGrade = { [weak self] in self?.session.timeline.pasteGradeSelection() ?? false }

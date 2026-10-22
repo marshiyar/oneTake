@@ -296,3 +296,43 @@ public enum AudioEq {
         return moved.map { "\($0.name) \($0.gain > 0 ? "+" : "−")\(jsNumberToString(abs(jsRoundTo($0.gain, 1))))" }.joined(separator: ", ")
     }
 }
+
+/// A single module's settings; independent of clip identity and chain placement.
+public struct AudioFxModulePreset: Equatable, Sendable {
+    public let id: String
+    public let label: String
+    public let type: String
+    public let version: Int
+    public let params: FxParams
+    public init(id: String, label: String, type: String, version: Int, params: FxParams) {
+        self.id = id; self.label = label; self.type = type; self.version = version
+        self.params = AudioFx.normalize(type, params, version: version)
+    }
+    public func applying(to node: FxNode) -> FxNode {
+        guard node.type == type else { return node }
+        var copy = node
+        // Recall into the active slot using that node's sound version.
+        var p = params
+        let target = node.version ?? 1
+        if target != version, type == "compressor" || type == "gate" {
+            p["knee"] = .number(target == 2 ? 20 * log10(max(1, p.num("knee"))) : pow(10, p.num("knee") / 20))
+        }
+        copy.params = AudioFx.normalize(type, p, version: target)
+        return copy
+    }
+}
+
+extension AudioFxPresets {
+    public static func modulePresets(_ type: String, version: Int = 2) -> [AudioFxModulePreset] {
+        guard AudioFx.definition(type) != nil else { return [] }
+        var result = [AudioFxModulePreset(id: "default-" + type, label: "Default", type: type, version: version,
+                                          params: AudioFx.defaultParams(type, version: version))]
+        for preset in all {
+            for (index, node) in preset.nodes.enumerated() where node.type == type {
+                result.append(AudioFxModulePreset(id: "\(preset.id)-\(index)", label: "\(preset.label) · \(node.label ?? type)",
+                                                  type: type, version: version, params: presetParams(node, version: version)))
+            }
+        }
+        return result
+    }
+}
