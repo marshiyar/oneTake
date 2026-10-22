@@ -167,14 +167,14 @@ final class PanelSnapshotTests: XCTestCase {
             // (docs/DESIGN.md "Layout grid") the clip header is 48 with its hairline, group headers 40.
             assertPixel(t, 200, 79, scale: scale, "#141414")      // clip header hairline: 32 + 47
             assertPixel(t, 200, 82, scale: scale, "#1d1d1d")      // open Transform header (80…120)
-            assertPixel(t, 386, 99, scale: scale, "#71717a")      // open caret M2 4l4 4 4-4z at (381,94), text-3
+            assertPixel(t, 386, 99, scale: scale, "#a1a1aa")      // open caret M2 4l4 4 4-4z at (381,94), inspector-text
             assertPixel(t, 200, 124, scale: scale, "#191919")     // open body bg-panel-bg-inset from 120
             // Position: its label line 128…152, then the X and Y fields (154…182) between the gutter and the value edge
             // (393 − 128 = 265), 8 apart: X 16…136.5, Y 144.5…265.
             assertPixel(t, 100, 162, scale: scale, "#1d1d1d")     // Position X field, rounded bg-panel-bg
             assertPixel(t, 140, 162, scale: scale, "#191919")     // the column gap between the X and Y fields
             assertPixel(t, 280, 162, scale: scale, "#191919")     // past the value edge: the reserved keyframe gutter
-            assertPixel(t, 100, 176, scale: scale, "#272727", tol: 8)   // value underline border-panel-border-input/50
+            assertPixel(t, 100, 176, scale: scale, "#85858d", tol: 8)   // value underline, solid inspector-control
         }
         // FlatSegmentedRow: the active option sits on a 2px accent underline; KeyframeNavigation's active diamond.
         for scale in [1.0, 2.0] {
@@ -192,7 +192,8 @@ final class PanelSnapshotTests: XCTestCase {
             XCTAssertEqual(rects.first?.x ?? 0, 104, accuracy: 0.01); XCTAssertEqual(rects.last?.maxX ?? 0, 249, accuracy: 0.01)
             assertPixel(t, rects[0].midX, 29, scale: scale, "#4c8df0", tol: 10)
             assertPixel(t, rects[1].midX, 29, scale: scale, "#191919")
-            assertPixel(t, w - 36, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)   // 9px diamond centre in the second 24 pt cell
+            // The ◆ on a key is the property kind's mark (#201): a transform key, filled in keyframeTransformPair, in the second 24 pt cell.
+            assertPixel(t, w - 36, 48 + 0.5, scale: scale, "#f0e042", tol: 12)
         }
     }
 
@@ -211,10 +212,10 @@ final class PanelSnapshotTests: XCTestCase {
     func testGradeCurveLinesShowInLightMode() throws {
         Theme.setMode(.light); defer { Theme.setMode(.dark) }
         for scale in [1.0, 2.0] {
-            let r = try Self.rightFixture(open: "grade", h: 1900)
+            let r = try Self.rightFixture(open: "grade", h: 3000)
             for tab in InspectorPanel.curveTabs {
                 r.inspector.grade.curveTab = tab.key
-                let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 1900, scale: scale) { r.draw($0, size: CanvasSize(409, 1900)) }
+                let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 3000, scale: scale) { r.draw($0, size: CanvasSize(409, 3000)) }
                 let box = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:curve", 0) }).insetBy(6)
                 // Default curves: Master/R/G/B the identity diagonal, hue curves flat at 0 (mid-height).
                 let lineY = tab.hue ? box.midY : box.maxY - 0.375 * box.height
@@ -519,8 +520,8 @@ final class PanelSnapshotTests: XCTestCase {
                 }
                 r.inspector.focus.visible = false
                 let t = snapshot(tag, w: w, h: height, scale: 1) { r.draw($0, size: size) }
-                // Rotation sits on a key: the diamond is filled mint at the centre of its own target.
-                assertPixel(t, diamond.midX, diamond.midY, PanelTheme.mint, tol: 12)
+                // Rotation sits on a key: the diamond is its kind's mark (#201), transform here.
+                assertPixel(t, diamond.midX, diamond.midY, CanvasColor(ThemeTokens.keyframeTransformPair.value(mode)), tol: 12)
             }
             // The slider rows with keyframe controls (opacity, volume) at the 1440 × 900 width and the narrowest panel.
             let widths = [(PanelFit.defaults(1440).right, "1440x900"), (PanelFit.minRight, "min\(Int(PanelFit.minRight))")]

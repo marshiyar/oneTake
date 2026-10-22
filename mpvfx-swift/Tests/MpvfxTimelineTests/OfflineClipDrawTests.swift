@@ -28,6 +28,7 @@ final class OfflineClipDrawTests: XCTestCase {
         clip.assetId = "gone"
         let v = TimelineView(tracks: [TimelineTrackModel(id: "t", name: "Video", clips: [clip])], duration: 5)
         if offline { v.offlineAssetIds = ["gone"] }
+        v.trackHeight = 44   // the timecode row (and the offline label in its place) only fits above compact rows
         return v
     }
 

@@ -24,13 +24,24 @@ public final class InspectorPanel {
         case slider(String), toggle(String), segment(String, String), button(String), fxToggle(String), fxRemove(String)
         case headerClear, headerReset, body, groupReset(String), groupEnabled(String), scrollbar
         case custom(String, Int)
+        /// The ⋯ on a detachable group's header: Move to Panel / Return to Design.
+        case groupMenu(String)
     }
 
-    public var editor: TimelineEditor?
+    public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch() } } }
     /// Selected clip ids (the timeline/stage selection).
-    public var selection: [String] = []
+    public var selection: [String] = [] {
+        didSet {
+            if selection != oldValue {
+                endWheelKeyHold()
+                cancelLookMatch()
+            }
+        }
+    }
+    /// Presentation choice; the resulting positions are ordinary saved document parameters.
+    public var alignmentReference = TimelineAlignmentReference.frame
     /// Playhead (composition seconds).
-    public var time = 0.0
+    public var time = 0.0 { didSet { if time != oldValue { cancelLookMatch() } } }
     /// The open accordion group ("" when all are closed). Every change, from a header click or a host reveal, is saved
     /// as `PanelPreferences.openInspectorGroup` so the next launch reopens it.
     public var openGroupId: String = "layout" {
@@ -46,25 +57,89 @@ public final class InspectorPanel {
     public var onClearSelection: (() -> Void)?
     /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
     public var onCopyGrade: (() -> Bool)?
+    /// Durable user-data look catalogue, supplied by the host; ordinary effects remain in the project.
+    public var userLookStore: UserLookStore?
+    public var resolveUserLookLut: (String) -> String = { $0 }
+    public var userLookLutExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    var selectedUserLook: String?
+    var userLookNameDraft: String?
+    var userLookError: UserLookError?
     public var onPasteGrade: (() -> Bool)?
     /// Whether the timeline currently holds a copied grade. Selection compatibility is checked by the panel.
     public var gradeClipboardAvailable = false
     /// Called after a header click opened or closed a group (the host redraws); saving is done by `openGroupId`.
     public var onOpenGroupChanged: ((String) -> Void)?
 
+    // Design groups in the dock (InspectorPanel+Dock.swift)
+    /// Set on the instance a dock panel hosts: it shows only that panel's groups, every one open.
+    public var pinnedPanel: DockPanelID?
+    /// Design groups living in their own dock panel: the Design tab leaves them out.
+    public var detachedPanels: Set<DockPanelID> = []
+    /// The Design tab's order of the detachable groups (panel ids); saved as `PanelPreferences.designGroupOrder`.
+    public var designOrder: [DockPanelID]? {
+        didSet { if designOrder != oldValue, let layout { layout.update { $0.designGroupOrder = designOrder } } }
+    }
+    var groupPress: GroupPress?
+    public internal(set) var groupDrag: GroupDrag?
+    /// A header drag that left the panel (moves, then the release) or came back (cancel), for the host to hand to the dock.
+    public var onGroupDrag: ((GroupDragEvent) -> Void)?
+    /// "Move to Panel": open this group's dock panel. "Return to Design": close it.
+    public var onMoveToPanel: ((DockPanelID) -> Void)?
+    public var onReturnToDesign: ((DockPanelID) -> Void)?
+    /// The ⋯ was pressed: the host shows `request.items` in a menu under `request.anchor`.
+    public var onGroupMenu: ((GroupMenuRequest) -> Void)?
+
     // Interaction state
     public private(set) var hits = HitMap<Hit>()
 
-    /// Header bypasses exposed to the native canvas host after layout has populated `hits`.
+    /// Header bypasses and named icon choices exposed after layout has populated `hits`.
     public var accessibilityControls: [CanvasAccessibilityControl] {
-        buildGroups().compactMap { group in
+        let headers: [CanvasAccessibilityControl] = buildGroups().compactMap { group in
             guard let label = group.accessibilityLabel, let value = group.enabled,
                   let frame = hits.rect(where: { $0 == .groupEnabled(group.id) }) else { return nil }
             return CanvasAccessibilityControl(label: label, value: value, frame: frame) { group.setEnabled?(!value) }
         }
+        return headers + namedIconControls.map { item in
+            CanvasAccessibilityControl(label: item.label, value: item.active, frame: item.frame, press: item.press)
+        }
+    }
+
+    /// Names are shared by assistive technology and the hover tooltip.
+    var namedIconControls: [(hit: Hit, label: String, active: Bool, frame: CanvasRect, press: () -> Void)] {
+        var controls: [(Hit, String, Bool, CanvasRect, () -> Void)] = []
+        for row in allRows() {
+            switch row.kind {
+            case .segmented(let segment):
+                for option in segment.options where segment.icons[option.key] != nil {
+                    let hit = Hit.segment(segment.key, option.key)
+                    guard let frame = hits.rect(where: { $0 == hit }) else { continue }
+                    controls.append((hit, option.label, option.active, frame, { segment.select(option.key) }))
+                }
+            case .subheader(_, let buttons), .buttons(let buttons):
+                for button in buttons where button.icon != nil && !button.disabled {
+                    let hit = Hit.button(button.key)
+                    guard let frame = hits.rect(where: { $0 == hit }) else { continue }
+                    controls.append((hit, button.label, false, frame, button.action))
+                }
+            default: break
+            }
+        }
+        return controls
+    }
+
+    func drawIconTooltip(_ c: CanvasContext) {
+        guard let item = namedIconControls.first(where: { $0.hit == hovered }) else { return }
+        let width = min(lastRect.width - 16, c.measureText(item.label, font: Self.rowFont).width + 16)
+        let box = CanvasRect(x: max(lastRect.x + 8, min(lastRect.maxX - width - 8, item.frame.midX - width / 2)),
+                             y: min(lastRect.maxY - 28, item.frame.maxY + 4), width: width, height: 24)
+        c.fillRoundedRect(box, radius: PanelTheme.radius, PanelTheme.panelInput)
+        c.strokeRoundedRect(box.insetBy(0.5), radius: PanelTheme.radius, PanelTheme.panelBorderInput, width: 1)
+        PanelDraw.text(c, item.label, in: box.insetBy(4), font: Self.rowFont, color: PanelTheme.text1, align: .center)
     }
     public var hovered: Hit?
     public private(set) var field: PanelTextField?
+    var sliderInputError: String?
+    var sliderKeySequence: (key: String, selection: [String], time: Double, code: EditorKey.Code, token: String)?
     /// The body's scroll (wheel glides, trackpad 1:1, clamped) and its scrollbar fade.
     public internal(set) var bodyScroller = PanelScroller()
     public internal(set) var bodyScroll: Double {
@@ -116,7 +191,11 @@ public final class InspectorPanel {
     public internal(set) var cubeDrag: CubeDrag?
     public internal(set) var cubeBox: CanvasRect?
     /// Keyboard focus (Tab / ⇧Tab, Enter / Space) and its ring.
-    public var focus = PanelFocus<Hit>()
+    public var focus = PanelFocus<Hit>() {
+        didSet {
+            if focus.current != oldValue.current || focus.visible != oldValue.visible { endWheelKeyHold() }
+        }
+    }
     /// Groups whose header (and body, when open) play the 120 ms entrance (`hf-flat-group-enter`: opacity 0→1,
     /// translateY -4→0, ease-out): the one just toggled and the one it closed.
     public private(set) var enteringGroups: [String] = []
@@ -153,6 +232,9 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// A clip's graded frame at an explicit composition time, used by reference look matching.
+    public var matchLookFrame: ((_ clipId: String, _ time: Double, _ width: Int, _ height: Int) -> PresetPreviewState)?
+    var lookMatch = LookMatchUIState()
     /// Host hook: the composited program frame at the playhead for the Grade scopes' Program mode, at most w x h.
     public var programScopeFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
     /// What the Grade scopes read (the Scopes row's Clip / Program switch). Every change is saved as
@@ -231,6 +313,7 @@ public final class InspectorPanel {
     // MARK: Draw
 
     public func draw(_ c: CanvasContext, in r: CanvasRect) {
+        validateLookMatchContext()
         lastRect = r
         hits.reset(); tabBars = [:]
         // The shelf went away (closed, the rack's owner changed, the selection or group moved on): the audition ends.
@@ -238,11 +321,15 @@ public final class InspectorPanel {
         c.fillRect(r, PanelTheme.panelBg)
         guard let editor, let headerH = drawSelectionHeader(c, r, editor) else { return }
         let groups = buildGroups().map { laidOut($0, c, width: r.width) }
-        if !groups.contains(where: { $0.id == openGroupId }), let first = groups.first { openGroupId = first.id }
+        if pinnedPanel != nil, groups.isEmpty {
+            drawNothingHere(c, r, top: r.y + headerH + 12)
+            return
+        }
+        if pinnedPanel == nil, !groups.contains(where: { $0.id == openGroupId }), let first = groups.first { openGroupId = first.id }
         // `data-flat-panel-body`: closed headers, the open group (header + its whole body), more closed headers, in
         // one column that scrolls as a whole.
         let body = CanvasRect(x: r.x, y: r.y + headerH, width: r.width, height: max(0, r.height - headerH))
-        let total = groups.reduce(0.0) { $0 + Self.groupHeaderHeight + ($1.id == openGroupId ? Self.openBodyHeight($1, Self.groupHeaderHeight) : 0) }
+        let total = groups.reduce(0.0) { $0 + Self.groupHeaderHeight + (isOpen($1.id) ? Self.openBodyHeight($1, Self.groupHeaderHeight) : 0) }
         bodyMaxScroll = max(0, total - body.height)
         scrollForOpenGroup(groups, body: body)
         bodyScroller.clamp(max: bodyMaxScroll)
@@ -252,28 +339,31 @@ public final class InspectorPanel {
             drawGroups(c, groups, in: body)
         }
         drawFocusAndScrollbar(c, body: body, content: total)
+        drawIconTooltip(c)
     }
 
     /// Five grid steps: closed headers stack on the grid below the 48 pt clip header.
     static let groupHeaderHeight = 40.0
 
-    /// The header for what is selected; returns its height, or nil when the panel shows no groups (several clips,
-    /// the composition, or a selection the document no longer has).
+    /// The header for what is selected; returns its height, or nil for the composition or a selection the
+    /// document no longer has. Multi-selection keeps the alignment controls.
     func drawSelectionHeader(_ c: CanvasContext, _ r: CanvasRect, _ editor: TimelineEditor) -> Double? {
         if !selection.isEmpty { audioGroupId = nil }
-        if selection.count > 1 { drawMultiSelect(c, r); return nil }
+        if selection.count > 1 { drawMultiSelect(c, r); return 72 }
         if let s = selected() {
             retireStaleEditors(editor, s)
             return drawHeader(c, r, s)
         }
         if let g = selectedBus() { return drawBusHeader(c, r, g) }
-        if showsComposition { drawComposition(c, r, editor) }
+        if showsComposition {
+            if pinnedPanel != nil { drawNothingHere(c, r, top: r.y + 12) } else { drawComposition(c, r, editor) }   // the composition has no Design group panels
+        }
         return nil
     }
 
     /// The scroll a group opening asked for, applied once against this layout.
     func scrollForOpenGroup(_ groups: [InspectorGroup], body: CanvasRect) {
-        guard let i = groups.firstIndex(where: { $0.id == openGroupId }) else { return }
+        guard let i = groups.firstIndex(where: { isOpen($0.id) }) else { return }
         if scrollOpenGroupToStart {
             bodyScroll = Double(i) * Self.groupHeaderHeight
             scrollOpenGroupToStart = false
@@ -285,7 +375,7 @@ public final class InspectorPanel {
         let p = enterProgress, headerH = Self.groupHeaderHeight
         var y = body.y - bodyScroll
         for g in groups {
-            let open = g.id == openGroupId
+            let open = isOpen(g.id)
             let slotH = headerH + (open ? Self.openBodyHeight(g, headerH) : 0)
             let entering = p < 1 && enteringGroups.contains(g.id)
             c.withState {
@@ -308,10 +398,18 @@ public final class InspectorPanel {
                 PanelDraw.focusRing(c, ring)
             }
         }
+        if let d = groupDrag, !d.outside, let y = d.slotY {
+            c.fillRect(CanvasRect(x: body.x, y: y - 1, width: body.width, height: 2), PanelTheme.accent)
+        }
         guard bodyMaxScroll > 0 else { return }
         hits.add(PanelScrollbar.zone(track: body), .scrollbar)
         PanelScrollbar.draw(c, track: body, offset: bodyScroll, content: content, hovered: hovered == .scrollbar || scrollbarGrab != nil,
                             opacity: bodyScroller.barOpacity)
+    }
+
+    func drawNothingHere(_ c: CanvasContext, _ r: CanvasRect, top: Double) {
+        PanelDraw.text(c, "Nothing here for this selection.", in: CanvasRect(x: r.x + 16, y: top, width: r.width - 32, height: 16),
+                       font: PanelTheme.font(11), color: PanelTheme.inspectorText)
     }
 
     /// The smallest open group (header and body), on the grid.
@@ -354,12 +452,12 @@ public final class InspectorPanel {
         icon.draw(c, in: CanvasRect(x: row.x, y: row.y + (h - 15) / 2, width: 15, height: 15), color: iconColor)
         var ax = row.maxX
         let clear = CanvasRect(x: ax - 13, y: row.y + (h - 13) / 2, width: 13, height: 13)
-        PanelIcon.close.draw(c, in: clear, color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3)
+        PanelIcon.close.draw(c, in: clear, color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.inspectorText)
         hits.add(Self.target(clear), .headerClear)
         ax = clear.x - 11
         if let editor, editor.clip(s.id).map({ $0.clip.staticParameters != nil || !$0.clip.parameterTracks.isEmpty || $0.clip.crop != nil }) == true {
             let reset = CanvasRect(x: ax - 13, y: row.y + (h - 13) / 2, width: 13, height: 13)
-            PanelIcon.reset.draw(c, in: reset, color: hovered == .headerReset ? PanelTheme.text1 : PanelTheme.text3)
+            PanelIcon.reset.draw(c, in: reset, color: hovered == .headerReset ? PanelTheme.text1 : PanelTheme.inspectorText)
             hits.add(Self.target(reset), .headerReset)
             ax = reset.x - 11
         }
@@ -377,59 +475,65 @@ public final class InspectorPanel {
         let row = CanvasRect(x: r.x + 16, y: r.y, width: r.width - 32, height: h)
         PanelIcon.music.draw(c, in: CanvasRect(x: row.x, y: row.y + (h - 14) / 2, width: 14, height: 14), color: PanelTheme.audioViolet)
         let clear = CanvasRect(x: row.maxX - 16, y: row.y + (h - 16) / 2, width: 16, height: 16)
-        PanelIcon.close.draw(c, in: clear.insetBy(2), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3)
+        PanelIcon.close.draw(c, in: clear.insetBy(2), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.inspectorText)
         hits.add(Self.target(clear), .headerClear)
         let nameX = row.x + 24, avail = max(0, clear.x - 10 - nameX)
         let ns = PanelDraw.text(c, g.label ?? "Group", in: CanvasRect(x: nameX, y: row.y, width: avail * 0.6, height: h),
                                 font: PanelTheme.font(13, .semibold), color: PanelTheme.text0)
         PanelDraw.text(c, "Audio group", in: CanvasRect(x: nameX + ns.width + 8, y: row.y + 1.5, width: max(0, avail - ns.width - 8), height: h),
-                       font: PanelTheme.font(10), color: PanelTheme.text4)
+                       font: PanelTheme.font(11), color: PanelTheme.inspectorText)
         PanelDraw.hline(c, x0: r.x, x1: r.maxX, y: r.y + h, PanelTheme.panelHairline)
         return h + 1
     }
 
-    /// FlatMultiSelectState: count and clear (grouping visuals has no native equivalent yet).
+    /// Multi-selection retains count/clear above its shared alignment controls.
     func drawMultiSelect(_ c: CanvasContext, _ r: CanvasRect) {
         let row = CanvasRect(x: r.x + 16, y: r.y + 12, width: r.width - 32, height: 28)
         PanelDraw.text(c, "\(selection.count) clips selected", in: row, font: PanelTheme.font(11, .semibold), color: PanelTheme.text1)
         let clear = CanvasRect(x: row.maxX - 28, y: row.y, width: 28, height: 28)
-        PanelDraw.text(c, "×", in: clear, font: PanelTheme.font(14), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3, align: .center)
+        PanelDraw.text(c, "×", in: clear, font: PanelTheme.font(14), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.inspectorText, align: .center)
         hits.add(clear, .headerClear)
-        PanelDraw.text(c, "Select a single clip to edit its properties.", in: CanvasRect(x: row.x, y: row.maxY + 4, width: row.width, height: 16),
-                       font: PanelTheme.font(10), color: PanelTheme.text4)
+        PanelDraw.text(c, "Align visual clips below, or select one to edit properties.", in: CanvasRect(x: row.x, y: row.maxY + 4, width: row.width, height: 16),
+                       font: PanelTheme.font(11), color: PanelTheme.text4)
     }
 
     func drawGroupHeader(_ c: CanvasContext, _ r: CanvasRect, _ g: InspectorGroup, open: Bool) {
         c.fillRect(r.snapped, PanelTheme.panelBg)
         hits.add(r, .group(g.id))   // first, so header accessories added after it win the hit test
         let inner = CanvasRect(x: r.x + 16, y: r.y, width: r.width - 32, height: r.height)
+        // The ⋯ sits left of the caret (and of the group switch and reset, when the open group has them).
+        let detachable = DesignGroups.panel(forGroup: g.id) != nil
+        var accessoryX = inner.maxX - 12 - 10
         if let on = g.enabled {
             let target = CanvasRect(x: inner.maxX - 58, y: r.midY - 12, width: 28, height: 24)
             let track = CanvasRect(x: target.x + 3, y: target.midY - 6, width: 22, height: 12)
             c.fillRoundedRect(track, radius: 6, on ? PanelTheme.accent : PanelTheme.panelBorderInput)
             c.fillRoundedRect(CanvasRect(x: on ? track.maxX - 10 : track.x + 2, y: track.y + 2, width: 8, height: 8), radius: 4, PanelTheme.white)
             hits.add(target, .groupEnabled(g.id))
+            accessoryX = inner.maxX - 66
         }
         if open {
             let t = PanelDraw.text(c, g.title, in: inner, font: PanelTheme.font(12, .semibold), color: PanelTheme.text0)
             if g.enabled == false {   // a bypassed group says so beside its title, not only by the switch position
                 let x = inner.x + t.width + 8
                 PanelDraw.text(c, g.summary, in: CanvasRect(x: x, y: inner.y + 1, width: max(0, inner.maxX - 90 - x), height: inner.height),
-                               font: PanelTheme.mono(9), color: PanelTheme.text4)
+                               font: PanelTheme.mono(11), color: PanelTheme.inspectorText)
             }
-            PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text3)
+            PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.inspectorText)
             if g.reset != nil {
-                let offset = g.enabled == nil ? 34.0 : 78.0
-                let rr = CanvasRect(x: inner.maxX - offset, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
-                PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.text3)
+                let rr = CanvasRect(x: accessoryX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
+                PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.inspectorText)
                 hits.add(Self.target(rr), .groupReset(g.id))
+                accessoryX = rr.x - 10
             }
+            if detachable { drawGroupMenuButton(c, r, g.id, rightEdge: accessoryX) }
         } else {
             let t = PanelDraw.text(c, g.title, in: CanvasRect(x: inner.x, y: inner.y, width: inner.width - 20, height: inner.height),
                                    font: PanelTheme.font(12, .medium), color: hovered == .group(g.id) ? PanelTheme.text1 : PanelTheme.text2)
-            PanelDraw.text(c, g.summary, in: CanvasRect(x: inner.x + t.width + 8, y: inner.y + 1, width: max(0, inner.width - t.width - 28), height: inner.height),
-                           font: PanelTheme.mono(9), color: PanelTheme.text4)
-            PanelIcon.groupCaretRight.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text5)
+            PanelDraw.text(c, g.summary, in: CanvasRect(x: inner.x + t.width + 8, y: inner.y + 1, width: max(0, inner.width - t.width - 28 - (detachable ? 22 : 0)), height: inner.height),
+                           font: PanelTheme.mono(11), color: PanelTheme.inspectorText)
+            if detachable { drawGroupMenuButton(c, r, g.id, rightEdge: accessoryX) }
+            PanelIcon.groupCaretRight.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.inspectorText)
             c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
         }
     }
@@ -472,6 +576,7 @@ public final class InspectorPanel {
     // MARK: Row lookup
 
     func allRows() -> [InspectorRow] {
+        if pinnedPanel != nil { return buildGroups().flatMap(\.addressableRows) }
         let open = showsComposition ? Self.compositionGroupId : openGroupId
         return buildGroups().first { $0.id == open }?.addressableRows ?? []
     }
@@ -532,7 +637,15 @@ public final class InspectorPanel {
     @discardableResult
     public func commitField() -> Bool {
         guard let f = field else { return false }
+        if number(f.key) == nil, let s = slider(f.key), f.draft != f.original {
+            guard let value = sliderInput(f.draft, s), value.isFinite else {
+                sliderInputError = f.key
+                return true
+            }
+            s.commit(max(s.min, min(s.max, value)))
+        }
         field = nil
+        sliderInputError = nil
         if f.draft != f.original { number(f.key)?.commit(f.draft) }
         return true
     }
@@ -545,6 +658,7 @@ public final class InspectorPanel {
         let hit = hits.hit(p)
         if case .field(let k)? = hit, field?.key == k { return true }
         commitField()
+        if field != nil { return true }
         guard let hit else { return true }
         if !pressValue(hit, p, time: time) && !pressControl(hit, p) { pressChrome(hit, p) }
         return true
@@ -563,8 +677,12 @@ public final class InspectorPanel {
     }
 
     func openField(_ k: String) {
-        guard let n = number(k) else { return }
-        field = PanelTextField(key: k, value: n.text, readOnly: n.readOnly)
+        sliderInputError = nil
+        if let n = number(k) {
+            field = PanelTextField(key: k, value: n.text, readOnly: n.readOnly)
+        } else if let s = slider(k), !s.disabled {
+            field = PanelTextField(key: k, value: s.display)
+        }
     }
 
     func startScrub(_ k: String, at p: CanvasPoint) {
@@ -606,7 +724,12 @@ public final class InspectorPanel {
     /// A press on the panel itself: a group header, the clip header's buttons, the body or the scrollbar.
     func pressChrome(_ hit: Hit, _ p: CanvasPoint) {
         switch hit {
-        case .group(let id): toggleGroup(id)
+        case .group(let id):
+            guard pinnedPanel == nil else { break }   // a detached group is always open
+            let previous = openGroupId
+            toggleGroup(id)
+            groupPress = DesignGroups.panel(forGroup: id).map { GroupPress(panel: $0, previousOpen: previous, at: p) }
+        case .groupMenu(let id): openGroupMenu(id)
         case .groupReset(let id): buildGroups().first { $0.id == id }?.reset?()
         case .groupEnabled(let id): if let g = buildGroups().first(where: { $0.id == id }), let on = g.enabled { g.setEnabled?(!on) }
         case .headerClear: audioGroupId = nil; onClearSelection?()
@@ -654,6 +777,7 @@ public final class InspectorPanel {
 
     /// Returns true when a redraw is needed.
     public func pointerMove(_ p: CanvasPoint) -> Bool {
+        if groupPress != nil || groupDrag != nil { return groupPointerMove(p) }
         if let g = scrollbarGrab {
             bodyScroll = PanelScrollbar.offset(forThumbTop: p.y - g, track: bodyRect, content: bodyContentHeight); return true
         }
@@ -675,6 +799,7 @@ public final class InspectorPanel {
     }
 
     public func pointerUp(_ p: CanvasPoint) {
+        if groupPress != nil || groupDrag != nil { groupPointerUp(p); return }
         if scrollbarGrab != nil { scrollbarGrab = nil; onEdited?() }
         if let (id, part) = customDrag { customDrag = nil; customRow(id)?.pointer(part, p, 2); onEdited?() }
         if let d = sliderDrag {
@@ -697,18 +822,31 @@ public final class InspectorPanel {
         return true
     }
 
+    /// End a physical wheel/level arrow hold on release, even on hosts without repeat flags.
+    public func keyUp(_ key: EditorKey) {
+        if grade.wheelKeyCode == key.code { endWheelKeyHold() }
+    }
+
+    private func endWheelKeyHold() {
+        grade.wheelKeyCode = nil
+        grade.wheelKeyControl = nil
+        grade.wheelKeyHistory = nil
+    }
+
     /// Keys go to a focused field first. Tab moves to the next field of the open group.
     public func keyDown(_ k: EditorKey) -> Bool {
         if k.code == .tab {   // Tab from a field commits it, then focus moves on
             if field != nil { commitField(); onEdited?() }
+            if field != nil { return true }
             let moved = focus.move(hits, forward: !k.shift) { [unowned self] in self.isFocusable($0) }
             if moved { revealFocus() }
             onEdited?(); return moved
         }
+        if k.code == .escape, cancelGroupDrag() { return true }
         guard var f = field else { return unfocusedKey(k) }
         switch f.key(k) {
         case .commit: field = f; commitField(); onEdited?(); return true
-        case .cancel: field = nil; onEdited?(); return true
+        case .cancel: field = nil; sliderInputError = nil; onEdited?(); return true
         case .editing: field = f; onEdited?(); return true
         case .none: return false
         }
@@ -728,7 +866,7 @@ extension InspectorPanel {
     /// What Tab stops on: buttons, toggles, segments, headers, fields, the effect controls and bespoke-row parts.
     static func focusable(_ h: Hit) -> Bool {
         switch h {
-        case .body, .scrollbar, .scrub, .slider: false
+        case .body, .scrollbar, .scrub: false
         default: true
         }
     }
@@ -744,6 +882,7 @@ extension InspectorPanel {
     /// Grade's own keys.
     func unfocusedKey(_ k: EditorKey) -> Bool {
         if let handled = pickerKey(k) { return handled }
+        if sliderKey(k) { return true }
         if focus.visible, case .custom(let id, let part)? = focus.current, let handler = customRow(id)?.keyPress {
             if handler(part, k) { onEdited?(); return true }
         }

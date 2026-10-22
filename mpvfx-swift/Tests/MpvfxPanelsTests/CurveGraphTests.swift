@@ -100,7 +100,7 @@ final class CurveGraphTests: XCTestCase {
     func geometryProblems(_ tab: (key: String, label: String, color: ThemePair, hue: Bool, min: Double, max: Double), _ pts: [[Double]]) throws -> [String] {
         let r = try Self.panel(tab: tab.key, points: pts)
         let rec = RecordingCanvas()
-        r.draw(rec, size: CanvasSize(409, 1900))
+        r.draw(rec, size: CanvasSize(409, 3000))
         let box = r.inspector.grade.curveBox, u = box.width / 144, frame = Self.graphFrame(box)
         let color = CanvasColor(tab.color.now), outline = CanvasColor(ThemeTokens.curvePointOutlinePair.now)
         let line = rec.ops.filter { $0.isStroke && $0.color == color && abs($0.width - 1.5 * u) < 1e-9 }
@@ -177,9 +177,9 @@ final class CurveGraphTests: XCTestCase {
     }
 
     func render(_ r: RightPanel) -> CairoImageTarget {
-        let t = CairoImageTarget(width: 409, height: 1900)
-        t.canvas.fillRect(CanvasRect(x: 0, y: 0, width: 409, height: 1900), PanelTheme.studioBg)
-        r.draw(t.canvas, size: CanvasSize(409, 1900))
+        let t = CairoImageTarget(width: 409, height: 3000)
+        t.canvas.fillRect(CanvasRect(x: 0, y: 0, width: 409, height: 3000), PanelTheme.studioBg)
+        r.draw(t.canvas, size: CanvasSize(409, 3000))
         return t
     }
     #endif

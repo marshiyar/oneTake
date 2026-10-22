@@ -78,6 +78,7 @@ final class ShellPane {
 /// The router keeps sending the source pane its moves (pointer capture) and also reports where the pointer is.
 protocol CrossPaneDrag: AnyObject {
     func isDragging(from region: EditorShellRouter.Region) -> Bool
+    func updateDragModifiers(_ modifiers: PointerModifiers)
     /// `local` is in `region`'s coordinates (nil region: outside every pane).
     func dragMoved(over region: EditorShellRouter.Region?, local: CanvasPoint, window: CanvasPoint)
     func dragEnded(over region: EditorShellRouter.Region?, local: CanvasPoint)
@@ -85,10 +86,15 @@ protocol CrossPaneDrag: AnyObject {
     func drawDrag(_ c: CanvasContext)
 }
 
+extension CrossPaneDrag {
+    func updateDragModifiers(_ modifiers: PointerModifiers) {}
+}
+
 /// Lays the window out through the dock and routes drawing and input to the panes. Host-neutral: a shell gives it
 /// one full-window canvas (GtkCanvasHost / MacCanvasHost / WindowsCanvasHost) and forwards that canvas's events here,
 /// so dragging, swapping, closing and opening panels work the same on Linux, macOS and Windows.
 final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
+    var globalVoiceKey: ((EditorKey) -> Bool)?
     /// A pane: a dock panel's content, except the Preview, whose content is two panes (top bar, player).
     struct Region: Hashable, Sendable {
         let id: String

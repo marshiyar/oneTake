@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxTheme
+import MpvfxShared
 
 /// Timeline layout constants. The media row height is the one
 /// value the user changes (toolbar Track height slider, timelineTrackHeight), so it is instance
@@ -202,6 +203,7 @@ public struct TimelineClipModel: Sendable, Equatable {
     public var canMute = true
     /// Enabled nodes in the clip's audio FX chain (TimelineFxButton nodeCount: enabledAudioFxNodes).
     public var fxCount = 0
+    public var beatTimes: [Double] = []
     public var end: Double { start + duration }
     public init(id: String? = nil, name: String, start: Double, duration: Double, kind: TimelineClipKind = .video,
                 keyframes: [Double] = [], effectCount: Int = 0) {
@@ -224,19 +226,33 @@ public struct TimelineThumbnailStrip: Equatable, Sendable {
     public init(frames: [CanvasImage], aspect: Double) { self.frames = frames; self.aspect = aspect }
 }
 
-public struct TimelineBeat: Sendable, Equatable { public var time: Double; public var strength: Double?
-    public init(time: Double, strength: Double? = nil) { self.time = time; self.strength = strength } }
+public struct TimelineBeat: Sendable, Equatable {
+    public var time: Double
+    public var strength: Double?
+    /// Nil for an independent analysis mark; document marks identify their owning clip.
+    public var clipId: String?
+    public init(time: Double, strength: Double? = nil, clipId: String? = nil) {
+        self.time = time
+        self.strength = strength
+        self.clipId = clipId
+    }
+}
 public enum TimelineTimeDisplay: Sendable { case time, frame }
 
 /// Live gesture preview, drawn on top of the committed document state.
 public enum TimelineDragPreview: Equatable, Sendable {
     case move(clipIds: [String], deltaSeconds: Double, trackDelta: Int, snapTime: Double?)
     case trim(clipId: String, edge: TrimEdge, time: Double, snapTime: Double?)
+    /// The clip's content moved by `deltaFrames`; `sourceShift` is that move as a fraction of the source media.
+    case slip(clipId: String, deltaFrames: Double, sourceShift: Double)
+    /// The cut between two touching clips moved to `time` seconds.
+    case roll(outgoingId: String, incomingId: String, time: Double)
 }
 public enum TrimEdge: Sendable, Equatable { case start, end }
 
 /// Custom-drawn timeline (lanes, ruler, canvas, clips, playhead).
 public final class TimelineView {
+    public var markers: [NativeSequenceMarker] = []
     public var tracks: [TimelineTrackModel]
     public var duration: Double
     public var pixelsPerSecond: Double
@@ -258,6 +274,8 @@ public final class TimelineView {
     /// The tracks tags and targets are resolved against: `allTracks` once the controller set it.
     var targetableTracks: [TimelineTrackModel] { allTracks.isEmpty ? tracks : allTracks }
     public var drag: TimelineDragPreview?
+    /// The cut the roll tool would roll (row, time), shown as a double bracket while hovering.
+    public var rollHover: (row: Int, time: Double)?
     /// Where a live clip move lands (placeholder slot or new-track line); `dragLiftY` is the pointer's vertical travel,
     /// so the dragged clips follow the pointer between rows (TimelineCanvas drag actor).
     public var dropTarget: TimelineDropTarget?
@@ -265,6 +283,7 @@ public final class TimelineView {
     public var displacedDrop: (clipIds: [String], target: TimelineDropTarget)?
     public var dragLiftY = 0.0
     public var beats: [TimelineBeat] = []
+    public var beatDragTime: Double?
     public var timeDisplay: TimelineTimeDisplay = .time
     public var frameRate = 30.0
     public var scrubbing = false
@@ -273,14 +292,19 @@ public final class TimelineView {
     /// Assets whose media file was missing when the preview composition was last rebuilt: their clips draw hatched
     /// with "Media offline" in place of the timecode (issue #102).
     public var offlineAssetIds: Set<String> = []
-    /// Clips whose property lanes are expanded (U / auto-expand).
+    /// Clips whose property rows are shown under their summary row (U, or the summary row's disclosure). Kept per
+    /// clip for the session, across edits and undo; a keyed clip starts collapsed.
     public var expandedClips: Set<String> = []
+    /// Per clip, the kinds whose property rows are folded into their kind row.
+    public var collapsedKinds: [String: Set<TimelineKeyframeKind>] = [:]
     public var groups: [TimelineGroupModel] = []
     public var collapsedGroups: Set<String> = []
     /// Where each group header sits: before visible track index `beforeTrack`.
     public var groupAnchors: [(groupId: String, beforeTrack: Int)] = []
     /// Lane header ‹ ◆ › state for (clip id, lane index); the controller supplies it from the document.
     public var laneNavigation: ((String, Int) -> TimelineKeyframeNavigation)?
+    /// Navigation state of a lane row of a clip (summary, kind or property), for its header ‹ ◆ ›.
+    public var laneRowNavigation: ((String, TimelineLaneRow) -> TimelineKeyframeNavigation)?
     /// Instance layout (media row height).
     public var layout = TimelineLayout()
     public var trackHeight: Double {
@@ -333,12 +357,20 @@ public final class TimelineView {
                 if dropTarget == nil { row = max(0, min(tracks.count - 1, i + td)) }
             case let .trim(id, .start, t, _) where id == clip.id: start = t
             case let .trim(id, .end, t, _) where id == clip.id: end = t
+            case let .roll(outgoing, _, t) where outgoing == clip.id: end = t
+            case let .roll(_, incoming, t) where incoming == clip.id: start = t
             default: break
             }
         }
         let lift = preview && dropTarget != nil && isMoving(clip.id) ? dragLiftY : 0
         return CanvasRect(x: x(for: start), y: rowTop(row) + TimelineLayout.clipY + lift,
                           width: max(1, (end - start) * pixelsPerSecond), height: trackHeight - 2 * TimelineLayout.clipY)
+    }
+
+    /// Timeline seconds of a committed mark during the clip's move preview.
+    func beatPreviewTime(_ time: Double, clipId: String) -> Double {
+        guard case let .move(ids, delta, _, _) = drag, ids.contains(clipId) else { return time }
+        return time + delta
     }
 
     // MARK: Overlays (razor guide, marquee, gap strips, gap menu)
@@ -397,6 +429,7 @@ public final class TimelineView {
         if let m = gapMenu { drawGapMenu(c, m) }
         if let m = clipMenu { drawClipMenu(c, m) }
         if let m = keyframeMenu { drawKeyframeMenu(c, m) }
+        drawSlipRollOverlay(c)
     }
 
     /// bg-neutral-900, border-neutral-700, rounded-md, py-1; rows text-xs neutral-300 (disabled neutral-600),
@@ -483,16 +516,20 @@ public final class TimelineView {
         }
 
         drawRuler(c, size: size)
+        drawSequenceEnd(c, size: size)
         drawPlayhead(c, size: size)
-        drawOverlays(c, size: size)
+        drawOverlays(c, size: size); drawKeyframeTooltip(c, size: size)
     }
 
     var snapTime: Double? {
-        switch drag { case .move(_, _, _, let s)?: s; case .trim(_, _, _, let s)?: s; case nil: nil }
+        switch drag { case .move(_, _, _, let s)?: s; case .trim(_, _, _, let s)?: s; case .slip?, .roll?, nil: nil }
     }
     func isMoving(_ id: String) -> Bool { if case .move(let ids, _, _, _)? = drag { return ids.contains(id) }; return false }
     func isDragged(_ id: String) -> Bool {
-        switch drag { case .move(let ids, _, _, _)?: ids.contains(id); case .trim(let cid, _, _, _)?: cid == id; case nil: false }
+        switch drag {
+        case .move(let ids, _, _, _)?: ids.contains(id); case .trim(let cid, _, _, _)?, .slip(let cid, _, _)?: cid == id
+        case .roll(let outgoing, let incoming, _)?: outgoing == id || incoming == id; case nil: false
+        }
     }
 
     /// studio.css body font stack and .timeline-clip__timecode stack (Pango takes comma-separated families).
@@ -519,7 +556,7 @@ public final class TimelineView {
     }
 
     func drawClip(_ c: CanvasContext, track i: Int, _ clip: TimelineClipModel) {
-        let t = theme
+        let t = theme, clip = slipPreview(clip)
         var r = clipRect(track: i, clip)
         r.width = max(r.width, 4)                                   // Math.max(duration * pps, 4)
         let selected = selection.contains(clip.id), hovered = hoveredClip == clip.id, dragging = isDragged(clip.id)
@@ -552,8 +589,15 @@ public final class TimelineView {
         }
         c.withState {
             c.clip(r)
+            if let time = beatDragTime, selection.contains(clip.id) {
+                c.fillRect(CanvasRect(x: x(for: time) - 1, y: r.y, width: 2, height: r.height), t.accent)
+            }
+            for time in clip.beatTimes {
+                let bx = x(for: beatPreviewTime(time, clipId: clip.id))
+                c.fillRect(CanvasRect(x: bx - 1, y: r.y + 2, width: 2, height: max(0, r.height - 4)), CanvasColor(ThemeTokens.green500))
+            }
             // Keyframe diamonds (TimelineClipDiamonds), drawn when the bar is at least 20 px wide.
-            if r.width >= 20 { drawDiamonds(c, clip, group: nil, barX: r.x, cy: r.y + r.height / 2) }
+            if r.width >= 20 { drawMarks(c, clip, scope: nil, origin: CanvasPoint(r.x, r.y + r.height / 2)) }
             // Clip name: centred in the header strip, left 12, right 10, 10px/500, ellipsis, at clipNameAlpha.
             let nameY = header.y + max(0, (header.height - 10) / 2)
             if r.width >= 40 || selected {
@@ -674,34 +718,51 @@ public final class TimelineView {
 
     func drawRuler(_ c: CanvasContext, size: CanvasSize) {
         typealias L = TimelineLayout
-        let t = theme, pps = pixelsPerSecond
+        let t = theme
         c.fillRect(CanvasRect(x: 0, y: 0, width: size.width, height: L.rulerHeight), t.shellBackground)
-        // Ticks land on whole frames in both displays, so timecode labels never repeat a frame.
-        let major = TimelineRuler.majorInterval(duration: duration, pps: pps, frameRate: frameRate)
-        let parts = TimelineRuler.minorSubdivisions(major: major, pps: pps, frameRate: frameRate)
-        let firstVisible = max(0, time(forX: L.contentOrigin) - major)
-        let lastVisible = min(duration, time(forX: size.width) + major)
+        let ticks = rulerTicks(width: size.width)
         c.withState {
             c.clip(CanvasRect(x: L.contentOrigin, y: 0, width: max(0, size.width - L.contentOrigin), height: L.rulerHeight))
-            var k = Int((firstVisible / major).rounded(.down))
-            while true {
-                let tm = (Double(k) * major * 1e6).rounded() / 1e6
-                if tm > lastVisible || tm > duration { break }
+            for tm in ticks.major {
                 let mx = Self.snappedLineLeft(centre: x(for: tm))
                 c.fillRect(CanvasRect(x: mx, y: 0, width: 1, height: L.rulerHeight), t.tickMajor)
-                let label = timeDisplay == .frame ? "\(Int((tm * frameRate).rounded()))"
-                    : TimelineRuler.timecode(tm, frameRate: frameRate, hours: duration >= 3600)
-                c.drawText(label, at: .init(mx + 5, 5), font: .mono(10), color: t.tickText)
-                if parts > 1 {
-                    for s in 1..<parts {
-                        let mt = tm + major * Double(s) / Double(parts)
-                        if mt >= duration { break }
-                        c.fillRect(CanvasRect(x: Self.snappedLineLeft(centre: x(for: mt)), y: L.rulerHeight - 8, width: 1, height: 8), t.tickMinor)
-                    }
-                }
-                k += 1
+                c.drawText(rulerLabel(tm), at: .init(mx + 5, 5), font: .mono(10), color: t.tickText)
+            }
+            for marker in markers {
+                let mx = x(for: marker.time)
+                c.fillRect(CanvasRect(x: mx - 3, y: 14, width: 6, height: 9), .documentColor(marker.color))
+            }
+            for mt in ticks.minor {
+                c.fillRect(CanvasRect(x: Self.snappedLineLeft(centre: x(for: mt)), y: L.rulerHeight - 8, width: 1, height: 8), t.tickMinor)
             }
         }
+    }
+
+    /// The end of the laid-out time: the sequence end plus its margin (docs/TIMELINE.md "Ruler and sequence end").
+    public var rulerEnd: Double { TimelineZoom.span(duration: duration) }
+
+    /// Ruler ticks in the visible window, from 0 through `rulerEnd` and no further. Ticks land on whole frames in both
+    /// displays, so timecode labels never repeat a frame.
+    public func rulerTicks(width: Double) -> (major: [Double], minor: [Double]) {
+        let major = TimelineRuler.majorInterval(duration: duration, pps: pixelsPerSecond, frameRate: frameRate)
+        let parts = TimelineRuler.minorSubdivisions(major: major, pps: pixelsPerSecond, frameRate: frameRate)
+        let first = max(0, time(forX: TimelineLayout.contentOrigin) - major)
+        let last = min(rulerEnd, time(forX: width) + major)
+        var majors: [Double] = [], minors: [Double] = []
+        var k = Int((first / major).rounded(.down))
+        var tm = (Double(k) * major * 1e6).rounded() / 1e6
+        while tm <= last {
+            majors.append(tm)
+            minors += (1..<max(parts, 1)).map { tm + major * Double($0) / Double(parts) }.filter { $0 <= rulerEnd }
+            k += 1
+            tm = (Double(k) * major * 1e6).rounded() / 1e6
+        }
+        return (majors, minors)
+    }
+
+    /// A major tick's label: always `HH:MM:SS:FF`, so a minute never reads as an hour (docs/DESIGN.md Principle 5).
+    func rulerLabel(_ tm: Double) -> String {
+        timeDisplay == .frame ? "\(Int((tm * frameRate).rounded()))" : TimelineRuler.timecode(tm, frameRate: frameRate, hours: true)
     }
 
     func drawPlayhead(_ c: CanvasContext, size: CanvasSize) {

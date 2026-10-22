@@ -59,6 +59,7 @@ public final class PreviewCompositor: FrameSource {
         public var gradeCurrent = true
     }
     public private(set) var lastShown: [Shown] = []
+    var blendSurface: RasterCanvas?
     /// Draws where a layer showed a stand-in instead of its exact frame.
     public private(set) var heldFrames = 0
     /// The lane each clip last drew from (a trim or retime switches lanes; the old frames bridge the gap).
@@ -124,7 +125,6 @@ public final class PreviewCompositor: FrameSource {
         guard let comp = composition, comp.canvas.width > 0 else {
             placeholder.draw(c, in: rect, time: time, elements: elements); return
         }
-        c.fillRect(rect, comp.background)
         let s = rect.width / comp.canvas.width
         let live = context.liveElementIds.map { ids in elements.filter { ids.contains($0.id) } } ?? elements
         let layers = Self.applyStage(live, to: comp.layers(at: time), frame: rect, scale: s)
@@ -133,15 +133,26 @@ public final class PreviewCompositor: FrameSource {
         let ahead = forward ? lookahead(layers, comp: comp, scale: s, backing: context.backingScale, speed: context.speed) : 0
         let behind = backward ? reverseChunk(layers, comp: comp, scale: s, backing: context.backingScale, speed: -context.speed) : 0
 
+        // A frame holding a blended layer is painted on a raster surface the blend can read back, then drawn in `rect`
+        // (the picture export paints); other frames draw straight onto `c`.
+        let blended = layers.contains { $0.isVisible && $0.blend != .normal }
+        let offscreen = blended ? blendCanvas(rect, backing: context.backingScale) : nil
+        let target: CanvasContext = offscreen ?? c
+        let area = offscreen.map { CanvasRect(x: 0, y: 0, width: Double($0.surface.width), height: Double($0.surface.height)) } ?? rect
+        let areaScale = offscreen == nil ? s : area.width / comp.canvas.width
+        if let offscreen { offscreen.clear(.transparent) }
+        target.fillRect(area, comp.background)
+        defer { if let offscreen { c.drawImage(offscreen.image(), in: rect) } }
+
         var used = Set<String>()
         var shown: [Shown] = []
         for layer in layers where layer.isVisible {
             if layer.kind == .offline {   // missing media: a slate naming the file, never decoded
-                PreviewPainter.drawOffline(layer, on: c, frame: rect, scale: s)
+                PreviewPainter.drawOffline(layer, on: target, frame: area, scale: areaScale)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
-            if layer.kind == .text {   // text layers are laid out, not decoded
-                PreviewPainter.drawText(layer, on: c, frame: rect, scale: s)
+            if layer.isProcedural {   // text layers are laid out, not decoded
+                PreviewPainter.drawText(layer, on: target, frame: area, scale: areaScale)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
             let size = decodeSize(layer, scale: s, backing: context.backingScale)
@@ -155,16 +166,23 @@ public final class PreviewCompositor: FrameSource {
             }
             let look = shownImage(layer, pick.image, frame: pick.frame, time: time, fps: comp.fps, target: size,
                                   lane: pick.lane)
-            draw(layer, raw: pick.image, shown: look.image, shownIsCurrent: look.current, on: c, frame: rect, scale: s,
+            draw(layer, raw: pick.image, shown: look.image, shownIsCurrent: look.current, on: target, frame: area, scale: areaScale,
                  context: context)
             shown.append(Shown(clipId: layer.clipId, frame: pick.frame, exact: pick.exact,
                                grade: look.grade, gradeCurrent: look.current))
             drew(pick, for: layer)
         }
+        // A layer only its fade hides this frame (a fade-in's first frame) keeps its decoder running.
+        for layer in layers where !layer.isVisible && layer.needsDecoder {
+            guard let lane = lane(for: layer, fps: comp.fps) else { continue }
+            lane.request(frame: frame, ahead: ahead, behind: behind,
+                         size: decodeSize(layer, scale: s, backing: context.backingScale))
+            used.insert(lane.key)
+        }
         // Pre-roll clips starting soon so their first frames are ready at the cut.
         if forward {
             let horizon = max(0.5, Double(ahead) / comp.fps) * max(1, context.speed)
-            for up in comp.upcoming(after: time, within: horizon) where up.isVisible {
+            for up in comp.upcoming(after: time, within: horizon) where up.needsDecoder {
                 guard let lane = lane(for: up, fps: comp.fps) else { continue }
                 lane.request(frame: up.startFrame, ahead: min(ahead, 3), size: decodeSize(up, scale: s, backing: context.backingScale))
                 used.insert(lane.key)
@@ -173,7 +191,7 @@ public final class PreviewCompositor: FrameSource {
         // Backward: clips that end just before the playhead get their last chunk ready for the cut.
         if backward {
             let horizon = max(0.5, Double(behind) / comp.fps)
-            for up in comp.upcomingReverse(before: time, within: horizon) where up.isVisible {
+            for up in comp.upcomingReverse(before: time, within: horizon) where up.needsDecoder {
                 guard let lane = lane(for: up, fps: comp.fps) else { continue }
                 lane.request(frame: up.endFrame - 1, ahead: 0, behind: behind, size: decodeSize(up, scale: s, backing: context.backingScale))
                 used.insert(lane.key)
@@ -237,14 +255,24 @@ public final class PreviewCompositor: FrameSource {
         // A completed grade from a previous request is useful during normal playback, but must never be paired
         // with a different raw source frame in Compare. Until this frame's grade completes, show it raw on both sides.
         let after = shownIsCurrent ? shown : raw
+        // The wipe is clipped on `c`; a blend reads the whole canvas back, so the compared clip draws unblended.
+        var plain = layer; plain.blend = .normal
         c.withState {
             c.clip(CanvasRect(x: frame.x, y: frame.y, width: max(0, split - frame.x), height: frame.height))
-            PreviewPainter.draw(layer, image: raw, on: c, frame: frame, scale: scale)
+            PreviewPainter.draw(plain, image: raw, on: c, frame: frame, scale: scale)
         }
         c.withState {
             c.clip(CanvasRect(x: split, y: frame.y, width: max(0, frame.maxX - split), height: frame.height))
-            PreviewPainter.draw(layer, image: after, on: c, frame: frame, scale: scale)
+            PreviewPainter.draw(plain, image: after, on: c, frame: frame, scale: scale)
         }
+    }
+
+    /// The raster surface a blended frame is painted on: `rect` in device pixels, kept while the size is unchanged.
+    func blendCanvas(_ rect: CanvasRect, backing: Double) -> RasterCanvas? {
+        let w = max(1, Int((rect.width * max(backing, 1)).rounded())), h = max(1, Int((rect.height * max(backing, 1)).rounded()))
+        if let canvas = blendSurface, canvas.surface.width == w, canvas.surface.height == h { return canvas }
+        blendSurface = try? RasterCanvas(width: w, height: h)
+        return blendSurface
     }
 
     func decodeSize(_ layer: PreviewLayer, scale s: Double, backing: Double) -> PreviewDecodeSize {
@@ -253,7 +281,7 @@ public final class PreviewCompositor: FrameSource {
 
     /// Frames to decode past the playhead per clip: about a third of a second, bounded by the cache budget.
     func lookahead(_ layers: [PreviewLayer], comp: PreviewComposition, scale s: Double, backing: Double, speed: Double) -> Int {
-        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.isVisible }
+        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.needsDecoder }
         guard !videos.isEmpty else { return 0 }
         let bytes = videos.reduce(0) { acc, l in let d = decodeSize(l, scale: s, backing: backing); return acc + d.width * d.height * 4 }
         let byBudget = cache.budgetBytes / 2 / max(bytes, 1)
@@ -263,7 +291,7 @@ public final class PreviewCompositor: FrameSource {
 
     /// Frames per reverse chunk: about two thirds of a second of playback, bounded by the cache budget.
     func reverseChunk(_ layers: [PreviewLayer], comp: PreviewComposition, scale s: Double, backing: Double, speed: Double) -> Int {
-        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.isVisible }
+        let videos = layers.filter { $0.kind == .video && !$0.isStill && $0.needsDecoder }
         guard !videos.isEmpty else { return 1 }
         let bytes = videos.reduce(0) { acc, l in let d = decodeSize(l, scale: s, backing: backing); return acc + d.width * d.height * 4 }
         let byBudget = cache.budgetBytes / 3 / max(bytes, 1)
@@ -274,7 +302,7 @@ public final class PreviewCompositor: FrameSource {
     public var maxReverseChunk = 48
 
     func lane(for layer: PreviewLayer, fps: Double) -> PreviewDecodeLane? {
-        guard decodesMedia, layer.kind != .text, layer.kind != .offline else { return nil }
+        guard decodesMedia, !layer.isProcedural, layer.kind != .offline else { return nil }
         if let l = lanes[layer.laneKey] { return l }
         let l = PreviewDecodeLane(layer: layer, fps: fps, cache: cache)
         l.onFrame = { [weak self] in self?.frameReady?() }
@@ -297,7 +325,11 @@ public final class PreviewCompositor: FrameSource {
                                width: e.rect.width / s, height: e.rect.height / s)
             l.rotation = e.rotation + layer.motionRotation
             l.crop = CropInsets(top: e.crop.top / s, right: e.crop.right / s, bottom: e.crop.bottom / s, left: e.crop.left / s)
-            if let o = e.opacity { l.opacity = max(0, min(1, o)) }
+            if let o = e.opacity {   // the live value replaces the keyed one; the clip's fade still applies
+                let keyed = max(0, min(1, o))
+                l.opacity = keyed * layer.fadeGain
+                l.hiddenByFade = layer.fadeGain == 0 && keyed > 0
+            }
             if let k = e.scale { l.scaleX = k; l.scaleY = k }
             return l
         }

@@ -113,6 +113,7 @@ public final class RightPanel {
         // The group the user left open last time; Transform when nothing was saved.
         inspector.openGroupId = layout.prefs.openInspectorGroup ?? "layout"
         inspector.scopeSource = layout.prefs.scopeSource ?? .clip
+        if let order = layout.prefs.designGroupOrder { inspector.designOrder = DesignGroups.sanitized(order: order) }
         inspector.layout = layout
         inspector.onOpenEasing = { [weak self] clipId, refs in
             guard let self else { return }
@@ -671,6 +672,9 @@ public final class RightPanel {
     }
 
     public var isEditingText: Bool { field != nil || inspector.isEditingText || easing.isEditingText }
+
+    /// Release reaches the inspector even if a tab or field changed during a held arrow.
+    public func keyUp(_ key: EditorKey) { inspector.keyUp(key) }
 
     /// Keys: the open popover, then a field being typed, then keyboard focus. On the Design tab the header (tabs,
     /// hide, panel menu) comes first in the Tab order and the inspector after it; on the Renders tab one focus covers

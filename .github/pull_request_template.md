@@ -15,6 +15,7 @@ Closes #
 <!-- What shows it works. Numbers must be measured (say the command and the machine), never estimated. -->
 
 - Tests added or changed:
+- Docs updated in this PR (`mpvfx-swift/docs/STATUS.md`, `FEATURES.md`, `CHANGELOG.md` Unreleased), or why none is needed:
 - Checks run locally (for example `sh mpvfx-swift/scripts/check.sh`):
 - CI or bench numbers, measured (link the run):
 

@@ -62,8 +62,8 @@ struct ScopeTile {
         let r = rect
         var text = kind.title
         if kind == .vectorscope { text += " · \(Int(settings.targetAmplitude * 100))%" + (settings.zoom > 1 ? " · \(Int(settings.zoom))x" : "") }
-        PanelDraw.text(c, text, in: CanvasRect(x: r.x + 6, y: r.y + 2, width: r.width - 12, height: 12), font: PanelTheme.font(8),
-                       color: PanelTheme.scopeInk.withAlpha(0.6))
+        PanelDraw.text(c, text, in: CanvasRect(x: r.x + 6, y: r.y + 2, width: r.width - 12, height: 12), font: PanelTheme.font(11),
+                       color: PanelTheme.scopeLabel)
     }
 
     // MARK: Waveform, RGB overlay, parade
@@ -81,7 +81,7 @@ struct ScopeTile {
                                     width: Double(lane.count) / total * plot.width, height: plot.height)
                 Self.clipMarks(c, a, [ch], in: lr)
                 PanelDraw.text(c, ["R", "G", "B"][i], in: CanvasRect(x: lr.x + 2, y: lr.y + 1, width: 10, height: 11),
-                               font: PanelTheme.font(8), color: PanelTheme.scopeInk.withAlpha(0.45))
+                               font: PanelTheme.font(11), color: PanelTheme.scopeLabel)
             }
         } else {
             Self.clipMarks(c, a, kind == .waveform ? [.luma] : [.red, .green, .blue], in: plot)
@@ -96,7 +96,7 @@ struct ScopeTile {
                        PanelTheme.scopeInk.withAlpha(line.major ? 0.32 : 0.12))
             if let label = line.label {
                 PanelDraw.text(c, label, in: CanvasRect(x: plot.x - gutter, y: y - 6, width: gutter - 3, height: 12),
-                               font: PanelTheme.font(8), color: PanelTheme.scopeInk.withAlpha(0.5), align: .right)
+                               font: PanelTheme.font(11), color: PanelTheme.scopeLabel, align: .right)
             }
         }
     }
@@ -132,7 +132,7 @@ struct ScopeTile {
         if let a = result?.analysis, a.vectorOutside > 0 {
             let share = Double(a.vectorOutside) / Double(max(1, a.samples)) * 100
             PanelDraw.text(c, String(format: "%.0f%% off scale", share), in: CanvasRect(x: r.x + 6, y: r.maxY - 14, width: r.width - 12, height: 12),
-                           font: PanelTheme.font(8), color: PanelTheme.scopeClip, align: .right)
+                           font: PanelTheme.font(11), color: PanelTheme.scopeClip, align: .right)
         }
     }
 
@@ -152,8 +152,8 @@ struct ScopeTile {
         let x = plot.x + p.x * plot.width, y = plot.y + p.y * plot.height, box = max(5, plot.width * 0.035)
         c.strokeRect(CanvasRect(x: x - box / 2, y: y - box / 2, width: box, height: box), PanelTheme.scopeInk.withAlpha(0.55), width: 1)
         let dx = p.x < 0.5 ? -box / 2 - 13 : box / 2 + 2
-        PanelDraw.text(c, t.name, in: CanvasRect(x: x + dx, y: y - 6, width: 12, height: 12), font: PanelTheme.font(8),
-                       color: PanelTheme.scopeInk.withAlpha(0.6), align: p.x < 0.5 ? .right : .left)
+        PanelDraw.text(c, t.name, in: CanvasRect(x: x + dx, y: y - 6, width: 18, height: 12), font: PanelTheme.font(11),
+                       color: PanelTheme.scopeLabel, align: p.x < 0.5 ? .right : .left)
     }
 
     static func circle(center: CanvasPoint, radius: Double) -> CanvasPath {

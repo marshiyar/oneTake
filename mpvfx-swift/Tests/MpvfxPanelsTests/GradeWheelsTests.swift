@@ -41,7 +41,8 @@ final class GradeWheelsTests: XCTestCase {
         let (p, _) = try inspector()
         let c = PanelMeasureCanvas(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 5000))
         for label in ["Lift", "Gamma", "Gain", "Offset", "Pivot"] { XCTAssertTrue(c.drawnStrings.contains(label), label) }
-        XCTAssertFalse(c.drawnStrings.contains("Midtones"), "a new grade has no tonal wheels")
+        // Issue #230 keeps the tonal wheels on every grade so a neutral grade can start a wheel animation.
+        for label in ["Shadows", "Midtones", "Highlights"] { XCTAssertTrue(c.drawnStrings.contains(label), label) }
         let old = try inspector(grade: ColorGrading(json: ["adjust": .object(["contrast": .number(0.1)])])).0
         XCTAssertNotNil(old.hits.rect { $0 == .custom("grade:wheels", 1) }, "a contract 2 grade keeps its tonal wheels")
     }
@@ -138,6 +139,128 @@ final class GradeWheelsTests: XCTestCase {
         XCTAssertEqual(gain(e).level, 0.19, accuracy: 1e-9)
         e.undo()
         XCTAssertEqual(gain(e).level, 0.2, accuracy: 1e-9, "one press, one undo step")
+    }
+
+    func testEveryWheelArrowUsesItsStepAndOwnUndoEntry() throws {
+        let cases: [(EditorKey, ColorGrading.Wheel)] = [
+            (.init(.left), .init(hue: 39, amount: 0.5, level: 0.2)),
+            (.init(.right), .init(hue: 41, amount: 0.5, level: 0.2)),
+            (.init(.up), .init(hue: 40, amount: 0.51, level: 0.2)),
+            (.init(.down), .init(hue: 40, amount: 0.49, level: 0.2)),
+            (.init(.left, shift: true), .init(hue: 30, amount: 0.5, level: 0.2)),
+            (.init(.right, shift: true), .init(hue: 50, amount: 0.5, level: 0.2)),
+            (.init(.up, shift: true), .init(hue: 40, amount: 0.6, level: 0.2)),
+            (.init(.down, shift: true), .init(hue: 40, amount: 0.4, level: 0.2))]
+        for (key, expected) in cases {
+            var g = ColorGrading(); g.balance["gain"] = .init(hue: 40, amount: 0.5, level: 0.2)
+            let (p, e) = try inspector(grade: g)
+            p.focus.visible = true; p.focus.current = .custom(Self.set, 2)
+            let steps = e.undoStack.count
+            XCTAssertTrue(p.keyDown(key)); XCTAssertEqual(gain(e), expected)
+            XCTAssertEqual(e.undoStack.count, steps + 1)
+            e.undo(); XCTAssertEqual(e.colorGrading(clipId: "clip:a"), g)
+        }
+    }
+
+    /// Each fresh press is separate, while repeat events from a held wheel or level arrow share one step.
+    func testHeldWheelAndLevelArrowsCoalesceWithoutCombiningSeparatePresses() throws {
+        for part in [2, 12] {
+            var g = ColorGrading(); g.balance["gain"] = .init(hue: 40, amount: 0.5, level: 0.2)
+            let (p, e) = try inspector(grade: g)
+            var clock = 1000.0
+            e.now = { clock += 0.01; return clock }
+            p.focus.visible = true; p.focus.current = .custom(Self.set, part)
+            let steps = e.undoStack.count
+            for i in 0..<5 { XCTAssertTrue(p.keyDown(EditorKey(.right, isRepeat: i > 0))) }
+            XCTAssertEqual(e.undoStack.count, steps + 1)
+            let held = gain(e)
+            XCTAssertEqual(part == 2 ? held.hue : held.level, part == 2 ? 45 : 0.25, accuracy: 1e-9)
+            p.keyUp(EditorKey(.right))
+            XCTAssertTrue(p.keyDown(EditorKey(.right)))
+            XCTAssertEqual(e.undoStack.count, steps + 2, "a new physical press has its own undo step")
+            e.undo(); XCTAssertEqual(gain(e), held)
+            e.undo(); XCTAssertEqual(e.colorGrading(clipId: "clip:a"), g)
+        }
+    }
+
+    func testDelayedWheelAndLevelRepeatsStayInOneHistoryEntryWithoutRepeatFlags() throws {
+        for flagged in [false, true] {
+            for part in [2, 12] {
+                var grade = ColorGrading()
+                grade.balance["gain"] = .init(hue: 40, amount: 0.5, level: 0.2)
+                let (panel, editor) = try inspector(grade: grade)
+                var clock: Double = 1_000
+                editor.now = { clock }
+                panel.focus.visible = true
+                panel.focus.current = .custom(Self.set, part)
+                let entries: Int = editor.undoStack.count
+                XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+                clock += 1 // Normal first-repeat delay exceeds the generic 0.3-second timeout.
+                XCTAssertTrue(panel.keyDown(EditorKey(.right, isRepeat: flagged)))
+                clock += 2
+                XCTAssertTrue(panel.keyDown(EditorKey(.right, isRepeat: flagged)))
+                XCTAssertEqual(editor.undoStack.count, entries + 1)
+                let held = gain(editor)
+                panel.keyUp(EditorKey(.right))
+                XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+                XCTAssertEqual(editor.undoStack.count, entries + 2)
+                XCTAssertTrue(editor.undo())
+                XCTAssertEqual(gain(editor), held)
+                XCTAssertTrue(editor.undo())
+                XCTAssertEqual(editor.colorGrading(clipId: "clip:a"), grade)
+            }
+        }
+    }
+
+    func testWheelHoldOverrideDoesNotChangeOrdinaryHistoryTimeout() throws {
+        let (panel, editor) = try inspector()
+        var clock: Double = 1_000
+        editor.now = { clock }
+        panel.focus.visible = true
+        panel.focus.current = .custom(Self.set, 2)
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        panel.keyUp(EditorKey(.right))
+        let entries: Int = editor.undoStack.count
+        var grade = ColorGrading()
+        grade.balance["gain"] = .init(hue: 50, amount: 0.5, level: 0.2)
+        editor.withHistory("Ordinary grade edit", coalesceKey: "ordinary") {
+            XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", grade))
+        }
+        clock += 1
+        grade.balance["gain"] = .init(hue: 60, amount: 0.5, level: 0.2)
+        editor.withHistory("Ordinary grade edit", coalesceKey: "ordinary") {
+            XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", grade))
+        }
+        XCTAssertEqual(editor.undoStack.count, entries + 2, "the scoped hold override must not leak")
+    }
+
+    func testChangingFocusEndsAHoldEvenWithoutAReleaseEvent() throws {
+        let (panel, editor) = try inspector()
+        panel.focus.visible = true
+        panel.focus.current = .custom(Self.set, 2)
+        let entries = editor.undoStack.count
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        panel.focus.visible = false // A lost release must not survive focus leaving and returning.
+        panel.focus.visible = true
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        XCTAssertEqual(editor.undoStack.count, entries + 2)
+    }
+
+    func testRightPanelForwardsKeyReleaseToItsInspector() throws {
+        let (_, editor) = try inspector()
+        let right = RightPanel(layout: PanelLayoutState(store: MemoryPanelPreferencesStore(), viewportWidth: 1_440))
+        let panel = right.inspector
+        panel.editor = editor
+        panel.selection = ["clip:a"]
+        panel.openGroupId = "grade"
+        redraw(panel)
+        panel.focus.visible = true
+        panel.focus.current = .custom(Self.set, 2)
+        let entries = editor.undoStack.count
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        right.keyUp(EditorKey(.right))
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        XCTAssertEqual(editor.undoStack.count, entries + 2)
     }
 
     /// At the narrowest panel the field labels (10 px) never run into each other.

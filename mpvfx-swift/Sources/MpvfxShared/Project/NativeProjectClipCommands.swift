@@ -37,6 +37,10 @@ public indirect enum NativeProjectClipCommand: Equatable {
     case split(address: NativeProjectClipAddress, splitFrame: Double, rightBinding: NativeClipDomBinding? = nil)
     case delete(address: NativeProjectClipAddress)
     case deleteMany([NativeProjectClipAddress])
+    /// Move the clip's source in-point by `deltaFrames` timeline frames (NativeTimelineSlipRoll.swift).
+    case slip(address: NativeProjectClipAddress, deltaFrames: Double)
+    /// Move the cut between two touching clips (NativeTimelineSlipRoll.swift).
+    case roll(NativeProjectClipRoll)
     case restoreDocument(NativeProjectDocument)
 }
 
@@ -47,6 +51,8 @@ public enum NativeProjectClipFailureCode: String, Codable, Sendable {
     case invalidSplit = "invalid-split", nonIntegralSourceBoundary = "non-integral-source-boundary"
     case missingSplitBinding = "missing-split-binding", invalidSplitBinding = "invalid-split-binding"
     case duplicateSplitBinding = "duplicate-split-binding", generatedIdCollision = "generated-id-collision", documentMismatch = "document-mismatch"
+    case missingTransition = "missing-transition", invalidTransition = "invalid-transition", insufficientHandles = "insufficient-handles"
+    case invalidSlip = "invalid-slip", invalidRoll = "invalid-roll"
 }
 
 public struct NativeProjectClipFailure: Equatable, Error {
@@ -85,9 +91,9 @@ private func nativeSplitBaselineKeyframeId(_ trackId: String, _ splitFrame: Doub
     "native-split-baseline:\(trackId)|frame:\(jsNumberString(splitFrame))"
 }
 
-private struct ClipLocation { let trackIndex: Int; let clipIndex: Int; let track: NativeProjectTrack; let clip: NativeProjectClip }
+struct ClipLocation { let trackIndex: Int; let clipIndex: Int; let track: NativeProjectTrack; let clip: NativeProjectClip }
 
-private func locate(_ d: NativeProjectDocument, _ a: NativeProjectClipAddress) -> Result<ClipLocation, NativeProjectClipFailure> {
+func locate(_ d: NativeProjectDocument, _ a: NativeProjectClipAddress) -> Result<ClipLocation, NativeProjectClipFailure> {
     if d.sequence.id != a.sequenceId { return .failure(.init(code: .missingSequence, message: "Sequence \(a.sequenceId) does not exist")) }
     guard let t = d.sequence.tracks.firstIndex(where: { $0.id == a.trackId }) else {
         return .failure(.init(code: .missingSourceTrack, message: "Track \(a.trackId) does not exist"))
@@ -130,7 +136,7 @@ private func locateMoves(_ d: NativeProjectDocument, _ moves: [NativeProjectClip
 private func replaceClip(_ d: NativeProjectDocument, _ loc: ClipLocation, _ replacement: [NativeProjectClip], _ engine: KeyframeEngine?) throws -> NativeProjectDocument {
     var next = d
     next.sequence.tracks[loc.trackIndex].clips.replaceSubrange(loc.clipIndex...loc.clipIndex, with: replacement)
-    return try parseNativeProjectDocument(next, engine: engine)
+    return try parseNativeProjectDocument(reconcileNativeCutTransitions(next), engine: engine)
 }
 
 /// Rebase a parameter track to a playable subrange. The engine cuts the track (timing curves and motion paths included)
@@ -183,6 +189,7 @@ private func applyTrimIn(_ d: NativeProjectDocument, _ a: NativeProjectClipAddre
     var next = clip
     next.startFrame = startFrame; setSource(&next, position)
     next.durationFrames = clip.durationFrames - delta
+    next.moves = clip.movesFitted(toDuration: next.durationFrames)
     next.speedRamp = clip.speedRamp?.sliced(from: delta, until: clip.durationFrames)
     next.clampFades(movedEdge: .start)
     next.parameterTracks = tracks
@@ -219,6 +226,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     let tracks = shrinking ? try rebasedTracks(clip, 0, nextDuration, engine) { $0.id } : clip.parameterTracks
     var next = clip
     next.durationFrames = nextDuration
+    next.moves = clip.movesFitted(toDuration: nextDuration)
     if shrinking { next.speedRamp = clip.speedRamp?.sliced(from: 0, until: nextDuration) }
     next.clampFades(movedEdge: .end)
     next.parameterTracks = tracks
@@ -259,19 +267,23 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     let rightTracks = try rebasedTracks(clip, local, clip.durationFrames, engine) { nativeSplitTrackId($0.id, rightId, $0.parameterId) }
     var left = clip
     left.durationFrames = local; left.parameterTracks = leftTracks
+    left.moves = clip.movesForSplitPart(.left, duration: local)
     left.speedRamp = clip.speedRamp?.sliced(from: 0, until: local)
     // The cut is a new edge on both parts: the left keeps the fade-in, the right the fade-out.
     left.fadeOutFrames = nil; left.clampFades(movedEdge: .end)
     left.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: leftTracks, fromFrame: 0, untilFrameExclusive: local)
     var right = clip
     right.id = rightId; right.startFrame = splitFrame; right.durationFrames = clip.durationFrames - local
+    right.moves = clip.movesForSplitPart(.right, duration: right.durationFrames)
     right.speedRamp = clip.speedRamp?.sliced(from: local, until: clip.durationFrames)
     setSource(&right, position)
     right.fadeInFrames = nil; right.clampFades(movedEdge: .start)
     if let rightBinding { right.binding = rightBinding }
     right.parameterTracks = rightTracks
     right.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: rightTracks, fromFrame: local, untilFrameExclusive: clip.durationFrames)
-    do { return try succeed(d, try replaceClip(d, loc, [left, right], engine), engine) }
+    var base = d
+    base.sequence.tracks[loc.trackIndex].transitions = nativeCutTransitionsAfterSplit(loc.track, clipId: clip.id, splitFrame: splitFrame, rightId: rightId)
+    do { return try succeed(d, try replaceClip(base, loc, [left, right], engine), engine) }
     catch let e as NativeProjectDocumentValidationError {
         if e.issues.contains(where: { $0.code == .duplicateBinding }) {
             return reject(d, .duplicateSplitBinding, "The right clip binding must be unique within the native project")
@@ -296,7 +308,7 @@ private func applyDeleteMany(_ d: NativeProjectDocument, _ addresses: [NativePro
         t.clips = t.clips.filter { !removed.contains(moveAddressKey(.init(sequenceId: d.sequence.id, trackId: t.id, clipId: $0.id))) }
         return t
     }
-    return try succeed(d, try parseNativeProjectDocument(next, engine: engine), engine)
+    return try succeed(d, try parseNativeProjectDocument(reconcileNativeCutTransitions(next), engine: engine), engine)
 }
 
 /// Pure native move command. Clips are copied only to change `startFrame`; all media-local state is retained exactly.
@@ -315,6 +327,7 @@ public func applyNativeProjectClipCommand(_ d: NativeProjectDocument, _ command:
     case .deleteMany(let list): return try applyDeleteMany(d, list, engine)
     case let .move(a, dest): moves = [.init(address: a, destination: dest)]
     case .moveMany(let list): moves = list
+    default: return try applyNativeSlipOrRoll(d, command, engine)   // .slip, .roll (NativeTimelineSlipRoll.swift)
     }
     let located: [LocatedMove]
     switch locateMoves(d, moves) { case .failure(let f): return reject(d, f.code, f.message); case .success(let l): located = l }
@@ -340,5 +353,5 @@ public func applyNativeProjectClipCommand(_ d: NativeProjectDocument, _ command:
         }.map(\.clip)
         return t
     }
-    return try succeed(d, try parseNativeProjectDocument(next, engine: engine), engine)
+    return try succeed(d, try parseNativeProjectDocument(reconcileNativeCutTransitions(next), engine: engine), engine)
 }

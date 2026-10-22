@@ -138,10 +138,12 @@ let package = Package(
                 swiftSettings: [.swiftLanguageMode(.v6)]),
         // System SQLite (no download): libsqlite3 on Linux, SDK sqlite3 on macOS, winsqlite3 on Windows 10+.
         .systemLibrary(name: "CSQLite", path: "Sources/CSQLite", providers: [.apt(["libsqlite3-dev"])]),
-        .target(name: "MpvfxRuntime", dependencies: ["MpvfxShared", "MpvfxColor", "CSQLite", "MpvfxAudio", "MpvfxAudioGraph", mediaEngine],
+        .target(name: "MpvfxRuntime", dependencies: ["MpvfxShared", "MpvfxColor", "CSQLite", "MpvfxAudio", "MpvfxAudioGraph", mediaEngine, win32],
                 linkerSettings: [
                     .linkedLibrary("sqlite3", .when(platforms: [.linux, .macOS])),
                     .linkedLibrary("winsqlite3", .when(platforms: [.windows])),
+                    // The on-device speech recognizer behind speech to captions (MacSpeechTranscriptionService).
+                    .linkedFramework("Speech", .when(platforms: [.macOS])),
                 ]),
         // Host-independent desktop shell logic (app paths, save barrier, lifecycle, single instance, menu); unit-tested.
         .target(name: "MpvfxDesktopCore", dependencies: ["MpvfxTheme"]),
@@ -151,7 +153,7 @@ let package = Package(
         // Windows compiles C++ with explicit clang modules and does not hand a C target's module to a C++ compile.
         .target(name: "CMpvfxWin32", cxxSettings: [.headerSearchPath("../CMpvfxColorShared/include")],
                 linkerSettings: ["d2d1", "dwrite", "windowscodecs", "ole32", "uuid", "shell32", "user32", "advapi32", "dwmapi",
-                                 "d3d11", "dxgi"].map {
+                                 "d3d11", "dxgi", "sapi"].map {
             .linkedLibrary($0, .when(platforms: [.windows]))
         }),
         // Backend-neutral 2D drawing (Cairo/Pango on Linux, Core Graphics on macOS, Direct2D/DirectWrite on Windows).

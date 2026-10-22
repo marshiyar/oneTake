@@ -53,6 +53,11 @@ final class EditorSession {
     var naturalSizePending: Set<String> = []
     var animationFramePending = false
     let transport = TransportPopovers()
+    let voice = VoiceTransport()
+    var makeVoiceInput: () -> AudioInput? = { AudioInputDevices.makeSystemInput() }
+    var voiceStart = 0.0
+    var voiceGeneration = 0
+    var voiceImporting = false
     /// Window regions and input routing (EditorShellLayout.swift); set by the shell via installShell.
     var shell: EditorShellRouter?
     var shellInputs: [CanvasInput] = []
@@ -62,6 +67,10 @@ final class EditorSession {
     private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
+    /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
+    var clipInfoFeed: ClipInfoFeed?
+    /// The router holds its cross-pane drag weakly; the bin and effects drags live here (EditorSession+DockedPanels.swift).
+    var crossPaneDrags: CrossPaneDragGroup?
     var desktopPreferences: DesktopPreferences?
     /// System / Light / Dark setting (EditorSession+Appearance); set by the shell via installAppearance.
     var appearance: AppearanceSettings?
@@ -136,6 +145,7 @@ final class EditorSession {
         syncStage()
         let previousOnChange = editor.onChange
         editor.onChange = { [weak self] in previousOnChange?(); self?.documentChanged(); self?.rebuildAudioGraphIfNeeded() }
+        editor.onNotice = { [weak self] in self?.player.view.showToast($0); self?.redraw() }
         watchOpenProject()
     }
 
@@ -336,6 +346,7 @@ final class EditorSession {
         try loadContent(opened.content)
         player.view.canvasSize = CanvasSize(editor.document.canvas.width, editor.document.canvas.height)
         for notice in editor.document.undrawnContentNotices { player.view.showToast(notice) }
+        if let notice = editor.document.unreadNarrationNotice { player.view.showToast(notice) }
     }
 
     /// The open project's folder was found at `moved.directory` (Locate Folder…): media resolves against it from now on.
@@ -367,6 +378,7 @@ final class EditorSession {
 
     /// For the save barrier on close/quit: nil when saved, else the message to show (the window stays open).
     func flushSave() -> String? {
+        if voice.state != .idle || voiceImporting { return "Stop recording and wait for the take to be kept before closing this project." }
         do { try save(); return nil } catch { return "\(error)" }
     }
 
@@ -486,9 +498,10 @@ final class EditorSession {
             if let l = live[e.id] { return l }
             let base = stageBase(e.id, kind: e.kind, time: t)
             let tr = editor.transform(clipId: e.id, time: t)
-            return StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, tr), kind: e.kind,
-                                rotation: tr.rotation ?? 0, crop: savedCrop(e.id), scale: StageGeometry.uniformScale(editor: editor, clipId: e.id, time: t),
-                                locked: editor.clip(e.id)?.track.locked == true)
+            let own = StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, tr), kind: e.kind,
+                                   rotation: tr.rotation ?? 0, crop: savedCrop(e.id), scale: StageGeometry.uniformScale(editor: editor, clipId: e.id, time: t),
+                                   locked: editor.clip(e.id)?.track.locked == true)
+            return StageGeometry.moved(own, by: editor.moveOffsets(clipId: e.id, time: t))   // the outline sits on the moved box
         }
         let sel = timeline.view.selection
         player.view.selectedIds = player.view.elements.filter { sel.contains($0.id) }.map(\.id)
@@ -516,7 +529,11 @@ final class EditorSession {
         let base = stageBase(e.id, kind: e.kind, time: t)
         let before = StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, editor.transform(clipId: e.id, time: t)),
                                   kind: e.kind, rotation: editor.transform(clipId: e.id, time: t).rotation ?? 0)
-        let tr = StageGeometry.transform(base: base, start: before, end: e)
+        // The stage shows the moved box; the clip's own values are what is left once the moves are taken off.
+        // Unchanged geometry (a crop-only commit) stays exactly `before`, so no rounding writes a value.
+        let moves = editor.moveOffsets(clipId: e.id, time: t), shown = StageGeometry.moved(before, by: moves)
+        let unchanged = e.rect == shown.rect && e.rotation == shown.rotation
+        let tr = StageGeometry.transform(base: base, start: before, end: unchanged ? before : StageGeometry.unmoved(e, by: moves))
         if tr != ClipTransform() { editor.applyTransform(clipId: e.id, time: t, tr) }
     }
 

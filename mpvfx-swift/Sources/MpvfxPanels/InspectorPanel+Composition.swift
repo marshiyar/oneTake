@@ -91,7 +91,7 @@ extension InspectorPanel {
     func compositionPresetRow(_ editor: TimelineEditor) -> InspectorCustomRow {
         InspectorCustomRow(id: Self.compositionPresetRowId, height: 30, draw: { c, r, panel in
             PanelDraw.text(c, "Preset", in: CanvasRect(x: r.x, y: r.midY - 8.25, width: 86, height: 16.5),
-                           font: PanelTheme.font(11), color: PanelTheme.text3)
+                           font: PanelTheme.font(11), color: PanelTheme.inspectorText)
             let field = CanvasRect(x: r.x + 96, y: r.midY - 14, width: max(0, r.width - 96), height: 28)
             PanelSelect.draw(c, field, text: panel.compositionPresetLabel, hovered: panel.hovered == .custom(Self.compositionPresetRowId, 0))
             panel.addHit(field, .custom(Self.compositionPresetRowId, 0))
@@ -115,7 +115,7 @@ extension InspectorPanel {
                                 font: PanelTheme.font(13, .semibold), color: PanelTheme.text0)
         let (w, hh) = compositionSize
         PanelDraw.text(c, Self.sizeText(w, hh), in: CanvasRect(x: nameX + ns.width + 8, y: row.y + 1.5, width: max(0, row.maxX - nameX - ns.width - 8), height: h),
-                       font: PanelTheme.font(10), color: PanelTheme.text4)
+                       font: PanelTheme.font(11), color: PanelTheme.inspectorText)
         PanelDraw.hline(c, x0: r.x, x1: r.maxX, y: r.y + h, PanelTheme.panelHairline)
         let g = laidOut(compositionGroup(editor), c, width: r.width)
         let bodyH = Self.openBodyHeight(g, 0)

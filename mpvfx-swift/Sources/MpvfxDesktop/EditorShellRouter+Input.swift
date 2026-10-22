@@ -149,6 +149,9 @@ extension EditorShellRouter {
     private func movedWhileCaptured(_ region: Region, _ x: Double, _ y: Double, _ modifiers: PointerModifiers) {
         let (lx, ly) = local(region, x, y)
         panes[region]?.input?.pointerMove(x: lx, y: ly, modifiers: modifiers)
+        // Latch the modifiers before checking the drag state: the move that starts the drag would
+        // otherwise drop an already-held Option, and the release would insert instead of replacing.
+        if let d = crossPaneDrag { d.updateDragModifiers(modifiers) }
         guard let d = crossPaneDrag, d.isDragging(from: region) else { return }
         let target = self.region(at: x, y)
         let (tx, ty) = target.map { local($0, x, y) } ?? (x, y)
@@ -190,14 +193,19 @@ extension EditorShellRouter {
     /// The Settings card, an open panel menu, then the dock's own keys (⌘⇧W, Ctrl+Tab, Escape during a drag), then
     /// the focused pane; global shortcuts fall back to the timeline (which falls through to playback).
     func keyDown(_ k: EditorKey) -> Bool {
+        if globalVoiceKey?(k) == true { needsDisplay(); return true }
         if modalOpen, modal?.keyDown(k) == true { needsDisplay(); return true }
         if dockMenu.isOpen { _ = dockMenu.key(k); needsDisplay(); return true }
         if dock.keyDown(k) { needsDisplay(); return true }
         let region = focused
         if let input = panes[region]?.input, input.keyDown(k) { return true }
+        if region != .timeline, !k.command, !k.alt, case .char(let ch) = k.code, ch.lowercased() == "m" { return false }
         if region != .timeline, let t = panes[.timeline]?.input { return t.keyDown(k) }
         return false
     }
 
-    func keyUp(_ k: EditorKey) { (panes[focused]?.input ?? panes[.timeline]?.input)?.keyUp(k) }
+    /// Every pane retires its own held-key state, including the pane that lost focus during the hold.
+    func keyUp(_ k: EditorKey) {
+        for pane in panes.values { pane.input?.keyUp(k) }
+    }
 }

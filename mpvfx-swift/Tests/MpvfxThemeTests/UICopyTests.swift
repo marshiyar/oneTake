@@ -43,14 +43,13 @@ final class UICopyTests: XCTestCase {
     /// number when you replace one with a message the user can act on; remove the line at zero. Never raise one.
     static let rawErrorBaseline: [String: Int] = [
         "MpvfxDesktop/EditorSession+Panels.swift": 6,
-        "MpvfxDesktop/EditorSession+Renders.swift": 1,
+
         "MpvfxDesktop/EditorSession+TimelineHooks.swift": 1,
-        "MpvfxDesktop/EditorSession.swift": 5,
+        "MpvfxDesktop/EditorSession.swift": 4,
         "MpvfxDesktop/LinuxShell.swift": 2,
         "MpvfxDesktop/MacShell.swift": 1,
         "MpvfxDesktop/WindowsShell.swift": 4,
         "MpvfxPlayer/ExportFramePainter.swift": 1,
-        "MpvfxPlayer/RasterCanvas.swift": 3,
         "MpvfxTimeline/TimelineEditor+Canvas.swift": 1,
         "MpvfxTimeline/TimelineEditor+ClipMenu.swift": 2,
         "MpvfxTimeline/TimelineEditor+Clips.swift": 1,

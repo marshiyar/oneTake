@@ -34,7 +34,7 @@ extension InspectorPanel {
             }
             if colors.isEmpty {
                 PanelDraw.text(c, "None yet", in: CanvasRect(x: x, y: r.midY - 8.25, width: r.maxX - x, height: 16.5),
-                               font: PanelTheme.font(11), color: PanelTheme.text4)
+                               font: PanelTheme.font(11), color: PanelTheme.inspectorText)
             }
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0, colors.indices.contains(part), let c = PickerColor(hex: colors[part]) else { return }
@@ -50,7 +50,7 @@ extension InspectorPanel {
         guard let cp = colorPicker else { return [] }
         if cp.frameError {
             return [InspectorRow(.custom(InspectorCustomRow(id: "picker:frameError", height: 16, draw: { c, r, _ in
-                PanelDraw.text(c, "Preview frame unavailable. Try again after the media loads.", in: r, font: PanelTheme.font(10), color: PanelTheme.red400)
+                PanelDraw.text(c, "Preview frame unavailable. Try again after the media loads.", in: r, font: PanelTheme.font(11), color: PanelTheme.red400)
             })), rail: true)]
         }
         guard let frame = cp.frame else {
