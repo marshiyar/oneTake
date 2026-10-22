@@ -71,6 +71,10 @@ public struct InspectorRow {
         public var vertical = false
         /// A detent: a drag within `detentReach` of the track's span from it lands on it (Rate's 1x).
         public var detent: Double?
+        /// Keyboard increment in track units; nil uses one percent of the range.
+        public var step: Double?
+        /// Converts the displayed unit to track units when the two differ (EV, rate, dB).
+        public var parseInput: ((String) -> Double?)?
         public static let detentReach = 0.03
     }
     public struct Toggle {
