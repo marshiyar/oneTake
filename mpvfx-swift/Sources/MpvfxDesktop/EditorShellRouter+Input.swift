@@ -149,6 +149,9 @@ extension EditorShellRouter {
     private func movedWhileCaptured(_ region: Region, _ x: Double, _ y: Double, _ modifiers: PointerModifiers) {
         let (lx, ly) = local(region, x, y)
         panes[region]?.input?.pointerMove(x: lx, y: ly, modifiers: modifiers)
+        // Latch the modifiers before checking the drag state: the move that starts the drag would
+        // otherwise drop an already-held Option, and the release would insert instead of replacing.
+        if let d = crossPaneDrag { d.updateDragModifiers(modifiers) }
         guard let d = crossPaneDrag, d.isDragging(from: region) else { return }
         let target = self.region(at: x, y)
         let (tx, ty) = target.map { local($0, x, y) } ?? (x, y)

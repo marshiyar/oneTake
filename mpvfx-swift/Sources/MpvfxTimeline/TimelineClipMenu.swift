@@ -18,7 +18,7 @@ import MpvfxTheme
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
-        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, thumbnails, mute, keepPitch, detachAudio, reattachAudio, delete
+        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -71,6 +71,11 @@ public struct TimelineClipMenu: Equatable, Sendable {
         }
         e.append(.item(Item(action: .duplicate, label: "Duplicate", hint: "⌘D")))
         e.append(.divider)
+        if kind == .video || kind == .audio || kind == .image {
+            e.append(.item(Item(action: .revealSource, label: "Reveal in media bin")))
+            e.append(.item(Item(action: .showSourceFile, label: "Show in file manager")))
+            e.append(.divider)
+        }
         if kind == .video || kind == .image {
             e.append(.item(Item(action: .thumbnails, label: "Show thumbnails", checked: thumbnails)))
             e.append(.divider)

@@ -199,7 +199,12 @@ public struct PreviewComposition {
                                  fileExists: fileExists)
         let trackLayers = nativeTrackStackingLayers(document.sequence.tracks)
         for (index, track) in document.sequence.tracks.enumerated() {
-            for clip in track.clips {
+            for storedClip in track.clips {
+                var clip = storedClip
+                if clip.textStyle != nil {
+                    guard let text = resolvedText(clip, document.textStyles ?? []) else { continue }
+                    clip.text = text
+                }
                 n += 1
                 guard !Self.isLeftOut(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
                 let layer = Self.stackingLayer(clip, track: trackLayers[index])

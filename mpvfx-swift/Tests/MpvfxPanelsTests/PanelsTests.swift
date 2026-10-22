@@ -68,10 +68,12 @@ final class ShortcutsPanelTests: XCTestCase {
     func testSectionsMatchSource() {
         XCTAssertEqual(shortcutSections.map(\.title), ["Playback", "Keyframes (when an element is selected)", "Editing", "Beat marks", "Gesture recording modifiers", "Canvas", "Crop", "Panels", "Work area"])
         // Playback gained voice keys (Record/stop voice, issue #317): 9 + 2; Editing gained ⇧H and ⌥⇧H (Hold frame, issue #292): 15 + 2.
+        // Editing gained reveal-source hints (Reveal clip in media bin / file manager, issue #446): 17 + 2.
         // Beat marks section added (editable beat marks in source time, issue #289): 0 + 4.
-        XCTAssertEqual(shortcutSections.reduce(0) { $0 + $1.hints.count }, 11 + 12 + 17 + 4 + 6 + 4 + 2 + 2 + 6)
+        XCTAssertEqual(shortcutSections.reduce(0) { $0 + $1.hints.count }, 11 + 12 + 19 + 4 + 6 + 4 + 2 + 2 + 6)
         let editing = shortcutSections.first { $0.title == "Editing" }?.hints.map(\.key) ?? []
         XCTAssertTrue(editing.contains("⇧H") && editing.contains("⌥⇧H"), "\(editing)")
+        XCTAssertTrue(editing.contains("⌥⌘F") && editing.contains("⌥⇧⌘F"), "\(editing)")
         let beats = shortcutSections.first { $0.title == "Beat marks" }?.hints.map(\.key) ?? []
         XCTAssertTrue(beats.contains("B") && beats.contains("⌥Click beat"), "\(beats)")
         XCTAssertEqual(formatPanelTime(44.9), "00:44"); XCTAssertEqual(formatPanelTime(7200), "120:00"); XCTAssertEqual(formatPanelTime(-1), "00:00")

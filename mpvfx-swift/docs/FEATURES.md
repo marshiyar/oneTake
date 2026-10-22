@@ -1,5 +1,15 @@
 # Feature inventory
 
+Text style model and commands (#282): project `textStyles` records and optional clip links share typography while
+keeping each layer's words. Save, apply to multiple layers, update from a layer and detach are validated atomic
+editor commands with undo/redo. Cross-project clip paste detaches a resolved typography snapshot so missing or
+colliding style IDs cannot change the appearance; same-project paste keeps the live style link. Inspector edits
+override only the changed fields; nil can explicitly restore a field's default, and Reset removes the override to
+follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
+style/link versions and kinds remain serialized and undrawn with an open notice. The style browser is a later UI
+slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
+and `TextStyleRenderingTests`.
+
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript
 or a web view. The design audit in §11 is the floor for how the editor looks.
@@ -66,6 +76,7 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Audio rows: icon, name, duration, waveform bars | done | exact |
 | Asset preview overlay / audition (play an asset) | missing (panels) | n/a |
 | Drag from bin to timeline (insert at drop time/track) | done: a 4 px drag starts it, the drop inserts at the pointer's time on the track under it when the kind fits and the track is unlocked (`EditorSession+AssetDrag.swift`); while over the tracks the drop outline shows (1 px accent/60 inside the tracks area, `AssetDropOutline`); edge auto-scroll during the drag is missing | close |
+| Option/Alt-drop a bin card onto a clip to replace its media | done: keeps timing, trim, transform, grade, moves and keyframes; reports missing source frames when too short; one undo step includes adding a new asset (`TimelineReplaceMediaTests`, `ReplaceMediaDragTests`). Keyboard replacement and a clip-menu chooser are not implemented | n/a |
 | Drag from bin to stage | done: the shell router keeps pointer capture and converts to player points; the player highlights the drop and inserts at the playhead | close |
 | Asset context menu: Add at playhead, Copy path, Rename, Delete (+ remove placements, undoable) | done | exact |
 | Double-click / Enter adds asset to timeline | done | n/a |
@@ -302,6 +313,7 @@ with room size, damping, stereo width, pre-delay, low cut, wet and dry controls.
 The original Room effect and presets retain the legacy reverb sound. The v2
 convolver and regression tests are implemented; Swift test execution and the
 release benchmark target remain unverified in the contribution environment.
+Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
 Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.
 ### Hand-placed beat marks (#289)
 
