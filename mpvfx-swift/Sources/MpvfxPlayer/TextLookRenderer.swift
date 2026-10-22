@@ -54,7 +54,7 @@ enum TextLookRenderer {
                               width: Double(width + 2 * inset) / k, height: Double(height + 2 * inset) / k)
         if let hit = cache.get(key) { return Rendered(image: hit, rect: rect) }
         var letters = text
-        letters.color = "#ffffff"; letters.look = nil
+        letters.color = NativeClipText.newLayerColor; letters.look = nil
         guard let rgba = NativeTextRendering.rasterize(letters, width: width, height: height, scale: pxPerCanvas, inset: inset) else { return nil }
         let coverage = stride(from: 3, to: rgba.count, by: 4).map { rgba[$0] }
         let fill = CanvasColor.documentColor(text.resolvedColor)

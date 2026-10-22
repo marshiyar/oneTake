@@ -115,6 +115,12 @@ private func validateTransitionStyle(_ entry: NativeJSONValue, _ path: String, _
     if let alignment = entry["alignment"], alignment.stringValue.flatMap(NativeCutTransitionAlignment.init(rawValue:)) == nil {
         pushIssue(&issues, .invalidTransition, "\(path).alignment", "Transition alignment must be centre, endsAtCut or startsAtCut")
     }
+    if let direction = entry["direction"], direction.stringValue.flatMap(NativeTransitionDirection.init(rawValue:)) == nil {
+        pushIssue(&issues, .invalidTransition, "\(path).direction", "Transition direction must be left, right, up or down")
+    }
+    if let softness = entry["softness"], softness.numberValue.map({ $0.isFinite && $0 >= 0 && $0 <= 1 }) != true {
+        pushIssue(&issues, .invalidTransition, "\(path).softness", "Transition softness must be a finite number between 0 and 1")
+    }
     if let color = entry["color"], color.stringValue.map(isNativeHexColor) != true {
         pushIssue(&issues, .invalidTransition, "\(path).color", "Transition color must be #RGB, #RRGGBB or #RRGGBBAA")
     }
