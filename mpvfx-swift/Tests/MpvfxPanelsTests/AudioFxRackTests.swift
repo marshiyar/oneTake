@@ -19,6 +19,7 @@ import XCTest
 import MpvfxCanvas
 import MpvfxTheme
 import MpvfxAudioGraph
+import MpvfxAudio
 import OneTakeKeyframes
 @testable import MpvfxTimeline
 @testable import MpvfxPanels
@@ -107,6 +108,201 @@ final class AudioFxRackTests: XCTestCase {
         XCTAssertTrue(editor.undo())
         XCTAssertEqual(chain(editor), original)
         XCTAssertEqual(editor.document, documentBefore)
+    func liveFixture(_ chain: FxChain) throws -> (TimelineEditor, InspectorPanel) {
+        let json = TimelineEditor.demoJSON.replacingOccurrences(of: "\"name\":\"music.wav\"", with: "\"name\":\"music.wav\",\"source\":\"/music.wav\"")
+        let editor = try TimelineEditor(json: json, engine: try? KeyframeRuntime())
+        XCTAssertTrue(editor.setClipFxChain(clipId: "clip:music", AudioFx.serializeChain(chain)))
+        let panel = InspectorPanel(); panel.editor = editor; panel.selection = ["clip:music"]; panel.openGroupId = "audio-fx"
+        return (editor, panel)
+    }
+
+    func testSliderDragPublishesIntermediateLiveGraphInputsEveryThirtyMillisecondsAndOneUndo() throws {
+        for bus in [false, true] {
+            let initial = FxChain(nodes: [FxNode(type: "gain", id: "gain", params: AudioFx.defaultParams("gain"))])
+            let (editor, panel) = try liveFixture(initial)
+            var groupId: String?
+            if bus {
+                groupId = try XCTUnwrap(editor.createAudioGroup(clipIds: ["clip:music", "clip:a", "clip:b"]))
+                XCTAssertTrue(editor.setAudioGroupFxChain(try XCTUnwrap(groupId), AudioFx.serializeChain(initial)))
+                panel.selection = []; panel.audioGroupId = groupId
+            }
+            func current() -> FxChain {
+                let text = groupId.flatMap { editor.audioGroup($0)?.fxChain } ?? editor.clip("clip:music")?.clip.audioFxChain
+                return text.flatMap { try? AudioFx.parseChain($0) } ?? FxChain()
+            }
+            draw(panel)
+            let track = try XCTUnwrap(panel.hits.rect { $0 == .slider("fx:0:gain") })
+            let before = editor.document, count = editor.undoStack.count
+            var now = 10.0; panel.fxGestureNow = { now }
+            var received: [String?] = []
+            let source = GraphAudioSource(project: AudioGraphProject(duration: 0.1, sampleRate: 48000, tracks: []))
+            let updater = LiveAudioGraphUpdater(source: source, loadStem: { _ in [[Float](repeating: 0.2, count: 4800)] })
+            editor.onChange = {
+                let inputs = DocumentAudioGraph.inputs(editor.document, duration: 0.1, projectDir: nil, fileExists: { _ in true })
+                received.append(groupId.flatMap { id in inputs.groups.first { $0.id == id }?.fxChain }
+                    ?? inputs.tracks.first { $0.id == "clip:music" }?.fxChain)
+                updater.submit(inputs)
+            }
+            XCTAssertTrue(panel.pointerDown(CanvasPoint(track.x, track.midY)))
+            XCTAssertEqual(received.count, 1)
+            XCTAssertEqual(updater.waits, 0)
+            updater.waitUntilIdle() // Test synchronization only, outside the edit hook.
+            source.seek(0)
+            _ = source.render(frames: 1024)
+            let quiet = source.render(frames: 1024).map { abs($0) }.max() ?? 0
+            now += 0.010
+            _ = panel.pointerMove(CanvasPoint(track.midX, track.midY))
+            XCTAssertEqual(received.count, 1, "writes inside 30 ms are coalesced")
+            now += 0.021
+            _ = panel.pointerMove(CanvasPoint(track.maxX - 1, track.midY))
+            XCTAssertEqual(received.count, 2)
+            XCTAssertNotNil(received.last.flatMap { $0 })
+            XCTAssertNotEqual(received.first.flatMap { $0 }, received.last.flatMap { $0 })
+            XCTAssertNotEqual(current(), initial)
+            XCTAssertEqual(updater.waits, 1)
+            updater.waitUntilIdle()
+            source.seek(0)
+            _ = source.render(frames: 1024)
+            let loud = source.render(frames: 1024).map { abs($0) }.max() ?? 0
+            XCTAssertGreaterThan(loud, quiet * 2, "intermediate drag values are audible before release")
+            XCTAssertEqual(editor.undoStack.count, count)
+            draw(panel)
+            panel.pointerUp(CanvasPoint(track.maxX - 1, track.midY))
+            XCTAssertEqual(editor.undoStack.count, count + 1)
+            XCTAssertTrue(editor.undo()); XCTAssertEqual(editor.document, before)
+            XCTAssertTrue(editor.redo()); XCTAssertNotEqual(current(), initial)
+            XCTAssertEqual(updater.waits, 2, "only the test waits on graph work")
+            editor.onChange = nil
+            updater.waitUntilIdle()
+        }
+    }
+
+    func testGraphDragPublishesBeforeReleaseAndCancelsThenRepeatsWithOneUndo() throws {
+        let initial = FxChain(nodes: [FxNode(type: "peaking", id: "bell", params: AudioFx.defaultParams("peaking"))])
+        let (editor, panel) = try liveFixture(initial)
+        draw(panel)
+        let handle = try XCTUnwrap(panel.hits.rect { $0 == .custom("afx:node:0", 1) })
+        let graph = try XCTUnwrap(panel.audioFxUI.graphBoxes["afx:node:0"])
+        let before = editor.document, count = editor.undoStack.count
+        var now = 0.0; panel.fxGestureNow = { now }
+        let to = CanvasPoint(AfxGraphScale.x(2200, in: graph.box), AfxGraphScale.y(6, range: graph.range, in: graph.box))
+        for cancel in [true, false, false] {
+            draw(panel) // The host redraws after cancellation/undo before the next gesture.
+            XCTAssertTrue(panel.pointerDown(CanvasPoint(handle.midX, handle.midY)))
+            now += 1
+            _ = panel.pointerMove(to)
+            XCTAssertNotEqual(editor.document, before)
+            draw(panel)
+            if cancel {
+                XCTAssertTrue(panel.keyDown(EditorKey(.escape)))
+                panel.pointerUp(to)
+                XCTAssertEqual(editor.document, before)
+                XCTAssertEqual(editor.undoStack.count, count)
+            } else {
+                panel.pointerUp(to)
+                XCTAssertEqual(editor.undoStack.count, count + 1)
+                XCTAssertTrue(editor.undo()); XCTAssertEqual(editor.document, before)
+                draw(panel)
+            }
+        }
+    }
+
+    func testHeaderDropFirstToThirdAndAltArrowEachRecordOneUndo() throws {
+        let initial = FxChain(nodes: ["gain", "delay", "lowpass"].enumerated().map {
+            FxNode(type: $0.element, id: "n\($0.offset)", params: AudioFx.defaultParams($0.element))
+        })
+        let (editor, panel) = try liveFixture(initial)
+        draw(panel)
+        let first = try XCTUnwrap(panel.hits.rect { $0 == .button("fx:0:open") })
+        let third = try XCTUnwrap(panel.fxHeaders[2])
+        let count = editor.undoStack.count
+        let stored = chain(editor)
+        XCTAssertTrue(panel.pointerDown(CanvasPoint(first.midX, first.midY)))
+        let drop = CanvasPoint(third.midX, third.maxY + 2)
+        _ = panel.pointerMove(drop)
+        draw(panel)
+        panel.pointerUp(drop)
+        XCTAssertEqual(chain(editor).nodes.map(\.id), ["n1", "n2", "n0"])
+        XCTAssertEqual(editor.undoStack.count, count + 1)
+        XCTAssertTrue(editor.undo()); XCTAssertEqual(chain(editor), stored)
+        draw(panel)
+        panel.fxHeaderFocused = 0
+        XCTAssertTrue(panel.keyDown(EditorKey(.down, alt: true)))
+        XCTAssertEqual(chain(editor).nodes.map(\.id), ["n1", "n0", "n2"])
+        XCTAssertEqual(editor.undoStack.count, count + 1)
+        XCTAssertTrue(editor.undo()); XCTAssertEqual(chain(editor), stored)
+    }
+
+    func testToneAndPresetHeadersMoveWholeModulesAndPreserveOneUndo() throws {
+        let (editor, panel) = try fixture()
+        draw(panel)
+        let before = editor.document, original = chain(editor), count = editor.undoStack.count
+        let eqId = try XCTUnwrap(AudioEq.ids(original).first)
+        let tone = try XCTUnwrap(panel.hits.rect { $0 == .button("eq:\(eqId):open") })
+        let last = try XCTUnwrap(panel.fxHeaders.values.max { $0.y < $1.y })
+        XCTAssertTrue(panel.pointerDown(CanvasPoint(tone.midX, tone.midY)))
+        let drop = CanvasPoint(last.midX, last.maxY + 5)
+        _ = panel.pointerMove(drop); panel.pointerUp(drop)
+        XCTAssertEqual(Array(chain(editor).nodes.suffix(3)).map(\.id), Array(original.nodes.prefix(3)).map(\.id))
+        draw(panel)
+        XCTAssertGreaterThan(try XCTUnwrap(panel.hits.rect { $0 == .button("eq:\(eqId):open") }).y,
+                             try XCTUnwrap(panel.hits.rect { $0 == .button("fx:5:open") }).y)
+        XCTAssertEqual(editor.undoStack.count, count + 1)
+        XCTAssertTrue(editor.undo()); XCTAssertEqual(editor.document, before)
+        draw(panel)
+        let preset = try XCTUnwrap(panel.hits.rect { $0 == .button("run:voice-clean-3:collapse") })
+        let first = try XCTUnwrap(panel.fxHeaders[0])
+        XCTAssertTrue(panel.pointerDown(CanvasPoint(preset.midX, preset.midY)))
+        _ = panel.pointerMove(CanvasPoint(first.midX, first.y - 3))
+        panel.pointerUp(CanvasPoint(first.midX, first.y - 3))
+        XCTAssertEqual(Array(chain(editor).nodes.prefix(5)).map(\.id), Array(original.nodes[3..<8]).map(\.id))
+        XCTAssertEqual(editor.undoStack.count, count + 1)
+        XCTAssertTrue(editor.undo()); XCTAssertEqual(editor.document, before)
+    }
+
+    func testChangingRackOwnerCancelsSliderWithoutHistory() throws {
+        let (editor, panel) = try liveFixture(FxChain(nodes: [FxNode(type: "gain", id: "gain")]))
+        draw(panel)
+        let before = editor.document, count = editor.undoStack.count
+        let track = try XCTUnwrap(panel.hits.rect { $0 == .slider("fx:0:gain") })
+        XCTAssertTrue(panel.pointerDown(CanvasPoint(track.x, track.midY)))
+        XCTAssertNotEqual(editor.document, before)
+        panel.selection = []
+        XCTAssertEqual(editor.document, before)
+        panel.pointerUp(CanvasPoint(track.maxX, track.midY))
+        XCTAssertEqual(editor.undoStack.count, count)
+    }
+
+    func testContinuousRackDragsSubmitWithoutMainLoopStalls() throws {
+        for bus in [false, true] {
+            let initial = FxChain(nodes: [FxNode(type: "gain", id: "gain", params: AudioFx.defaultParams("gain"))])
+            let (editor, panel) = try liveFixture(initial)
+            if bus {
+                let id = try XCTUnwrap(editor.createAudioGroup(clipIds: ["clip:music", "clip:a", "clip:b"]))
+                XCTAssertTrue(editor.setAudioGroupFxChain(id, AudioFx.serializeChain(initial)))
+                panel.selection = []; panel.audioGroupId = id
+            }
+            draw(panel)
+            let track = try XCTUnwrap(panel.hits.rect { $0 == .slider("fx:0:gain") })
+            let source = GraphAudioSource(project: AudioGraphProject(duration: 0.1, sampleRate: 48000, tracks: []))
+            let updater = LiveAudioGraphUpdater(source: source, loadStem: { _ in [[Float](repeating: 0.2, count: 4800)] })
+            editor.onChange = {
+                updater.submit(DocumentAudioGraph.inputs(editor.document, duration: 0.1, projectDir: nil, fileExists: { _ in true }))
+            }
+            var now = 0.0; panel.fxGestureNow = { now }
+            XCTAssertTrue(panel.pointerDown(CanvasPoint(track.x, track.midY)))
+            var worst = 0.0
+            for i in 0..<1000 {
+                now += 0.031
+                let start = Date().timeIntervalSinceReferenceDate
+                _ = panel.pointerMove(CanvasPoint(track.x + Double(i % 100) / 100 * track.width, track.midY))
+                worst = max(worst, Date().timeIntervalSinceReferenceDate - start)
+            }
+            panel.pointerUp(CanvasPoint(track.midX, track.midY))
+            XCTAssertLessThan(worst, 0.250, "same minimum stall bound as audio FX live stress")
+            XCTAssertEqual(updater.waits, 0)
+            editor.onChange = nil; updater.waitUntilIdle()
+        }
     }
 
     func testUpdateCurrentSoundIsOneUndoStep() throws {

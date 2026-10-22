@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
 
 /// The panel's menus: the tab strip's panel menu, the switcher (libraries and events), "…" (library and project
 /// actions, recent projects), the filter menu, and a tile's context menu.
@@ -20,8 +21,10 @@ extension LeftSidebarPanel {
     typealias Option = PanelDropdown.Option
 
     func openPanelMenu() {
-        openDropdown(.panelMenu, [.init(value: "import", label: "Import media…"), .init(value: "hide", label: "Hide panel")], nil) { [weak self] v in
-            if v == "import" { self?.onImport?() } else { self?.layout.toggleLeft() }
+        let generators = NativeGeneratorKind.allCases.map { Option(value: "generator:" + $0.rawValue, label: "Add " + $0.label.lowercased(), group: "Background generators") }
+        openDropdown(.panelMenu, [.init(value: "import", label: "Import media…")] + generators + [.init(value: "hide", label: "Hide panel")], nil) { [weak self] v in
+            if v.hasPrefix("generator:"), let kind = NativeGeneratorKind(rawValue: String(v.dropFirst(10))) { self?.onAddGenerator?(kind) }
+            else if v == "import" { self?.onImport?() } else { self?.layout.toggleLeft() }
         }
     }
 
@@ -169,6 +172,8 @@ extension LeftSidebarPanel {
         case .library(let id):
             guard let l = activeLibrary, libraryAsset(id)?.available == true, !library.busy else { return }
             onLibrary?(.attach(libraryId: l.id, assetId: id))
+        case .textLook(let id):
+            if let look = TextLookPreset.preset(id) { onAddTextLook?(look) }
         case .export(let id):
             guard let l = activeLibrary, export(id)?.status == "complete", !library.busy else { return }
             onLibrary?(.saveOutput(libraryId: l.id, jobId: id))
@@ -185,6 +190,7 @@ extension LeftSidebarPanel {
         case .media(let id): return mediaItem(id).map(mediaEntries) ?? []
         case .library(let id): return libraryAsset(id).map(libraryEntries) ?? []
         case .export(let id): return export(id)?.status == "complete" ? [MenuEntry(label: "Save to…", shortcut: "Enter", action: .primary)] : []
+        case .textLook: return [MenuEntry(label: "Add at playhead", shortcut: "Enter", action: .primary)]
         }
     }
 
