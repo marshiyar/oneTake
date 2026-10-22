@@ -37,12 +37,10 @@ class Handoff(unittest.TestCase):
         self.jobs = workflow("mpvfx-ci.yml")["jobs"]
 
     def test_sent_for_main_pushes_the_nightly_and_labelled_same_repository_pull_requests_only(self):
-        cond = self.jobs["macos-runners"]["if"]
-        self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/main'", cond)
-        self.assertIn("contains(github.event.pull_request.labels.*.name, 'macos')", cond)
-        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", cond)
-        self.assertIn("|| github.event_name == 'schedule'", cond)
-        self.assertNotIn("refs/tags", cond)   # a tag builds here: it is the official release
+        # Owner ruling 2026-10-22: no macOS in CI at all — no GitHub-hosted runs, no runner-pool
+        # hand-off. The owner builds macOS locally. The job stays defined (ci-ok's gate-coverage)
+        # but runs only when the MACOS_IN_CI repository variable is 'true'.
+        self.assertEqual(self.jobs["macos-runners"]["if"], "vars.MACOS_IN_CI == 'true'")
 
     def test_needs_both_secrets_before_minting_a_token(self):
         job = self.jobs["macos-runners"]
@@ -64,10 +62,10 @@ class Handoff(unittest.TestCase):
         self.assertIn('--arg repo "$GITHUB_REPOSITORY"', send["run"])
 
     def test_the_local_job_builds_whenever_nothing_was_sent(self):
+        # Owner ruling 2026-10-22: the local macOS job is gated the same way (see above).
         macos = self.jobs["macos"]
         self.assertIn("macos-runners", macos["needs"])
-        self.assertTrue(macos["if"].strip().startswith("always()"))
-        self.assertIn("needs.macos-runners.outputs.sent != 'true'", macos["if"])
+        self.assertEqual(macos["if"], "vars.MACOS_IN_CI == 'true'")
         self.assertEqual(macos["uses"], "./.github/workflows/mpvfx-macos.yml")
 
 

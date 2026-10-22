@@ -30,7 +30,10 @@ public extension TimelineEditor {
             lastFailure = nil
             withHistory(Self.transitionLabel(command)) { replaceDocument(doc, inverse: inverse) }
             return true
-        } catch { lastFailure = NativeProjectClipFailure(code: .documentMismatch, message: "\(error)"); return false }
+        } catch {
+            // Only a non-validation engine error reaches here (refusals return .failure above).
+            lastFailure = NativeProjectClipFailure(code: .documentMismatch, message: "The transition could not be applied"); return false
+        }
     }
 
     /// The track a transition command edits (nil when the transition does not exist).
@@ -38,7 +41,7 @@ public extension TimelineEditor {
         let id: String
         switch command {
         case .add(let trackId, _): return trackId
-        case .setLength(let i, _), .setKind(let i, _), .setAlignment(let i, _), .setColor(let i, _), .remove(let i): id = i
+        case .setLength(let i, _), .setKind(let i, _), .setAlignment(let i, _), .setColor(let i, _), .setDirection(let i, _), .setSoftness(let i, _), .remove(let i): id = i
         }
         return document.sequence.tracks.first { $0.cutTransitions.contains { $0.id == id } }?.id
     }
@@ -50,6 +53,8 @@ public extension TimelineEditor {
         case .setLength: "Change transition length"
         case .setKind: "Change transition kind"
         case .setAlignment: "Change transition alignment"
+        case .setDirection: "Change transition direction"
+        case .setSoftness: "Change transition softness"
         case .setColor: "Change transition colour"
         }
     }
