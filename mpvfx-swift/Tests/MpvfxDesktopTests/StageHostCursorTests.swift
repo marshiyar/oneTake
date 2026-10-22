@@ -81,7 +81,6 @@ final class StageHostCursorTests: XCTestCase {
     /// Codex review on #340: a drag the player holds crossing a seam kept showing the seam's resize arrow.
     func testAPlayerDragOverASeamKeepsTheStageCursor() throws {
         let (_, router, f) = try makeRouter()
-        let seam = try XCTUnwrap(f.leftSeamHit)
         let seam = try XCTUnwrap(router.dock.geometry.splitters.first { $0.axis == .row && $0.index == 0 }).hit
         let seamPoint = CanvasPoint(seam.x + seam.width / 2, f.player.y + f.player.height / 2)
         XCTAssertEqual(router.cursor(at: seamPoint.x, seamPoint.y), .columnResize, "hovering the seam: resize arrow")
@@ -94,7 +93,6 @@ final class StageHostCursorTests: XCTestCase {
     /// Codex review on #340: with Settings open the stage and seam cursors showed through the card.
     func testTheSettingsCardShowsTheArrowOverEverything() throws {
         let (s, router, f) = try makeRouter()
-        let seam = try XCTUnwrap(f.leftSeamHit)
         let seam = try XCTUnwrap(router.dock.geometry.splitters.first { $0.axis == .row && $0.index == 0 }).hit
         s.showSettings()
         XCTAssertEqual(router.cursor(at: f.player.x + f.player.width / 2, f.player.y + f.player.height / 2), .arrow)
