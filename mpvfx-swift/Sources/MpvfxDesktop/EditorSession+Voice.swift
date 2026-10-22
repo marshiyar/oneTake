@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxAudio
 import MpvfxCanvas
+import MpvfxDesktopCore
 import MpvfxPanels
 import MpvfxPlayer
 import MpvfxTimeline
@@ -57,7 +58,7 @@ extension EditorSession {
                           countIn: desktopPreferences?.voiceCountIn ?? 3, now: ProcessInfo.processInfo.systemUptime, fps: editor.fps)
             voiceGeneration += 1
             pollVoice(voiceGeneration)
-        } catch { cancelVoice(); onError("Cannot record voice", "\(error)") }
+        } catch { cancelVoice(); onError("Cannot record voice", (error as? DesktopError)?.message ?? "The voice could not be recorded. Check the microphone, then try again.") }
         redraw()
     }
 
@@ -65,7 +66,7 @@ extension EditorSession {
     func pollVoice(_ generation: Int) {
         guard generation == voiceGeneration, voice.state != .idle else { return }
         do { try voice.tick(now: ProcessInfo.processInfo.systemUptime) }
-        catch { cancelVoice(); onError("Cannot record voice", "\(error)"); return }
+        catch { cancelVoice(); onError("Cannot record voice", (error as? DesktopError)?.message ?? "The voice could not be recorded. Check the microphone, then try again."); return }
         redraw()
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.postToUI { [weak self] in self?.pollVoice(generation) }
@@ -89,7 +90,7 @@ extension EditorSession {
                 try FileManager.default.removeItem(atPath: recording.path); redraw(); return
             }
             importVoice(recording, placement: placement)
-        } catch { onError("Could not keep the take", "\(error)") }
+        } catch { onError("Could not keep the take", (error as? DesktopError)?.message ?? "The take could not be kept. Try recording again.") }
         redraw()
     }
 
@@ -120,7 +121,7 @@ extension EditorSession {
             } catch {
                 self?.postToUI {
                     self?.voiceImporting = false
-                    self?.onError("Take not imported", "\(error). The WAV is kept at \(recording.path).")
+                    self?.onError("Take not imported", (error as? DesktopError).map { $0.message + " The WAV is kept at \(recording.path)." } ?? "The take could not be imported. The WAV is kept at \(recording.path).")
                     self?.redraw()
                 }
             }

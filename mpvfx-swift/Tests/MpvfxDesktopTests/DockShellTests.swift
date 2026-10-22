@@ -74,7 +74,8 @@ final class DockShellTests: XCTestCase {
 
     func testTheEditorsPanelsAreDockPanelsWithTheirPanes() throws {
         let (_, router) = try session(try userData())
-        XCTAssertEqual(Set(router.dock.layout.openPanels), Set(DockPanels.builtIn.map(\.id)), "every built-in panel opens")
+        XCTAssertEqual(Set(router.dock.layout.openPanels), Set(DockPanels.builtIn.filter { !$0.startsClosed }.map(\.id)),
+                       "every built-in panel that is not closed by default opens")
         for region in [EditorShellRouter.Region.left, .player, .right, .renders, .timeline] { XCTAssertNotNil(router.panes[region], region.id) }
         let f = try XCTUnwrap(router.frames)
         XCTAssertEqual(router.region(at: f.left.cx, f.left.cy), .left)
@@ -134,9 +135,10 @@ final class DockShellTests: XCTestCase {
                                  "toggle:design.transform", "toggle:design.style", "toggle:design.grade", "toggle:design.effects",
                                  "toggle:design.audio-fx", "toggle:design.media"],
                        "the Preview cannot be closed, so its menu starts with the panel list")
-        XCTAssertEqual(Set(router.dockMenu.checked), Set(DockPanels.builtIn.map(\.id).filter { $0 != "renders" }.map { "toggle:\($0)" }))
+        XCTAssertEqual(Set(router.dockMenu.checked), Set(DockPanels.builtIn.filter { !$0.startsClosed && $0.id != "renders" }.map { "toggle:\($0.id)" }))
         router.dockMenu.pick("toggle:renders")
-        XCTAssertEqual(router.dock.layout.root.group(containing: "renders")?.panels, DockPanels.builtIn.filter { $0.defaultDock == .right }.map(\.id), "back beside Design")
+        XCTAssertEqual(router.dock.layout.root.group(containing: "renders")?.panels,
+                       DockPanels.builtIn.filter { $0.defaultDock == .right && !$0.startsClosed }.map(\.id), "back beside Design")
         XCTAssertEqual(router.focused, .renders)
     }
 
@@ -254,7 +256,8 @@ final class DockShellTests: XCTestCase {
             XCTAssertEqual($0 as? DockRegistryError, .duplicateID("easing"))
         }
         router.restoreDock(store: DockLayoutStore(userData: dir), seeds: DockSeeds())
-        XCTAssertEqual(router.dock.layout.root.group(containing: "easing")?.panels, DockPanels.builtIn.filter { $0.defaultDock == .right }.map(\.id) + ["easing"],
+        XCTAssertEqual(router.dock.layout.root.group(containing: "easing")?.panels,
+                       DockPanels.builtIn.filter { $0.defaultDock == .right && !$0.startsClosed }.map(\.id) + ["easing"],
                        "a panel no saved layout knows opens at its default dock")
         router.dock.focus("easing")
         draw(router)
@@ -265,9 +268,10 @@ final class DockShellTests: XCTestCase {
 
     func testTheWindowMenuListsEveryPanelWithACheckmarkAndTogglesIt() throws {
         let (_, router) = try session(try userData())
-        // The Design groups start in the Design tab, so their panels are listed unchecked.
+        // The Design groups start in the Design tab, and Mixer/Scopes/Markers start closed, so those
+        // panels are listed unchecked.
         XCTAssertEqual(Set(router.windowMenuPanels.filter(\.checked).map(\.id)),
-                       ["media", "preview", "inspector", "renders", "timeline", "history", "info"])
+                       Set(DockPanels.builtIn.filter { !$0.startsClosed }.map(\.id)))
         router.togglePanelFromMenu("media")
         XCTAssertEqual(router.windowMenuPanels.first { $0.id == "media" }?.checked, false)
         router.togglePanelFromMenu("media")
