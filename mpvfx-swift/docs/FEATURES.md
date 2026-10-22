@@ -1,5 +1,15 @@
 # Feature inventory
 
+Text style model and commands (#282): project `textStyles` records and optional clip links share typography while
+keeping each layer's words. Save, apply to multiple layers, update from a layer and detach are validated atomic
+editor commands with undo/redo. Cross-project clip paste detaches a resolved typography snapshot so missing or
+colliding style IDs cannot change the appearance; same-project paste keeps the live style link. Inspector edits
+override only the changed fields; nil can explicitly restore a field's default, and Reset removes the override to
+follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
+style/link versions and kinds remain serialized and undrawn with an open notice. The style browser is a later UI
+slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
+and `TextStyleRenderingTests`.
+
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript
 or a web view. The design audit in §11 is the floor for how the editor looks.
