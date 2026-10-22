@@ -45,6 +45,28 @@ public enum LoudnessError: Error, Equatable, CustomStringConvertible, Sendable {
 public enum LoudnessMeter {
     public static func integrated(_ channels: [[Float]], sampleRate: Double,
                                   channelWeights: [Double]? = nil) throws -> Double {
+        let (weights, block, hop, count) = try plan(channels, sampleRate: sampleRate, channelWeights: channelWeights)
+        let live = channels.indices.filter { weights[$0] != 0 }
+        let contributions = try live.map { channelIndex in
+            try filteredPower(channels[channelIndex], count: count, sampleRate: sampleRate,
+                              powerWeight: Float(weights[channelIndex] * weights[channelIndex]),
+                              channelIndex: channelIndex)
+        }
+        // The first channel's buffer becomes the sum (no add of zeros); the rest add in channel order.
+        var power = contributions.first ?? [Float](repeating: 0, count: count)
+        for contribution in contributions.dropFirst() {
+            power.withUnsafeMutableBufferPointer { sum in
+                contribution.withUnsafeBufferPointer { add in
+                    for frame in 0..<count { sum[frame] += add[frame] }
+                }
+            }
+        }
+        return try gated(power, block: block, hop: hop, count: count)
+    }
+
+    /// Validates the input and derives the weights and the 400 ms block / 100 ms hop sizes.
+    static func plan(_ channels: [[Float]], sampleRate: Double,
+                     channelWeights: [Double]?) throws -> (weights: [Double], block: Int, hop: Int, count: Int) {
         guard sampleRate.isFinite, sampleRate > 1_000 else { throw LoudnessError.invalidSampleRate(sampleRate) }
         guard let count = channels.first?.count else { throw LoudnessError.noChannels }
         guard channels.allSatisfy({ $0.count == count }) else { throw LoudnessError.unequalChannelLengths }
@@ -62,31 +84,50 @@ public enum LoudnessMeter {
             throw LoudnessError.invalidSampleRate(sampleRate)
         }
         guard count >= block else { throw LoudnessError.insufficientAudio(minimumFrames: block, actualFrames: count) }
+        return (weights, block, hop, count)
+    }
 
-        var power = [Float](repeating: 0, count: count)
-        for channelIndex in channels.indices where weights[channelIndex] != 0 {
-            var shelf = Biquad.highShelf(sampleRate: sampleRate)
-            var highPass = Biquad.highPass(sampleRate: sampleRate)
-            let powerWeight = Float(weights[channelIndex] * weights[channelIndex])
-            for frame in 0..<count {
-                let input = channels[channelIndex][frame]
-                guard input.isFinite else { throw LoudnessError.nonFiniteSample(channel: channelIndex, frame: frame) }
-                let value = highPass.process(shelf.process(input))
-                power[frame] += powerWeight * value * value
+    /// The K-weighted mean-square of one channel. The two biquads run fused in a single pass over a buffer
+    /// pointer (no per-sample bounds checks); the arithmetic matches `Biquad.process` sample for sample.
+    static func filteredPower(_ channel: [Float], count: Int, sampleRate: Double, powerWeight: Float,
+                              channelIndex: Int) throws -> [Float] {
+        let shelf = Biquad.highShelf(sampleRate: sampleRate)
+        let highPass = Biquad.highPass(sampleRate: sampleRate)
+        var out = [Float](repeating: 0, count: count)
+        try channel.withUnsafeBufferPointer { input in
+            try out.withUnsafeMutableBufferPointer { power in
+                var sX1: Float = 0, sX2: Float = 0, sY1: Float = 0, sY2: Float = 0
+                var hX1: Float = 0, hX2: Float = 0, hY1: Float = 0, hY2: Float = 0
+                for frame in 0..<count {
+                    let x = input[frame]
+                    guard x.isFinite else { throw LoudnessError.nonFiniteSample(channel: channelIndex, frame: frame) }
+                    let y = shelf.b0 * x + shelf.b1 * sX1 + shelf.b2 * sX2 - shelf.a1 * sY1 - shelf.a2 * sY2
+                    sX2 = sX1; sX1 = x; sY2 = sY1; sY1 = y
+                    let z = highPass.b0 * y + highPass.b1 * hX1 + highPass.b2 * hX2 - highPass.a1 * hY1 - highPass.a2 * hY2
+                    hX2 = hX1; hX1 = y; hY2 = hY1; hY1 = z
+                    power[frame] = powerWeight * z * z
+                }
             }
         }
+        return out
+    }
 
+    /// Block energies with two-stage gating (BS.1770 §2, equations (4)-(5)). The sliding window walks a
+    /// buffer pointer (no per-sample bounds checks); the additions run in the same order.
+    static func gated(_ power: [Float], block: Int, hop: Int, count: Int) throws -> Double {
         var energies: [Double] = []
         energies.reserveCapacity((count - block) / hop + 1)
-        var sum = power[..<block].reduce(0.0) { $0 + Double($1) }
-        var start = 0
-        while true {
-            energies.append(sum / Double(block))
-            let next = start + hop
-            if next + block > count { break }
-            for frame in start..<next { sum -= Double(power[frame]) }
-            for frame in (start + block)..<(next + block) { sum += Double(power[frame]) }
-            start = next
+        power.withUnsafeBufferPointer { buf in
+            var sum = buf[..<block].reduce(0.0) { $0 + Double($1) }
+            var start = 0
+            while true {
+                energies.append(sum / Double(block))
+                let next = start + hop
+                if next + block > count { break }
+                for frame in start..<next { sum -= Double(buf[frame]) }
+                for frame in (start + block)..<(next + block) { sum += Double(buf[frame]) }
+                start = next
+            }
         }
         let absolute = energies.filter { loudness($0) >= -70 }
         guard !absolute.isEmpty else { throw LoudnessError.silence }
@@ -98,10 +139,34 @@ public enum LoudnessMeter {
     }
 
     /// Runs filtering and gating on a detached task, so callers cannot accidentally measure on the UI executor.
+    /// Channels filter concurrently (each is an independent IIR chain); their powers add in channel order.
     public static func integratedDetached(_ channels: [[Float]], sampleRate: Double,
                                           channelWeights: [Double]? = nil) async throws -> Double {
         try await Task.detached(priority: .userInitiated) {
-            try integrated(channels, sampleRate: sampleRate, channelWeights: channelWeights)
+            let (weights, block, hop, count) = try Self.plan(channels, sampleRate: sampleRate, channelWeights: channelWeights)
+            var ordered: [(Int, [Float])] = []
+            try await withThrowingTaskGroup(of: (Int, [Float]).self) { group in
+                for channelIndex in channels.indices where weights[channelIndex] != 0 {
+                    group.addTask {
+                        (channelIndex, try Self.filteredPower(channels[channelIndex], count: count, sampleRate: sampleRate,
+                                                              powerWeight: Float(weights[channelIndex] * weights[channelIndex]),
+                                                              channelIndex: channelIndex))
+                    }
+                }
+                for try await part in group { ordered.append(part) }
+            }
+            ordered.sort { $0.0 < $1.0 }
+            // The first channel's buffer becomes the sum (no add of zeros); the rest add in channel order,
+            // the same left fold the sequential path computes.
+            var power = ordered.first?.1 ?? [Float](repeating: 0, count: count)
+            for (_, contribution) in ordered.dropFirst() {
+                power.withUnsafeMutableBufferPointer { sum in
+                    contribution.withUnsafeBufferPointer { add in
+                        for frame in 0..<count { sum[frame] += add[frame] }
+                    }
+                }
+            }
+            return try Self.gated(power, block: block, hop: hop, count: count)
         }.value
     }
 

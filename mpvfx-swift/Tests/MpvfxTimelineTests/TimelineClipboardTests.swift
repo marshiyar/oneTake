@@ -293,6 +293,7 @@ final class TimelineClipboardTests: XCTestCase {
         for n in 1...3 {
             var target = original
             target.id = "clip:target-\(n)"; target.startFrame = Double(n * 200)
+            target.binding = nil   // pasted clones never share the source's scoped DOM binding (see paste(_:at:))
             target.effects = [NativeClipEffect(id: "keep:\(n)", effectId: "blur", enabled: true, parameters: nil),
                               NativeClipEffect(id: "old:\(n)", effectId: "color-grading", enabled: true, parameters: [:])]
             d.sequence.tracks[0].clips.append(target)
@@ -304,7 +305,7 @@ final class TimelineClipboardTests: XCTestCase {
         for n in 1...3 {
             let target = try XCTUnwrap(clip(e, "clip:target-\(n)"))
             XCTAssertEqual(target.effects.map(\.effectId), ["blur", "color-grading"])
-            XCTAssertEqual(lut(target), "/projects/one/luts/warm.cube")
+            XCTAssertEqual(lut(target), "luts/warm.cube")
         }
         XCTAssertEqual(e.undoLabel, "Paste grade")
         XCTAssertTrue(e.undo()); XCTAssertEqual(e.document, before, "all three replacements undo together")
