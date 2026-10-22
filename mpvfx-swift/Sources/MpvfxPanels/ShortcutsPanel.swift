@@ -22,7 +22,6 @@ public struct ShortcutSection: Equatable, Sendable { public let title: String; p
 public let shortcutSections: [ShortcutSection] = {
     func s(_ t: String, _ h: [(String, String)]) -> ShortcutSection { ShortcutSection(title: t, hints: h.map { ShortcutHint(key: $0.0, label: $0.1) }) }
     return [
-<<<<<<< HEAD
         s("File", [("⇧⌘E", "Save frame… (JPEG)")]),
         s("Playback", [("⌥Space", "Record / stop voice"), ("Esc", "Discard voice take"), ("Space", "Play / Pause; keep voice take"), ("J", "Play backward"), ("K", "Stop"), ("L", "Play forward"), ("M", "Add sequence marker"),
                        ("⇧L", "Toggle loop"), ("←/→", "Step 1 frame"), ("⇧←/⇧→", "Step 10 frames"), ("F", "Toggle fullscreen")]),
