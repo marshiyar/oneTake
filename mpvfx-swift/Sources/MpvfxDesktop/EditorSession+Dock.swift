@@ -27,6 +27,7 @@ extension EditorSession {
         let dockStore = DockLayoutStore(userData: userData)
         let router = EditorShellRouter(layout: layout, dock: DockView(layout: DockDefaults.layout(.editor), registry: .editor))
         router.isFullscreen = { [weak self] in self?.player.view.isFullscreen ?? false }
+        router.stageCursor = { [weak self] in self?.player.stageCursor ?? .arrow }
         installPreview(userData: userData)
         // Track height, zoom and the magnet persist with the UI preferences.
         let region = TimelineRegion(controller: timeline, preferences: FileTimelineUIPreferencesStore(
@@ -35,12 +36,16 @@ extension EditorSession {
         region.media = makeTimelineMediaFeeder()
         installEditHistory(userData: userData)
         ensurePlayTimer = afterKey
+        router.globalVoiceKey = { [weak self] key in self?.voiceKey(key) ?? false }
         let ti = TimelineInput(self, region: region, afterKey: afterKey), pi = PlayerInput(self, afterKey: afterKey)
         shellInputs = [ti, pi]
         router.panes[.player] = ShellPane(input: pi) { [weak self] c, size in self?.drawPlayer(c, size: size) }
         router.panes[.timeline] = ShellPane(input: ti) { c, size in region.draw(c, size: size) }
+        router.panes[.timeline]?.hint = { [weak region] in region?.hint }
         router.needsDisplay = { [weak self] in self?.redraw() }
+        router.saveFailureStatus = { [weak self] in self?.saveFailureStatus }
         installPanels(router, userData: userData)
+        installDocumentPanels(router)
         installSettings(router, userData: userData)
         installTimelineHooks()
         router.restoreDock(store: dockStore, seeds: Self.dockSeeds(layout.prefs))
@@ -135,7 +140,7 @@ extension EditorShellRouter {
         let fallback = DockFile(workspaces: [DockFile.defaultWorkspace: DockDefaults.layout(registry, seeds: seeds)])
         var file = store.load(registry: registry, fallback: fallback)
         var layout = file.layout ?? DockDefaults.layout(registry, seeds: seeds)
-        for spec in registry.specs where !layout.isOpen(spec.id) && layout.closed[spec.id] == nil {
+        for spec in registry.specs where !spec.startsClosed && !layout.isOpen(spec.id) && layout.closed[spec.id] == nil {
             layout = Self.opening(spec.id, in: layout, registry: registry)
         }
         dock.setLayout(layout)

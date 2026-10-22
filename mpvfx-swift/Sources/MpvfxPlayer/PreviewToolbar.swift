@@ -89,10 +89,7 @@ public final class PreviewToolbar {
         } else if cropAvailable && !cropApplying {
             place(.crop, textWidth(c, "Crop", Self.label) + 16, 28.5)
         }
-        if onToggleRecording != nil {
-            let text = max(textWidth(c, "Record", Self.small), textWidth(c, "Armed", Self.small))   // one width for every state
-            out.append((.record, CanvasRect(x: Self.paddingX, y: midY - 14, width: 8 + 8 + 6 + text + 8, height: 28)))
-        }
+        if onToggleRecording != nil { out.append((.record, recordRect(c))) }
         if gridPopoverOpen, let r = popoverRect(width: width, c) {
             out.append((.popover, r))
             let rows = presetRects(r, c)
@@ -213,14 +210,7 @@ public final class PreviewToolbar {
                            font: CanvasFont(size: 11, weight: .semibold), color: Self.onAccent.withAlpha(dim))
             }
         }
-        if let r = rect(.record) {
-            if recording != .idle { c.fillRoundedRect(r, radius: 4, Self.red500.withAlpha(recording == .recording ? 0.35 : 0.18)) }
-            else if hovered == .record { c.fillRoundedRect(r, radius: 4, PanelStyle.neutral800) }
-            let dot = CanvasRect(x: r.x + 8, y: r.y + (r.height - 8) / 2, width: 8, height: 8)
-            c.fillRoundedRect(dot, radius: recording == .recording ? 2 : 4, Self.red500)
-            let label = recording == .recording ? "Stop" : recording == .armed ? "Armed" : "Record"
-            c.drawText(label, at: .init(dot.maxX + 6, r.y + (r.height - 11) / 2), font: Self.small, color: recording == .idle ? PanelStyle.neutral300 : PanelTheme.red400)
-        }
+        if let r = rect(.record) { drawRecord(c, r) }
         if gridPopoverOpen, let r = popoverRect(width: width, c) {
             c.fillRoundedRect(r, radius: 8, PanelStyle.neutral800)
             c.strokeRoundedRect(r.insetBy(0.5), radius: 7.5, PanelStyle.neutral700, width: 1)
@@ -240,6 +230,7 @@ public final class PreviewToolbar {
             }
             c.drawText("Snap to grid", at: .init(box.maxX + 8, rowY + 3), font: Self.xs, color: white.withAlpha(0.8))
         }
+        if hovered == .record, let r = rect(.record) { drawRecordTip(c, r) }
     }
 }
 

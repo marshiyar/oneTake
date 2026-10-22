@@ -96,7 +96,7 @@ extension ProjectDocumentStore {
         let txn = UUID().uuidString.lowercased()
         let backup = "\(JOURNAL_PARENT)/deleted-media/\(txn)/\(PosixPath.basename(source))"
         _ = try resolveMovePath(directory, backup, createParents: true, durableWrite: durableWriter)
-        let next = assetIds.isEmpty ? content : try serializeNativeProjectDocument(doc)
+        let next = assetIds.isEmpty ? content : try serializeNativeProjectDocument(reconcileNativeCutTransitions(doc))
         try commit(next, moves: [ProjectFileMove(from: source, to: backup, expectedVersion: version)],
                    label: "Delete media \(PosixPath.basename(source))")
         return .init(path: backup, content: next, updatedAssets: assetIds.count, removedClips: placed.count)

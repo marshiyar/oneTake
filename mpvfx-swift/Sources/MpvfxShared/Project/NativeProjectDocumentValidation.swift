@@ -40,6 +40,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         pushIssue(&issues, .invalidCanvas, "canvas", "Canvas must be an object")
     }
     validateNativeEasingPresets(input["easingPresets"], &issues)
+    let textStyleIds = validateNativeTextStyles(input["textStyles"], &issues)
 
     var assetsById: [String: NativeJSONValue] = [:]
     let kinds = ["video", "audio", "image", "element"]
@@ -79,6 +80,8 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         pushIssue(&issues, .invalidTrack, "sequence.durationFrames", "Sequence duration must be a positive integer")
     }
     validateNativeCaptionTrack(sequence["captions"], "sequence.captions", &issues)
+    validateNativeSequenceMarkers(sequence["markers"], &issues)
+    validateNativeFill(input["compositionFill"], "compositionFill", allowInherit: false, assets: assetsById, &issues)
     guard let tracks = sequence["tracks"]?.arrayValue else {
         pushIssue(&issues, .invalidTrack, "sequence.tracks", "Tracks must be an array"); return issues
     }
@@ -86,7 +89,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
     let audioGroupIds = validateAudioGroups(sequence["audioGroups"], &issues)
 
     var trackIds = Set<String>(), authoredLaneIds = Set<String>(), displayLaneIds = Set<Double>()
-    var clipIds = Set<String>(), bindingIdentities = Set<String>()
+    var clipIds = Set<String>(), bindingIdentities = Set<String>(), transitionIds = Set<String>()
     for (trackIndex, track) in tracks.enumerated() {
         let trackPath = "sequence.tracks[\(trackIndex)]"
         guard track.isRecord else { pushIssue(&issues, .invalidTrack, trackPath, "Track must be an object"); continue }
@@ -94,8 +97,13 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         collectDuplicateId(&trackIds, track["id"], "\(trackPath).id", &issues)
         let trackKind = str(track["kind"]).flatMap(NativeProjectTrackKind.init(rawValue:))
         if trackKind == nil { pushIssue(&issues, .invalidTrack, "\(trackPath).kind", "Track kind must be video, audio, or mixed") }
-        for flag in ["hidden", "locked"] where track[flag] != nil && track[flag]?.boolValue == nil {
+        for flag in ["hidden", "locked", "soloed"] where track[flag] != nil && track[flag]?.boolValue == nil {
             pushIssue(&issues, .invalidTrack, "\(trackPath).\(flag)", "Track \(flag) must be a boolean")
+        }
+        for (field, range) in [("mixerGainDB", -60.0...12.0), ("mixerPan", -1.0...1.0)] {
+            if let raw = track[field], raw.numberValue.map({ $0.isFinite && range.contains($0) }) != true {
+                pushIssue(&issues, .invalidTrack, "\(trackPath).\(field)", "Mixer value is outside its supported range")
+            }
         }
         if let lane = validateTrackLane(track["lane"], trackIndex, "\(trackPath).lane", &issues) {
             if displayLaneIds.contains(lane.displayTrack) {
@@ -161,12 +169,17 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["hidden"] != nil && clip["hidden"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).hidden", "Hidden must be a boolean")
             }
+            if clip["scaleRatioLocked"] != nil && clip["scaleRatioLocked"]?.boolValue == nil {
+                pushIssue(&issues, .invalidClip, "\(clipPath).scaleRatioLocked", "Scale ratio lock must be a boolean")
+            }
             if clip["preservesPitch"] != nil && clip["preservesPitch"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).preservesPitch", "Preserves pitch must be a boolean")
             }
             if clip["muted"] != nil && clip["muted"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).muted", "Muted must be a boolean")
             }
+            validateSpeedRamp(clip["speedRamp"], duration: clip["durationFrames"]?.numberValue,
+                              path: "\(clipPath).speedRamp", issues: &issues)
             if let rawSegments = clip["cropPivotSegments"] {
                 if let segments = rawSegments.arrayValue {
                     var pairs = Set<[String]>()
@@ -210,18 +223,43 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                 }
             }
             validateNativeClipFades(clip, clipPath, &issues)
+            validateNativeClipMoves(clip["moves"], clipDuration: clip["durationFrames"]?.numberValue, "\(clipPath).moves", &issues)
             validateNativeClipPresentation(clip, clipPath, &issues)
+            validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
+            if let generator = clip["generator"] {
+                let path = "\(clipPath).generator"
+                validateNativeFill(generator, path, allowInherit: false, assets: assetsById, &issues)
+                if assetKind != "element" || clip["text"] != nil {
+                    pushIssue(&issues, .invalidClip, path, "Generators need an element clip without text")
+                }
+                if generator["v"]?.numberValue == 1, let kind = generator["kind"]?.stringValue,
+                   NativeFill.clipKinds.contains(kind), !["color", "gradient"].contains(kind) {
+                    pushIssue(&issues, .invalidFill, path, "Generators support solid colours and gradients")
+                }
+            }
+            validateNativeFill(clip["fill"], "\(clipPath).fill", allowInherit: true, assets: assetsById, &issues)
+            validateNativeClipBeats(clip, asset, clipPath, &issues)
+            validateNativeClipNarration(clip["narration"], assetKind: asset == nil ? nil : assetKind, "\(clipPath).narration", &issues)
+            validateNativeTextStyleLink(clip, textStyleIds, clipPath, &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }
             validateStaticParameters(clip["staticParameters"], "\(clipPath).staticParameters", &issues)
-            if let asset, assetKind == "video" || assetKind == "audio", isNonNegativeInteger(clip["sourceInFrame"]),
-               isPositiveInteger(clip["durationFrames"]), isPositiveInteger(asset["durationFrames"]), let playbackRate, validFraction {
+            if validateNativeClipHold(clip, asset, clipPath, &issues), let asset, assetKind == "video" || assetKind == "audio",
+               let sourceInFrame = clip["sourceInFrame"]?.numberValue, isNonNegativeInteger(clip["sourceInFrame"]),
+               let durationFrames = clip["durationFrames"]?.numberValue, isPositiveInteger(clip["durationFrames"]),
+               let assetDurationFrames = asset["durationFrames"]?.numberValue, isPositiveInteger(asset["durationFrames"]),
+               let playbackRate, validFraction {
                 let f = fraction.map { NativePlaybackRate(numerator: $0["numerator"]!.numberValue!, denominator: $0["denominator"]!.numberValue!) }
                 let exceeds: Bool
                 do {
-                    exceeds = try sourceRangeExceedsAsset(clip["sourceInFrame"]!.numberValue!, clip["durationFrames"]!.numberValue!,
-                                                          playbackRate, asset["durationFrames"]!.numberValue!, f)
+                    if let rawRamp = clip["speedRamp"],
+                       let ramp = try? rawRamp.decode(NativeSpeedRamp.self), ramp.isSupported {
+                        let start = sourceInFrame + (f.map { $0.numerator / $0.denominator } ?? 0)
+                        exceeds = start + ramp.sourcePosition(atClipFrame: durationFrames) > assetDurationFrames
+                    } else {
+                        exceeds = try sourceRangeExceedsAsset(sourceInFrame, durationFrames, playbackRate, assetDurationFrames, f)
+                    }
                 } catch {
                     // Overflow mapping: the exact answer needs more than 64 bits. The only way Int64 overflows with safe-integer
                     // inputs is an extreme rate/fraction denominator product; we report the clip as out of bounds, the
@@ -282,8 +320,45 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                                     isPositiveInteger(clip["durationFrames"]) ? clip["durationFrames"]!.numberValue! : nil,
                                     "\(clipPath).parameterTracks", &issues, engine: engine)
         }
+        validateNativeTrackTransitions(track, trackPath, &transitionIds, &issues)
     }
     return issues
+}
+
+private func validateSpeedRamp(_ raw: NativeJSONValue?, duration: Double?, path: String, issues: inout Issues) {
+    guard let raw else { return }
+    guard raw.isRecord, let version = raw["v"]?.numberValue, jsIsInteger(version),
+          let kind = raw["kind"]?.stringValue else {
+        pushIssue(&issues, .invalidSpeedRamp, path, "Speed ramp must be a versioned object with v and kind")
+        return
+    }
+    // Forward-compatible objects are retained but intentionally not interpreted.
+    guard version == Double(NativeSpeedRamp.version), kind == NativeSpeedRamp.supportedKind else { return }
+    guard let points = raw["points"]?.arrayValue else {
+        pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp points must be an array")
+        return
+    }
+    if points.isEmpty { pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp needs at least one point") }
+    if points.count > 64 { pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp supports at most 64 points") }
+    var previous = -Double.infinity
+    for (index, point) in points.enumerated() {
+        let p = "\(path).points[\(index)]"
+        guard point.isRecord else { pushIssue(&issues, .invalidSpeedRamp, p, "Speed ramp point must be an object"); continue }
+        if let t = point["t"]?.numberValue, t.isFinite {
+            if t < 0 || (duration.map { t > $0 } ?? false) {
+                pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp point time must be within the clip")
+            }
+            if t <= previous { pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp points must be strictly sorted by t") }
+            previous = t
+        } else { pushIssue(&issues, .invalidSpeedRamp, "\(p).t", "Speed ramp point time must be finite") }
+        if !(point["speed"]?.numberValue.map { $0.isFinite && $0 >= 0.1 && $0 <= 10 } ?? false) {
+            pushIssue(&issues, .invalidSpeedRamp, "\(p).speed", "Speed must be finite and between 0.1 and 10")
+        }
+        if let ease = point["ease"] {
+            do { _ = try ease.decode(NativeInterpolation.self) }
+            catch { pushIssue(&issues, .invalidSpeedRamp, "\(p).ease", "Speed ramp ease must be hold, linear, or cubic-bezier") }
+        }
+    }
 }
 
 /// `sequence.audioGroups`: each bus's id, label, fader gain, mute and serialized FX/automation. Returns the bus ids.

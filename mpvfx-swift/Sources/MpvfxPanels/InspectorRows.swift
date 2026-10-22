@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxTimeline
 
 /// Row descriptors of the flat inspector. Rows are rebuilt from the document
 /// on every draw and event; they carry closures that edit through TimelineEditor, never state of their own.
@@ -26,6 +27,9 @@ public struct InspectorRow {
         public var stopwatch: () -> Void
         public var prev: (() -> Void)?
         public var next: (() -> Void)?
+        /// The property's kind and the playhead key's interpolation: the ◆ draws the timeline's mark for them.
+        public var kind: TimelineKeyframeKind = .transform
+        public var ease: TimelineKeyframeEase = .linear
     }
     public struct Number {
         public var key: String
@@ -38,6 +42,16 @@ public struct InspectorRow {
         /// Label drag scrubs the value: (current value, units per pixel, apply on release).
         public var scrub: (value: Double, step: Double, apply: (Double) -> Void, format: (Double) -> String)?
         public var disabled = false
+        public var icon: PanelIcon? = nil
+        /// Shown in the normal ink and focusable, its text selected while focused, but never edited (Media start).
+        public var readOnly = false
+        /// A colour value's swatch before its text (issue #189): `color` nil draws the checkerboard; a press on its
+        /// 24 pt target presses the button `key` (the row's controls carry it).
+        public var swatch: Swatch?
+    }
+    public struct Swatch {
+        public var color: String?
+        public var key: String
     }
     public struct Slider {
         public var key: String
@@ -52,10 +66,18 @@ public struct InspectorRow {
         public var reset: (() -> Void)?
         public var keyframe: Keyframe?
         public var disabled = false
+        public var icon: PanelIcon? = nil
         /// A trailing 12px settings gear after the slider (`flex items-center gap-1.5`, Finish rows).
         public var settings: (active: Bool, toggle: () -> Void)?
         /// Drags along y, bottom = min (the Tone EQ's faders).
         public var vertical = false
+        /// A detent: a drag within `detentReach` of the track's span from it lands on it (Rate's 1x).
+        public var detent: Double?
+        /// Keyboard increment in track units; nil uses one percent of the range.
+        public var step: Double?
+        /// Converts the displayed unit to track units when the two differ (EV, rate, dB).
+        public var parseInput: ((String) -> Double?)?
+        public static let detentReach = 0.03
     }
     public struct Toggle {
         public var key: String
@@ -70,6 +92,8 @@ public struct InspectorRow {
         public var label: String
         public var options: [(key: String, label: String, active: Bool)]
         public var select: (String) -> Void
+        /// Optional vector icons; option labels remain the tooltip and accessible name.
+        public var icons: [String: PanelIcon] = [:]
     }
     public struct Button {
         public enum Style { case accent, muted, danger, chip, chipActive }
@@ -78,6 +102,7 @@ public struct InspectorRow {
         public var style: Style
         public var action: () -> Void
         public var disabled = false
+        public var icon: PanelIcon? = nil
     }
     public struct FxNode {
         public var key: String
@@ -207,8 +232,11 @@ public struct InspectorCustomRow {
     public var draw: (CanvasContext, CanvasRect, InspectorPanel) -> Void
     /// (part, point, phase) — phase: 0 down, 1 drag, 2 up.
     public var pointer: (Int, CanvasPoint, Int) -> Void
+    /// Keys for a focused part (part, key) -> handled. A row with a handler is never "pressed" by Enter or Space:
+    /// a press replays a pointer at the part's centre, which on a wheel or graph is an edit (issue #171).
+    public var keyPress: ((Int, EditorKey) -> Bool)?
     public init(id: String, height: Double, draw: @escaping (CanvasContext, CanvasRect, InspectorPanel) -> Void,
-                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }) {
-        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer
+                pointer: @escaping (Int, CanvasPoint, Int) -> Void = { _, _, _ in }, key: ((Int, EditorKey) -> Bool)? = nil) {
+        self.id = id; self.height = height; self.draw = draw; self.pointer = pointer; self.keyPress = key
     }
 }

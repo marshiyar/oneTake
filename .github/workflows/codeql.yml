@@ -3,17 +3,44 @@ name: codeql
 # GitHub's code scanning on the three kinds of code this repository holds: the Swift app (built on the macOS runner
 # with the pinned engine libraries, as mpvfx-ci does), the Python scripts behind CI and packaging, and the workflow
 # files themselves (the `actions` language: injection, unpinned actions, token scope). Results land under Security >
-# Code scanning. Runs on pull requests, pushes to main and weekly; separate from mpvfx-ci and never a required check.
+# Code scanning. Runs weekly, by hand, and on pull requests and pushes to main that touch security-relevant code
+# (see `on.paths`); separate from mpvfx-ci and never a required check. Every CodeQL job is paused while
+# CODEQL_PAUSED is not 'false' (owner ruling 2026-10-21); the throttle below applies once it is re-enabled.
 # The Swift analysis of main and of this repository's pull requests runs on OneTake-app's runner
 # pool (job swift-runners); python and actions always run here.
 
 on:
+  # Throttled: pull requests and pushes run only when security-relevant code changed (parsers and
+  # import/export in Runtime/Shared, platform shells and device I/O, the CI scripts and workflows
+  # themselves). The weekly schedule and hand runs are the safety net for everything else.
   pull_request:
     branches: [main]
-    paths-ignore: ['**/*.md', '**/docs/**']
+    paths:
+      - 'mpvfx-swift/Sources/MpvfxRuntime/**'
+      - 'mpvfx-swift/Sources/MpvfxShared/**'
+      - 'mpvfx-swift/Sources/MpvfxPlayer/**'
+      - 'mpvfx-swift/Sources/MpvfxBackend/**'
+      - 'mpvfx-swift/Sources/MpvfxAudio/**'
+      - 'mpvfx-swift/Sources/MpvfxAudioGraph/**'
+      - 'mpvfx-swift/Sources/CMpvfxWin32/**'
+      - 'mpvfx-swift/Sources/MpvfxDesktop/**'
+      - 'mpvfx-swift/scripts/**'
+      - '.github/workflows/**'
+      - '.github/ci/**'
   push:
     branches: [main]
-    paths-ignore: ['**/*.md', '**/docs/**']
+    paths:
+      - 'mpvfx-swift/Sources/MpvfxRuntime/**'
+      - 'mpvfx-swift/Sources/MpvfxShared/**'
+      - 'mpvfx-swift/Sources/MpvfxPlayer/**'
+      - 'mpvfx-swift/Sources/MpvfxBackend/**'
+      - 'mpvfx-swift/Sources/MpvfxAudio/**'
+      - 'mpvfx-swift/Sources/MpvfxAudioGraph/**'
+      - 'mpvfx-swift/Sources/CMpvfxWin32/**'
+      - 'mpvfx-swift/Sources/MpvfxDesktop/**'
+      - 'mpvfx-swift/scripts/**'
+      - '.github/workflows/**'
+      - '.github/ci/**'
   schedule:
     - cron: '35 3 * * 1'
   workflow_dispatch:
@@ -42,6 +69,8 @@ jobs:
         language: [python, actions]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: ${{ matrix.language }}

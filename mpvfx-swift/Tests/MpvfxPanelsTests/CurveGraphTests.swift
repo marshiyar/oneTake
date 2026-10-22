@@ -100,7 +100,7 @@ final class CurveGraphTests: XCTestCase {
     func geometryProblems(_ tab: (key: String, label: String, color: ThemePair, hue: Bool, min: Double, max: Double), _ pts: [[Double]]) throws -> [String] {
         let r = try Self.panel(tab: tab.key, points: pts)
         let rec = RecordingCanvas()
-        r.draw(rec, size: CanvasSize(409, 1900))
+        r.draw(rec, size: CanvasSize(409, 3000))
         let box = r.inspector.grade.curveBox, u = box.width / 144, frame = Self.graphFrame(box)
         let color = CanvasColor(tab.color.now), outline = CanvasColor(ThemeTokens.curvePointOutlinePair.now)
         let line = rec.ops.filter { $0.isStroke && $0.color == color && abs($0.width - 1.5 * u) < 1e-9 }
@@ -108,7 +108,10 @@ final class CurveGraphTests: XCTestCase {
         let what = "\(Theme.mode) \(tab.key) \(pts)"
         var problems: [String] = []
         if line.count != 1 { problems.append("\(what): \(line.count) curve lines, want 1") }
-        if markers.count != pts.count { problems.append("\(what): \(markers.count) point markers, want \(pts.count)") }
+        // One marker per point the renderer reads (the end points it adds included, none for a hue curve too short to
+        // render), so every bend of the line has a handle and no handle sits off the line.
+        let rendered = tab.hue ? GradeCurve.normalizedHue(pts, limit: tab.min...tab.max).count : GradeCurve.normalizedRGB(pts).count
+        if markers.count != rendered { problems.append("\(what): \(markers.count) point markers, want \(rendered)") }
         let stray = line.flatMap(\.points).filter { !(Self.contains(box, $0)) }
         if !stray.isEmpty { problems.append("\(what): line vertices outside the graph \(box): \(stray.prefix(3))") }
         let clips = (line + markers).map(\.clip)
@@ -146,7 +149,14 @@ final class CurveGraphTests: XCTestCase {
         let base = render(plain).straightRGBA(), frame = Self.graphFrame(plain.inspector.grade.curveBox)
         var problems: [String] = []
         for (k, pts) in sets.enumerated() {
-            let t = render(try Self.panel(tab: tab.key, points: pts))
+            let edited = try Self.panel(tab: tab.key, points: pts)
+            let t = render(edited)
+            // Besides the graph, an edited curve changes only its own controls (issue #177): the tab's "edited" mark
+            // and the footer buttons that now have something to reset.
+            let controls = edited.inspector.hits.regions.filter {
+                if case .custom(let id, _) = $0.action { return id == "grade:curvetabs" || id == "grade:curvefoot" }
+                return false
+            }.map(\.rect)
             if k == 0, let dir = ProcessInfo.processInfo.environment["MPVFX_SNAPSHOT_DIR"] {
                 try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
                 _ = t.writePNG("\(dir)/curve-graph-\(tab.key)-\(Theme.mode.rawValue).png")
@@ -159,7 +169,7 @@ final class CurveGraphTests: XCTestCase {
                 let pixel = i / 4
                 return CanvasPoint(Double(pixel % 409) + 0.5, Double(pixel / 409) + 0.5)
             }
-            let outside = changed.filter { !Self.contains(frame, $0) }
+            let outside = changed.filter { p in !Self.contains(frame, p) && !controls.contains { Self.contains($0.insetBy(-1), p) } }
             if !outside.isEmpty { problems.append("\(Theme.mode) \(tab.key) \(pts): \(outside.count) pixels changed outside the graph \(frame), e.g. \(outside.prefix(3))") }
             if changed.isEmpty { problems.append("\(Theme.mode) \(tab.key) \(pts): the curve did not change the graph") }
         }
@@ -167,9 +177,9 @@ final class CurveGraphTests: XCTestCase {
     }
 
     func render(_ r: RightPanel) -> CairoImageTarget {
-        let t = CairoImageTarget(width: 409, height: 1900)
-        t.canvas.fillRect(CanvasRect(x: 0, y: 0, width: 409, height: 1900), PanelTheme.studioBg)
-        r.draw(t.canvas, size: CanvasSize(409, 1900))
+        let t = CairoImageTarget(width: 409, height: 3000)
+        t.canvas.fillRect(CanvasRect(x: 0, y: 0, width: 409, height: 3000), PanelTheme.studioBg)
+        r.draw(t.canvas, size: CanvasSize(409, 3000))
         return t
     }
     #endif

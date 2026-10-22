@@ -18,6 +18,7 @@ import MpvfxCanvas
 import MpvfxTheme
 import MpvfxShared
 import MpvfxTimeline
+import MpvfxScopes
 import OneTakeKeyframes
 @testable import MpvfxPanels
 
@@ -48,11 +49,16 @@ final class PanelSnapshotTests: XCTestCase {
     /// Asserts pixel (x, y) in points is within `tol` of `hex` on every channel.
     func assertPixel(_ t: CairoImageTarget, _ x: Double, _ y: Double, scale: Double, _ hex: String, tol: Int = 6,
                      file: StaticString = #filePath, line: UInt = #line) {
+        assertPixel(t, x, y, scale: scale, CanvasColor(hex: hex)!, tol: tol, file: file, line: line)
+    }
+
+    /// Asserts pixel (x, y) in points is within `tol` of `want` (a theme token) on every channel.
+    func assertPixel(_ t: CairoImageTarget, _ x: Double, _ y: Double, scale: Double = 1, _ want: CanvasColor, tol: Int = 6,
+                     file: StaticString = #filePath, line: UInt = #line) {
         let p = t.pixel(Int(x * scale), Int(y * scale))
-        let want = CanvasColor(hex: hex)!
         let w = (Int(want.r * 255 + 0.5), Int(want.g * 255 + 0.5), Int(want.b * 255 + 0.5))
         let ok = abs(Int(p.r) - w.0) <= tol && abs(Int(p.g) - w.1) <= tol && abs(Int(p.b) - w.2) <= tol
-        XCTAssertTrue(ok, "pixel (\(x),\(y))@\(scale)x = rgb(\(p.r),\(p.g),\(p.b)), want \(hex)", file: file, line: line)
+        XCTAssertTrue(ok, "pixel (\(x),\(y))@\(scale)x = rgb(\(p.r),\(p.g),\(p.b)), want rgb\(w)", file: file, line: line)
     }
 
     /// A 320×180 test frame (light slide with a dark rule), standing in for a decoded thumbnail.
@@ -161,14 +167,14 @@ final class PanelSnapshotTests: XCTestCase {
             // (docs/DESIGN.md "Layout grid") the clip header is 48 with its hairline, group headers 40.
             assertPixel(t, 200, 79, scale: scale, "#141414")      // clip header hairline: 32 + 47
             assertPixel(t, 200, 82, scale: scale, "#1d1d1d")      // open Transform header (80…120)
-            assertPixel(t, 386, 99, scale: scale, "#71717a")      // open caret M2 4l4 4 4-4z at (381,94), text-3
+            assertPixel(t, 386, 99, scale: scale, "#a1a1aa")      // open caret M2 4l4 4 4-4z at (381,94), inspector-text
             assertPixel(t, 200, 124, scale: scale, "#191919")     // open body bg-panel-bg-inset from 120
             // Position: its label line 128…152, then the X and Y fields (154…182) between the gutter and the value edge
             // (393 − 128 = 265), 8 apart: X 16…136.5, Y 144.5…265.
             assertPixel(t, 100, 162, scale: scale, "#1d1d1d")     // Position X field, rounded bg-panel-bg
             assertPixel(t, 140, 162, scale: scale, "#191919")     // the column gap between the X and Y fields
             assertPixel(t, 280, 162, scale: scale, "#191919")     // past the value edge: the reserved keyframe gutter
-            assertPixel(t, 100, 176, scale: scale, "#272727", tol: 8)   // value underline border-panel-border-input/50
+            assertPixel(t, 100, 176, scale: scale, "#85858d", tol: 8)   // value underline, solid inspector-control
         }
         // FlatSegmentedRow: the active option sits on a 2px accent underline; KeyframeNavigation's active diamond.
         for scale in [1.0, 2.0] {
@@ -186,7 +192,8 @@ final class PanelSnapshotTests: XCTestCase {
             XCTAssertEqual(rects.first?.x ?? 0, 104, accuracy: 0.01); XCTAssertEqual(rects.last?.maxX ?? 0, 249, accuracy: 0.01)
             assertPixel(t, rects[0].midX, 29, scale: scale, "#4c8df0", tol: 10)
             assertPixel(t, rects[1].midX, 29, scale: scale, "#191919")
-            assertPixel(t, w - 36, 48 + 0.5, scale: scale, "#5a98f0", tol: 12)   // 9px diamond centre in the second 24 pt cell
+            // The ◆ on a key is the property kind's mark (#201): a transform key, filled in keyframeTransformPair, in the second 24 pt cell.
+            assertPixel(t, w - 36, 48 + 0.5, scale: scale, "#f0e042", tol: 12)
         }
     }
 
@@ -205,10 +212,10 @@ final class PanelSnapshotTests: XCTestCase {
     func testGradeCurveLinesShowInLightMode() throws {
         Theme.setMode(.light); defer { Theme.setMode(.dark) }
         for scale in [1.0, 2.0] {
-            let r = try Self.rightFixture(open: "grade", h: 1900)
+            let r = try Self.rightFixture(open: "grade", h: 3000)
             for tab in InspectorPanel.curveTabs {
                 r.inspector.grade.curveTab = tab.key
-                let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 1900, scale: scale) { r.draw($0, size: CanvasSize(409, 1900)) }
+                let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 3000, scale: scale) { r.draw($0, size: CanvasSize(409, 3000)) }
                 let box = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:curve", 0) }).insetBy(6)
                 // Default curves: Master/R/G/B the identity diagonal, hue curves flat at 0 (mid-height).
                 let lineY = tab.hue ? box.midY : box.maxY - 0.375 * box.height
@@ -272,52 +279,126 @@ final class PanelSnapshotTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) }).y, gridTop - 30, accuracy: 0.5)
     }
 
-    /// Opening Scopes shows the status, the mode tabs and the scope of the host's graded frame; tabs switch mode.
+    /// Opening Scopes asks the host for a frame at the analysis size and shows the status, a chip per scope, the
+    /// scale / target / zoom / gain controls and the shown scopes (waveform beside the vectorscope); chips add scopes.
     func testGradeScopesOpen() throws {
         let r = try Self.rightFixture(open: "grade", h: 1900)
-        var px = [UInt8](repeating: 255, count: 64 * 36 * 4)
-        for i in 0..<(64 * 36) { let v = UInt8((i % 64) * 4); px[i * 4] = v; px[i * 4 + 1] = v; px[i * 4 + 2] = v }
-        let frame = CanvasImage(width: 64, height: 36, rgba: px)
+        let frame = ScopesPanelTests.ramp()
         var asked = 0
-        r.inspector.scopeFrame = { id, w, _ in asked += 1; XCTAssertEqual(id, "clip:a"); XCTAssertEqual(w, 320); return .ready(frame) }
+        r.inspector.scopeFrame = { id, w, h in
+            asked += 1; XCTAssertEqual(id, "clip:a")
+            XCTAssertEqual(w, InspectorPanel.scopeFrameSide); XCTAssertEqual(h, InspectorPanel.scopeFrameSide)
+            return .ready(frame)
+        }
         let c = PanelMeasureCanvas()
         r.draw(c, size: CanvasSize(409, 1900))
         XCTAssertEqual(asked, 0, "closed scopes capture nothing")
-        let toggle = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
-        XCTAssertTrue(r.inspector.pointerDown(CanvasPoint(toggle.midX, toggle.midY))); r.inspector.pointerUp(CanvasPoint(toggle.midX, toggle.midY))
+        try click(r, part: 0)
         XCTAssertTrue(r.inspector.grade.scopesOpen)
         c.reset(); r.draw(c, size: CanvasSize(409, 1900))
         XCTAssertGreaterThan(asked, 0)
-        for s in ["ready", "Histogram", "Waveform", "RGB Parade", "Vectorscope"] { XCTAssertTrue(c.drawnStrings.contains(s), s) }
+        r.inspector.scopeWorker.wait()
+        c.reset(); r.draw(c, size: CanvasSize(409, 1900))
+        let labels = ["ready", "Waveform", "RGB", "Parade", "Vector", "Histogram", "False color", "%", "10-bit", "75%", "100%",
+                      "Zoom 1x", "Gain 1x", "Luma waveform", "Vectorscope · 75%"]
+        for s in labels { XCTAssertTrue(c.drawnStrings.contains(s), s) }
+        let open = 28 + 22 + 22 + 6 + ScopeLayout.height([.waveform, .vectorscope], width: 377) + 7
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
-        // Open, the Scopes row (header 28, the 32 pt mode tabs, 6, the 375 × 168.75 scope in its 2 pt border, 7) fills
-        // a 248 slot instead of the closed 40 (see testGradeScopesRowAndRetryPlaceTheGrid).
-        XCTAssertEqual(tile.y, 80 + 40 + 8 + 248 + 12 + 24 + 6, accuracy: 1, "the open scopes push the grid down")
-        let parade = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 4) })
-        XCTAssertTrue(r.inspector.pointerDown(CanvasPoint(parade.midX, parade.midY))); r.inspector.pointerUp(CanvasPoint(parade.midX, parade.midY))
-        XCTAssertEqual(r.inspector.grade.scopeMode, .parade)
-        for scale in [1.0, 2.0] {
-            let t = snapshot("inspector-grade-scopes", w: 409, h: 700, scale: scale) { r.draw($0, size: CanvasSize(409, 700)) }
-            _ = t
+        XCTAssertEqual(tile.y, 80 + 40 + 8 + PanelGrid.snapUp(open) + 12 + 24 + 6, accuracy: 1, "the open scopes push the grid down")
+        let parade = try XCTUnwrap(ScopeKind.allCases.firstIndex(of: .parade))
+        try click(r, part: 2 + parade)
+        XCTAssertEqual(r.inspector.grade.scopes.kinds, [.waveform, .vectorscope, .parade])
+        let checks: [(Int, () -> Bool)] = [(11, { r.inspector.grade.scopes.scale == .code10 }),
+                                           (13, { r.inspector.grade.scopes.targetAmplitude == 1 }),
+                                           (14, { r.inspector.grade.scopes.zoom == 2 }), (16, { r.inspector.grade.scopes.gain == 2 })]
+        for (part, check) in checks {
+            try click(r, part: part)
+            XCTAssertTrue(check(), "part \(part)")
         }
     }
 
-    /// Scope analysis and drawing: a horizontal grey ramp fills the waveform diagonally, the histogram evenly, and
-    /// sits on the vectorscope's centre.
-    func testColorScopesAnalysis() {
-        var px = [UInt8](repeating: 255, count: 256 * 4 * 4)
-        for y in 0..<4 { for x in 0..<256 { let i = (y * 256 + x) * 4; px[i] = UInt8(x); px[i + 1] = UInt8(x); px[i + 2] = UInt8(x) } }
-        let a = ColorScopes.analyze(CanvasImage(width: 256, height: 4, rgba: px))
-        XCTAssertEqual(a.histogram.reduce(0, +), 256 * 4 * 255)
-        XCTAssertEqual(a.waveform[10 * 256 + 245], 4 * 255, "column 10 is luma 10, drawn 10 up from the bottom")
-        XCTAssertEqual(a.vectorscope[127 * 256 + 128] + a.vectorscope[128 * 256 + 128] + a.vectorscope[127 * 256 + 127] + a.vectorscope[128 * 256 + 127], 256 * 4 * 255, "greys have no chroma")
-        let empty = ColorScopes.render(.waveform, nil)
-        XCTAssertEqual(empty.width, 320); XCTAssertEqual(empty.height, 144)
-        XCTAssertEqual(Array(empty.rgba[0..<3]), [9, 11, 14], "the #090b0e grid")
-        for m in ColorScopes.Mode.allCases {
-            let img = ColorScopes.render(m, a)
-            XCTAssertNotEqual(img.rgba, empty.rgba, "\(m) draws the frame")
+    /// Clicks the Scopes row's `part` (after a draw has recorded the hit regions).
+    func click(_ r: RightPanel, part: Int) throws {
+        r.draw(PanelMeasureCanvas(), size: CanvasSize(409, 1900))
+        let rect = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", part) }, "part \(part)")
+        XCTAssertTrue(r.inspector.pointerDown(CanvasPoint(rect.midX, rect.midY))); r.inspector.pointerUp(CanvasPoint(rect.midX, rect.midY))
+    }
+
+    /// The scopes in the right column of a 1440 x 900 window (409 wide), in dark and in light: black scope tiles in
+    /// both; the ramp's waveform lit from black (bottom left) to white (top right); on the vectorscope the greys on the
+    /// centre and each 75 % bar inside its drawn target.
+    func testGradeScopesSnapshotInDarkAndLight() throws {
+        defer { Theme.setMode(.dark) }
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            let r = try Self.rightFixture(open: "grade", h: 900)
+            r.inspector.grade.scopesOpen = true
+            r.inspector.scopeFrame = { _, _, _ in .ready(ScopesPanelTests.barsOverRamp()) }
+            r.draw(PanelMeasureCanvas(), size: CanvasSize(409, 900))
+            r.inspector.scopeWorker.wait()
+            for scale in [1.0, 2.0] {
+                // A first draw at this scale asks for traces at its device pixels; the host redraws when they are ready.
+                let first = CairoImageTarget(width: Int(409 * scale), height: Int(900 * scale))
+                first.canvas.scale(scale, scale); r.draw(first.canvas, size: CanvasSize(409, 900)); r.inspector.scopeWorker.wait()
+                let t = snapshot("inspector-grade-scopes-\(mode.rawValue)", w: 409, h: 900, scale: scale) { r.draw($0, size: CanvasSize(409, 900)) }
+                let row = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
+                let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + 28 + 22 + 22 + 6, width: 377)
+                try assertScopeTiles(t, tiles, scale: scale)
+            }
         }
+    }
+
+    /// The other four scopes (RGB overlay, parade, histogram, false colour) on the 10-bit scale, dark and light, for
+    /// review: the false-colour tile paints the white bar red (clipped) and the black bar purple (crushed).
+    func testOtherScopesSnapshotInDarkAndLight() throws {
+        defer { Theme.setMode(.dark) }
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            let r = try Self.rightFixture(open: "grade", h: 900)
+            r.inspector.grade.scopesOpen = true
+            for k in [ScopeKind.overlay, .parade, .histogram, .falseColor] { r.inspector.grade.scopes.toggle(k) }
+            r.inspector.grade.scopes.scale = .code10
+            XCTAssertEqual(r.inspector.grade.scopes.kinds, [.overlay, .parade, .histogram, .falseColor])
+            r.inspector.scopeFrame = { _, _, _ in .ready(ScopesPanelTests.barsOverRamp()) }
+            let first = CairoImageTarget(width: 818, height: 1800)
+            first.canvas.scale(2, 2); r.draw(first.canvas, size: CanvasSize(409, 900)); r.inspector.scopeWorker.wait()
+            let t = snapshot("inspector-grade-scopes-others-\(mode.rawValue)", w: 409, h: 900, scale: 2) { r.draw($0, size: CanvasSize(409, 900)) }
+            let row = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:scopes", 0) })
+            let tiles = ScopeLayout.tiles(r.inspector.grade.scopes.kinds, x: 16, y: row.y + 28 + 22 + 22 + 6, width: 377)
+            let fc = try XCTUnwrap(tiles.first { $0.kind == .falseColor }).rect
+            let area = InspectorPanel.containRect(160, 90, in: CanvasRect(x: fc.x + 6, y: fc.y + 18, width: fc.width - 22, height: fc.height - 24))
+            let clipped = t.pixel(Int((area.x + area.width / 16) * 2), Int((area.y + 4) * 2))
+            XCTAssertEqual([clipped.r, clipped.g, clipped.b], [255, 0, 0], "the white bar is clipped: red")
+            let crushed = t.pixel(Int((area.maxX - area.width / 16) * 2), Int((area.y + 4) * 2))
+            XCTAssertEqual([crushed.r, crushed.g, crushed.b], [128, 0, 160], "the black bar is crushed: purple")
+        }
+    }
+
+    func assertScopeTiles(_ t: CairoImageTarget, _ tiles: [(kind: ScopeKind, rect: CanvasRect)], scale: Double) throws {
+        let wave = try XCTUnwrap(tiles.first { $0.kind == .waveform }).rect
+        let vector = try XCTUnwrap(tiles.first { $0.kind == .vectorscope }).rect
+        let plot = ScopeTile.plotRect(wave), vp = ScopeTile.vectorPlot(vector)
+        XCTAssertLessThan(luma(t, wave.x + 4, wave.maxY - 3, scale), 30, "the scope ground is black in both modes")
+        XCTAssertGreaterThan(luma(t, plot.x + 0.25, plot.maxY - 0.25, scale), 120, "black is drawn (bottom left)")
+        XCTAssertGreaterThan(luma(t, plot.maxX - 0.25, plot.y + 0.25, scale), 120, "white is drawn (top right)")
+        XCTAssertLessThan(luma(t, plot.x + 4, plot.y + plot.height * 0.3, scale), 60, "nothing above the diagonal at the left")
+        XCTAssertGreaterThan(brightest(t, vp.midX, vp.midY, scale), 120, "greys sit on the centre")
+        for target in ScopeTargets.bars(.rec709, amplitude: 0.75) {
+            let p = ScopeGeometry.vectorPoint(cb: target.cb, cr: target.cr, zoom: 1)
+            XCTAssertGreaterThan(brightest(t, vp.x + p.x * vp.width, vp.y + p.y * vp.height, scale), 120, "\(target.name) on its target")
+        }
+    }
+
+    /// The brightest luma within a pixel of (x, y): a one-bin trace is one device pixel, wherever rounding put it.
+    func brightest(_ t: CairoImageTarget, _ x: Double, _ y: Double, _ scale: Double) -> Double {
+        var best = 0.0
+        for dy in -1...1 { for dx in -1...1 { best = max(best, luma(t, x + Double(dx) / scale, y + Double(dy) / scale, scale)) } }
+        return best
+    }
+
+    func luma(_ t: CairoImageTarget, _ x: Double, _ y: Double, _ scale: Double) -> Double {
+        let p = t.pixel(Int(x * scale), Int(y * scale))
+        return 0.2126 * Double(p.r) + 0.7152 * Double(p.g) + 0.0722 * Double(p.b)
     }
 
     /// Effects with nothing active: "Add effect", the family tabs (Essentials
@@ -412,6 +493,47 @@ final class PanelSnapshotTests: XCTestCase {
             r.inspector.focus.current = .group("layout"); r.inspector.focus.visible = true
             t = snapshot("inspector-focus", w: 409, h: 1040, scale: scale) { r.draw($0, size: CanvasSize(409, 1040)) }
             assertPixel(t, 200, 121, scale: scale, "#4c8df0", tol: 30)
+        }
+    }
+
+    /// Issue #149: the Transform group with keys on both sides of the playhead (rotation on a key), at the right
+    /// panel's default width in the 1440 × 900 and 1280 × 800 windows, dark and light, with the keyboard focus ring
+    /// on each of rotation's four keyframe controls in turn. Each control is a 24pt square with its glyph centred.
+    func testInspectorKeyframeTargets() throws {
+        defer { Theme.setMode(.dark) }
+        for mode in ThemeMode.allCases {
+            Theme.setMode(mode)
+            for (window, height) in [(1440.0, 900.0), (1280.0, 800.0)] {
+                let w = PanelFit.defaults(window).right, size = CanvasSize(w, height)
+                let r = try TargetSizeTests.design(open: "layout", keyed: true)
+                r.draw(PanelMeasureCanvas(), size: size)
+                let watch = try XCTUnwrap(r.inspector.hits.rect { $0 == .stopwatch("rotation") })
+                let diamond = try XCTUnwrap(r.inspector.hits.rect { $0 == .keyframe("rotation") })
+                XCTAssertEqual(diamond.x - watch.x, 2 * PanelTheme.minTarget, "stopwatch, ‹ and ◆ edge to edge")
+                let tag = "inspector-keyframes-\(mode)-\(Int(window))x\(Int(height))"
+                for (name, hit) in [("stopwatch", InspectorPanel.Hit.stopwatch("rotation")), ("prev", .kfPrev("rotation")),
+                                    ("diamond", .keyframe("rotation")), ("next", .kfNext("rotation"))] {
+                    r.inspector.focus.current = hit; r.inspector.focus.visible = true
+                    let t = snapshot("\(tag)-focus-\(name)", w: w, h: height, scale: 1) { r.draw($0, size: size) }
+                    let ring = try XCTUnwrap(r.inspector.hits.rect { $0 == hit })
+                    assertPixel(t, ring.midX, ring.y - 1, PanelTheme.accent, tol: 40)   // the ring just above the target
+                }
+                r.inspector.focus.visible = false
+                let t = snapshot(tag, w: w, h: height, scale: 1) { r.draw($0, size: size) }
+                // Rotation sits on a key: the diamond is its kind's mark (#201), transform here.
+                assertPixel(t, diamond.midX, diamond.midY, CanvasColor(ThemeTokens.keyframeTransformPair.value(mode)), tol: 12)
+            }
+            // The slider rows with keyframe controls (opacity, volume) at the 1440 × 900 width and the narrowest panel.
+            let widths = [(PanelFit.defaults(1440).right, "1440x900"), (PanelFit.minRight, "min\(Int(PanelFit.minRight))")]
+            for (group, key) in [("style", "opacity"), ("media", "volume")] {
+                for (w, name) in widths {
+                    let size = CanvasSize(w, 900)
+                    let r = try TargetSizeTests.design(open: group, keyed: true)
+                    snapshot("inspector-keyframes-\(mode)-\(name)-\(group)", w: w, h: 900, scale: 1) { r.draw($0, size: size) }
+                    let next = try XCTUnwrap(r.inspector.hits.rect { $0 == .kfNext(key) })
+                    XCTAssertEqual(next.width, PanelTheme.minTarget); XCTAssertEqual(next.height, PanelTheme.minTarget)
+                }
+            }
         }
     }
 }

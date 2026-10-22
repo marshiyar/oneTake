@@ -24,6 +24,20 @@ public extension TimelineController {
         clampScroll(); needsDisplay?(); return true
     }
 
+    /// ⌘K: key every keyframeable property of the selected clips at the playhead; ⇧⌘K only the animated ones.
+    /// One undo step. Handled (true) whenever a clip is selected, so the key never reaches playback.
+    @discardableResult func keySelectedProperties(animatedOnly: Bool) -> Bool {
+        guard let editor, !view.selection.isEmpty else { return false }
+        if editor.keyProperties(clipIds: view.selection.sorted(), time: playback.currentTime, animatedOnly: animatedOnly) { needsDisplay?() }
+        return true
+    }
+
+    /// ⌘= / ⌘+ zoom in, ⌘- out, ⌘0 fit.
+    internal func zoomKey(_ ch: Character) -> Bool {
+        if ch == "0" { zoomToFit() } else { zoom(in: ch != "-") }
+        return true
+    }
+
     func toggleGroup(_ id: String) {
         if view.collapsedGroups.contains(id) { view.collapsedGroups.remove(id) } else { view.collapsedGroups.insert(id) }
         if let e = editor { reload(from: e) }
@@ -65,6 +79,10 @@ public extension TimelineController {
     @discardableResult func runClipMenu(_ action: TimelineClipMenu.Action, clipId id: String) -> Bool {
         guard let editor, let (_, c) = clip(id) else { return false }
         switch action {
+        case .revealSource, .showSourceFile:
+            guard let onRevealSource else { return false }
+            onRevealSource(id, action == .showSourceFile)
+            return true
         case .split:
             let frame = (playback.currentTime * editor.fps).rounded()
             guard let a = editor.address(clipId: id) else { return false }

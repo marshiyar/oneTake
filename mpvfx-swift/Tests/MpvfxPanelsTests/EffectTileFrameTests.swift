@@ -80,7 +80,7 @@ final class EffectTileFrameTests: XCTestCase {
     }
 
     /// The tile sizes a 1024 pt right panel drawn at 2x asks for, with the catalog open on `family` (or Grade).
-    func requestedSizes(open group: String, family: String = "Retro & Glitch") throws -> [(Int, Int)] {
+    func requestedSizes(open group: String, family: String = "Retro & glitch") throws -> [(Int, Int)] {
         let r = try PanelSnapshotTests.rightFixture(open: group, h: 3000)
         r.inspector.effectsUI = EffectsUIState(clipId: "clip:a", catalogOpen: true, catalogFamily: family)
         var sizes: [(Int, Int)] = []
@@ -96,7 +96,7 @@ final class EffectTileFrameTests: XCTestCase {
     /// the hosts' default caches (6 MB clip tiles, 8 MB sample tiles) and the grid settles instead of evicting itself.
     func testAWidePanelAsksForTilesThatFitTheCaches() throws {
         let catalog = try requestedSizes(open: "effects"), grade = try requestedSizes(open: "grade")
-        XCTAssertEqual(catalog.count, 10, "the 10 Retro & Glitch tiles")
+        XCTAssertEqual(catalog.count, 10, "the 10 Retro & glitch tiles")
         XCTAssertEqual(grade.count, ColorGrading.gradePresets.count)
         XCTAssertEqual((catalog + grade).filter { $0.0 > 320 || $0.1 > 180 }.count, 0, "a tile above 320×180")
         XCTAssertLessThanOrEqual(grade.map { $0.0 * $0.1 * 4 }.reduce(0, +), 6 << 20, "the Grade grid outgrows the 6 MB clip-tile cache")

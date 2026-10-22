@@ -1,6 +1,6 @@
 # Color grading and stylize effects: the clip effect JSON
 
-How a clip stores its color grade and its stylize effects in `project.json` (grading contract v2, grading
+How a clip stores its color grade and its stylize effects in `project.json` (grading contract v3, grading
 engine 0.8.20) and how the app reads, edits and renders it. One schema serves preview and export: `Sources/MpvfxColor` (`ColorGradeParams`, `GradeShader`,
 `ColorGradeRenderer`, `CubeLUT`) is the grading shader on the CPU, the player grades each decoded frame
 with it (3fe63d2) and export grades each graded clip with the same pass before compositing (5dbd897). The
@@ -25,14 +25,16 @@ The grade is one entry of the clip's `effects` array (`NativeClipEffect`):
 - The stylize effects are not separate effect entries: they are the `effects` object **inside** the grade.
 - Any other `effectId` on a clip is kept in the document and listed in the inspector's Clip effects group, but
   neither renderer draws it, and export refuses a clip that has one enabled (`exportSupportsEffect`).
-- Grades are not keyframed: a clip has one grade for its whole length. Grain, film dust, tape damage, glitch and
+- Grade values can be keyframed: Amount, the Primary values, the tonal wheels, Vignette, Grain and each stylize
+  amount are `grade.*` parameter tracks (`NativeGradeParameters.swift`), evaluated per frame in preview and
+  export; a grade with no keys holds its values for the clip's whole length. Grain, film dust, tape damage, glitch and
   waving hatch lines move with the clip's timeline time (`isTimeVarying`), seeded per clip (`colorGradeSeed`,
   FNV-1a of the clip key).
 
 ## The grade object
 
-Top-level keys (`COLOR_GRADING_TOP_LEVEL_KEYS`): `enabled, preset, intensity, adjust, wheels, curves, hueCurves,
-secondaries, details, effects, palette, lut, colorSpace`. Every key is optional. Reading normalizes the object the
+Top-level keys: `enabled, version, preset, intensity, adjust, pivot, wheels, balance, curves, hueCurves,
+secondaries, details, effects, palette, lut, colorSpace`. A grade authored outside the app should write `"version": 3`. Every key is optional. Reading normalizes the object the
 way `normalizeHfColorGrading` does (`ColorGradeParams.init(json:)`): missing values come from the named preset,
 or from the contract defaults when there is no preset; every number is clamped to its limit; a non-finite number
 reads as 0; malformed curves fall back to identity.
@@ -40,10 +42,13 @@ reads as 0; malformed curves fall back to identity.
 | Key | Type | Meaning, limits, default |
 | --- | --- | --- |
 | `enabled` | bool | `false` turns the grade off. Default on. |
+| `version` | number | Grading contract the grade was written under. `3` (written by the inspector for every new grade): Warmth and Tint scale the R, G and B channels, normalized so a grey keeps its luma, and black stays black. Absent or anything below 3: contract 2, where Warmth and Tint add a fixed offset to every pixel (how grades saved before 2026-10-21 render). Editing a grade keeps its version; resetting the whole grade starts a contract 3 grade. The secondary correction's Warmth and Tint follow the same rule. |
 | `preset` | string or null | Preset id (table below). Its values fill every key the object leaves out. |
 | `intensity` | number 0…1 | Mix of the primary grade (adjust, wheels, curves, secondaries, LUT) over the source. Default 1, or the preset's. Vignette, grain and stylize effects are not scaled by it. |
 | `adjust` | object | Primary correction. `exposure` −2…2 (stops); `contrast, highlights, shadows, whites, blacks, temperature, tint, vibrance, saturation` −1…1. Default 0. UI labels: Exposure, Contrast, Highlights, Shadows, White Point, Black Point, Warmth, Tint, Vibrance, Saturation. |
 | `wheels` | object | `shadows`, `midtones`, `highlights`, each `{ "hue": 0…360 (wrapped), "amount": 0…1, "level": −1…1 }`. Default all 0. |
+| `balance` | object | Lift / Gamma / Gain / Offset: `lift`, `gamma`, `gain`, `offset`, each `{ "hue": 0…360 (wrapped), "amount": 0…1, "level": −1…1 }`. Lift adds `0.25·level` (plus `0.2·amount` along the hue) scaled by (1 − x), so black moves and white stays; gain multiplies by 1 + `0.5·level` (+ `0.4·amount`), so black stays; gamma raises to 1 / (1 + `0.5·level` + `0.3·amount`), so 0 and 1 stay; offset adds `0.25·level` (+ `0.2·amount`). Applied after the primary grade, before the tonal wheels. Default all 0 (no effect). |
+| `pivot` | number 0…1 | The luma contrast pivots on: a pixel of luma `pivot` keeps its value. Default 0.5. |
 | `curves` | object | `master, red, green, blue`: arrays of `[x, y]` points in 0…1, 2…16 points, sorted by x, no duplicate x; endpoints `[0,0]` / `[1,1]` are added when missing. Default identity `[[0,0],[1,1]]`. Sampled as a monotone cubic (`ColorCurveMath`). |
 | `hueCurves` | object | `hueVsHue` (y in −180…180 degrees), `hueVsSaturation`, `hueVsLuma` (y in −1…1): `[hueDegrees, delta]` points, 3…16, periodic over hue. Fewer than 3 points means off. Default `[]`. |
 | `secondaries` | array (≤ 4) | HSL qualifier plus correction, below. |
@@ -225,8 +230,9 @@ An enabled clip effect with `effectId: "color-key"` stores this versioned object
 have the displayed defaults. RGB and all three amounts are finite numbers in `0...1`.
 The matte is `smoothstep(similarity, similarity + smoothness, distance)` where distance
 is Euclidean distance in BT.709 Cb/Cr coordinates. It multiplies the source alpha.
-Spill suppresses green above `max(red, blue)`; at `1` it removes all such excess without
-changing neutral pixels. Preview and export consume the same RGBA result.
+Spill suppresses the key colour's own hue in the graded colour: for the key's strongest
+channel (green, else blue, else red) it removes the amount by which that channel exceeds the
+larger of the other two; at `1` it removes all such excess without changing neutral pixels. Preview and export consume the same RGBA result.
 
 Objects with an unknown `v` or `kind` remain in the project unchanged but are not drawn.
 They do not change `schemaVersion`, which remains `1`.

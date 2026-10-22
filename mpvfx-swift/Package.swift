@@ -138,10 +138,12 @@ let package = Package(
                 swiftSettings: [.swiftLanguageMode(.v6)]),
         // System SQLite (no download): libsqlite3 on Linux, SDK sqlite3 on macOS, winsqlite3 on Windows 10+.
         .systemLibrary(name: "CSQLite", path: "Sources/CSQLite", providers: [.apt(["libsqlite3-dev"])]),
-        .target(name: "MpvfxRuntime", dependencies: ["MpvfxShared", "MpvfxColor", "CSQLite", "MpvfxAudio", "MpvfxAudioGraph", mediaEngine],
+        .target(name: "MpvfxRuntime", dependencies: ["MpvfxShared", "MpvfxColor", "CSQLite", "MpvfxAudio", "MpvfxAudioGraph", mediaEngine, win32],
                 linkerSettings: [
                     .linkedLibrary("sqlite3", .when(platforms: [.linux, .macOS])),
                     .linkedLibrary("winsqlite3", .when(platforms: [.windows])),
+                    // The on-device speech recognizer behind speech to captions (MacSpeechTranscriptionService).
+                    .linkedFramework("Speech", .when(platforms: [.macOS])),
                 ]),
         // Host-independent desktop shell logic (app paths, save barrier, lifecycle, single instance, menu); unit-tested.
         .target(name: "MpvfxDesktopCore", dependencies: ["MpvfxTheme"]),
@@ -151,7 +153,7 @@ let package = Package(
         // Windows compiles C++ with explicit clang modules and does not hand a C target's module to a C++ compile.
         .target(name: "CMpvfxWin32", cxxSettings: [.headerSearchPath("../CMpvfxColorShared/include")],
                 linkerSettings: ["d2d1", "dwrite", "windowscodecs", "ole32", "uuid", "shell32", "user32", "advapi32", "dwmapi",
-                                 "d3d11", "dxgi"].map {
+                                 "d3d11", "dxgi", "sapi"].map {
             .linkedLibrary($0, .when(platforms: [.windows]))
         }),
         // Backend-neutral 2D drawing (Cairo/Pango on Linux, Core Graphics on macOS, Direct2D/DirectWrite on Windows).
@@ -173,7 +175,7 @@ let package = Package(
         // frame, measured 2026-10-21), too slow for live scopes in a debug app and for its frame-budget test.
         .target(name: "MpvfxScopes", swiftSettings: swift6 + [.unsafeFlags(["-O"], .when(configuration: .debug))]),
         // Player popovers (speed, shortcuts, volume) + crop persistence, drawn on MpvfxCanvas.
-        .target(name: "MpvfxPanels", dependencies: ["MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", "MpvfxTheme"]),
+        .target(name: "MpvfxPanels", dependencies: ["MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", "MpvfxTheme", "MpvfxScopes"]),
         // Release-build render-speed benchmark for the bus/FX graph (`swift run -c release MpvfxAudioBench`).
         .executableTarget(name: "MpvfxAudioBench", dependencies: ["MpvfxAudio", "MpvfxAudioGraph"]),
         // Release-build grade benchmark, CPU port vs the Vulkan / Direct3D 11 compute renderer (`swift run -c release MpvfxColorBench`).
@@ -212,12 +214,13 @@ let package = Package(
         .testTarget(name: "MpvfxRuntimeTests", dependencies: ["MpvfxRuntime", "MpvfxShared", keyframeEngine, "MpvfxColor", "MpvfxPlayer", mediaEngine, "MpvfxCanvas"],
                     exclude: ["Library/Fixtures", "Media/Fixtures", "Projects/Fixtures"]),
         .testTarget(name: "MpvfxCanvasTests", dependencies: ["MpvfxCanvas", .target(name: "CGtk3", condition: .when(platforms: [.linux]))]),
-        .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", keyframeEngine]),
+        .testTarget(name: "MpvfxTimelineTests", dependencies: ["MpvfxTimeline", "MpvfxCanvas", "MpvfxShared", "MpvfxTheme", keyframeEngine]),
         .testTarget(name: "MpvfxStartupTests", dependencies: [keyframeEngine, "MpvfxShared", "MpvfxRuntime"]),
         .testTarget(name: "MpvfxAudioTests", dependencies: ["MpvfxAudio", "MpvfxAudioGraph", "MpvfxShared"]),
         .testTarget(name: "MpvfxAudioGraphTests", dependencies: ["MpvfxAudioGraph"], exclude: ["Fixtures"], swiftSettings: swift6),
         .testTarget(name: "MpvfxScopesTests", dependencies: ["MpvfxScopes"], swiftSettings: swift6),
-        .testTarget(name: "MpvfxPanelsTests", dependencies: ["MpvfxPanels", "MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", keyframeEngine, "MpvfxTheme"]),
+        .testTarget(name: "MpvfxPanelsTests", dependencies: ["MpvfxPanels", "MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", keyframeEngine, "MpvfxTheme",
+                                                           "MpvfxScopes"]),
         // Inspector controls end to end: row edit -> preview composite / live audio graph inputs / export frame and mix.
         .testTarget(name: "MpvfxInspectorAuditTests", dependencies: ["MpvfxPanels", "MpvfxPlayer", "MpvfxTimeline", "MpvfxCanvas", "MpvfxShared",
                                                                     keyframeEngine, "MpvfxAudio", "MpvfxAudioGraph", "MpvfxRuntime", mediaEngine]),

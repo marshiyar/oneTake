@@ -116,10 +116,10 @@ public enum PanelDraw {
         c.strokeRoundedRect(r.snapped.insetBy(-1), radius: radius + 1, PanelTheme.accent, width: 2)
     }
 
-    /// Small text button (`px-2 py-0.5 text-[10px] rounded`).
+    /// Small text button with the inspector’s 11 px secondary text floor.
     public static func smallButton(_ c: CanvasContext, _ r: CanvasRect, label: String, fill: CanvasColor?, color: CanvasColor) {
         if let fill { c.fillRoundedRect(r, radius: PanelTheme.radius, fill) }
-        text(c, label, in: r, font: PanelTheme.font(10), color: color, align: .center)
+        text(c, label, in: r, font: PanelTheme.font(11), color: color, align: .center)
     }
 }
 
@@ -128,12 +128,16 @@ public struct PanelTextField: Equatable {
     public var key: String
     public var draft: String
     public var original: String
-    public init(key: String, value: String) { self.key = key; draft = value; original = value }
+    /// Shown and focusable but never edited (the Media group's Media start): Enter and Esc leave it, other plain
+    /// keys change nothing.
+    public var readOnly = false
+    public init(key: String, value: String, readOnly: Bool = false) { self.key = key; draft = value; original = value; self.readOnly = readOnly }
 
     public enum Outcome: Equatable { case none, editing, commit(String), cancel }
 
     /// Handles one key while focused.
     public mutating func key(_ k: EditorKey) -> Outcome {
+        if readOnly { return Self.readOnlyKey(k) }
         switch k.code {
         case .enter: return .commit(draft)
         case .escape: draft = original; return .cancel
@@ -143,6 +147,11 @@ public struct PanelTextField: Equatable {
         case .left, .right, .up, .down, .home, .end: return .editing
         default: return .none
         }
+    }
+
+    static func readOnlyKey(_ k: EditorKey) -> Outcome {
+        if k.command || k.alt { return .none }
+        return k.code == .enter || k.code == .escape ? .cancel : .editing
     }
 }
 

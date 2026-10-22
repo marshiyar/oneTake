@@ -16,7 +16,7 @@ import MpvfxCanvas
 @testable import MpvfxPanels
 
 final class DockCodecTests: XCTestCase {
-    let registry = DockRegistry.editor
+    let registry = DockRegistry.corePanels
     var fallback: DockFile { DockFile(workspaces: [DockFile.defaultWorkspace: DockDefaults.layout(registry)]) }
 
     func decoded(_ json: String) -> Result<DockCodec.Decoded, DockLayoutError> { DockCodec.decode(Data(json.utf8), registry: registry) }

@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import XCTest
+import MpvfxCanvas
 import MpvfxShared
 import MpvfxTimeline
 import OneTakeKeyframes
@@ -33,6 +34,21 @@ final class GradeContractVersionTests: XCTestCase {
         var old = ColorGrading(json: ["adjust": .object(["temperature": .number(0.5)])])
         old.adjust["saturation"] = 0.2
         XCTAssertEqual(old.json["version"], .number(2), "an edit keeps contract 2")
+    }
+
+    /// A look tile is drawn under the clip grade's contract, so it shows what a click applies.
+    func testLookTilesAskForTheGradesContract() throws {
+        for (grade, want) in [(ColorGrading(json: ["adjust": .object(["contrast": .number(0.1)])]), 2), (ColorGrading(), 3)] {
+            let editor = try TimelineEditor(json: TimelineEditor.demoJSON, engine: try? KeyframeRuntime())
+            var g = grade; g.adjust["saturation"] = 0.2
+            XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", g))
+            let p = InspectorPanel(); p.editor = editor; p.selection = ["clip:a"]; p.openGroupId = "grade"
+            var asked: [Int] = []
+            p.presetPreview = { req in asked.append(req.version); return .unavailable }
+            p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))
+            XCTAssertFalse(asked.isEmpty)
+            XCTAssertEqual(Set(asked), [want])
+        }
     }
 
     func testEditingAnOldGradeInTheInspectorKeepsContract2() throws {

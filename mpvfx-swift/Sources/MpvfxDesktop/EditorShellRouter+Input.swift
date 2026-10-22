@@ -19,8 +19,17 @@ import MpvfxTimeline
 // MARK: Draw
 
 extension EditorShellRouter {
-    func draw(_ c: CanvasContext, size: CanvasSize) {
-        if size != self.size { self.size = size }
+    func draw(_ c: CanvasContext, size window: CanvasSize) {
+        resized(window)
+        let k = interfaceScale
+        guard k != 1 else { drawLayout(c); return }
+        c.save()
+        c.scale(k, k)
+        drawLayout(c)
+        c.restore()
+    }
+
+    private func drawLayout(_ c: CanvasContext) {
         let f = relayout()
         if isFullscreen() {
             c.fillRect(f.preview, PanelTheme.neutral950)
@@ -28,7 +37,7 @@ extension EditorShellRouter {
         } else {
             dock.draw(c, in: f.dock) { [self] id, c, size in paintPanel(id, c, size) }
             c.fillRect(CanvasRect(x: 0, y: f.dock.maxY, width: size.width, height: PanelTheme.seamWidth), PanelTheme.studioBg)
-            ShellStatusLine.draw(c, f.statusLine, hint: statusHint)
+            ShellStatusLine.draw(c, f.statusLine, hint: statusHint, error: saveFailureStatus())
         }
         crossPaneDrag?.drawDrag(c)
         dockMenu.draw(c)
@@ -86,6 +95,7 @@ extension EditorShellRouter {
     func pointerUp(x: Double, y: Double) { pointerUp(x: x, y: y, button: PointerButton.primary) }
 
     func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
+        let (x, y) = toLayout(x, y)
         let p = CanvasPoint(x, y)
         if modalOpen, captured == nil {
             if button == PointerButton.primary { _ = modal?.pointerDown(p) }
@@ -104,6 +114,7 @@ extension EditorShellRouter {
     }
 
     func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
+        let (x, y) = toLayout(x, y)
         let p = CanvasPoint(x, y)
         if movedOverOverlay(p, modifiers) { return }
         if let region = captured { movedWhileCaptured(region, x, y, modifiers); return }
@@ -138,6 +149,9 @@ extension EditorShellRouter {
     private func movedWhileCaptured(_ region: Region, _ x: Double, _ y: Double, _ modifiers: PointerModifiers) {
         let (lx, ly) = local(region, x, y)
         panes[region]?.input?.pointerMove(x: lx, y: ly, modifiers: modifiers)
+        // Latch the modifiers before checking the drag state: the move that starts the drag would
+        // otherwise drop an already-held Option, and the release would insert instead of replacing.
+        if let d = crossPaneDrag { d.updateDragModifiers(modifiers) }
         guard let d = crossPaneDrag, d.isDragging(from: region) else { return }
         let target = self.region(at: x, y)
         let (tx, ty) = target.map { local($0, x, y) } ?? (x, y)
@@ -146,6 +160,7 @@ extension EditorShellRouter {
     }
 
     func pointerUp(x: Double, y: Double, button: Int) {
+        let (x, y) = toLayout(x, y)
         if dockCaptured, button == PointerButton.primary {
             dockCaptured = false
             dock.pointerUp(CanvasPoint(x, y))
@@ -166,6 +181,7 @@ extension EditorShellRouter {
 
     /// On a tab bar: the group's ⋯ menu. In a pane: the pane's own context menu.
     func secondaryClick(x: Double, y: Double) {
+        let (x, y) = toLayout(x, y)
         if modalOpen || dockMenu.isOpen { return }
         if !isFullscreen(), let m = dock.menuAnchor(at: CanvasPoint(x, y)) { openDockMenu(m.group, anchor: m.anchor); return }
         guard let region = region(at: x, y) else { return }
@@ -177,14 +193,19 @@ extension EditorShellRouter {
     /// The Settings card, an open panel menu, then the dock's own keys (⌘⇧W, Ctrl+Tab, Escape during a drag), then
     /// the focused pane; global shortcuts fall back to the timeline (which falls through to playback).
     func keyDown(_ k: EditorKey) -> Bool {
+        if globalVoiceKey?(k) == true { needsDisplay(); return true }
         if modalOpen, modal?.keyDown(k) == true { needsDisplay(); return true }
         if dockMenu.isOpen { _ = dockMenu.key(k); needsDisplay(); return true }
         if dock.keyDown(k) { needsDisplay(); return true }
         let region = focused
         if let input = panes[region]?.input, input.keyDown(k) { return true }
+        if region != .timeline, !k.command, !k.alt, case .char(let ch) = k.code, ch.lowercased() == "m" { return false }
         if region != .timeline, let t = panes[.timeline]?.input { return t.keyDown(k) }
         return false
     }
 
-    func keyUp(_ k: EditorKey) { (panes[focused]?.input ?? panes[.timeline]?.input)?.keyUp(k) }
+    /// Every pane retires its own held-key state, including the pane that lost focus during the hold.
+    func keyUp(_ k: EditorKey) {
+        for pane in panes.values { pane.input?.keyUp(k) }
+    }
 }

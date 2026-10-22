@@ -220,10 +220,26 @@ final class RecordMotionTests: XCTestCase {
         XCTAssertEqual(r.c.view.toolbar.recording, .recording)
         XCTAssertEqual(r.c.view.recordOverlay?.state, .recording)
         XCTAssertEqual(r.c.view.recordOverlay?.title, "REC 0:00.1")
+        XCTAssertEqual(r.c.view.toolbar.recordTip, "Release to finish (Esc cancels)")
         r.c.pointerUp(x: 80, y: 75)
         XCTAssertEqual(r.c.view.toolbar.recording, .armed, "Record stays armed for the next take")
         XCTAssertTrue(r.c.globalKey(EditorKey(.char("r"))), "R disarms")
         XCTAssertFalse(r.c.isRecordArmed); XCTAssertNil(r.c.view.recordOverlay)
+        XCTAssertEqual(r.c.view.toolbar.recordTip, "Record motion (R)")
+    }
+
+    func testTheRecordControlIsAStableTwentyEightPointTarget() {
+        let tb = PreviewToolbar()
+        tb.onToggleRecording = {}
+        var rects: [CanvasRect] = []
+        for state in [PreviewToolbar.Recording.idle, .armed, .recording] {
+            tb.recording = state
+            rects.append(tb.layout(width: 600, cropAvailable: false, cropActive: false, nil).first { $0.0 == .record }?.1 ?? .init(x: 0, y: 0, width: 0, height: 0))
+        }
+        XCTAssertEqual(Set(rects.map(\.width)).count, 1, "the width never changes with the state")
+        XCTAssertGreaterThanOrEqual(rects[0].height, 24)
+        XCTAssertEqual(rects[0].y + rects[0].height / 2, PreviewToolbar.height / 2, "centred on the bar like the snap and grid buttons")
+        XCTAssertEqual(rects[0].x, PreviewToolbar.paddingX)
     }
 
     func testRecordingOverARangeReplacesOnlyThatRange() throws {

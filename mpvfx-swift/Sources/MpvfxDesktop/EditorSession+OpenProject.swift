@@ -49,7 +49,10 @@ extension EditorSession {
     func clearRecentProjects() {
         guard let backend else { return }
         do { try backend.clearRecentProjects() }
-        catch { onError("Could not clear the recent projects", "\(error)") }
+        catch {
+            onError("Could not clear the recent projects", (error as? DesktopError)?.message
+                    ?? "The list of recent projects could not be saved. Check that your home folder has free space and is writable, then try again.")
+        }
         panels?.refreshRecents()
     }
 }

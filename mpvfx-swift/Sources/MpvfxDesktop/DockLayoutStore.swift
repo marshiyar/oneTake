@@ -48,7 +48,8 @@ final class DockLayoutStore: @unchecked Sendable {
         let data: Data
         do { data = try DockCodec.encode(file) } catch { FileHandle.standardError.write(Data("[MpVFX] panel layout not encoded: \(error)\n".utf8)); return }
         lock.withLock { pending = data }
-        queue.async { [weak self] in self?.writePending() }
+        // An accepted write must outlive the caller's reference to the store.
+        queue.async { self.writePending() }
     }
 
     /// Blocks until every queued write has finished (quit, tests).

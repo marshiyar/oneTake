@@ -216,7 +216,21 @@ final class InspectorRenderAuditTests: XCTestCase {
     }
 
     func testScale() {
+        toggle("scaleRatioLocked", true)
         assertVisualEdit("Scale", { type("scale", "50") }) { c in XCTAssertTrue(c.ops.contains(.scale(0.5, 0.5))) }
+    }
+
+    func testUnlockedScaleXAndYReachPreviewAndExport() {
+        assertVisualEdit("Scale X", { type("scale", "50") }) { c in XCTAssertTrue(c.ops.contains(.scale(0.5, 1))) }
+        assertVisualEdit("Scale Y", { type("scaleY", "25") }) { c in XCTAssertTrue(c.ops.contains(.scale(0.5, 0.25))) }
+    }
+
+    func testLockedSizeReachesPreviewAndExport() {
+        toggle("sizeRatioLocked", true)
+        assertVisualEdit("Locked width", { type("w", "100") }) { c in
+            XCTAssertEqual(c.images.first?.rect.width, 200)
+            XCTAssertEqual(c.images.first?.rect.height, 100)
+        }
     }
 
     func testPositionKeyframeAndEasing() {
@@ -228,7 +242,7 @@ final class InspectorRenderAuditTests: XCTestCase {
         select("V", time: 0)
         let linear = previewFrame(at: 1).images.first?.rect.x
         XCTAssertEqual(linear ?? 0, 100, accuracy: 1, "halfway: x 50 canvas px")
-        assertVisualEdit("Keyframe easing", at: 1, { pick("easing", "hold") }) { c in
+        assertVisualEdit("Keyframe easing", at: 1, { ease("hold") }) { c in
             XCTAssertEqual(c.images.first?.rect.x ?? -1, 0, accuracy: 0.5, "hold keeps x 0 until the next key")
         }
     }
@@ -328,7 +342,7 @@ final class InspectorRenderAuditTests: XCTestCase {
 
     func testVideoSoundToggle() {
         let export0 = exportRender()
-        toggle("muted", false)   // "Play video sound" off
+        toggle("muted", false)   // "Sound" off
         XCTAssertEqual(audioTrack("V")?.muted, true, "live mix drops it")
         XCTAssertNotEqual(exportRender().audio, export0.audio, "export leaves its audio out")
         XCTAssertEqual(exportRender().audio?.tracks.first { $0.id == "V" }?.muted, true)
@@ -337,7 +351,7 @@ final class InspectorRenderAuditTests: XCTestCase {
     func testAudioClipMute() {
         select("M")
         let export0 = exportRender()
-        toggle("muted", true)
+        toggle("muted", false)   // "Sound" off: the same switch, the same meaning, as on a video clip (issue #188)
         XCTAssertEqual(audioTrack("M")?.muted, true)
         XCTAssertNotEqual(exportRender().audio, export0.audio)
     }
