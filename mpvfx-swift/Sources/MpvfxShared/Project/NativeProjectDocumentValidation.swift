@@ -79,6 +79,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         pushIssue(&issues, .invalidTrack, "sequence.durationFrames", "Sequence duration must be a positive integer")
     }
     validateNativeCaptionTrack(sequence["captions"], "sequence.captions", &issues)
+    validateNativeSequenceMarkers(sequence["markers"], &issues)
     validateNativeFill(input["compositionFill"], "compositionFill", allowInherit: false, assets: assetsById, &issues)
     guard let tracks = sequence["tracks"]?.arrayValue else {
         pushIssue(&issues, .invalidTrack, "sequence.tracks", "Tracks must be an array"); return issues
@@ -97,6 +98,11 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         if trackKind == nil { pushIssue(&issues, .invalidTrack, "\(trackPath).kind", "Track kind must be video, audio, or mixed") }
         for flag in ["hidden", "locked", "soloed"] where track[flag] != nil && track[flag]?.boolValue == nil {
             pushIssue(&issues, .invalidTrack, "\(trackPath).\(flag)", "Track \(flag) must be a boolean")
+        }
+        for (field, range) in [("mixerGainDB", -60.0...12.0), ("mixerPan", -1.0...1.0)] {
+            if let raw = track[field], raw.numberValue.map({ $0.isFinite && range.contains($0) }) != true {
+                pushIssue(&issues, .invalidTrack, "\(trackPath).\(field)", "Mixer value is outside its supported range")
+            }
         }
         if let lane = validateTrackLane(track["lane"], trackIndex, "\(trackPath).lane", &issues) {
             if displayLaneIds.contains(lane.displayTrack) {

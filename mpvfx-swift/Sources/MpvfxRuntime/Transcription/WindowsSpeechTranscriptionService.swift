@@ -26,8 +26,10 @@ public final class WindowsSpeechTranscriptionService: SpeechPieceRecognizer, @un
 
     private static func lcid(_ locale: String) -> UInt32? {
         var id: UInt32 = 0
-        let hr = locale.utf16CString.withUnsafeBufferPointer { name in
-            name.baseAddress!.withMemoryRebound(to: UInt16.self, capacity: name.count) { mpvfx_speech_locale_lcid($0, &id) }
+        var hr: Int32 = -1 // an empty locale has no base address; fall through to nil below
+        locale.utf16CString.withUnsafeBufferPointer { name in
+            guard let base = name.baseAddress else { return }
+            hr = base.withMemoryRebound(to: UInt16.self, capacity: name.count) { mpvfx_speech_locale_lcid($0, &id) }
         }
         return hr >= 0 ? id : nil
     }
@@ -67,8 +69,10 @@ public final class WindowsSpeechTranscriptionService: SpeechPieceRecognizer, @un
 
     private static func recogniseBlocking(path: String, lcid: UInt32, cancel: MediaCancellation) throws -> [RecognisedWord] {
         let run = Run(cancel: cancel)
-        let hr: Int32 = path.utf16CString.withUnsafeBufferPointer { p in
-            p.baseAddress!.withMemoryRebound(to: UInt16.self, capacity: p.count) { wide in
+        // E_INVALIDARG when the path has no base address: reported below as recognizerFailed, never a crash.
+        let hr: Int32 = path.utf16CString.withUnsafeBufferPointer { p -> Int32 in
+            guard let base = p.baseAddress else { return Int32(bitPattern: 0x80070057) }
+            return base.withMemoryRebound(to: UInt16.self, capacity: p.count) { wide in
                 mpvfx_speech_recognize(wide, lcid, sapiPieceBytesPerSecond, { context, text, length, start, duration in
                     guard let context, let text else { return }
                     let run = Unmanaged<Run>.fromOpaque(context).takeUnretainedValue()
