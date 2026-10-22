@@ -108,6 +108,7 @@ final class AudioFxRackTests: XCTestCase {
         XCTAssertTrue(editor.undo())
         XCTAssertEqual(chain(editor), original)
         XCTAssertEqual(editor.document, documentBefore)
+    }
     func liveFixture(_ chain: FxChain) throws -> (TimelineEditor, InspectorPanel) {
         let json = TimelineEditor.demoJSON.replacingOccurrences(of: "\"name\":\"music.wav\"", with: "\"name\":\"music.wav\",\"source\":\"/music.wav\"")
         let editor = try TimelineEditor(json: json, engine: try? KeyframeRuntime())
