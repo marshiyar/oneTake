@@ -52,6 +52,10 @@ final class BinAssetDrag: CrossPaneDrag {
     func dragEnded(over region: EditorShellRouter.Region?, local: CanvasPoint) {
         defer { window = nil; overPlayer = false; overTimeline = false; session.player.assetDragEnded() }
         guard let path = panels.left.lastDraggedAssetId else { return }
+        if let look = TextLookPreset.draggedPreset(path) {
+            if region == .player || region == .timeline && local.y >= TimelineToolbar.height { session.addTextLook(look) }
+            return
+        }
         switch region {
         case .player?: dropOnStage(path, local)
         case .timeline?: dropOnTimeline(path, local)
@@ -147,7 +151,7 @@ final class BinAssetDrag: CrossPaneDrag {
             AssetDropOutline.draw(c, timeline: router.rect(.timeline, f))
         }
         guard let w = window, let id = panels.left.draggingAssetId else { return }
-        let name = panels.left.items.first { $0.id == id }?.name ?? (id as NSString).lastPathComponent
+        let name = TextLookPreset.draggedPreset(id)?.name ?? panels.left.items.first { $0.id == id }?.name ?? (id as NSString).lastPathComponent
         let font = PanelTheme.font(11, .medium)
         let width = min(220, c.measureText(name, font: font).width + 16)
         let r = CanvasRect(x: w.x + 10, y: w.y + 10, width: width, height: 22)

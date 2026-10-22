@@ -33,13 +33,13 @@ struct BiquadCoefficients: Equatable {
     }
 
     /// `frequency` normalised to Nyquist (0...1); `q` linear or dB per type; `gain` in dB.
-    static func make(_ type: BiquadType, frequency: Double, q: Double, gain: Double) -> BiquadCoefficients {
+    static func make(_ type: BiquadType, frequency: Double, q: Double, gain: Double, linearPassQ: Bool = false) -> BiquadCoefficients {
         let f = min(1, max(0, frequency))
         switch type {
         case .lowpass:
             if f == 1 { return normalized(1, 0, 0, 1, 0, 0) }
             if f > 0 {
-                let resonance = pow(10, q / 20)
+                let resonance = linearPassQ ? max(0.0001, q) : pow(10, q / 20)
                 let theta = Double.pi * f
                 let alpha = sin(theta) / (2 * resonance)
                 let cosw = cos(theta), beta = (1 - cosw) / 2
@@ -49,7 +49,7 @@ struct BiquadCoefficients: Equatable {
         case .highpass:
             if f == 1 { return normalized(0, 0, 0, 1, 0, 0) }
             if f > 0 {
-                let resonance = pow(10, q / 20)
+                let resonance = linearPassQ ? max(0.0001, q) : pow(10, q / 20)
                 let theta = Double.pi * f
                 let alpha = sin(theta) / (2 * resonance)
                 let cosw = cos(theta), beta = (1 + cosw) / 2
@@ -101,6 +101,7 @@ struct BiquadCoefficients: Equatable {
 /// Per-channel Direct Form I biquad in Double, with audio-rate frequency/Q/gain.
 final class BiquadFilter {
     let type: BiquadType
+    let linearPassQ: Bool
     let frequency: ParamTimeline, q: ParamTimeline, gain: ParamTimeline
     /// Audio-rate signal summed into `frequency` (the phaser's LFO), mono.
     var frequencyInput: [Float]? = nil
@@ -110,8 +111,9 @@ final class BiquadFilter {
     private var cached = BiquadCoefficients()
     private var fBuf = [Float](repeating: 0, count: dspBlockSize), qBuf = [Float](repeating: 0, count: dspBlockSize), gBuf = [Float](repeating: 0, count: dspBlockSize)
 
-    init(_ type: BiquadType, sampleRate: Double, frequency: Double = 350, q: Double = 1, gain: Double = 0) {
+    init(_ type: BiquadType, sampleRate: Double, frequency: Double = 350, q: Double = 1, gain: Double = 0, linearPassQ: Bool = false) {
         self.type = type
+        self.linearPassQ = linearPassQ
         nyquist = sampleRate / 2
         self.frequency = ParamTimeline(Float(frequency), sampleRate: sampleRate)
         self.q = ParamTimeline(Float(q), sampleRate: sampleRate)
@@ -121,7 +123,7 @@ final class BiquadFilter {
     private func coefficients(_ f: Float, _ q: Float, _ g: Float) -> BiquadCoefficients {
         if f == cachedKey.0 && q == cachedKey.1 && g == cachedKey.2 { return cached }
         cachedKey = (f, q, g)
-        cached = BiquadCoefficients.make(type, frequency: Double(f) / nyquist, q: Double(q), gain: Double(g))
+        cached = BiquadCoefficients.make(type, frequency: Double(f) / nyquist, q: Double(q), gain: Double(g), linearPassQ: linearPassQ)
         return cached
     }
 
