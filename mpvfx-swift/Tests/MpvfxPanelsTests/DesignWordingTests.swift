@@ -53,7 +53,7 @@ internal final class DesignWordingTests: XCTestCase {
         let canvas = PanelMeasureCanvas()
         panel.draw(canvas, in: CanvasRect(x: 0, y: 0, width: 409, height: 1_800))
         XCTAssertEqual(canvas.drawnStrings.filter { $0 == "Rotation" }.count, 1)
-        XCTAssertFalse(canvas.drawnStrings.contains("Roll"))
+        XCTAssertEqual(canvas.drawnStrings.filter { $0 == "Roll" }.count, 1, "the open 3D section's Z-rotation row")
         XCTAssertTrue(canvas.drawnStrings.contains("3D transform"))
         XCTAssertEqual(panel.groups.first { $0.id == "layout" }?.summary.hasPrefix("X "), true)
     }
