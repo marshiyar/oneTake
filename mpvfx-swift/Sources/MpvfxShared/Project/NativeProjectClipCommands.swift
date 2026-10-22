@@ -226,10 +226,7 @@ private func applyTrimOut(_ d: NativeProjectDocument, _ a: NativeProjectClipAddr
     let tracks = shrinking ? try rebasedTracks(clip, 0, nextDuration, engine) { $0.id } : clip.parameterTracks
     var next = clip
     next.durationFrames = nextDuration
-<<<<<<< HEAD
-=======
     next.moves = clip.movesFitted(toDuration: nextDuration)
->>>>>>> origin/main
     if shrinking { next.speedRamp = clip.speedRamp?.sliced(from: 0, until: nextDuration) }
     next.clampFades(movedEdge: .end)
     next.parameterTracks = tracks
@@ -251,20 +248,12 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     do {
         let asset = d.assets.first { $0.id == clip.assetId }!
         // Overflow mapping: as in trim-in, a 64-bit overflow is rejected like the other range errors (invalid-split).
-<<<<<<< HEAD
-        if let ramp = clip.speedRamp, ramp.isSupported, nativeAssetConsumesSourceFrames(asset.kind) {
-=======
         if let ramp = clip.speedRamp, ramp.isSupported, nativeClipConsumesSourceFrames(clip, asset.kind) {
->>>>>>> origin/main
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
                                                  playbackRate: rationalFromNumber(ramp.sourcePosition(atClipFrame: local) / local), timelineFrames: local)
         } else {
             position = try advanceSourcePosition(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction),
-<<<<<<< HEAD
-                playbackRate: clip.playbackRate, timelineFrames: nativeAssetConsumesSourceFrames(asset.kind) ? local : 0)
-=======
                 playbackRate: clip.playbackRate, timelineFrames: nativeClipConsumesSourceFrames(clip, asset.kind) ? local : 0)
->>>>>>> origin/main
         }
     } catch { return reject(d, .invalidSplit, errorMessage(error) ?? "Invalid source boundary") }
     if clip.binding != nil && rightBinding == nil {
