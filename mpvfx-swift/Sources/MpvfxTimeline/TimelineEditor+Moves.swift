@@ -43,8 +43,11 @@ public extension TimelineEditor {
             withHistory("Convert moves to keyframes") { replaceDocument(next, inverse: .restoreDocument(document)) }
             lastFailure = nil
             return true
+        } catch let e as NativeKeyframeEvaluationError {
+            lastFailure = .init(code: .documentMismatch, message: e.message)
+            return false
         } catch {
-            lastFailure = .init(code: .documentMismatch, message: "\(error)")
+            lastFailure = .init(code: .documentMismatch, message: "The moves could not be converted to keyframes.")
             return false
         }
     }
