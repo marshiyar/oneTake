@@ -33,6 +33,22 @@ public enum NativeGridFailure: Error, Equatable {
     case invalidGeometry, emptySelection, tooManyLayers(selected: Int, cells: Int)
     case duplicateClip(String), unavailableClip(String), lockedTrack(String), nonVisualClip(String), invalidFrame
     case rejected(String)
+
+    /// What the editor shows when an arrange fails: the cause and what to do, never a raw error.
+    public var userMessage: String {
+        switch self {
+        case .invalidGeometry: return "The grid size is invalid."
+        case .emptySelection: return "Select clips to arrange."
+        case .tooManyLayers(let selected, let cells):
+            return "\(selected) clips need \(selected) cells, but the grid has \(cells)."
+        case .duplicateClip: return "A clip is selected twice."
+        case .unavailableClip: return "A selected clip is no longer in the project."
+        case .lockedTrack: return "A selected clip is on a locked track."
+        case .nonVisualClip: return "Only video and image clips can be arranged."
+        case .invalidFrame: return "Arrange at a valid whole frame."
+        case .rejected(let reason): return reason
+        }
+    }
 }
 
 /// Composition-pixel cells in selection order (row-major for 2x2, background then inset for PiP).

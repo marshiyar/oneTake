@@ -26,7 +26,8 @@ public extension TimelineEditor {
             lastFailure = nil
             return true
         } catch {
-            lastFailure = .init(code: .documentMismatch, message: "\(error)")
+            let message = (error as? NativeGridFailure)?.userMessage ?? "The clips could not be arranged."
+            lastFailure = .init(code: .documentMismatch, message: message)
             return false
         }
     }
