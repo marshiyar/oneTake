@@ -212,10 +212,10 @@ final class PanelSnapshotTests: XCTestCase {
     func testGradeCurveLinesShowInLightMode() throws {
         Theme.setMode(.light); defer { Theme.setMode(.dark) }
         for scale in [1.0, 2.0] {
-            let r = try Self.rightFixture(open: "grade", h: 1900)
+            let r = try Self.rightFixture(open: "grade", h: 3000)
             for tab in InspectorPanel.curveTabs {
                 r.inspector.grade.curveTab = tab.key
-                let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 1900, scale: scale) { r.draw($0, size: CanvasSize(409, 1900)) }
+                let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 3000, scale: scale) { r.draw($0, size: CanvasSize(409, 3000)) }
                 let box = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:curve", 0) }).insetBy(6)
                 // Default curves: Master/R/G/B the identity diagonal, hue curves flat at 0 (mid-height).
                 let lineY = tab.hue ? box.midY : box.maxY - 0.375 * box.height

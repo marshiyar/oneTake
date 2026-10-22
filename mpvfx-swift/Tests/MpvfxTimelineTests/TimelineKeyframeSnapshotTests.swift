@@ -38,6 +38,9 @@ final class TimelineKeyframeSnapshotTests: XCTestCase {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON, engine: KeyframeRuntime())
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
         c.viewport = CanvasSize(1440, 900); c.setZoom(percent: 300)
+        // The 5 s ease key sits past the right edge at 300%: scroll it into view (the 1 s key stays visible).
+        // Without this the sample point is off the surface and reads out of bounds.
+        c.view.scrollX = TimelineLayout.contentOrigin + 5 * c.view.pixelsPerSecond - (c.viewport.width - 140)
         let keys: [(String, NativeParameterValue, Double, NativeInterpolation)] = [
             (TimelineEditor.positionId, .vec2(Vec2Value(x: 0, y: 0)), 30, .linear), (TimelineEditor.scaleId, .vec2(Vec2Value(x: 1, y: 1)), 30, .linear),
             (TimelineEditor.opacityId, .number(1), 60, .linear), (NativeTransform3D.rotationXId, .number(5), 90, .linear),

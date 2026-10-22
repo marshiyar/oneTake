@@ -511,6 +511,13 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         if let failure = saveFailureError(error, folder: folder) { return failure }
         switch error {
         case let e as DesktopError: return e
+        case let e as ProjectDocumentError where e.kind == .missing:
+            guard let folder else { return DesktopError(e.message, name: desktopErrorName(e.kind)) }
+            // A save into a moved or deleted folder: the editor's moved-folder flow dispatches on the name, and
+            // the status line on the save failure, so the error carries both.
+            var moved = DesktopError(saveFailure: .folderMissing, folder: folder)
+            moved.name = desktopErrorName(e.kind)
+            return moved
         case let e as ProjectDocumentError: return DesktopError(e.message, name: desktopErrorName(e.kind))
         case let e as ProjectMediaOperationError:
             return DesktopError(e.message, name: e.kind == .inUse ? "MediaInUseError" : e.kind == .exists ? "ConflictError" : "Error")
