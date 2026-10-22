@@ -297,6 +297,10 @@ Every item of the owner's screenshot review, with its status now.
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
 
+### Hand-placed beat marks (#289)
+
+Select an audio clip and press B or Add beat to store a mark at the audio clock time. Marks stay on their source frames when clips move or trim, support one-step undo, snap clip edges, and persist in project.json. Drag a mark to move it, Option-click to delete, or Option-comma / Option-period to jump. Unknown beat versions remain in the project with an open notice.
+
 ## 13. Recently landed
 
 | Ability | Swift status | Visual |
@@ -308,3 +312,4 @@ Every item of the owner's screenshot review, with its status now.
 | Voice recording (#317) | done: transport Record button and ⌥Space with 0–5 s count-in and microphone selection in Settings, live meter with clip latch, Space keeps the WAV as an ordinary audio clip on the Voice track and Esc discards it; overlapping takes are muted and retained, one undo step per kept take; sub-frame silence aligns the first sample with input latency. Punch-in and pre-roll remain #318 (`VoiceTransportTests`, `TimelineVoiceTests`) | n/a |
 | Saved looks, auto balance, reference look matching | done: Design > Saved looks stores named grades durably (`looks.json`); Auto balance and Match look fit ordinary grade values from frame statistics in one undo step (`UserLookTests`, `AutoBalanceTests`, `LookMatchTests`) | close |
 | Lookahead limiter (#205) | done: current-sound limiters hold a linked stereo sample-peak ceiling (−24 to 0 dBFS) with 0.5–5 ms lookahead (default 1.5 ms) and 10–1000 ms release; the v1 limiter and recorded fixtures keep their sound, dry mixing is delayed by run latency, tails include the lookahead; fully-wet ceiling only, no true-peak oversampling (`LimiterV2Tests`) | n/a |
+>>>>>>> origin/main
