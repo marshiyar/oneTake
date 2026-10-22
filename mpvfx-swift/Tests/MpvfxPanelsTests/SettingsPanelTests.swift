@@ -203,14 +203,14 @@ final class SettingsPanelKeyboardTests: XCTestCase {
         XCTAssertTrue(s.focus.visible)
         XCTAssertEqual(s.focus.ringRect(s.hits), s.hits.rect { $0 == .appearance(.dark) }, "the ring is drawn on it")
 
-        let forward: [SettingsPanel.Hit] = [.audio, .cache, .chooseFolder, .resetFolder, .hold, .close,
+        let forward: [SettingsPanel.Hit] = [.audio, .cache, .chooseFolder, .resetFolder, .hold, .input, .countIn, .close,
                                             .appearance(.dark), .audio]   // past Close, round to the first control
         for want in forward {
             XCTAssertTrue(press(s, c, EditorKey(.tab)), "Tab is taken by the modal card")
             XCTAssertEqual(s.focus.current, want)
             XCTAssertTrue(s.focus.visible)
         }
-        let backward: [SettingsPanel.Hit] = [.appearance(.dark), .close, .hold]
+        let backward: [SettingsPanel.Hit] = [.appearance(.dark), .close, .countIn, .input, .hold]
         for want in backward {
             XCTAssertTrue(press(s, c, EditorKey(.tab, shift: true)))
             XCTAssertEqual(s.focus.current, want)

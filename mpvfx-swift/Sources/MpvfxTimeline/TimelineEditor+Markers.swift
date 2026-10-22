@@ -16,7 +16,7 @@ import MpvfxShared
 
 public extension TimelineEditor {
     @discardableResult
-    func addMarker(at time: Double, name: String = "Marker", color: String = "#FBBF24", note: String = "") -> String? {
+    func addMarker(at time: Double, name: String = "Marker", color: String = NativeSequenceMarker.defaultColor, note: String = "") -> String? {
         let id = "marker:" + UUID().uuidString.lowercased()
         var d = document
         var markers = d.sequence.markers ?? []
