@@ -64,6 +64,8 @@ final class EditorSession {
     var panels: SessionPanels?
     /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
     var clipInfoFeed: ClipInfoFeed?
+    /// The router holds its cross-pane drag weakly; the bin and effects drags live here (EditorSession+DockedPanels.swift).
+    var crossPaneDrags: CrossPaneDragGroup?
     var desktopPreferences: DesktopPreferences?
     /// System / Light / Dark setting (EditorSession+Appearance); set by the shell via installAppearance.
     var appearance: AppearanceSettings?

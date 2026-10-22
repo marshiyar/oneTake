@@ -46,6 +46,9 @@ RULES = [
     (r"\.github/workflows/mpvfx-macos\.yml", {"macos"}),
     (r"\.github/ci/test-shards\.py", ALL),
     (r"\.github/ci/run-shard\.py", {"linux", "windows"}),
+    # module_shards.py narrows the Linux and Windows shards in the plan job; the macOS
+    # workflow (mpvfx-macos.yml) runs every shard, so a change to it needs no Mac.
+    (r"\.github/ci/module_shards\.py", {"linux", "windows"}),
     # The Linux and Windows test shards that run on OneTake-actionRunners-1: the generated workflow, its generator, the
     # plan job's check that the Runners App is installed, and the job that waits for their statuses.
     (

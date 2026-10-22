@@ -28,13 +28,13 @@ public final class InspectorPanel {
         case groupMenu(String)
     }
 
-    public var editor: TimelineEditor?
+    public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch() } } }
     /// Selected clip ids (the timeline/stage selection).
-    public var selection: [String] = []
+    public var selection: [String] = [] { didSet { if selection != oldValue { cancelLookMatch() } } }
     /// Presentation choice; the resulting positions are ordinary saved document parameters.
     public var alignmentReference = TimelineAlignmentReference.frame
     /// Playhead (composition seconds).
-    public var time = 0.0
+    public var time = 0.0 { didSet { if time != oldValue { cancelLookMatch() } } }
     /// The open accordion group ("" when all are closed). Every change, from a header click or a host reveal, is saved
     /// as `PanelPreferences.openInspectorGroup` so the next launch reopens it.
     public var openGroupId: String = "layout" {
@@ -185,6 +185,9 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// A clip's graded frame at an explicit composition time, used by reference look matching.
+    public var matchLookFrame: ((_ clipId: String, _ time: Double, _ width: Int, _ height: Int) -> PresetPreviewState)?
+    var lookMatch = LookMatchUIState()
     /// Host hook: the composited program frame at the playhead for the Grade scopes' Program mode, at most w x h.
     public var programScopeFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
     /// What the Grade scopes read (the Scopes row's Clip / Program switch). Every change is saved as
@@ -263,6 +266,7 @@ public final class InspectorPanel {
     // MARK: Draw
 
     public func draw(_ c: CanvasContext, in r: CanvasRect) {
+        validateLookMatchContext()
         lastRect = r
         hits.reset(); tabBars = [:]
         // The shelf went away (closed, the rack's owner changed, the selection or group moved on): the audition ends.
