@@ -147,9 +147,11 @@ extension EditorSession {
         player.view.draw(c, size: size)
         transport.shortcuts.viewportHeight = size.height
         transport.draw(c, size: size, background: player.view.theme.shellBackground)
+        drawVoice(c, size: size)
     }
 
     func playerPointerDown(x: Double, y: Double, shift: Bool) {
+        if voiceRect(player.size).contains(CanvasPoint(x, y)) { toggleVoice(); return }
         if transport.pointerDown(CanvasPoint(x, y)) { redraw(); return }
         player.pointerDown(x: x, y: y, shift: shift)
     }

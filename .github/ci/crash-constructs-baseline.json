@@ -1,7 +1,7 @@
 {
   "about": "Crash constructs per Swift file under mpvfx-swift/Sources (.github/ci/crash_constructs.py). Counts only go down: run `python3 -I -B .github/ci/crash_constructs.py --update` after removing some.",
   "totals": {
-    "force-unwrap": 292,
+    "force-unwrap": 260,
     "try!": 12,
     "as!": 7,
     "fatalError": 16,
@@ -41,16 +41,10 @@
       "force-unwrap": 2
     },
     "mpvfx-swift/Sources/MpvfxCanvas/CairoCanvas.swift": {
-      "force-unwrap": 8
+      "force-unwrap": 6
     },
     "mpvfx-swift/Sources/MpvfxCanvas/Canvas.swift": {
       "precondition": 1
-    },
-    "mpvfx-swift/Sources/MpvfxCanvas/CoreGraphicsCanvas.swift": {
-      "force-unwrap": 1
-    },
-    "mpvfx-swift/Sources/MpvfxColor/ColorGradeParams.swift": {
-      "force-unwrap": 2
     },
     "mpvfx-swift/Sources/MpvfxColor/ColorGradeRenderer.swift": {
       "force-unwrap": 1
@@ -71,7 +65,7 @@
       "force-unwrap": 1
     },
     "mpvfx-swift/Sources/MpvfxDesktop/GtkCanvasHost.swift": {
-      "force-unwrap": 22
+      "force-unwrap": 21
     },
     "mpvfx-swift/Sources/MpvfxDesktop/GtkDialogs.swift": {
       "force-unwrap": 1
@@ -102,13 +96,7 @@
       "force-unwrap": 4
     },
     "mpvfx-swift/Sources/MpvfxPanels/InspectorPanel+Grade.swift": {
-      "force-unwrap": 7
-    },
-    "mpvfx-swift/Sources/MpvfxPanels/InspectorPanel.swift": {
       "force-unwrap": 1
-    },
-    "mpvfx-swift/Sources/MpvfxPanels/LeftSidebarPanel.swift": {
-      "force-unwrap": 4
     },
     "mpvfx-swift/Sources/MpvfxPanels/PanelPath.swift": {
       "force-unwrap": 1
@@ -207,7 +195,7 @@
       "force-unwrap": 6
     },
     "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectDocumentValidation.swift": {
-      "force-unwrap": 30
+      "force-unwrap": 24
     },
     "mpvfx-swift/Sources/MpvfxShared/Project/NativeProjectDocumentValidationHelpers.swift": {
       "force-unwrap": 36
@@ -225,9 +213,6 @@
     },
     "mpvfx-swift/Sources/MpvfxShared/Project/NativePropertyEditPlan.swift": {
       "force-unwrap": 2
-    },
-    "mpvfx-swift/Sources/MpvfxShared/Project/NativeTimelineAssetInsertPlan.swift": {
-      "force-unwrap": 9
     },
     "mpvfx-swift/Sources/MpvfxShared/Project/NativeTimelineDeletePlan.swift": {
       "try!": 1

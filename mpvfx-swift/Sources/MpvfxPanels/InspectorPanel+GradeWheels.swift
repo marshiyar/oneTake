@@ -39,7 +39,7 @@ struct GradeWheelSet {
 
 /// The wheel cell's geometry, shared by the row height, the draw and the pointer.
 struct GradeWheelLayout {
-    static let gap = 8.0, rowGap = 12.0, labelH = 15.0, levelH = 20.0, fieldLabelH = 14.0, fieldH = 24.0
+    static let gap = 8.0, rowGap = 12.0, labelH = 15.0, levelH = 20.0, fieldLabelH = 24.0, fieldH = 24.0
     var columns: Int, cellW: Double, wheel: Double
     init(width: Double, count: Int) {
         columns = count >= 4 ? 2 : max(1, count)

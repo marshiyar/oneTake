@@ -105,6 +105,7 @@ extension InspectorPanel {
         rows.append(.init(.section("Primary")))
         gap(4)
         rows.append(autoBalanceRow(s.id))
+        rows += matchLookRows(s.id)
         gap(4)
         rows += primaryRows(editor, s, g, commit: commit)
         gap(6)

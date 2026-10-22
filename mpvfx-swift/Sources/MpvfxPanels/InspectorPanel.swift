@@ -28,13 +28,20 @@ public final class InspectorPanel {
         case groupMenu(String)
     }
 
-    public var editor: TimelineEditor?
+    public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch() } } }
     /// Selected clip ids (the timeline/stage selection).
     public var selection: [String] = [] {
-        didSet { if selection != oldValue { endWheelKeyHold() } }
+        didSet {
+            if selection != oldValue {
+                endWheelKeyHold()
+                cancelLookMatch()
+            }
+        }
     }
+    /// Presentation choice; the resulting positions are ordinary saved document parameters.
+    public var alignmentReference = TimelineAlignmentReference.frame
     /// Playhead (composition seconds).
-    public var time = 0.0
+    public var time = 0.0 { didSet { if time != oldValue { cancelLookMatch() } } }
     /// The open accordion group ("" when all are closed). Every change, from a header click or a host reveal, is saved
     /// as `PanelPreferences.openInspectorGroup` so the next launch reopens it.
     public var openGroupId: String = "layout" {
@@ -50,6 +57,13 @@ public final class InspectorPanel {
     public var onClearSelection: (() -> Void)?
     /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
     public var onCopyGrade: (() -> Bool)?
+    /// Durable user-data look catalogue, supplied by the host; ordinary effects remain in the project.
+    public var userLookStore: UserLookStore?
+    public var resolveUserLookLut: (String) -> String = { $0 }
+    public var userLookLutExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    var selectedUserLook: String?
+    var userLookNameDraft: String?
+    var userLookError: UserLookError?
     public var onPasteGrade: (() -> Bool)?
     /// Whether the timeline currently holds a copied grade. Selection compatibility is checked by the panel.
     public var gradeClipboardAvailable = false
@@ -180,6 +194,9 @@ public final class InspectorPanel {
     public var onRetryPresetPreviews: (() -> Void)?
     /// Host hook: the selected clip's graded frame at the playhead for the Grade scopes, at most w x h pixels.
     public var scopeFrame: ((_ clipId: String, _ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
+    /// A clip's graded frame at an explicit composition time, used by reference look matching.
+    public var matchLookFrame: ((_ clipId: String, _ time: Double, _ width: Int, _ height: Int) -> PresetPreviewState)?
+    var lookMatch = LookMatchUIState()
     /// Host hook: the composited program frame at the playhead for the Grade scopes' Program mode, at most w x h.
     public var programScopeFrame: ((_ pixelWidth: Int, _ pixelHeight: Int) -> PresetPreviewState)?
     /// What the Grade scopes read (the Scopes row's Clip / Program switch). Every change is saved as
@@ -258,6 +275,7 @@ public final class InspectorPanel {
     // MARK: Draw
 
     public func draw(_ c: CanvasContext, in r: CanvasRect) {
+        validateLookMatchContext()
         lastRect = r
         hits.reset(); tabBars = [:]
         // The shelf went away (closed, the rack's owner changed, the selection or group moved on): the audition ends.
@@ -288,11 +306,11 @@ public final class InspectorPanel {
     /// Five grid steps: closed headers stack on the grid below the 48 pt clip header.
     static let groupHeaderHeight = 40.0
 
-    /// The header for what is selected; returns its height, or nil when the panel shows no groups (several clips,
-    /// the composition, or a selection the document no longer has).
+    /// The header for what is selected; returns its height, or nil for the composition or a selection the
+    /// document no longer has. Multi-selection keeps the alignment controls.
     func drawSelectionHeader(_ c: CanvasContext, _ r: CanvasRect, _ editor: TimelineEditor) -> Double? {
         if !selection.isEmpty { audioGroupId = nil }
-        if selection.count > 1 { drawMultiSelect(c, r); return nil }
+        if selection.count > 1 { drawMultiSelect(c, r); return 72 }
         if let s = selected() {
             retireStaleEditors(editor, s)
             return drawHeader(c, r, s)
@@ -429,14 +447,14 @@ public final class InspectorPanel {
         return h + 1
     }
 
-    /// FlatMultiSelectState: count and clear (grouping visuals has no native equivalent yet).
+    /// Multi-selection retains count/clear above its shared alignment controls.
     func drawMultiSelect(_ c: CanvasContext, _ r: CanvasRect) {
         let row = CanvasRect(x: r.x + 16, y: r.y + 12, width: r.width - 32, height: 28)
         PanelDraw.text(c, "\(selection.count) clips selected", in: row, font: PanelTheme.font(11, .semibold), color: PanelTheme.text1)
         let clear = CanvasRect(x: row.maxX - 28, y: row.y, width: 28, height: 28)
         PanelDraw.text(c, "×", in: clear, font: PanelTheme.font(14), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3, align: .center)
         hits.add(clear, .headerClear)
-        PanelDraw.text(c, "Select a single clip to edit its properties.", in: CanvasRect(x: row.x, y: row.maxY + 4, width: row.width, height: 16),
+        PanelDraw.text(c, "Align visual clips below, or select one to edit properties.", in: CanvasRect(x: row.x, y: row.maxY + 4, width: row.width, height: 16),
                        font: PanelTheme.font(10), color: PanelTheme.text4)
     }
 
