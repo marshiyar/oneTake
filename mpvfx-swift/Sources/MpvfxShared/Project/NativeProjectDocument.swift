@@ -47,7 +47,8 @@ public func parseNativeProjectDocument(_ input: NativeJSONValue, engine: Keyfram
                 "denominator": rate?["denominator"] ?? .number(DEFAULT_NATIVE_PLAYBACK_RATE.denominator),
             ])
             if clips[c]["muted"] == nil { clips[c]["muted"] = .bool(false) }
-            if clips[c]["staticParameters"] == nil { clips[c]["staticParameters"] = .object([:]) }
+            // No staticParameters default: untouched clips decode to nil (not an empty map), so a clone
+            // round-trip preserves "untouched" and replaceMedia can clear authored sizes back to nil.
         }
         tracks[t]["clips"] = .array(clips)
     }

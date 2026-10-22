@@ -59,7 +59,7 @@ extension InspectorPanel {
             }]))]
         }
         let rows: [InspectorRow] = [.init(.subheader("Crop", buttons: [
-            .init(key: "crop:reset", label: "↺", style: .muted) { [weak self] in self?.runCrop(.reset, editor, s) },
+            .init(key: "crop:reset", label: "Reset crop", style: .muted, action: { [weak self] in self?.runCrop(.reset, editor, s) }, icon: .reset),
             .init(key: "crop:cancel", label: "Cancel", style: .muted) { [weak self] in self?.runCrop(.cancel, editor, s) },
             .init(key: "crop:apply", label: "Apply", style: .accent) { [weak self] in self?.runCrop(.apply, editor, s) },
         ])), .init(.segmented(.init(key: "crop:links", label: "Link edges",

@@ -80,7 +80,7 @@ extension InspectorPanel {
             }
         case .rendering:
             PanelDraw.text(c, "Rendering…", in: CanvasRect(x: sw.x + 6, y: sw.maxY - 17, width: sw.width - 12, height: 13.5),
-                           font: PanelTheme.font(9), color: PanelTheme.text4)
+                           font: PanelTheme.font(11), color: PanelTheme.inspectorText)
         case .unavailable:
             drawPlaceholder(c, sw, .noPicture)
         case .failed(let why):
@@ -92,8 +92,8 @@ extension InspectorPanel {
     static func drawPlaceholder(_ c: CanvasContext, _ sw: CanvasRect, _ why: PreviewFailure) {
         c.strokeRect(sw.insetBy(4.5), PanelTheme.panelHairline, width: 1)
         let line = CanvasRect(x: sw.x + 8, y: sw.midY - 15, width: sw.width - 16, height: 15)
-        PanelDraw.text(c, "No preview", in: line, font: PanelTheme.font(10, .medium), color: PanelTheme.text3, align: .center)
+        PanelDraw.text(c, "No preview", in: line, font: PanelTheme.font(11, .medium), color: PanelTheme.inspectorText, align: .center)
         PanelDraw.text(c, why.reason, in: CanvasRect(x: line.x, y: line.maxY + 1, width: line.width, height: 13.5),
-                       font: PanelTheme.font(9), color: PanelTheme.text4, align: .center)
+                       font: PanelTheme.font(11), color: PanelTheme.inspectorText, align: .center)
     }
 }

@@ -266,6 +266,23 @@ final class DockShellTests: XCTestCase {
                         "Effects", "Scopes", "Markers", "Transform", "Style", "Grade", "Effects", "Audio FX", "Media", "Easing"])
     }
 
+    func testKeyReleaseEndsInspectorHoldAfterPaneFocusMoves() throws {
+        let (session, router) = try session(try userData())
+        let right = try XCTUnwrap(session.panels?.right)
+        let inspector = right.inspector
+        inspector.selection = ["clip:a"]
+        inspector.openGroupId = "grade"
+        inspector.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 380, height: 4_000))
+        inspector.focus.visible = true
+        inspector.focus.current = .custom("grade:balance", 2)
+        let entries = session.editor.undoStack.count
+        XCTAssertTrue(inspector.keyDown(EditorKey(.right)))
+        router.dock.focus("timeline")
+        router.keyUp(EditorKey(.right))
+        XCTAssertTrue(inspector.keyDown(EditorKey(.right)))
+        XCTAssertEqual(session.editor.undoStack.count, entries + 2)
+    }
+
     func testTheWindowMenuListsEveryPanelWithACheckmarkAndTogglesIt() throws {
         let (_, router) = try session(try userData())
         // The Design groups start in the Design tab, and Mixer/Scopes/Markers start closed, so those

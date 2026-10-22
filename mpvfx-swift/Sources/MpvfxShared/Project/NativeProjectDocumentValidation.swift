@@ -40,6 +40,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         pushIssue(&issues, .invalidCanvas, "canvas", "Canvas must be an object")
     }
     validateNativeEasingPresets(input["easingPresets"], &issues)
+    let textStyleIds = validateNativeTextStyles(input["textStyles"], &issues)
 
     var assetsById: [String: NativeJSONValue] = [:]
     let kinds = ["video", "audio", "image", "element"]
@@ -171,6 +172,9 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["hidden"] != nil && clip["hidden"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).hidden", "Hidden must be a boolean")
             }
+            if clip["scaleRatioLocked"] != nil && clip["scaleRatioLocked"]?.boolValue == nil {
+                pushIssue(&issues, .invalidClip, "\(clipPath).scaleRatioLocked", "Scale ratio lock must be a boolean")
+            }
             if clip["preservesPitch"] != nil && clip["preservesPitch"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).preservesPitch", "Preserves pitch must be a boolean")
             }
@@ -237,7 +241,9 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                 }
             }
             validateNativeFill(clip["fill"], "\(clipPath).fill", allowInherit: true, assets: assetsById, &issues)
+            validateNativeClipBeats(clip, asset, clipPath, &issues)
             validateNativeClipNarration(clip["narration"], assetKind: asset == nil ? nil : assetKind, "\(clipPath).narration", &issues)
+            validateNativeTextStyleLink(clip, textStyleIds, clipPath, &issues)
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }

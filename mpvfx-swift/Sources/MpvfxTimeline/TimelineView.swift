@@ -203,6 +203,7 @@ public struct TimelineClipModel: Sendable, Equatable {
     public var canMute = true
     /// Enabled nodes in the clip's audio FX chain (TimelineFxButton nodeCount: enabledAudioFxNodes).
     public var fxCount = 0
+    public var beatTimes: [Double] = []
     public var end: Double { start + duration }
     public init(id: String? = nil, name: String, start: Double, duration: Double, kind: TimelineClipKind = .video,
                 keyframes: [Double] = [], effectCount: Int = 0) {
@@ -225,8 +226,17 @@ public struct TimelineThumbnailStrip: Equatable, Sendable {
     public init(frames: [CanvasImage], aspect: Double) { self.frames = frames; self.aspect = aspect }
 }
 
-public struct TimelineBeat: Sendable, Equatable { public var time: Double; public var strength: Double?
-    public init(time: Double, strength: Double? = nil) { self.time = time; self.strength = strength } }
+public struct TimelineBeat: Sendable, Equatable {
+    public var time: Double
+    public var strength: Double?
+    /// Nil for an independent analysis mark; document marks identify their owning clip.
+    public var clipId: String?
+    public init(time: Double, strength: Double? = nil, clipId: String? = nil) {
+        self.time = time
+        self.strength = strength
+        self.clipId = clipId
+    }
+}
 public enum TimelineTimeDisplay: Sendable { case time, frame }
 
 /// Live gesture preview, drawn on top of the committed document state.
@@ -273,6 +283,7 @@ public final class TimelineView {
     public var displacedDrop: (clipIds: [String], target: TimelineDropTarget)?
     public var dragLiftY = 0.0
     public var beats: [TimelineBeat] = []
+    public var beatDragTime: Double?
     public var timeDisplay: TimelineTimeDisplay = .time
     public var frameRate = 30.0
     public var scrubbing = false
@@ -354,6 +365,12 @@ public final class TimelineView {
         let lift = preview && dropTarget != nil && isMoving(clip.id) ? dragLiftY : 0
         return CanvasRect(x: x(for: start), y: rowTop(row) + TimelineLayout.clipY + lift,
                           width: max(1, (end - start) * pixelsPerSecond), height: trackHeight - 2 * TimelineLayout.clipY)
+    }
+
+    /// Timeline seconds of a committed mark during the clip's move preview.
+    func beatPreviewTime(_ time: Double, clipId: String) -> Double {
+        guard case let .move(ids, delta, _, _) = drag, ids.contains(clipId) else { return time }
+        return time + delta
     }
 
     // MARK: Overlays (razor guide, marquee, gap strips, gap menu)
@@ -574,6 +591,13 @@ public final class TimelineView {
         }
         c.withState {
             c.clip(r)
+            if let time = beatDragTime, selection.contains(clip.id) {
+                c.fillRect(CanvasRect(x: x(for: time) - 1, y: r.y, width: 2, height: r.height), t.accent)
+            }
+            for time in clip.beatTimes {
+                let bx = x(for: beatPreviewTime(time, clipId: clip.id))
+                c.fillRect(CanvasRect(x: bx - 1, y: r.y + 2, width: 2, height: max(0, r.height - 4)), CanvasColor(ThemeTokens.green500))
+            }
             // Keyframe diamonds (TimelineClipDiamonds), drawn when the bar is at least 20 px wide.
             if r.width >= 20 { drawMarks(c, clip, scope: nil, origin: CanvasPoint(r.x, r.y + r.height / 2)) }
             // Clip name: centred in the header strip, left 12, right 10, 10px/500, ellipsis, at clipNameAlpha.
