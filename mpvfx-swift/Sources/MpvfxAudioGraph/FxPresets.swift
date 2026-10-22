@@ -126,26 +126,32 @@ public enum AudioFxPresets {
     public static func preset(_ id: String) -> FxPreset? { all.first { $0.id == id } }
     public static func byFamily(_ family: String) -> [FxPreset] { all.filter { $0.family == family } }
 
-    public static func nodes(_ preset: FxPreset, joining chain: FxChain) -> [FxNode] {
+    public static func nodes(_ preset: FxPreset, joining chain: FxChain, version: Int = 2) -> [FxNode] {
         var running = chain
         var out: [FxNode] = []
         for node in preset.nodes {
-            let made = FxNode(type: node.type, id: running.mintNodeId(), fromPreset: preset.id, label: node.label, enabled: true,
-                              params: AudioFx.normalize(node.type, node.params))
+            let made = FxNode(type: node.type, version: version, id: running.mintNodeId(), fromPreset: preset.id, label: node.label, enabled: true,
+                              params: presetParams(node, version: version))
             out.append(made)
             running.nodes.append(made)
         }
         return out
     }
 
-    public static func apply(_ chain: FxChain, _ preset: FxPreset, replaceChain: Bool = false) -> FxChain {
-        if replaceChain { return FxChain(nodes: nodes(preset, joining: FxChain())) }
+    private static func presetParams(_ node: FxPresetNode, version: Int) -> FxParams {
+        var p = AudioFx.normalize(node.type, node.params)
+        if version >= 2, node.type == "compressor" || node.type == "gate" { p["knee"] = .number(20 * log10(max(1, p.num("knee")))) }
+        return AudioFx.normalize(node.type, p, version: version)
+    }
+
+    public static func apply(_ chain: FxChain, _ preset: FxPreset, replaceChain: Bool = false, version: Int = 2) -> FxChain {
+        if replaceChain { return FxChain(version: version, nodes: nodes(preset, joining: FxChain(), version: version)) }
         guard let existing = chain.nodes.firstIndex(where: { $0.fromPreset == preset.id }) else {
-            return FxChain(nodes: chain.nodes + nodes(preset, joining: chain))
+            return FxChain(version: max(chain.version, version), nodes: chain.nodes + nodes(preset, joining: chain, version: version))
         }
         let kept = chain.nodes.filter { $0.fromPreset != preset.id }
-        let made = nodes(preset, joining: FxChain(nodes: kept))
-        return FxChain(nodes: Array(kept.prefix(existing)) + made + Array(kept.dropFirst(existing)))
+        let made = nodes(preset, joining: FxChain(nodes: kept), version: version)
+        return FxChain(version: max(chain.version, version), nodes: Array(kept.prefix(existing)) + made + Array(kept.dropFirst(existing)))
     }
 
     public static func activeIds(_ chain: FxChain) -> [String] {
@@ -188,11 +194,11 @@ public enum AudioFxProfiles {
         },
     ]
 
-    public static func apply(_ type: String, strength: Double, params: FxParams) -> FxParams {
+    public static func apply(_ type: String, strength: Double, params: FxParams, version: Int = 1) -> FxParams {
         guard let profile = profiles[type] else { return params }
         var merged = params
         for (k, v) in profile.at(strength) { merged[k] = .number(v) }
-        return AudioFx.normalize(type, merged)
+        return AudioFx.normalize(type, merged, version: version)
     }
 
     public static func strength(_ type: String, params: FxParams) -> Double {
@@ -238,7 +244,7 @@ public enum AudioEq {
         for band in bands {
             var raw: [String: JSONValue] = ["frequency": .number(band.frequency), "gain": .number(clampGain(band.gain))]
             if band.kind == "peaking" { raw["q"] = .number(band.q ?? 1) }
-            let made = FxNode(type: band.kind, id: running.mintNodeId(), label: band.name, fromEq: eqId, enabled: true, params: AudioFx.normalize(band.kind, raw))
+            let made = FxNode(type: band.kind, version: 2, id: running.mintNodeId(), label: band.name, fromEq: eqId, enabled: true, params: AudioFx.normalize(band.kind, raw))
             out.append(made)
             running.nodes.append(made)
         }

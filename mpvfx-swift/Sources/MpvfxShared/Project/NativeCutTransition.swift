@@ -56,6 +56,9 @@ public struct NativeCutTransition: Codable, Equatable, Sendable {
     public static let version = 1
     /// The dip colour when `color` is absent.
     public static let defaultDipColor = "#000000"
+    /// The dip-to-white option beside it (video white, never a theme token: stored content keeps its
+    /// colour in both appearances).
+    public static let whiteDipColor = "#ffffff"
 
     /// The entry as stored, unknown keys included.
     public var object: NativeJSONObject
