@@ -199,6 +199,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var masks: [NativeClipMask]? = nil
     /// This clip's own canvas fill, or `inherit` for the project's (`NativeFill`); nil means the project's.
     public var fill: NativeFill? = nil
+    /// Procedural picture on an element clip; uses the shared solid/gradient fill format.
+    public var generator: NativeFill? = nil
     /// The text, voice, rate and pitch an audio clip made from text was spoken with (`NativeClipNarration`); absent
     /// on every other clip.
     public var narration: NativeClipNarrationRecord? = nil
@@ -247,6 +249,9 @@ public struct NativeProjectTrack: Codable, Equatable, Sendable {
     /// A soloed audio track is heard alone: while any audio track is soloed, the clips of every other track are left
     /// out of the mix (live playback and export). Ignored on video and mixed tracks. Absent means not soloed.
     public var soloed: Bool?
+    /// Mixer controls: absent means unity gain and centered pan.
+    public var mixerGainDB: Double? = nil
+    public var mixerPan: Double? = nil
 
     public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil,
                 locked: Bool? = nil, soloed: Bool? = nil, transitions: [NativeCutTransition]? = nil) {
@@ -273,6 +278,8 @@ public struct NativeProjectSequence: Codable, Equatable, Sendable {
     /// The caption track (`NativeCaptionTrack.swift`); absent in a project without captions and in every project
     /// written before captions existed, which open unchanged.
     public var captions: NativeCaptionTrack? = nil
+    /// Sequence markers use seconds from the start; absent in older projects.
+    public var markers: [NativeSequenceMarker]? = nil
 }
 
 /// The timeline kind a document stores in `mediaEngine`. Every document is a native timeline drawn by the Swift

@@ -77,7 +77,7 @@ public final class RasterCanvas: CanvasContext {
         guard !text.isEmpty else { return }
         let rendered: TextBitmap.Rendered?
         do { rendered = try TextBitmap.render(text, font: font, color: color, scale: deviceScale) } catch {
-            if drawError == nil { drawError = MediaError(kind: .internalError, message: "text \"\(text)\": \(error)") }
+            if drawError == nil { drawError = MediaError(kind: .internalError, message: "text \"\(text)\": \((error as? MediaError)?.message ?? "it could not be drawn")") }
             return
         }
         guard let bitmap = rendered else { return }
@@ -89,7 +89,7 @@ public final class RasterCanvas: CanvasContext {
 
     public func measureText(_ text: String, font: CanvasFont) -> CanvasSize {
         do { return try TextBitmap.measure(text, font: font) } catch {
-            if drawError == nil { drawError = MediaError(kind: .internalError, message: "text \"\(text)\": \(error)") }
+            if drawError == nil { drawError = MediaError(kind: .internalError, message: "text \"\(text)\": \((error as? MediaError)?.message ?? "it could not be drawn")") }
             return CanvasSize(0, font.size)
         }
     }
@@ -108,7 +108,7 @@ public final class RasterCanvas: CanvasContext {
         } catch let e as MediaError {
             if drawError == nil { drawError = e }
         } catch {
-            if drawError == nil { drawError = MediaError(kind: .internalError, message: "\(error)") }
+            if drawError == nil { drawError = MediaError(kind: .internalError, message: (error as? MediaError)?.message ?? "The frame could not be drawn.") }
         }
     }
 
@@ -141,7 +141,7 @@ public final class RasterCanvas: CanvasContext {
             surface.restore()
             return true
         } catch {
-            if drawError == nil { drawError = (error as? MediaError) ?? MediaError(kind: .internalError, message: "\(error)") }
+            if drawError == nil { drawError = (error as? MediaError) ?? MediaError(kind: .internalError, message: (error as? MediaError)?.message ?? "The frame could not be drawn.") }
             return false
         }
     }

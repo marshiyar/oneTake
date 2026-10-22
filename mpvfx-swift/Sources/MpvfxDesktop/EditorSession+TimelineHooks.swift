@@ -47,6 +47,20 @@ extension EditorSession {
         redraw()
     }
 
+    /// Click, Enter or drop a text recipe: the same ordinary text/keyframe document is used by preview and export.
+    func addTextLook(_ look: TextLookPreset) {
+        guard let panels, let id = editor.addTextLook(look, at: playback.currentTime) else { return }
+        timeline.view.selection = [id]
+        playback.duration = editor.duration
+        syncStage(); panels.syncItems()
+        panels.right.inspector.audioGroupId = nil
+        panels.right.inspector.selection = [id]
+        panels.right.inspector.openGroupId = "text"
+        panels.right.layout.setRightCollapsed(false)
+        panels.right.layout.setRightTab(.design)
+        redraw()
+    }
+
     /// Keyframe menu "Edit Easing…": the Keyframe Easing panel on those keys (the timeline already selected the clip
     /// and keys).
     func openKeyframeEasing(clipId: String, refs: Set<TimelineKeyframeRef>) {

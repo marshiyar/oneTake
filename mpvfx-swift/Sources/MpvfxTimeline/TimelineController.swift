@@ -130,6 +130,7 @@ public final class TimelineController {
         view.beats = all.flatMap(\.clips).flatMap { clip in
             clip.beatTimes.map { TimelineBeat(time: $0, clipId: clip.id) }
         }
+        view.markers = e.document.sequence.markers ?? []
         // A keyed clip starts with its one summary row; expanded rows and folded kinds are kept per clip while it exists.
         let clipIds = Set(all.flatMap(\.clips).map(\.id))
         view.expandedClips.formIntersection(clipIds)
@@ -138,6 +139,7 @@ public final class TimelineController {
         view.duration = max(e.duration, 0)
         view.frameRate = e.fps
         playback.duration = view.duration; playback.fps = e.fps
+        if playback.currentTime > view.duration { playback.seek(view.duration) }
         let ids = Set(view.tracks.flatMap(\.clips).map(\.id))
         view.selection = view.selection.intersection(ids)
         pruneKeyframeSelection()
@@ -457,6 +459,8 @@ public final class TimelineController {
                 else if tool == .razor && view.selection.isEmpty { tool = .select }
                 else { view.selection = []; view.selectedKeyframes = [] }
                 needsDisplay?(); return true
+            case .char(let ch) where (ch == "m" || ch == "M") && !k.shift:
+                if !k.isRepeat { _ = editor?.addMarker(at: playback.currentTime) }; return true
             case .char(let ch) where (ch == "b" || ch == "B") && !k.shift:
                 if selectedBeatClipId != nil {
                     if !k.isRepeat { _ = addSelectedBeat() }

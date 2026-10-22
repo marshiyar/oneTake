@@ -66,6 +66,8 @@ public final class CoreAudioInput: AudioInput, AudioInputDeviceSelecting {
 
     // MARK: Start and stop
 
+    public private(set) var latencySeconds = 0.0
+
     public func start() throws {
         try Self.ensurePermission()
         lock.lock()
@@ -80,6 +82,7 @@ public final class CoreAudioInput: AudioInput, AudioInputDeviceSelecting {
             guard let found = Self.defaultInputDeviceID() else { throw AudioInputError.noDevice }
             id = found
         }
+        latencySeconds = Self.inputLatency(id)
         let au = try makeUnit(device: id)
         lock.lock(); unit = au; running = true; renderStatus = noErr; dropped = 0; lock.unlock()
         let status = AudioOutputUnitStart(au)
@@ -87,6 +90,22 @@ public final class CoreAudioInput: AudioInput, AudioInputDeviceSelecting {
             stop()
             throw AudioInputError.unavailable("AudioOutputUnitStart failed (\(status))")
         }
+    }
+
+    private static func inputLatency(_ id: AudioDeviceID) -> Double {
+        var rate = Float64(0), size = UInt32(MemoryLayout<Float64>.size)
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate,
+                                                mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &rate) == noErr, rate > 0 else { return 0 }
+        var frames = UInt32(0)
+        for selector in [kAudioDevicePropertyLatency, kAudioDevicePropertySafetyOffset] {
+            var value = UInt32(0)
+            size = UInt32(MemoryLayout<UInt32>.size)
+            address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioDevicePropertyScopeInput,
+                                                 mElement: kAudioObjectPropertyElementMain)
+            if AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value) == noErr { frames += value }
+        }
+        return Double(frames) / rate
     }
 
     private func makeUnit(device id: AudioDeviceID) throws -> AudioUnit {

@@ -77,6 +77,18 @@ public final class DesktopPreferences: @unchecked Sendable {
 
     // MARK: Settings window (appearance is `ThemeAppearance.preferenceKey`, read by AppearanceSettings)
 
+    public var audioInputDevice: String? {
+        get { value("mpvfx-audio-input-device")?.string }
+        set { set("mpvfx-audio-input-device", newValue.map { .string($0) }) }
+    }
+    public var voiceCountIn: Int {
+        get {
+            guard let n = value("mpvfx-voice-count-in")?.number, n.isFinite, (0...5).contains(n), n == n.rounded() else { return 3 }
+            return Int(n)
+        }
+        set { set("mpvfx-voice-count-in", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
+    }
+
     public static let audioOutputDeviceKey = "mpvfx-audio-output-device"
     public static let previewCacheKey = "mpvfx-preview-cache-mb"
     public static let exportFolderKey = "mpvfx-default-export-folder"

@@ -153,6 +153,7 @@ public final class TimelineEditor {
 
     /// TimelineLanes trackLabel: the first clip's label, else "Track N" (1-based display position).
     static func trackName(_ t: NativeProjectTrack, displayNumber: Int, assets: [String: NativeProjectAsset]) -> String {
+        if t.id.hasPrefix("track:voice:") { return "Voice" }
         if let c = t.clips.first { return assets[c.assetId]?.name ?? c.assetId }
         return "Track \(displayNumber)"
     }
@@ -186,10 +187,13 @@ public final class TimelineEditor {
         }
     }
 
-    /// Composition end in seconds (sequence.durationFrames, else last clip end).
+    /// Navigable end in seconds: authored composition (or last clip) and every saved marker.
+    /// Markers remain reachable after trimming/deleting clips, without rewriting the authored render duration.
     public var duration: Double {
-        if let d = document.sequence.durationFrames, d > 0 { return d / fps }
-        return (document.sequence.tracks.flatMap(\.clips).map { $0.startFrame + $0.durationFrames }.max() ?? 0) / fps
+        let contentEnd = document.sequence.durationFrames.flatMap { $0 > 0 ? $0 : nil }
+            ?? document.sequence.tracks.flatMap(\.clips).map { $0.startFrame + $0.durationFrames }.max() ?? 0
+        let markerEnd = document.sequence.markers?.map(\.time).filter { $0.isFinite && $0 >= 0 }.max() ?? 0
+        return max(contentEnd / fps, markerEnd)
     }
 
     public func address(clipId: String) -> NativeProjectClipAddress? {

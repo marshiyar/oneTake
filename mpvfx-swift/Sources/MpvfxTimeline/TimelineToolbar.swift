@@ -19,7 +19,7 @@ import MpvfxTheme
 /// height, zoom. Drawn on a CanvasContext and hit-tested here; every action goes through the controller.
 public final class TimelineToolbar {
     public enum Item: Hashable, Sendable {
-        case select, razor, slip, roll, snap, keyframe, autoKeyframe, split, removeSilence, addBeat
+        case select, razor, slip, roll, snap, keyframe, autoKeyframe, split, removeSilence, splitScenes, sceneThreshold, addBeat
         case trackHeight, zoomOut, zoomSlider, zoomIn, zoomPercent
     }
     /// The TSX keyframe button's three looks (useKeyframeToggle state).
@@ -35,6 +35,15 @@ public final class TimelineToolbar {
     /// Remove-silence button: shown only when the host wires it (the TSX renders it only with onRemoveSilence).
     public var onRemoveSilence: ((_ clipId: String) -> Void)?
     public var isRemovingSilence = false
+    /// While analysing, the same button cancels even if selection changes.
+    public var onSplitScenes: (() -> Void)?
+    public var sceneProgress: Double?
+    public private(set) var sceneThreshold = 0.3
+    public func adjustSceneThreshold(increase: Bool) {
+        guard sceneProgress == nil else { return }
+        sceneThreshold = max(0.1, min(0.9, ((sceneThreshold + (increase ? 0.1 : -0.1)) * 10).rounded() / 10))
+        controller.needsDisplay?()
+    }
     /// Legacy analysis selection retained for hosts; hand-placed beats use the selected audio clip.
     public var beatMusicClipId: String?
     /// Notification after a beat was persisted on the selected audio clip; never replaces the document edit.
@@ -83,6 +92,8 @@ public final class TimelineToolbar {
         case .keyframe: keyframeState != .none
         case .split: canSplit
         case .removeSilence: canRemoveSilence
+        case .splitScenes: sceneProgress != nil || canRemoveSilence
+        case .sceneThreshold: sceneProgress == nil
         case .addBeat: canAddBeat
         default: true
         }
@@ -115,6 +126,10 @@ public final class TimelineToolbar {
             return canSplit ? "Split at playhead (S)" : selectedClip != nil && !selectedLocked ? "Move the playhead inside the clip to split" : "Select a clip to split"
         case .removeSilence:
             return isRemovingSilence ? "Removing silence…" : canRemoveSilence ? "Remove silence from selected video" : "Select an editable video clip"
+        case .splitScenes:
+            if let progress = sceneProgress { return "Scene analysis \(Int(progress * 100))% — click or Esc to cancel" }
+            return "Split at scene changes (Ctrl/Cmd+Alt+S); select an editable video"
+        case .sceneThreshold: return "Scene threshold \(Int(sceneThreshold * 100))% (Ctrl/Cmd+Alt+[ / ]); click to increase, wraps at 90%"
         case .addBeat:
             return controller.selectedBeatClipId == nil ? "Select an audio clip to place beats (B)"
                 : canAddBeat ? "Add beat at playhead" : "A beat already exists at the playhead"
@@ -136,10 +151,12 @@ public final class TimelineToolbar {
         var x = Self.padX
         var left: [Item] = [.select, .razor, .slip, .roll, .snap, .keyframe, .autoKeyframe, .split]
         if onRemoveSilence != nil { left.append(.removeSilence) }
+        if onSplitScenes != nil { left.append(contentsOf: [.splitScenes, .sceneThreshold]) }
         left.append(.addBeat)
         for (i, item) in left.enumerated() {
-            out.append((item, box(x, Self.button)))
-            x += Self.button + Self.gap
+            let w = item == .sceneThreshold ? 38.0 : Self.button
+            out.append((item, box(x, w)))
+            x += w + Self.gap
             if i == 3 { x += 4 + 1 + 4 + Self.gap }     // divider after the tools: mx-1 h-4 w-px
         }
         // Right group: label(icon + gap-1 + mx-1 slider mx-1, mr-2) | − | mx-1 slider mx-1 | + | ml-1 percent.
@@ -217,6 +234,9 @@ public final class TimelineToolbar {
         case .autoKeyframe: controller.autoKeyframeEnabled.toggle()
         case .split: controller.splitSelectedAtPlayhead()
         case .removeSilence: if let id = selectedClip?.id { onRemoveSilence?(id) }
+        case .splitScenes: onSplitScenes?()
+        case .sceneThreshold:
+            if sceneThreshold >= 0.9 { sceneThreshold = 0.1 } else { adjustSceneThreshold(increase: true) }
         case .addBeat:
             let t = controller.beatEventTime
             if controller.addBeat(at: t) { onAddBeat?(t) }
@@ -272,6 +292,11 @@ public final class TimelineToolbar {
             }
             drawSlider(c, track: sliderTrack(item, in: r), fraction: sliderFraction(item))
             return
+        case .sceneThreshold:
+            let f = CanvasFont.mono(10), text = "\(Int((sceneThreshold * 100).rounded()))%"
+            c.drawText(text, at: .init(r.centerX - c.measureText(text, font: f).width / 2, r.centerY - 6),
+                       font: f, color: CanvasColor(sceneProgress == nil ? T.neutral400 : T.neutral700))
+            return
         case .zoomPercent:
             let f = CanvasFont.mono(11), s = "\(Int(zoomPercent))%"
             let w = c.measureText(s, font: f).width
@@ -296,6 +321,11 @@ public final class TimelineToolbar {
         case .split:
             c.stroke(TimelineIconPath.parse("M5 3 L7 3 L7 13 L5 13", viewBox: 16, into: icon), col, StrokeStyle(width: 1.6))
             c.stroke(TimelineIconPath.parse("M11 3 L9 3 L9 13 L11 13", viewBox: 16, into: icon), col, StrokeStyle(width: 1.6))
+        case .splitScenes:
+            if let progress = sceneProgress {
+                let text = "\(Int(progress * 100))", font = CanvasFont.mono(10)
+                c.drawText(text, at: .init(r.centerX - c.measureText(text, font: font).width / 2, r.centerY - 6), font: font, color: col)
+            } else { Self.drawScissors(c, icon, col) }
         case .removeSilence: Self.drawWaveformGlyph(c, icon, isRemovingSilence ? col.withAlpha(col.a * 0.6) : col)
         case .addBeat:
             c.stroke(TimelineIconPath.parse("M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4", viewBox: 24, into: icon),
