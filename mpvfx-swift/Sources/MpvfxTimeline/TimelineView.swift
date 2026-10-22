@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxTheme
+import MpvfxShared
 
 /// Timeline layout constants. The media row height is the one
 /// value the user changes (toolbar track-height presets, timelineTrackHeight), so it is instance
@@ -239,6 +240,7 @@ public enum TrimEdge: Sendable, Equatable { case start, end }
 
 /// Custom-drawn timeline (lanes, ruler, canvas, clips, playhead).
 public final class TimelineView {
+    public var markers: [NativeSequenceMarker] = []
     public var tracks: [TimelineTrackModel]
     public var duration: Double
     public var pixelsPerSecond: Double
@@ -700,6 +702,10 @@ public final class TimelineView {
                 let mx = Self.snappedLineLeft(centre: x(for: tm))
                 c.fillRect(CanvasRect(x: mx, y: 0, width: 1, height: L.rulerHeight), t.tickMajor)
                 c.drawText(rulerLabel(tm), at: .init(mx + 5, 5), font: .mono(10), color: t.tickText)
+            }
+            for marker in markers {
+                let mx = x(for: marker.time)
+                c.fillRect(CanvasRect(x: mx - 3, y: 14, width: 6, height: 9), .documentColor(marker.color))
             }
             for mt in ticks.minor {
                 c.fillRect(CanvasRect(x: Self.snappedLineLeft(centre: x(for: mt)), y: L.rulerHeight - 8, width: 1, height: 8), t.tickMinor)

@@ -102,8 +102,8 @@ final class AudioFxLiveEditTests: XCTestCase {
         ("delay", #"{"time":90,"feedback":0.5,"mix":0.5}"#), ("chorus", #"{"depth":5,"mix":0.6}"#), ("phaser", #"{"speed":1.5}"#),
         ("reverb", #"{"wet":0.6}"#), ("denoise", #"{"amount":1,"learn":100}"#),
     ]
-    static func chain(_ type: String, _ params: String) -> String {
-        #"{"version":1,"nodes":[{"type":""# + type + #"","id":"x","params":"# + params + "}]}"
+    static func chain(_ type: String, _ params: String, version: Int = 1) -> String {
+        #"{"version":"# + String(version) + #","nodes":[{"type":""# + type + #"","id":"x","params":"# + params + "}]}"
     }
 
     static let dryOffline = AudioGraphRenderer.renderOffline(project(inputs()))
@@ -166,14 +166,28 @@ final class AudioFxLiveEditTests: XCTestCase {
     /// feeder renders once the swap's crossfade has passed: it is the FX project's own render at that position, bit
     /// for bit (the rebuilt graph is pre-rolled from frame 0), and it is not the dry signal.
     func testEveryFxTypeIsHeardInLivePlaybackOnBothRacks() {
+        verifyEveryFxType(version: 1, requireAudibleChange: true)
+    }
+
+    /// V2 changes DSP semantics, while the live graph must still match the exported samples for every type.
+    func testEveryV2TypeMatchesExportOnBothRacks() {
+        verifyEveryFxType(version: 2, requireAudibleChange: false)
+    }
+
+    func verifyEveryFxType(version: Int, requireAudibleChange: Bool) {
         for rack in Rack.allCases {
             for (type, params) in Self.everyType {
+                // Denoise learns its noise profile from the span `learn`/`learn_from` points at. The shared
+                // params learn the first 100 ms (near-silence), which barely marks the loud slice this test
+                // measures; learn from the loud burst under the slice instead, as a user pointing at the noisy
+                // passage would. The export test keeps the shared params (it renders the whole second).
+                let params = type == "denoise" ? #"{"amount":1,"learn":125,"learn_from":0.375}"# : params
                 let source = GraphAudioSource(project: Self.project(Self.inputs()))
                 let updater = LiveAudioGraphUpdater(source: source, loadStem: Self.loadStem)
                 updater.submit(Self.inputs()); updater.waitUntilIdle()
                 source.seek(0.3)
                 _ = source.render(frames: 128 * 8)
-                let fxInputs = Self.inputs(rack, Self.chain(type, params))
+                let fxInputs = Self.inputs(rack, Self.chain(type, params, version: version))
                 updater.submit(fxInputs); updater.waitUntilIdle()
                 XCTAssertEqual(source.lastReplace, .rebuilt, "\(rack) \(type)")
                 XCTAssertEqual(source.position, 14400 + 128 * 8)
@@ -183,8 +197,10 @@ final class AudioFxLiveEditTests: XCTestCase {
                 let got = source.render(frames: 128 * 100)
                 let offline = AudioGraphRenderer.renderOffline(Self.project(fxInputs))
                 XCTAssertTrue(got == slice(offline, frame: at, frames: 128 * 100), "\(rack) \(type): live differs from export at the same frame")
-                let d = segDiff(got, slice(Self.dryOffline, frame: at, frames: 128 * 100))
-                XCTAssertGreaterThan(d, 0.01, "\(rack) \(type): live output unchanged (rel diff \(d))")
+                if requireAudibleChange {
+                    let d = segDiff(got, slice(Self.dryOffline, frame: at, frames: 128 * 100))
+                    XCTAssertGreaterThan(d, 0.01, "\(rack) \(type): live output unchanged (rel diff \(d))")
+                }
             }
         }
     }

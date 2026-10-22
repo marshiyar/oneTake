@@ -2,10 +2,11 @@
 
 How the timeline's zoom, track height, ruler, sequence end, clip badges and status-line hints look and behave. It
 follows the principles in [DESIGN.md](DESIGN.md): one accent, red only for recording, cutting and errors, and every
-control named where the user can read it. This is the target behaviour (specified 2026-10-21); each section names
-the tests that hold it once its change has landed.
+control named where the user can read it. Specified 2026-10-21 and since landed (see [STATUS.md](STATUS.md), the
+"Timeline: zoom and ruler" row); each section names the tests that hold it. The table below records the behaviour it
+replaced, kept as history.
 
-## Problems this replaces
+## Problems this replaced
 
 Seen on a 41 s project at the default zoom (owner screenshots, 2026-10-21):
 

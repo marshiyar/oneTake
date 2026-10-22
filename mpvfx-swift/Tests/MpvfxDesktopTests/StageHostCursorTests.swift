@@ -47,6 +47,20 @@ final class StageHostCursorTests: XCTestCase {
         XCTAssertEqual(EditorShellRouter.Cursor.resizeNWSE.windowsCursorId, 32642)
     }
 
+    func testWin32RefreshPreservesFrameAndOtherWindowCursorsUnlessCaptured() {
+        func allows(_ x: Double, _ y: Double, ownWindow: Bool = true, captured: Bool = false) -> Bool {
+            HostCursorRefreshPolicy.shouldRefresh(ownsCapture: captured, ownsWindow: ownWindow,
+                                                  x: x, y: y, width: 300, height: 200)
+        }
+        XCTAssertTrue(allows(0, 0))
+        XCTAssertTrue(allows(299, 199))
+        for (x, y) in [(40.0, -20.0), (-1, 40), (300, 40), (40, 200)] {
+            XCTAssertFalse(allows(x, y), "title bar and resize borders keep their native cursor")
+            XCTAssertTrue(allows(x, y, ownWindow: false, captured: true), "capture owns the cursor outside the client")
+        }
+        XCTAssertFalse(allows(40, 40, ownWindow: false))
+    }
+
     var dirs: [String] = []
     override func tearDown() { for d in dirs { try? FileManager.default.removeItem(atPath: d) } }
 

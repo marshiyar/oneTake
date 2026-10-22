@@ -16,9 +16,9 @@ import Foundation
 /// One tile of the Media panel: a project file, a library file not in this project yet, or a library export.
 /// The three live in different id spaces, so the reference carries which one it is.
 public enum MediaTileRef: Hashable {
-    case media(String), library(String), export(String)
+    case media(String), library(String), export(String), textLook(String)
     public var id: String {
-        switch self { case .media(let id), .library(let id), .export(let id): id }
+        switch self { case .media(let id), .library(let id), .export(let id), .textLook(let id): id }
     }
 }
 
@@ -109,6 +109,15 @@ extension LeftSidebarPanel {
         if !lib.isEmpty { out.append(MediaSection(id: "library", title: "Library media", layout: .grid, tiles: lib.map { .library($0.id) })) }
         let exp = filter.admitsExports ? visibleExports : []
         if !exp.isEmpty { out.append(MediaSection(id: "exports", title: "Exports", layout: .grid, tiles: exp.map { .export($0.id) })) }
+        if onAddTextLook != nil, filter.kind == .all, filter.usage == .all {
+            for group in TextLookPreset.Group.allCases {
+                let looks = TextLookPreset.all.filter { $0.group == group && matchesSearch($0.name + " " + group.rawValue) }
+                if !looks.isEmpty {
+                    out.append(MediaSection(id: "text-looks:" + group.rawValue, title: "Text · " + group.rawValue, layout: .grid,
+                                            tiles: looks.map { .textLook($0.id) }))
+                }
+            }
+        }
         return out
     }
 
@@ -135,6 +144,7 @@ extension LeftSidebarPanel {
         case .media(let id): return mediaItem(id)?.name ?? id
         case .library(let id): return libraryAsset(id)?.name ?? id
         case .export(let id): return export(id)?.label ?? id
+        case .textLook(let id): return TextLookPreset.preset(id)?.name ?? id
         }
     }
 }
