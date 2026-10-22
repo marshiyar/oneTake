@@ -92,3 +92,11 @@ extension MacShell {
     }
 }
 #endif
+
+/// A window's frame keeps its system cursors; captured drags may continue outside the client area.
+enum HostCursorRefreshPolicy {
+    static func shouldRefresh(ownsCapture: Bool, ownsWindow: Bool, x: Double, y: Double,
+                              width: Double, height: Double) -> Bool {
+        ownsCapture || (ownsWindow && x >= 0 && y >= 0 && x < width && y < height)
+    }
+}

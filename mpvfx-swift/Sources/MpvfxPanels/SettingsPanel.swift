@@ -39,6 +39,8 @@ public final class SettingsPanel {
         public var interfaceScalePercent: Int
         /// How long ⇧H holds a frame, in seconds.
         public var holdSeconds = 2.0
+        public var inputDevice: String?
+        public var voiceCountIn = 3
         public init(appearance: ThemeAppearance = .system, audioDevice: String? = nil, previewCacheMB: Int? = nil, exportFolder: String? = nil,
                     interfaceScalePercent: Int = 100) {
             self.appearance = appearance; self.audioDevice = audioDevice; self.previewCacheMB = previewCacheMB; self.exportFolder = exportFolder
@@ -47,7 +49,7 @@ public final class SettingsPanel {
     }
     public struct Device: Equatable { public var id, name: String
         public init(id: String, name: String) { self.id = id; self.name = name } }
-    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, cache, chooseFolder, resetFolder, hold, card }
+    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, input, countIn, cache, chooseFolder, resetFolder, hold, card }
 
     /// The cache sizes offered (MB); nil is automatic.
     public static let cacheChoicesMB: [Int?] = [nil, 512, 1024, 2048, 4096, 8192]
@@ -61,6 +63,7 @@ public final class SettingsPanel {
     public private(set) var isOpen = false
     public var values = Values()
     /// The devices the system offers (empty: only the system default can be chosen). Set by the host once it has asked.
+    public var inputDevices: [Device] = []
     public var devices: [Device] = [] { didSet { devicesListed = true } }
     /// Whether `devices` has been filled since the card was created (until then a chosen device is not called missing).
     public private(set) var devicesListed = false
@@ -132,10 +135,12 @@ public final class SettingsPanel {
     private static var note: CanvasFont { PanelTheme.font(10) }
     static let rowH = 28.0, rowGap = 18.0, pad = 20.0, labelW = 132.0, header = 48.0
     /// Appearance, interface size, audio output, preview cache, export folder, hold length.
-    static let rowCount = 6
+    static let rowCount = 8
+
+    private var rowStride: Double { size.height > 0 && size.height < 500 ? 34 : Self.rowH + Self.rowGap }
 
     public func cardRect(in size: CanvasSize) -> CanvasRect {
-        let h = Self.header + 12 + Double(Self.rowCount) * (Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
+        let h = Self.header + 12 + Double(Self.rowCount) * (size.height < 500 ? 34 : Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
         let w = min(Self.width, max(0, size.width - 32))
         return CanvasRect(x: ((size.width - w) / 2).rounded(), y: max(16, ((size.height - h) / 2).rounded()), width: w, height: h)
     }
@@ -163,9 +168,9 @@ public final class SettingsPanel {
         PanelDraw.hline(c, x0: card.x + 1, x1: card.maxX - 1, y: card.y + Self.header, PanelTheme.panelBorderInput)
 
         var row = Row(x: x, cx: x + Self.labelW, cw: max(0, w - Self.labelW), y: card.y + Self.header + 12)
-        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold] {
+        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold, drawInput, drawCountIn] {
             drawRow(c, row)
-            row.y += Self.rowH + Self.rowGap
+            row.y += rowStride
         }
         if let saveError {
             PanelDraw.text(c, saveError, in: CanvasRect(x: x, y: row.y, width: w, height: 16), font: Self.note, color: PanelTheme.danger)
@@ -182,6 +187,7 @@ public final class SettingsPanel {
     }
 
     private func noteLine(_ c: CanvasContext, _ r: Row, _ s: String) {
+        guard rowStride >= 42 else { return }
         PanelDraw.text(c, s, in: CanvasRect(x: r.cx, y: r.y + Self.rowH + 2, width: r.cw, height: 14), font: Self.note, color: PanelTheme.text3)
     }
 
@@ -231,6 +237,25 @@ public final class SettingsPanel {
         if deviceChoiceUnavailable { noteLine(c, row, "No audio output to choose from in this session.") }
         else if chosenDeviceMissing { noteLine(c, row, "Not connected: the system default plays until it is back.") }
         else { noteLine(c, row, "Takes effect at once, also while playing.") }
+    }
+
+    private func drawInput(_ c: CanvasContext, _ row: Row) {
+        rowLabel(c, row, "Microphone")
+        let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
+        field(c, r)
+        let name = values.inputDevice.flatMap { id in inputDevices.first { $0.id == id }?.name } ?? values.inputDevice ?? "System default"
+        PanelSelect.draw(c, r.insetBy(1), text: name, hovered: hovered == .input)
+        hits.add(r, .input)
+        let missing = values.inputDevice.map { id in !inputDevices.contains { $0.id == id } } ?? false
+        noteLine(c, row, missing ? "Not connected: reconnect or choose another microphone." : "Used by Record voice (⌥Space).")
+    }
+
+    private func drawCountIn(_ c: CanvasContext, _ row: Row) {
+        rowLabel(c, row, "Voice count-in")
+        let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
+        field(c, r)
+        PanelSelect.draw(c, r.insetBy(1), text: "\(values.voiceCountIn) s", hovered: hovered == .countIn)
+        hits.add(r, .countIn)
     }
 
     private func drawCache(_ c: CanvasContext, _ row: Row) {
@@ -289,6 +314,15 @@ public final class SettingsPanel {
         case .appearance(let segment): focus.current = .appearance(segment); change(\.appearance, segment)
         case .interfaceSize: openInterfaceSizeList()
         case .audio: openAudioList()
+        case .input:
+            let options = [PanelDropdown.Option(value: "", label: "System default")]
+                + inputDevices.map { PanelDropdown.Option(value: $0.id, label: $0.name) }
+            openDropdown(.input, options, values.inputDevice ?? "") { [weak self] v in self?.change(\.inputDevice, v.isEmpty ? nil : v) }
+        case .countIn:
+            let options = (0...5).map { PanelDropdown.Option(value: String($0), label: "\($0) s") }
+            openDropdown(.countIn, options, String(values.voiceCountIn)) { [weak self] v in
+                if let n = Int(v) { self?.change(\.voiceCountIn, n) }
+            }
         case .cache: openCacheList()
         case .chooseFolder: onChooseExportFolder?()
         case .hold: openHoldList()

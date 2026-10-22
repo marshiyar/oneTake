@@ -56,6 +56,12 @@ rule = "trojan-source"
 path = "mpvfx-swift/Tests/MpvfxSharedTests/Export/Fixtures/exportParity.json"
 reason = "export parity fixture: text layer cases that contain a byte-order mark"
 
+[[repo.allow]]
+rule = "surveillance"
+path = "mpvfx-swift/Sources/MpvfxAudio/CoreAudioInput.swift"
+match = "AVCaptureDevice"
+reason = "macOS microphone permission only (authorizationStatus/requestAccess for .audio); no capture session is ever created"
+
 [artifact]
 # Redistributed runtimes this project does not build: the Swift runtime and the MSVC runtime on Windows.
 skip = ["swift*.dll", "Foundation*.dll", "_FoundationICU.dll", "dispatch.dll", "BlocksRuntime.dll",
