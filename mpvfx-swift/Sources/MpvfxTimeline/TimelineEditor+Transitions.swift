@@ -30,7 +30,10 @@ public extension TimelineEditor {
             lastFailure = nil
             withHistory(Self.transitionLabel(command)) { replaceDocument(doc, inverse: inverse) }
             return true
-        } catch { lastFailure = NativeProjectClipFailure(code: .documentMismatch, message: "\(error)"); return false }
+        } catch {
+            // Only a non-validation engine error reaches here (refusals return .failure above).
+            lastFailure = NativeProjectClipFailure(code: .documentMismatch, message: "The transition could not be applied"); return false
+        }
     }
 
     /// The track a transition command edits (nil when the transition does not exist).

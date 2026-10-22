@@ -22,7 +22,9 @@ public struct NativeSequenceMarker: Codable, Equatable, Sendable {
     public var note: String
     public var spread = NativeSpreadKeys()
     static let known = ["id", "time", "name", "color", "note"]
-    public init(id: String, time: Double, name: String, color: String = "#FBBF24", note: String = "") {
+    /// The colour a new marker starts with (the scope skin amber, readable on the dark timeline).
+    public static let defaultColor = "#FBBF24"
+    public init(id: String, time: Double, name: String, color: String = NativeSequenceMarker.defaultColor, note: String = "") {
         self.id = id; self.time = time; self.name = name; self.color = color; self.note = note
     }
     public init(from decoder: Decoder) throws {
