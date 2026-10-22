@@ -59,7 +59,7 @@ extension EditorSession {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else {
             throw DesktopError(
-                "The source file is missing: \(path). Reconnect its drive or relink the clip's media.",
+                "The source file is missing: \(path). Restore the file, reconnect its drive, or relink the clip's media.",
                 name: "SourceMissingError")
         }
         return (source, path)
