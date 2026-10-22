@@ -357,6 +357,9 @@ public protocol DesktopBackend: Sendable {
     func videoFrames(projectId: String, request: DesktopVideoFramesRequest) async throws -> DesktopVideoFrames
     /// Pauses in a video's audio within the source range.
     func silences(projectId: String, source: String, sourceStart: Double, sourceDuration: Double) async throws -> [DesktopTimeRange]
+    /// Source times at scene boundaries; progress is 0...1 on a worker thread. Task cancellation stops analysis.
+    func sceneCuts(projectId: String, source: String, sourceStart: Double, sourceDuration: Double,
+                   framesPerSecond: Double, threshold: Double, onProgress: @escaping @Sendable (Double) -> Void) async throws -> [Double]
     /// Renames media and repoints the document's assets, saving `content` (the editor's document) in the same commit.
     func renameMedia(projectId: String, from: String, to: String, content: String) throws -> DesktopMediaOperation
     /// Moves media to the recovery folder. Placed media needs `removeUsages` (its clips and assets are removed).
@@ -440,6 +443,10 @@ public struct NotImplementedBackend: DesktopBackend {
     }
     public func silences(projectId: String, source: String, sourceStart: Double, sourceDuration: Double) async throws -> [DesktopTimeRange] {
         throw DesktopError.notImplemented("Silence analysis")
+    }
+    public func sceneCuts(projectId: String, source: String, sourceStart: Double, sourceDuration: Double,
+                          framesPerSecond: Double, threshold: Double, onProgress: @escaping @Sendable (Double) -> Void) async throws -> [Double] {
+        throw DesktopError.notImplemented("Scene analysis")
     }
     public func renameMedia(projectId: String, from: String, to: String, content: String) throws -> DesktopMediaOperation {
         throw DesktopError.notImplemented("Media")
