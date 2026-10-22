@@ -149,7 +149,6 @@ public final class InspectorPanel {
         c.fillRoundedRect(box, radius: PanelTheme.radius, PanelTheme.panelInput)
         c.strokeRoundedRect(box.insetBy(0.5), radius: PanelTheme.radius, PanelTheme.panelBorderInput, width: 1)
         PanelDraw.text(c, item.label, in: box.insetBy(4), font: Self.rowFont, color: PanelTheme.text1, align: .center)
->>>>>>> origin/main
     }
     public var hovered: Hit?
     public private(set) var field: PanelTextField?
