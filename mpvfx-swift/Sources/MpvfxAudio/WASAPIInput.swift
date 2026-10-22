@@ -45,6 +45,13 @@ public final class WASAPIInput: AudioInput, AudioInputDeviceSelecting {
         return mpvfx_wasapi_capture_discontinuities(s, &count) >= 0 ? Int(count) : 0
     }
 
+    public var latencySeconds: Double {
+        lock.lock(); defer { lock.unlock() }
+        guard let stream else { return 0 }
+        var ticks: Int64 = 0
+        return mpvfx_wasapi_capture_latency(stream, &ticks) >= 0 ? Double(ticks) / 10_000_000 : 0
+    }
+
     /// The active capture endpoints (id, friendly name, default marked); [] when none answers.
     public static func devices() -> [AudioInputDevice] {
         final class Listing { var devices: [AudioInputDevice] = [] }

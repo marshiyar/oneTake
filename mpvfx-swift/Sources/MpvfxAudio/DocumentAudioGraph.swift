@@ -55,6 +55,8 @@ public enum DocumentAudioGraph {
             public var id: String, stem: StemKey, start: Double, end: Double, volume: Double, muted: Bool
             public var fxChain: String?, automation: String?, groupId: String?
             /// Keyframed `audio.volume` (the clip's first track for it with keyframes; clip-local frames).
+            public var mixerGain: Double = 1, mixerPan: Double = 0
+            public var mixerTrackId: String? = nil
             public var volumeKeyframes: VolumeKeyframes? = nil
             /// The clip's cut transition fades (nil: none); `start`/`end` and the stem already include the handle
             /// media a dissolve plays past the clip's own edges.
@@ -77,6 +79,7 @@ public enum DocumentAudioGraph {
         let fps = doc.frameRate.numerator / max(doc.frameRate.denominator, 1e-9)
         let assets = Dictionary(doc.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let clips = doc.sequence.tracks.flatMap(\.clips)
+        let owners = Dictionary(doc.sequence.tracks.flatMap { t in t.clips.map { ($0.id, t) } }, uniquingKeysWith: { a, _ in a })
         let silenced = soloSilencedClipIds(doc)
         let detached = Set(clips.compactMap { $0.audioDetachedFrom?.isEmpty == false ? $0.audioDetachedFrom : nil })
         var tracks: [Inputs.Track] = []
@@ -100,6 +103,11 @@ public enum DocumentAudioGraph {
                                      start: start, end: end, volume: volume, muted: c.muted,
                                      fxChain: c.audioFxChain?.nonEmpty, automation: c.audioAutomation?.nonEmpty, groupId: c.audioGroupId?.nonEmpty,
                                      fadeIn: (c.fadeInFrames ?? 0) / fps, fadeOut: (c.fadeOutFrames ?? 0) / fps)
+            if let owner = owners[c.id], owner.kind == .audio {
+                track.mixerGain = pow(10, (owner.mixerGainDB ?? 0) / 20)
+                track.mixerPan = owner.mixerPan ?? 0
+                track.mixerTrackId = owner.id
+            }
             track.volumeKeyframes = keyed.map { VolumeKeyframes(track: $0, durationFrames: c.durationFrames, fps: fps) }
             if let t = transitions[c.id] { applyTransitions(t, to: &track, fps: fps, rampedClip: c.speedRamp?.isSupported == true) }
             tracks.append(track)
@@ -131,8 +139,8 @@ public enum DocumentAudioGraph {
         track.stem.sourceIn -= lead * track.stem.rate; track.stem.duration = track.end - track.start
         track.volumeKeyframes?.leadFrames = lead * fps
         track.transitionGain = AudioTransitionGain(
-            fadeIn: t.incoming.map { AudioGainRamp(start: ($0.kind == .dissolve ? $0.startFrame : $0.cutFrame) / fps, end: $0.endFrame / fps, fadeIn: true) },
-            fadeOut: t.outgoing.map { AudioGainRamp(start: $0.startFrame / fps, end: ($0.kind == .dissolve ? $0.endFrame : $0.cutFrame) / fps, fadeIn: false) })
+            fadeIn: t.incoming.map { AudioGainRamp(start: ($0.kind.overlaps ? $0.startFrame : $0.cutFrame) / fps, end: $0.endFrame / fps, fadeIn: true) },
+            fadeOut: t.outgoing.map { AudioGainRamp(start: $0.startFrame / fps, end: ($0.kind.overlaps ? $0.endFrame : $0.cutFrame) / fps, fadeIn: false) })
     }
 
     /// The clips solo leaves out of the mix: while any audio track is soloed, every clip on a track that is not a
@@ -170,6 +178,7 @@ public enum DocumentAudioGraph {
             }
             var track = AudioGraphTrack(id: t.id, stem: stem, start: t.start, end: t.end, volume: volume, muted: t.muted,
                                         fxChain: chain(t.fxChain, "clip \(t.id)"), automation: auto(t.automation, "clip \(t.id)"), groupId: t.groupId)
+            track.mixerGain = t.mixerGain; track.pan = t.mixerPan; track.meterId = t.mixerTrackId
             track.transitionGain = t.transitionGain
             track.fadeIn = t.fadeIn; track.fadeOut = t.fadeOut
             return track

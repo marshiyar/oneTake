@@ -178,14 +178,14 @@ public enum AudioFxJobs {
     public static func node(_ job: FxJob, joining chain: FxChain) -> FxNode {
         var p = AudioFx.defaultParams(job.type)
         for (k, v) in job.params { p[k] = .number(v) }
-        return FxNode(type: job.type, id: chain.mintNodeId(), label: job.label, enabled: true, params: AudioFx.normalize(job.type, p))
+        return FxNode(type: job.type, version: 2, id: chain.mintNodeId(), label: job.label, enabled: true, params: AudioFx.normalize(job.type, p, version: 2))
     }
 
     /// One effect appended at the values its module opens on (FxSection `withEffect`): through the profile for the
     /// derived-knob effects, so the knob and the mechanism agree from the first frame.
     public static func effectNode(_ type: String, joining chain: FxChain) -> FxNode {
-        let defaults = AudioFx.defaultParams(type)
-        let params = AudioFxProfiles.profiles[type] != nil ? AudioFxProfiles.apply(type, strength: 0.5, params: defaults) : defaults
-        return FxNode(type: type, id: chain.mintNodeId(), enabled: true, params: params)
+        let defaults = AudioFx.defaultParams(type, version: 2)
+        let params = AudioFxProfiles.profiles[type] != nil ? AudioFxProfiles.apply(type, strength: 0.5, params: defaults, version: 2) : defaults
+        return FxNode(type: type, version: 2, id: chain.mintNodeId(), enabled: true, params: params)
     }
 }
