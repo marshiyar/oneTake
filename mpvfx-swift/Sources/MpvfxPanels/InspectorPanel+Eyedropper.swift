@@ -45,7 +45,7 @@ extension InspectorPanel {
             }))))
         }
         guard let frame = grade.sampleFrame, g.secondaries.indices.contains(sel) else { return rows }
-        let key = g.secondaries[sel]
+        let key = grade.qualifierDraft ?? g.secondaries[sel]
         // Source / Selection matte (`flex gap-2 text-[9px]`, the active one in the accent).
         rows.append(.init(.custom(InspectorCustomRow(id: "sec:view", height: 16, draw: { [weak self] c, r, panel in
             guard let self else { return }

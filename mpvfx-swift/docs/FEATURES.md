@@ -288,7 +288,7 @@ Every item of the owner's screenshot review, with its status now.
 | Selected clip header: name, reset, visibility, close | partial: name, reset and close work; visibility is missing (panels) |
 | Color wheels Shadows / Midtones / Highlights with wheel, slider, Hue / Amount / Level, per-wheel reset | done |
 | Curves Master, R, G, B, Hue/Hue, Hue/Sat, Hue/Luma; editable graph; reset | done |
-| Secondary color: add / delete selection | done (eyedropper missing) |
+| Secondary color: add / delete selection, eyedropper and Hue / Saturation / Luma qualifiers | done: gradient ranges with two 24 pt keyboard-adjustable handles, softness, live selection matte and one undo step per drag (#181) |
 | Custom LUT dropdown | done |
 | Finish section and the other sections (transform, crop, opacity) | done |
 | Timeline toolbar: select, blade, link/ripple, keyframe add/navigate, tools, track height, zoom | done (timeline) |
