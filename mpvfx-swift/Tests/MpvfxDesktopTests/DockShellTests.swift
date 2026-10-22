@@ -74,7 +74,7 @@ final class DockShellTests: XCTestCase {
 
     func testTheEditorsPanelsAreDockPanelsWithTheirPanes() throws {
         let (_, router) = try session(try userData())
-        XCTAssertEqual(router.dock.layout.openPanels, ["media", "preview", "inspector", "renders", "history", "info", "timeline"])
+        XCTAssertEqual(Set(router.dock.layout.openPanels), Set(DockPanels.builtIn.map(\.id)), "every built-in panel opens")
         for region in [EditorShellRouter.Region.left, .player, .right, .renders, .timeline] { XCTAssertNotNil(router.panes[region], region.id) }
         let f = try XCTUnwrap(router.frames)
         XCTAssertEqual(router.region(at: f.left.cx, f.left.cy), .left)
@@ -82,6 +82,26 @@ final class DockShellTests: XCTestCase {
         XCTAssertEqual(router.region(at: f.previewTopBar.cx, f.previewTopBar.cy), .previewTopBar)
         XCTAssertEqual(router.hit(f.timeline.x + 10, f.timeline.y + 20)?.region, .timeline, "file drops still find the timeline")
         XCTAssertEqual(router.hit(f.timeline.x + 10, f.timeline.y + 20)?.local, CanvasPoint(10, 20))
+    }
+
+    func testMarkerShortcutOnlyInTimelineAndPanelJumpUsesPlayback() throws {
+        let (session, router) = try self.session(try userData())
+        session.timeline.playback.seek(1)
+        router.dock.focus("preview")
+        _ = router.keyDown(EditorKey(.char("m")))
+        XCTAssertNil(session.editor.document.sequence.markers)
+        router.dock.focus("timeline")
+        XCTAssertTrue(router.keyDown(EditorKey(.char("m"))))
+        XCTAssertEqual(session.editor.document.sequence.markers?.first?.time, 1)
+        XCTAssertFalse(session.timeline.playback.audioMuted)
+        XCTAssertNotNil(router.panes[.of("markers")])
+        router.run(.toggle("markers"))
+        draw(router)
+        XCTAssertTrue(router.dock.layout.isOpen("markers"))
+        session.timeline.playback.seek(0)
+        let pane = try XCTUnwrap(router.panes[.of("markers")])
+        pane.input?.pointerDown(x: 25, y: 10, shift: false)
+        XCTAssertEqual(session.timeline.playback.currentTime, 1)
     }
 
     // MARK: Drag, close, open through the shell
@@ -110,13 +130,13 @@ final class DockShellTests: XCTestCase {
         click(router, CanvasPoint(DockTabBar.menuRect(strip).cx, DockTabBar.menuRect(strip).cy))
         XCTAssertTrue(router.dockMenu.isOpen)
         let values = router.dockMenu.options.map(\.value)
-        XCTAssertEqual(values, ["toggle:media", "toggle:preview", "toggle:inspector", "toggle:renders", "toggle:timeline", "toggle:history", "toggle:info",
+        XCTAssertEqual(values, ["toggle:media", "toggle:preview", "toggle:inspector", "toggle:renders", "toggle:timeline", "toggle:history", "toggle:mixer", "toggle:info", "toggle:effects", "toggle:scopes", "toggle:markers",
                                  "toggle:design.transform", "toggle:design.style", "toggle:design.grade", "toggle:design.effects",
                                  "toggle:design.audio-fx", "toggle:design.media"],
                        "the Preview cannot be closed, so its menu starts with the panel list")
-        XCTAssertEqual(Set(router.dockMenu.checked), ["toggle:media", "toggle:preview", "toggle:inspector", "toggle:timeline", "toggle:history", "toggle:info"])
+        XCTAssertEqual(Set(router.dockMenu.checked), Set(DockPanels.builtIn.map(\.id).filter { $0 != "renders" }.map { "toggle:\($0)" }))
         router.dockMenu.pick("toggle:renders")
-        XCTAssertEqual(router.dock.layout.root.group(containing: "renders")?.panels, ["inspector", "renders", "history", "info"], "back beside Design")
+        XCTAssertEqual(router.dock.layout.root.group(containing: "renders")?.panels, DockPanels.builtIn.filter { $0.defaultDock == .right }.map(\.id), "back beside Design")
         XCTAssertEqual(router.focused, .renders)
     }
 
@@ -154,6 +174,8 @@ final class DockShellTests: XCTestCase {
         XCTAssertEqual(router.focused, .timeline)
         XCTAssertTrue(router.keyDown(EditorKey(.tab, ctrl: true)))
         XCTAssertEqual(router.focused, .left)
+        XCTAssertTrue(router.keyDown(EditorKey(.tab, ctrl: true)))
+        XCTAssertEqual(router.focused, .of(DockPanels.effects), "the Media group's other tab")
         XCTAssertTrue(router.keyDown(EditorKey(.tab, ctrl: true)))
         XCTAssertEqual(router.focused, .player)
     }
@@ -232,19 +254,20 @@ final class DockShellTests: XCTestCase {
             XCTAssertEqual($0 as? DockRegistryError, .duplicateID("easing"))
         }
         router.restoreDock(store: DockLayoutStore(userData: dir), seeds: DockSeeds())
-        XCTAssertEqual(router.dock.layout.root.group(containing: "easing")?.panels, ["inspector", "renders", "history", "info", "easing"],
+        XCTAssertEqual(router.dock.layout.root.group(containing: "easing")?.panels, DockPanels.builtIn.filter { $0.defaultDock == .right }.map(\.id) + ["easing"],
                        "a panel no saved layout knows opens at its default dock")
         router.dock.focus("easing")
         draw(router)
         XCTAssertGreaterThan(painted, 0)
-        XCTAssertEqual(router.windowMenuPanels.map(\.title), ["Media", "Preview", "Design", "Renders", "Timeline", "History", "Info",
-                        "Transform", "Style", "Grade", "Effects", "Audio FX", "Media", "Easing"])
+        XCTAssertEqual(router.windowMenuPanels.map(\.title), ["Media", "Preview", "Design", "Renders", "Timeline", "History", "Mixer", "Info",
+                        "Effects", "Scopes", "Markers", "Transform", "Style", "Grade", "Effects", "Audio FX", "Media", "Easing"])
     }
 
     func testTheWindowMenuListsEveryPanelWithACheckmarkAndTogglesIt() throws {
         let (_, router) = try session(try userData())
         // The Design groups start in the Design tab, so their panels are listed unchecked.
-        XCTAssertTrue(router.windowMenuPanels.filter { !DesignGroups.isDesignPanel($0.id) }.allSatisfy(\.checked))
+        XCTAssertEqual(Set(router.windowMenuPanels.filter(\.checked).map(\.id)),
+                       ["media", "preview", "inspector", "renders", "timeline", "history", "info"])
         router.togglePanelFromMenu("media")
         XCTAssertEqual(router.windowMenuPanels.first { $0.id == "media" }?.checked, false)
         router.togglePanelFromMenu("media")
@@ -252,6 +275,20 @@ final class DockShellTests: XCTestCase {
         router.togglePanelFromMenu("timeline")
         XCTAssertTrue(router.dock.layout.isOpen("timeline"), "the timeline cannot be closed: the menu focuses it")
         XCTAssertFalse(router.closeFocusedPanel())
+    }
+
+    func testScopesMarkersAndMixerRemainRegisteredTogether() throws {
+        let (s, router) = try session(try userData())
+        let panels = s.shellInputs.compactMap { ($0 as? DockedPanelInput)?.panel }
+        XCTAssertTrue(panels.contains { $0 is ScopesPanel })
+        XCTAssertTrue(panels.contains { $0 is MarkersPanel })
+        XCTAssertTrue(panels.contains { $0 is MixerPanel })
+        for id in [DockPanels.scopes, DockPanels.markers, DockPanels.mixer] {
+            XCTAssertNotNil(router.panes[.of(id)])
+            XCTAssertFalse(router.dock.layout.isOpen(id))
+            router.togglePanelFromMenu(id)
+            XCTAssertTrue(router.dock.layout.isOpen(id))
+        }
     }
 }
 /// Centre of a rect (the panels module keeps its own `midX`, `midY` internal).

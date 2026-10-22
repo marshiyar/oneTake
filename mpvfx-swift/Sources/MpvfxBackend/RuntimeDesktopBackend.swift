@@ -265,6 +265,16 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         }
     }
 
+    public func sceneCuts(projectId: String, source: String, sourceStart: Double, sourceDuration: Double,
+                          framesPerSecond: Double, threshold: Double, onProgress: @escaping @Sendable (Double) -> Void) async throws -> [Double] {
+        let dir = try store(projectId).directory
+        return try await blocking { cancellation in
+            try analyzeProjectScenes(dir, source: source, sourceStart: sourceStart, sourceDuration: sourceDuration,
+                                     framesPerSecond: framesPerSecond, threshold: threshold,
+                                     cancellation: cancellation, onProgress: onProgress)
+        }
+    }
+
     public func renameMedia(projectId: String, from: String, to: String, content: String) throws -> DesktopMediaOperation {
         let s = try store(projectId)
         let r = try exclusive(s) { try s.renameMedia(from, to: to, content: content) }

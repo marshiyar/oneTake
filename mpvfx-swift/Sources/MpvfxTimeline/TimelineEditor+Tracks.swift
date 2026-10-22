@@ -89,6 +89,17 @@ public extension TimelineEditor {
         return updateTrack(trackId, muted ? "Mute track" : "Unmute track") { t in for i in t.clips.indices where muted || !detached.contains(t.clips[i].id) { t.clips[i].muted = muted } }
     }
 
+    /// Set a persisted mixer fader and pan as one undoable edit.
+    @discardableResult
+    func setTrackMixer(_ trackId: String, gainDB: Double, pan: Double) -> Bool {
+        guard gainDB.isFinite, (-60...12).contains(gainDB), pan.isFinite, (-1...1).contains(pan),
+              document.sequence.tracks.contains(where: { $0.id == trackId && $0.kind == .audio }) else { return false }
+        return updateTrack(trackId, "Adjust track mixer") {
+            $0.mixerGainDB = gainDB == 0 ? nil : gainDB
+            $0.mixerPan = pan == 0 ? nil : pan
+        }
+    }
+
     /// Solo or unsolo an audio track: while any audio track is soloed only soloed tracks are heard (DocumentAudioGraph).
     /// Solo changes what is monitored, not the clips, so a locked track accepts it too, as it accepts unlocking.
     /// Refused for video and mixed tracks, which have no solo button.

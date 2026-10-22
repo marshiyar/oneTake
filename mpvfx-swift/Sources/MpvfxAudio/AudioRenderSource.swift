@@ -25,10 +25,13 @@ public protocol AudioRenderSource: AnyObject {
     func render(frames: Int) -> [Float]
     /// A seek to `t` is coming (the loop start): get ready so it is instant. Never blocks.
     func prepareSeek(_ t: Double)
+    /// Clear transport-only observations immediately, including while a feeder finishes an in-flight pull.
+    func playbackStopped()
 }
 
 public extension AudioRenderSource {
     func prepareSeek(_ t: Double) {}
+    func playbackStopped() {}
 }
 
 extension AudioMixer: AudioRenderSource {}

@@ -177,6 +177,11 @@ final class AudioFxLiveEditTests: XCTestCase {
     func verifyEveryFxType(version: Int, requireAudibleChange: Bool) {
         for rack in Rack.allCases {
             for (type, params) in Self.everyType {
+                // Denoise learns its noise profile from the span `learn`/`learn_from` points at. The shared
+                // params learn the first 100 ms (near-silence), which barely marks the loud slice this test
+                // measures; learn from the loud burst under the slice instead, as a user pointing at the noisy
+                // passage would. The export test keeps the shared params (it renders the whole second).
+                let params = type == "denoise" ? #"{"amount":1,"learn":125,"learn_from":0.375}"# : params
                 let source = GraphAudioSource(project: Self.project(Self.inputs()))
                 let updater = LiveAudioGraphUpdater(source: source, loadStem: Self.loadStem)
                 updater.submit(Self.inputs()); updater.waitUntilIdle()

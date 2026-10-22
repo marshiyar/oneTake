@@ -63,6 +63,15 @@ public final class PulseAudioInput: AudioInput, AudioInputDeviceSelecting {
         }
     }
 
+    public var latencySeconds: Double {
+        ioLock.lock(); defer { ioLock.unlock() }
+        lock.lock(); let h = handle; lock.unlock()
+        guard let h else { return 0 }
+        var error: Int32 = 0
+        let usec = pa_simple_get_latency(h, &error)
+        return error == 0 && usec != UInt64.max ? Double(usec) / 1_000_000 : 0
+    }
+
     public func read(frames: Int) throws -> [Float] {
         ioLock.lock(); defer { ioLock.unlock() }
         lock.lock(); let h = handle; lock.unlock()
