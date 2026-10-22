@@ -195,6 +195,7 @@ extension EditorShellRouter {
         if dock.keyDown(k) { needsDisplay(); return true }
         let region = focused
         if let input = panes[region]?.input, input.keyDown(k) { return true }
+        if region != .timeline, !k.command, !k.alt, case .char(let ch) = k.code, ch.lowercased() == "m" { return false }
         if region != .timeline, let t = panes[.timeline]?.input { return t.keyDown(k) }
         return false
     }

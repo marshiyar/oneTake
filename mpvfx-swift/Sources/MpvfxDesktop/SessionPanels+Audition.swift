@@ -16,6 +16,7 @@
 // panel where the file is each frame.
 import Foundation
 import MpvfxAudio
+import MpvfxDesktopCore
 import MpvfxPanels
 
 extension SessionPanels {
@@ -53,7 +54,7 @@ extension SessionPanels {
         } catch let error as AuditionError {
             left.auditionErrors[id] = error.description
         } catch {
-            left.auditionErrors[id] = AuditionError(name: item.name, reason: "\(error)").description
+            left.auditionErrors[id] = AuditionError(name: item.name, reason: (error as? DesktopError)?.message ?? "the file could not be read").description
         }
         redraw()
     }
