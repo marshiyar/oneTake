@@ -61,7 +61,7 @@ public extension TimelineController {
                                                disabled: c.hidden)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
         if viewport.height > 0 { m.maximumHeight = viewport.height }
-        if m.x + TimelineClipMenu.width > viewport.width { m.x = max(0, viewport.width - TimelineClipMenu.width) }
+        if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
         if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }
         view.clipMenu = m
     }
