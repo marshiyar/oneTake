@@ -20,6 +20,17 @@ behaviour is fixed on purpose because saved data depends on it.
   `Object.prototype` keys (for example `"constructor"`); this is kept as `ExportResolutionChoice.objectPrototypeKey`
   (`ExportPolicy.swift`) so saved render settings naming one read the same.
 
+## Speech to captions
+
+- `TranscriptionService` turns a clip's own sound over its trimmed range into words with source-media millisecond
+  times, on the device only (there is no network path). The engine decodes the range to 16 kHz mono 16-bit WAV
+  pieces of at most 50 s in `.studio-render-tmp/transcribe-<uuid>/` inside the project, removed when the job ends,
+  fails or is cancelled. `planTranscriptCaptions` (`NativeTranscriptCaptionPlan.swift`) maps the words through the
+  clip's start, trim and speed into sequence cues as one undoable document step; the platform adapters are
+  `MacSpeechTranscriptionService` (Speech framework, on-device only) and `WindowsSpeechTranscriptionService`
+  (in-process SAPI 5 from the WAV file), and Linux reports `platformHasNoOnDeviceRecognizer`. State and gaps are in
+  the Captions row of [STATUS.md](STATUS.md).
+
 ## Captions (SRT)
 
 - `sequence.captions` holds cue times as whole milliseconds, the unit SRT writes, so an SRT import keeps its exact

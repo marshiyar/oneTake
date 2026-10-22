@@ -14,7 +14,8 @@ installers. The version is `packaging/VERSION`; the build number is the commit's
 
 ## The engine libraries
 
-The media engine (library `mpvfx_ffi`) and the keyframe engine (`cvkf`) are proprietary and prebuilt. `binaries.lock` pins,
+The media engine (library `mpvfx_ffi`, currently 0.2.0) and the keyframe engine (`cvkf`, currently 1.0.0) are
+proprietary and prebuilt. `binaries.lock` pins,
 per component, a release of `marshiyar/mpvfx-media-binaries` (tags `media-v<version>`, `keyframes-v<version>`) and the
 download URL and SHA-256 of each platform's archive (`.tar.gz`, or `.zip` on Windows). `scripts/fetch-binaries.py` downloads the archives for the
 machine it runs on, refuses any whose SHA-256 differs, and unpacks them into `.binaries/<component>/`:
@@ -65,7 +66,22 @@ stab or local symbol. The engine libraries pinned in `binaries.lock` are held to
 runtime DLLs the Windows build redistributes are reported, not judged. The table of every binary is in the run's
 summary. The check is not required for merging: it reports on what was published.
 
-## Releases: nightly and official
+## Releases: nightly and official (Linux and Windows from CI, macOS by hand)
+
+Owner ruling 2026-10-22: there is no macOS in CI. Linux and Windows installers come from CI as below; the macOS
+disk image is built, tested and signed on the owner's Mac (which has a real GPU — CI runners have only a virtual
+one, so GPU-graded tests and the Metal smoke mean nothing there) and attached to the release by hand:
+
+```sh
+# macOS, Developer ID signed and notarized (MACOS_SIGN_IDENTITY and APPLE_* set, see above):
+swift build -c release && sh packaging/macos/package.sh dist developer-id
+swift test   # full suite on the real GPU before attaching the image
+```
+
+Then attach the `dist/MpVFX-*-developer-verified.dmg` to whichever GitHub release you choose — a nightly or a
+versioned tag — alongside the CI-built Linux and Windows installers, whenever you judge it right. There is no
+macOS schedule: no nightly Mac build, no automatic attachment. The publish jobs never expect a macOS artifact
+from CI.
 
 When every platform is green, one publish job (`.github/ci/publish.sh`) uploads all installers to a single GitHub
 release:
@@ -172,6 +188,9 @@ reads bundled packs read-only and user packs from `<userData>/sound-packs/`.
 ## Building an installer by hand
 
 From `mpvfx-swift/`, after `python3 scripts/fetch-binaries.py`:
+
+CI skips the macOS package job on pull requests and the merge queue (tests only, `.github/workflows/mpvfx-macos.yml`):
+a disk image for a PR comes from this hand build instead, which is also the route for a local release candidate.
 
 ```sh
 # macOS, ad-hoc signed for this machine:
