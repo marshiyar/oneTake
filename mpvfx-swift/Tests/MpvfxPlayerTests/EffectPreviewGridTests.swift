@@ -111,14 +111,14 @@ final class EffectPreviewGridTests: XCTestCase {
         XCTAssertEqual(try catalogTilesWithoutPicture(.light), [])
     }
 
-    /// The measure tells a placeholder from a picture: without a renderer the tiles show "No preview" and their spread
-    /// stays far under the threshold the pictures pass.
-    func testThePlaceholderIsNotMistakenForAPicture() throws {
+    /// Without a renderer the effects tiles fall back to the graded sample picture, so every tile
+    /// still reads as a picture: the old flat "No preview" placeholder is gone from this grid.
+    func testTilesWithoutARendererShowTheSamplePicture() throws {
         let r = try fixture(open: "effects", renderer: EffectPreviewRenderer())
         r.inspector.effectPreview = nil
         let t = draw(r, h: 1400)
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("fx:tiles", 0) })
-        XCTAssertLessThan(lumaSpread(t, tile), 16, "measured 12.2 for the placeholder; every picture tile measures over 25")
+        XCTAssertGreaterThan(lumaSpread(t, tile), 25, "the fallback sample still reads as a picture")
     }
 
     /// The clip has no picture, so the preset tiles fall back to the sample picture with each look.

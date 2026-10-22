@@ -29,6 +29,13 @@ public struct GradeUIState: Equatable {
     /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
+    var qualifierDraft: ColorGrading.Secondary?
+    var qualifierTracks: [String: CanvasRect] = [:]
+    var qualifierGrab: (secondary: ColorGrading.Secondary, x: Double, value: Double)?
+    /// A fresh physical arrow press starts a history group; its repeats reuse it.
+    var wheelKeyControl: String?
+    var wheelKeyCode: EditorKey.Code?
+    var wheelKeyHistory: String?
     /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
     /// past the drag threshold (a click that only selects a point never moves it).
     var curveGrab: (dx: Double, dy: Double, start: CanvasPoint, moved: Bool)?
@@ -150,7 +157,7 @@ extension InspectorPanel {
             guard let self else { return }
             self.edited(editor.copyColorGrading(from: s.id, toAllProjectMedia: self.grade.copyToProject) > 0)
         }))))
-        let summary = g.enabled ? "\(g.preset ?? "neutral") · \(Int((g.intensity * 100).rounded()))%" : "off"
+        let summary = Self.gradeSummary(g)
         var group = InspectorGroup(id: "grade", title: "Grade", summary: summary, rows: rows, spacing: 0)
         group.enabled = g.enabled
         group.accessibilityLabel = "Grade enabled"
@@ -159,6 +166,13 @@ extension InspectorPanel {
         // not drawn: the native preview has no compare bypass or runtime handshake yet.
         group.reset = g.isAuthored ? { commit(ColorGrading()) } : nil
         return group
+    }
+
+    /// Preset IDs remain document data; summaries use the catalog's human name.
+    static func gradeSummary(_ grade: ColorGrading) -> String {
+        guard grade.enabled else { return "Off" }
+        let name = grade.preset.flatMap { ColorGrading.preset($0)?.label } ?? "Neutral"
+        return "\(name) · \(Int((grade.intensity * 100).rounded()))%"
     }
 
     /// The ten Primary sliders, `space-y-0.5`, each keyframeable (issue #179).
@@ -172,7 +186,8 @@ extension InspectorPanel {
                                             tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
                                             commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
                                             reset: { var n = g; n.adjust[a.key] = 0; commit(n) },   // 0, not nil: a missing key reads the preset's value
-                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g)))))
+                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g), step: 1,
+                                            parseInput: { PanelFormat.parse($0).map { $0 * (a.key == "exposure" ? 100 : 1) } }))))
             if a.key == "contrast" { rows.append(.init(.spacer(2))); rows.append(pivotSlider(g, commit: commit)) }
         }
         return rows
@@ -200,7 +215,7 @@ extension InspectorPanel {
                                   color: PanelTheme.text1)
             PanelDraw.smallButton(c, paste, label: "Paste grade",
                                   fill: panel.hovered == .custom("grade:clipboard", 1) ? PanelTheme.panelHover : PanelTheme.panelSurface,
-                                  color: pasteEnabled ? PanelTheme.text1 : PanelTheme.text4)
+                                  color: pasteEnabled ? PanelTheme.text1 : PanelTheme.inspectorText)
             panel.addHit(copy, .custom("grade:clipboard", 0))
             if pasteEnabled { panel.addHit(paste, .custom("grade:clipboard", 1)) }
         }, pointer: { [weak self] part, _, phase in
@@ -221,17 +236,16 @@ extension InspectorPanel {
             let option = self.grade.copyToProject ? "All project media" : "Current file media"
             let ow = c.measureText(option, font: PanelTheme.mono(11)).width + 18
             let sel = CanvasRect(x: line.x + lw + 6, y: line.y, width: ow, height: 24)
-            let hot = panel.hovered == .custom("grade:copyto", 0)
             PanelDraw.text(c, option, in: CanvasRect(x: sel.x, y: sel.y, width: ow - 14, height: 16.5), font: PanelTheme.mono(11), color: PanelTheme.text0)
-            PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: sel.maxX - 11, y: sel.midY - 5, width: 10, height: 10), color: PanelTheme.text3)
+            PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: sel.maxX - 11, y: sel.midY - 5, width: 10, height: 10), color: PanelTheme.inspectorText)
             c.fillRect(CanvasRect(x: sel.x, y: sel.maxY, width: sel.width, height: 1).snapped,
-                       hot ? PanelTheme.panelBorderInput : PanelTheme.panelBorderInput.withAlpha(0.5))
+                       PanelTheme.inspectorControl)
             panel.addHit(sel.insetBy(-2), .custom("grade:copyto", 0))
             let aw = c.measureText("Apply", font: PanelTheme.font(11, .medium)).width
             let ap = CanvasRect(x: r.maxX - aw - 8, y: line.y, width: aw + 8, height: 24)
             let enabled = g.isAuthored
             PanelDraw.text(c, "Apply", in: ap, font: PanelTheme.font(11, .medium),
-                           color: enabled ? (panel.hovered == .custom("grade:copyto", 1) ? PanelTheme.accent.withAlpha(0.8) : PanelTheme.accent) : PanelTheme.accent.withAlpha(0.5))
+                           color: enabled ? (panel.hovered == .custom("grade:copyto", 1) ? PanelTheme.accent : PanelTheme.accent) : PanelTheme.accent.withAlpha(0.5))
             if enabled { panel.addHit(ap.insetBy(-2), .custom("grade:copyto", 1)) }
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
@@ -249,6 +263,7 @@ extension InspectorPanel {
                                       commit: { x in var n = g; n.details[key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
                                       reset: { var n = g; n.details[key] = ColorGrading.defaultDetail(key); commit(n) })   // explicit, as above
         row.keyframe = keyframe
+        row.step = 1
         if gear {   // Vignette settings / Grain settings
             row.settings = (grade.finishSettings == key, { [weak self] in
                 guard let self else { return }
@@ -261,7 +276,7 @@ extension InspectorPanel {
     /// The Clip / Program switch: 9px segments in a hairline pill (`panelInput`), the chosen one on an accent wash in
     /// text-0, the other text-4 (hover text-2). Its hits are added after the header's, so they win there.
     func drawScopeSourceSwitch(_ c: CanvasContext, maxX: Double, midY: Double, _ panel: InspectorPanel) {
-        let font = PanelTheme.font(9), sources = ColorScopes.Source.allCases
+        let font = PanelTheme.font(11), sources = ColorScopes.Source.allCases
         let widths = sources.map { c.measureText($0.label, font: font).width + 12 }
         let pill = CanvasRect(x: maxX - widths.reduce(0, +) - 2, y: midY - 13, width: widths.reduce(0, +) + 2, height: 26)
         c.fillRoundedRect(pill, radius: PanelTheme.radiusMd, PanelTheme.panelInput)
@@ -274,7 +289,7 @@ extension InspectorPanel {
             let on = scopeSource == source
             if on { c.fillRoundedRect(seg, radius: PanelTheme.radiusMd - 1, PanelTheme.accent.withAlpha(0.18)) }
             PanelDraw.text(c, source.label, in: CanvasRect(x: seg.x, y: seg.midY - 6.75, width: seg.width, height: 13.5), font: font,
-                           color: on ? PanelTheme.text0 : (panel.hovered == hit ? PanelTheme.text2 : PanelTheme.text4), align: .center)
+                           color: on ? PanelTheme.text0 : (panel.hovered == hit ? PanelTheme.text2 : PanelTheme.inspectorText), align: .center)
             panel.addHit(seg, hit)
             x = seg.maxX
         }
@@ -284,10 +299,10 @@ extension InspectorPanel {
     func retryPreviewsRow() -> InspectorCustomRow {
         InspectorCustomRow(id: "grade:retry", height: 18, draw: { c, r, panel in
             let label = "Retry look previews"
-            let w = c.measureText(label, font: PanelTheme.font(10, .medium)).width
+            let w = c.measureText(label, font: PanelTheme.font(11, .medium)).width
             let b = CanvasRect(x: r.x, y: r.y, width: w, height: 15)
-            PanelDraw.text(c, label, in: CanvasRect(x: b.x, y: b.y, width: w + 1, height: 15), font: PanelTheme.font(10, .medium),
-                           color: panel.hovered == .custom("grade:retry", 0) ? PanelTheme.accent.withAlpha(0.8) : PanelTheme.accent)
+            PanelDraw.text(c, label, in: CanvasRect(x: b.x, y: b.y, width: w + 1, height: 15), font: PanelTheme.font(11, .medium),
+                           color: panel.hovered == .custom("grade:retry", 0) ? PanelTheme.accent : PanelTheme.accent)
             panel.addHit(b, .custom("grade:retry", 0))
         }, pointer: { [weak self] _, _, phase in if phase == 0 { self?.onRetryPresetPreviews?(); self?.onEdited?() } })
     }
@@ -327,8 +342,8 @@ extension InspectorPanel {
                 // The look frame, `object-contain` in the 16:9 frame, at the tile's device pixels (capped).
                 let px = Self.tilePixels(sw, scale: c.deviceScale)
                 Self.drawPreviewFrame(c, sw, preview(p.id, px.width, px.height))
-                PanelDraw.text(c, p.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(10),
-                               color: on ? PanelTheme.text0 : (hov ? PanelTheme.text1 : PanelTheme.text3))
+                PanelDraw.text(c, p.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(11),
+                               color: on ? PanelTheme.text0 : (hov ? PanelTheme.text1 : PanelTheme.inspectorText))
                 c.strokeRect(tr.insetBy(0.5), on ? PanelTheme.accent : (hov ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)
                 panel.addHit(tr, .custom("grade:presets", i))
             }
@@ -364,12 +379,12 @@ extension InspectorPanel {
             var x = r.x
             for i in g.secondaries.indices {
                 let label = "\(i + 1)"
-                let w = max(24, c.measureText(label, font: PanelTheme.mono(10)).width + 8)
+                let w = max(24, c.measureText(label, font: PanelTheme.mono(11)).width + 8)
                 let cr = CanvasRect(x: x, y: r.y, width: w, height: 24)
                 let on = i == selIndex
                 panel.targetHover(c, cr, .custom("sec:head", 10 + i))
-                PanelDraw.text(c, label, in: CanvasRect(x: cr.x, y: cr.y + 4.5, width: w, height: 15), font: PanelTheme.mono(10),
-                               color: on ? PanelTheme.text0 : PanelTheme.text4, align: .center)
+                PanelDraw.text(c, label, in: CanvasRect(x: cr.x, y: cr.y + 4.5, width: w, height: 15), font: PanelTheme.mono(11),
+                               color: on ? PanelTheme.text0 : PanelTheme.inspectorText, align: .center)
                 if on { c.fillRect(CanvasRect(x: cr.x, y: cr.maxY - 2, width: w, height: 2), PanelTheme.accent) }
                 panel.addHit(cr, .custom("sec:head", 10 + i))
                 x = cr.maxX + 4
@@ -377,11 +392,11 @@ extension InspectorPanel {
             let canRemove = !g.secondaries.isEmpty
             let trash = CanvasRect(x: r.maxX - 24, y: r.midY - 12, width: 24, height: 24)
             let plus = CanvasRect(x: trash.x - 4 - 24, y: trash.y, width: 24, height: 24)
-            let off = PanelTheme.text3.over(PanelTheme.panelBgInset, opacity: 0.35)
+            let off = PanelTheme.inspectorText.over(PanelTheme.panelBgInset, opacity: 0.35)
             if canAdd { panel.targetHover(c, plus, .custom("sec:head", 0)) }
             if canRemove { panel.targetHover(c, trash, .custom("sec:head", 1)) }
-            PanelIcon.phosphor(.plus).draw(c, in: plus.insetBy(6), color: !canAdd ? off : (panel.hovered == .custom("sec:head", 0) ? PanelTheme.text1 : PanelTheme.text3))
-            PanelIcon.trash.draw(c, in: trash.insetBy(6), color: !canRemove ? off : (panel.hovered == .custom("sec:head", 1) ? PanelTheme.text1 : PanelTheme.text3))
+            PanelIcon.phosphor(.plus).draw(c, in: plus.insetBy(6), color: !canAdd ? off : (panel.hovered == .custom("sec:head", 0) ? PanelTheme.text1 : PanelTheme.inspectorText))
+            PanelIcon.trash.draw(c, in: trash.insetBy(6), color: !canRemove ? off : (panel.hovered == .custom("sec:head", 1) ? PanelTheme.text1 : PanelTheme.inspectorText))
             if canAdd { panel.addHit(plus, .custom("sec:head", 0)) }
             if canRemove { panel.addHit(trash, .custom("sec:head", 1)) }
         }, pointer: { [weak self] part, _, phase in
@@ -394,8 +409,8 @@ extension InspectorPanel {
             rows.append(.init(.custom(InspectorCustomRow(id: "sec:placeholder", height: 33, draw: { c, r, panel in
                 let hov = panel.hovered == .custom("sec:placeholder", 0)
                 c.stroke(.rect(r.insetBy(0.5)), hov ? PanelTheme.accent.withAlpha(0.5) : PanelTheme.panelBorderInput, StrokeStyle(width: 1, dash: [3, 3]))
-                PanelDraw.text(c, "Add a color selection", in: CanvasRect(x: r.x, y: r.y + 9, width: r.width, height: 15), font: PanelTheme.font(10),
-                               color: hov ? PanelTheme.text2 : PanelTheme.text4, align: .center)
+                PanelDraw.text(c, "Add a color selection", in: CanvasRect(x: r.x, y: r.y + 9, width: r.width, height: 15), font: PanelTheme.font(11),
+                               color: hov ? PanelTheme.text2 : PanelTheme.inspectorText, align: .center)
                 panel.addHit(r, .custom("sec:placeholder", 0))
             }, pointer: { _, _, phase in if phase == 0 { add() } }))))
             return rows
@@ -416,18 +431,25 @@ extension InspectorPanel {
                     _ apply: @escaping (inout ColorGrading.Secondary, Double) -> Void) -> InspectorRow {
             .init(.slider(.init(key: key, label: label, position: v, min: lo, max: hi, display: fmt(v), format: fmt,
                                 tier: abs(v - def) > 1e-6 ? .explicitCustom : .default, centerTick: center, commit: set(apply),
-                                reset: { var n = g; apply(&n.secondaries[sel], def); commit(n) })))
+                                reset: { var n = g; apply(&n.secondaries[sel], def); commit(n) }, step: 1)))
         }
         let deg: (Double) -> String = { "\(Int($0.rounded()))°" }, pct: (Double) -> String = { "\(Int($0.rounded()))%" }
         rows.append(.init(.heading("Qualifier", trailing: nil)))
-        rows.append(slider("sec:hue", "Hue", s.hueCenter, 0, 359, deg, def: 0, center: false) { $0.hueCenter = $1 })
-        rows.append(slider("sec:range", "Hue range", s.hueRange, 0, 180, deg, def: 30, center: false) { $0.hueRange = min($1, 180 - $0.hueSoftness) })
-        rows.append(slider("sec:soft", "Hue softness", s.hueSoftness, 0, 180, deg, def: 20, center: false) { $0.hueSoftness = min($1, 180 - $0.hueRange) })
+        for channel in SecondaryQualifier.allCases {
+            rows.append(qualifierRow(channel, secondary: s) { next in
+                var n = g; n.secondaries[sel] = next; commit(n)
+            })
+            let softness = channel.softness(s)
+            rows.append(slider("sec:\(channel.rawValue):soft", "Softness", softness, 0, channel == .hue ? 180 : 1,
+                               channel == .hue ? deg : { pct($0 * 100) }, def: channel == .hue ? 20 : 0.1, center: false) {
+                channel.setSoftness(&$0, $1)
+            })
+        }
         rows.append(.init(.heading("Correction", trailing: nil)))
         rows.append(slider("sec:shift", "Hue shift", s.hueShift, -180, 180, deg, def: 0, center: true) { $0.hueShift = $1.rounded() })
         rows.append(slider("sec:sat", "Saturation", s.saturation * 100, -100, 100, pct, def: 0, center: true) { $0.saturation = ($1 / 100 * 100).rounded() / 100 })
         rows.append(slider("sec:luma", "Luma", s.luma * 100, -100, 100, pct, def: 0, center: true) { $0.luma = ($1 / 100 * 100).rounded() / 100 })
-        rows.append(slider("sec:temp", "Warmth", s.temperature * 100, -100, 100, pct, def: 0, center: true) { $0.temperature = ($1 / 100 * 100).rounded() / 100 })
+        rows.append(slider("sec:temp", "Temperature", s.temperature * 100, -100, 100, pct, def: 0, center: true) { $0.temperature = ($1 / 100 * 100).rounded() / 100 })
         rows.append(slider("sec:tint", "Tint", s.tint * 100, -100, 100, pct, def: 0, center: true) { $0.tint = ($1 / 100 * 100).rounded() / 100 })
         // The selection's controls sit `space-y-1.5` under the header.
         let tail = rows[headCount...].flatMap { [InspectorRow(.spacer(6)), $0] }

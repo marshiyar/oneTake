@@ -20,11 +20,13 @@ quiet grey so the footage carries the colour, and colour in the chrome only ever
    colour, which also carries the hover state. The name is drawn at 92% ink (4.5:1 on the fill), the timecode at
    72% (3:1).
 4. **Dense, not cramped.** 12 px body text, 11 px secondary text, 24–28 px rows. Empty space is a sign that a panel
-   has nothing to show; show a short hint there instead.
+   has nothing to show; show a short hint there instead. Design inspector values and hints have an 11 px floor;
+   section headings are 11.5 px below 12 px group titles. Essential slider tracks/thumbs and field underlines use
+   `inspectorControl` (dark #85858D, light #72727A); secondary text uses `inspectorText` (#A1A1AA / #4A4A52).
 5. **Time is timecode.** Times read `HH:MM:SS:FF` (or `MM:SS:FF` under an hour) in tabular figures, in the accent
    colour where the user can scrub them. The timeline ruler always reads `HH:MM:SS:FF`, so a minute never looks
    like an hour ([TIMELINE.md](TIMELINE.md)).
-6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; muted text at least 3:1.
+6. **Readable.** Body text reaches WCAG AA (4.5:1) on every surface it is drawn on; all required secondary text (labels, hints, status and summaries) also reaches 4.5:1. Disabled text is exempt.
    Light mode keeps the same contrast; its structure is tuned separately (see "Light mode").
 
 ## Colour tokens (dark mode)
@@ -176,3 +178,17 @@ Media) in the `.strip` style, and the tab rows inside a panel (curve modes, scop
   remove the entry; never add one to make a change pass.
 - Screenshots: the screenshot bot posts before/after images on each pull request that touches the UI; a reviewer
   compares them against the principles above.
+
+### Design tab wording (#186)
+
+Control labels, toggles, section headings and disclosure headings use sentence case. Preserve established
+abbreviations (ASCII, CRT, LUT, RGB, FX) and coordinate axes (X, Y, Z). Named looks are proper names, so their
+catalog spelling (for example Warm Daylight) also appears in group summaries. Never change document keys to
+match display wording. The primary and secondary correction label is Temperature; both retain `temperature`.
+
+Align, case, style and crop reset draw vector icons from `PanelIcon`. Each option's word label supplies both its
+hover tooltip and its native accessibility name. Group summaries use the 11 px label font and `text3`, including
+position/dimensions (`X 0 · Y 0 · 640 × 360`), fill/opacity, and the human grade preset name.
+
+`python3 scripts/check-design-wording.py` scans Design display-label literals and rejects title case in
+multi-word controls. It is run by `scripts/check.sh`; named preset catalog entries are exempt.

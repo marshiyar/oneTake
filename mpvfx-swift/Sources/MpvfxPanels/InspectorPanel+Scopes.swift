@@ -124,15 +124,15 @@ extension InspectorPanel {
         let toggle = CanvasRect(x: head.x, y: head.y, width: head.width - (open ? 26 : 0), height: Self.scopeHead)
         PanelDraw.text(c, "Scopes", in: CanvasRect(x: toggle.x, y: toggle.midY - 8.25, width: 80, height: 16.5),
                        font: PanelTheme.font(11), color: PanelTheme.text2)
-        let sw = c.measureText(status, font: PanelTheme.font(9)).width
+        let sw = c.measureText(status, font: PanelTheme.font(11)).width
         PanelDraw.text(c, status, in: CanvasRect(x: toggle.maxX - sw - 0.5, y: toggle.midY - 6.75, width: sw + 1, height: 13.5),
-                       font: PanelTheme.font(9), color: PanelTheme.text5)
+                       font: PanelTheme.font(11), color: PanelTheme.inspectorText)
         addHit(toggle, .custom("grade:scopes", ScopePart.toggle))
         guard open else { return }
         let rb = CanvasRect(x: head.maxX - 24, y: head.midY - 12, width: 24, height: 24)
         targetHover(c, rb, .custom("grade:scopes", ScopePart.refresh))
         PanelIcon.phosphor(.arrowClockwise).draw(c, in: rb.insetBy(7),
-                                                 color: hovered == .custom("grade:scopes", ScopePart.refresh) ? PanelTheme.text1 : PanelTheme.text4)
+                                                 color: hovered == .custom("grade:scopes", ScopePart.refresh) ? PanelTheme.text1 : PanelTheme.inspectorText)
         addHit(rb, .custom("grade:scopes", ScopePart.refresh))
         drawScopeSourceSwitch(c, maxX: toggle.maxX - sw - 8, midY: head.midY, self)
     }
@@ -161,19 +161,19 @@ extension InspectorPanel {
         x = scopeLabel(c, ScopeChip(text: "Zoom \(Int(s.zoom))x", on: false, part: ScopePart.zoom), at: x, in: bottom) + 14
         x = scopeLabel(c, ScopeChip(text: "−", on: false, part: ScopePart.gainDown), at: x, in: bottom) + 4
         let gain = s.gain < 1 ? String(format: "%.2gx", s.gain) : "\(Int(s.gain))x"
-        let gw = c.measureText("Gain " + gain, font: PanelTheme.font(9)).width
-        PanelDraw.text(c, "Gain " + gain, in: CanvasRect(x: x, y: bottom.y + 4, width: gw + 1, height: 13.5), font: PanelTheme.font(9), color: PanelTheme.text3)
+        let gw = c.measureText("Gain " + gain, font: PanelTheme.font(11)).width
+        PanelDraw.text(c, "Gain " + gain, in: CanvasRect(x: x, y: bottom.y + 4, width: gw + 1, height: 13.5), font: PanelTheme.font(11), color: PanelTheme.inspectorText)
         _ = scopeLabel(c, ScopeChip(text: "+", on: false, part: ScopePart.gainUp), at: x + gw + 4, in: bottom)
     }
 
     /// A 9px clickable label (text1 + accent underline when on, text2 on hover, text4 otherwise); returns its maxX.
     func scopeLabel(_ c: CanvasContext, _ chip: ScopeChip, at x: Double, in r: CanvasRect) -> Double {
-        let font = PanelTheme.font(9), w = max(20, c.measureText(chip.text, font: font).width)
+        let font = PanelTheme.font(11), w = max(20, c.measureText(chip.text, font: font).width)
         let hit = CanvasRect(x: x - 2, y: r.y, width: w + 4, height: r.height)
         let hov = hovered == .custom("grade:scopes", chip.part)
         targetHover(c, hit, .custom("grade:scopes", chip.part))
         PanelDraw.text(c, chip.text, in: CanvasRect(x: x, y: r.y + 4, width: w + 1, height: 13.5), font: font,
-                       color: chip.on ? PanelTheme.text1 : (hov ? PanelTheme.text2 : PanelTheme.text4))
+                       color: chip.on ? PanelTheme.text1 : (hov ? PanelTheme.text2 : PanelTheme.inspectorText))
         if chip.on { c.fillRect(CanvasRect(x: x, y: r.maxY - 3, width: w, height: 2), PanelTheme.accent) }
         addHit(hit, .custom("grade:scopes", chip.part))
         return x + w

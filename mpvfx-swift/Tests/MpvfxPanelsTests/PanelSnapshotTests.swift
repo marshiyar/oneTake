@@ -167,14 +167,14 @@ final class PanelSnapshotTests: XCTestCase {
             // (docs/DESIGN.md "Layout grid") the clip header is 48 with its hairline, group headers 40.
             assertPixel(t, 200, 79, scale: scale, "#141414")      // clip header hairline: 32 + 47
             assertPixel(t, 200, 82, scale: scale, "#1d1d1d")      // open Transform header (80…120)
-            assertPixel(t, 386, 99, scale: scale, "#71717a")      // open caret M2 4l4 4 4-4z at (381,94), text-3
+            assertPixel(t, 386, 99, scale: scale, "#a1a1aa")      // open caret M2 4l4 4 4-4z at (381,94), inspector-text
             assertPixel(t, 200, 124, scale: scale, "#191919")     // open body bg-panel-bg-inset from 120
             // Position: its label line 128…152, then the X and Y fields (154…182) between the gutter and the value edge
             // (393 − 128 = 265), 8 apart: X 16…136.5, Y 144.5…265.
             assertPixel(t, 100, 162, scale: scale, "#1d1d1d")     // Position X field, rounded bg-panel-bg
             assertPixel(t, 140, 162, scale: scale, "#191919")     // the column gap between the X and Y fields
             assertPixel(t, 280, 162, scale: scale, "#191919")     // past the value edge: the reserved keyframe gutter
-            assertPixel(t, 100, 176, scale: scale, "#272727", tol: 8)   // value underline border-panel-border-input/50
+            assertPixel(t, 100, 176, scale: scale, "#85858d", tol: 8)   // value underline, solid inspector-control
         }
         // FlatSegmentedRow: the active option sits on a 2px accent underline; KeyframeNavigation's active diamond.
         for scale in [1.0, 2.0] {

@@ -174,7 +174,16 @@ extension InspectorPanel {
         case (.left, false), (.right, false): w = Self.wheel(w, setting: "level", to: w.level * 100 + (k.code == .right ? 1 : -1) * (big ? 10 : 1))
         default: return false
         }
-        var n = g; set.write(&n, set.keys[index], w); commit(n)
+        var n = g; set.write(&n, set.keys[index], w)
+        guard let editor else { return false }
+        let control = "\(set.id):\(part):\(k.code):\(k.shift)"
+        if grade.wheelKeyCode != k.code || grade.wheelKeyControl != control || grade.wheelKeyHistory == nil {
+            grade.wheelKeyControl = control
+            grade.wheelKeyCode = k.code
+            grade.wheelKeyHistory = "grade:wheel:key:\(UUID().uuidString)"
+        }
+        editor.withHistory("Edit color grade", coalesceKey: grade.wheelKeyHistory,
+                           coalesceWindow: .infinity) { commit(n) }
         return true
     }
 }

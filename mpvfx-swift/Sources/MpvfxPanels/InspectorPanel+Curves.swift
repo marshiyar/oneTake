@@ -356,9 +356,9 @@ extension InspectorPanel {
             let br = CanvasRect(x: x, y: r.y + 2, width: w, height: Self.curveMinTarget)
             let hot = b.enabled && panel.hovered == .custom("grade:curvefoot", b.part)
             if b.enabled { panel.targetHover(c, br, .custom("grade:curvefoot", b.part)) }
-            c.strokeRoundedRect(br.insetBy(0.5), radius: PanelTheme.radius, b.enabled ? (hot ? PanelTheme.text3 : PanelTheme.panelBorderInput)
-                                : PanelTheme.panelBorderInput.withAlpha(0.5), width: 1)
-            PanelDraw.text(c, b.label, in: br, font: PanelTheme.font(11), color: b.enabled ? (hot ? PanelTheme.text0 : PanelTheme.text1) : PanelTheme.text4,
+            c.strokeRoundedRect(br.insetBy(0.5), radius: PanelTheme.radius, b.enabled ? (hot ? PanelTheme.inspectorText : PanelTheme.panelBorderInput)
+                                : PanelTheme.inspectorControl, width: 1)
+            PanelDraw.text(c, b.label, in: br, font: PanelTheme.font(11), color: b.enabled ? (hot ? PanelTheme.text0 : PanelTheme.text1) : PanelTheme.inspectorText,
                            align: .center)
             if b.enabled { panel.addHit(br, .custom("grade:curvefoot", b.part)) }
             x = br.maxX + 6
@@ -368,7 +368,7 @@ extension InspectorPanel {
     /// The editing hint under the footer (10px text-2: 4.5:1 on the panel in both modes).
     func curveHintRow() -> InspectorCustomRow {
         InspectorCustomRow(id: "grade:curvehint", height: 15, draw: { c, r, _ in
-            PanelDraw.text(c, "Click adds a point · drag moves it · double-click deletes it", in: r, font: PanelTheme.font(10), color: PanelTheme.text2)
+            PanelDraw.text(c, "Click adds a point · drag moves it · double-click deletes it", in: r, font: PanelTheme.font(11), color: PanelTheme.text2)
         })
     }
 

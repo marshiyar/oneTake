@@ -55,7 +55,20 @@ extension InspectorRenderAuditTests {
     func greenSecondary() {
         inspector.openGroupId = "grade"
         clickHit(.custom("sec:placeholder", 0))
-        slide("sec:hue", 120); slide("sec:sat", -100)
+        // The qualifier editor is a hue/saturation/luma track, not sliders: nudge the hue window from the
+        // default (centre 0, range 30) to green (lo 60, hi 180) with the track's own arrow keys. Each row
+        // commits from the secondary it was built with, so the row is re-read before every press.
+        for _ in 0..<15 { XCTAssertTrue(qualifierHueKey(1, EditorKey(.right, shift: true))) }
+        for _ in 0..<27 { XCTAssertTrue(qualifierHueKey(0, EditorKey(.left, shift: true))) }
+        slide("sec:sat", -100)
+    }
+
+    /// The hue track's key handler, rebuilt from the live secondary on every press.
+    func qualifierHueKey(_ part: Int, _ key: EditorKey) -> Bool {
+        for g in inspector.groups { for r in g.addressableRows {
+            if case .custom(let c) = r.kind, c.id == "sec:qualifier:hue" { return c.keyPress?(part, key) == true }
+        } }
+        XCTFail("no hue qualifier track"); return false
     }
 
     func testEyedropperKeysTheSelectionFromTheFrame() {
@@ -71,10 +84,9 @@ extension InspectorRenderAuditTests {
         XCTAssertLessThan(chroma(after.export, x: 2), 40, "and so does the export's grade")
         XCTAssertEqual(after.preview, after.export, "preview and export grade the frame alike")
         XCTAssertTrue(inspector.grade.showMatte, "the matte shows after a sample")
-        guard case .slider(let hue)? = find("sec:hue") else { return XCTFail("no hue slider") }
-        XCTAssertEqual(hue.position, 0, accuracy: 1, "the hue centre is the sampled red")
-        guard case .slider(let range)? = find("sec:range") else { return XCTFail("no range slider") }
-        XCTAssertEqual(range.position, 18, "the sample range")
+        let mc = PanelMeasureCanvas()
+        inspector.draw(mc, in: CanvasRect(x: 0, y: 0, width: 320, height: 4000))
+        XCTAssertTrue(mc.drawnStrings.contains("342° – 18°"), "the hue track shows the sampled red centre and range")
         XCTAssertTrue(editor.undo())
         XCTAssertGreaterThan(chroma(gradedRedGreen().preview, x: 2), 150, "the sample is one undo step")
     }
