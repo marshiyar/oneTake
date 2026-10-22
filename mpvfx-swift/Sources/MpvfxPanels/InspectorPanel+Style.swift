@@ -55,6 +55,6 @@ extension InspectorPanel {
 
     /// Group summary: `fill #rrggbb` / `fill none`, then the opacity.
     static func styleSummary(_ style: NativeClipStyle?, opacityPercent: Int) -> String {
-        "fill \(style?.fill ?? "none") · \(opacityPercent)%"
+        "Fill \(style?.fill ?? "none") · \(opacityPercent)%"
     }
 }

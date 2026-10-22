@@ -314,6 +314,15 @@ Background generator clips (#452): the Media panel menu adds Solid colour, Linea
 
 Select an audio clip and press B or Add beat to store a mark at the audio clock time. Marks stay on their source frames when clips move or trim, support one-step undo, snap clip edges, and persist in project.json. Drag a mark to move it, Option-click to delete, or Option-comma / Option-period to jump. Unknown beat versions remain in the project with an open notice.
 
+### Design wording (#186)
+
+**done — panels / panels-visual.** Design controls and section headings use sentence case. Align, case, style and
+crop reset use vector icons with word tooltips and native accessible names. Summaries use the 11 px label font
+and human names; Primary and secondary correction say Temperature. Rotation appears once in Transform; the
+3D transform disclosure retains tilt, depth and perspective. Document keys and editing commands are unchanged.
+Evidence: `DesignWordingTests`, the Design wording scanner and its three regressions. Native offscreen panel
+captures cover dark/light at 1440×900 and 1280×800; full application screenshot verification remains manual.
+
 ## 13. Recently landed
 
 | Ability | Swift status | Visual |
@@ -325,4 +334,3 @@ Select an audio clip and press B or Add beat to store a mark at the audio clock 
 | Voice recording (#317) | done: transport Record button and ⌥Space with 0–5 s count-in and microphone selection in Settings, live meter with clip latch, Space keeps the WAV as an ordinary audio clip on the Voice track and Esc discards it; overlapping takes are muted and retained, one undo step per kept take; sub-frame silence aligns the first sample with input latency. Punch-in and pre-roll remain #318 (`VoiceTransportTests`, `TimelineVoiceTests`) | n/a |
 | Saved looks, auto balance, reference look matching | done: Design > Saved looks stores named grades durably (`looks.json`); Auto balance and Match look fit ordinary grade values from frame statistics in one undo step (`UserLookTests`, `AutoBalanceTests`, `LookMatchTests`) | close |
 | Lookahead limiter (#205) | done: current-sound limiters hold a linked stereo sample-peak ceiling (−24 to 0 dBFS) with 0.5–5 ms lookahead (default 1.5 ms) and 10–1000 ms release; the v1 limiter and recorded fixtures keep their sound, dry mixing is delayed by run latency, tails include the lookahead; fully-wet ceiling only, no true-peak oversampling (`LimiterV2Tests`) | n/a |
->>>>>>> origin/main

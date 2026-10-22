@@ -154,7 +154,7 @@ extension InspectorPanel {
             guard let self else { return }
             self.edited(editor.copyColorGrading(from: s.id, toAllProjectMedia: self.grade.copyToProject) > 0)
         }))))
-        let summary = g.enabled ? "\(g.preset ?? "neutral") · \(Int((g.intensity * 100).rounded()))%" : "off"
+        let summary = Self.gradeSummary(g)
         var group = InspectorGroup(id: "grade", title: "Grade", summary: summary, rows: rows, spacing: 0)
         group.enabled = g.enabled
         group.accessibilityLabel = "Grade enabled"
@@ -163,6 +163,13 @@ extension InspectorPanel {
         // not drawn: the native preview has no compare bypass or runtime handshake yet.
         group.reset = g.isAuthored ? { commit(ColorGrading()) } : nil
         return group
+    }
+
+    /// Preset IDs remain document data; summaries use the catalog's human name.
+    static func gradeSummary(_ grade: ColorGrading) -> String {
+        guard grade.enabled else { return "Off" }
+        let name = grade.preset.flatMap { ColorGrading.preset($0)?.label } ?? "Neutral"
+        return "\(name) · \(Int((grade.intensity * 100).rounded()))%"
     }
 
     /// The ten Primary sliders, `space-y-0.5`, each keyframeable (issue #179).
@@ -429,7 +436,7 @@ extension InspectorPanel {
         rows.append(slider("sec:shift", "Hue shift", s.hueShift, -180, 180, deg, def: 0, center: true) { $0.hueShift = $1.rounded() })
         rows.append(slider("sec:sat", "Saturation", s.saturation * 100, -100, 100, pct, def: 0, center: true) { $0.saturation = ($1 / 100 * 100).rounded() / 100 })
         rows.append(slider("sec:luma", "Luma", s.luma * 100, -100, 100, pct, def: 0, center: true) { $0.luma = ($1 / 100 * 100).rounded() / 100 })
-        rows.append(slider("sec:temp", "Warmth", s.temperature * 100, -100, 100, pct, def: 0, center: true) { $0.temperature = ($1 / 100 * 100).rounded() / 100 })
+        rows.append(slider("sec:temp", "Temperature", s.temperature * 100, -100, 100, pct, def: 0, center: true) { $0.temperature = ($1 / 100 * 100).rounded() / 100 })
         rows.append(slider("sec:tint", "Tint", s.tint * 100, -100, 100, pct, def: 0, center: true) { $0.tint = ($1 / 100 * 100).rounded() / 100 })
         // The selection's controls sit `space-y-1.5` under the header.
         let tail = rows[headCount...].flatMap { [InspectorRow(.spacer(6)), $0] }

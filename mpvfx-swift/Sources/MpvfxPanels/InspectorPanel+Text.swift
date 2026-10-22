@@ -77,19 +77,19 @@ extension InspectorPanel {
                           reset: { editor.setTextLineHeight(clipId: id, nil) }))
         let align = t.resolvedAlign
         rows.append(.init(.segmented(.init(key: "textAlign", label: "Align",
-            options: [("left", "L"), ("center", "C"), ("right", "R"), ("justify", "J")].map { (key: $0.0, label: $0.1, active: $0.0 == align) },
+            options: [("left", "Align left"), ("center", "Align center"), ("right", "Align right"), ("justify", "Justify")].map { (key: $0.0, label: $0.1, active: $0.0 == align) },
             select: { [weak self] k in
                 guard k != align else { return }
                 self?.edited(editor.setTextAlign(clipId: id, k), label: "Edit text")
-            }))))
+            }, icons: ["left": .alignLeft, "center": .alignCenter, "right": .alignRight, "justify": .alignJustify]))))
         let transform = t.resolvedTransform, italic = t.isItalic
-        rows.append(.init(.segmented(.init(key: "textCase", label: "Case · Style",
-            options: [("none", "–"), ("uppercase", "AG"), ("lowercase", "ag"), ("capitalize", "Ag")].map { (key: $0.0, label: $0.1, active: $0.0 == transform) }
-                + [(key: "normal", label: "A", active: !italic), (key: "italic", label: "A·i", active: italic)],
+        rows.append(.init(.segmented(.init(key: "textCase", label: "Case and style",
+            options: [("none", "Original case"), ("uppercase", "Uppercase"), ("lowercase", "Lowercase"), ("capitalize", "Capitalize")].map { (key: $0.0, label: $0.1, active: $0.0 == transform) }
+                + [(key: "normal", label: "Regular", active: !italic), (key: "italic", label: "Italic", active: italic)],
             select: { [weak self] k in
                 let ok = k == "normal" || k == "italic" ? editor.setTextFontStyle(clipId: id, k) : editor.setTextTransform(clipId: id, k)
                 self?.edited(ok, label: "Edit text")
-            }))))
+            }, icons: ["none": .reset, "uppercase": .textUppercase, "lowercase": .textLowercase, "capitalize": .textCapitalize, "normal": .font, "italic": .textItalic]))))
         rows += colorRows(ColorFieldSpec(key: "textColor", label: "Color", value: t.color, placeholder: t.resolvedColor, allowAlpha: false,
                                          historyLabel: "Edit text", tier: tier(isExplicit("color", fallback: t.color != nil)),
                                          reset: {
