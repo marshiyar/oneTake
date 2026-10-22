@@ -98,7 +98,6 @@ final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
         let w = gtk_application_window_new(app)!
         window = w
         let gw = typed(raw(w), GtkWindow.self)
-        gtk_window_set_title(gw, "MpVFX")
         gtk_window_set_default_size(gw, 1440, 900)
         var geo = GdkGeometry(); geo.min_width = 1024; geo.min_height = 640
         gtk_window_set_geometry_hints(gw, nil, &geo, GDK_HINT_MIN_SIZE)
@@ -108,6 +107,11 @@ final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
         // timeline and routes drawing and input to each region.
         let session = try makeEditorSession()
         self.session = session
+        session.documentStateChanged = { [weak self, weak session] in
+            guard let session, let window = self?.window else { return }
+            gtk_window_set_title(typed(raw(window), GtkWindow.self), session.markedWindowTitle)
+        }
+        session.documentStateChanged()
         // Before installShell: it starts background work (natural-size probes) whose results must land on the UI thread.
         session.postToUI = { body in onMain(body) }
         let router = session.installShell(userData: paths.userData) { [weak self] in self?.ensurePlayTimer() }
@@ -163,6 +167,9 @@ final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
         session.onExternalConflict = { answer in
             answer(mpvfx_choice_box(nil, "The project file changed on disk",
                 "It was changed outside MpVFX while you have unsaved edits.", "Keep My Edits", "Use the File on Disk") == 1)
+        }
+        session.onProjectMoved = { message, answer in
+            answer(mpvfx_choice_box(nil, "The project folder is missing", message, "Locate Folder…", "Keep Editing") == 1)
         }
         session.onImportRequested = { [weak self, weak session] in
             guard let self else { return }

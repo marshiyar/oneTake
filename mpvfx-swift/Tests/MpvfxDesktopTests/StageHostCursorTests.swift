@@ -47,6 +47,20 @@ final class StageHostCursorTests: XCTestCase {
         XCTAssertEqual(EditorShellRouter.Cursor.resizeNWSE.windowsCursorId, 32642)
     }
 
+    func testWin32RefreshPreservesFrameAndOtherWindowCursorsUnlessCaptured() {
+        func allows(_ x: Double, _ y: Double, ownWindow: Bool = true, captured: Bool = false) -> Bool {
+            HostCursorRefreshPolicy.shouldRefresh(ownsCapture: captured, ownsWindow: ownWindow,
+                                                  x: x, y: y, width: 300, height: 200)
+        }
+        XCTAssertTrue(allows(0, 0))
+        XCTAssertTrue(allows(299, 199))
+        for (x, y) in [(40.0, -20.0), (-1, 40), (300, 40), (40, 200)] {
+            XCTAssertFalse(allows(x, y), "title bar and resize borders keep their native cursor")
+            XCTAssertTrue(allows(x, y, ownWindow: false, captured: true), "capture owns the cursor outside the client")
+        }
+        XCTAssertFalse(allows(40, 40, ownWindow: false))
+    }
+
     var dirs: [String] = []
     override func tearDown() { for d in dirs { try? FileManager.default.removeItem(atPath: d) } }
 
@@ -59,6 +73,8 @@ final class StageHostCursorTests: XCTestCase {
         let router = s.installShell(userData: d) {}
         router.resized(CanvasSize(1440, 900))
         router.stageCursor = { .move }
+        let t = CairoImageTarget(width: 1440, height: 900)   // a draw lays out the dock's hit areas
+        router.draw(t.canvas, size: CanvasSize(1440, 900))
         return (s, router, try XCTUnwrap(router.frames))
     }
 
@@ -66,6 +82,7 @@ final class StageHostCursorTests: XCTestCase {
     func testAPlayerDragOverASeamKeepsTheStageCursor() throws {
         let (_, router, f) = try makeRouter()
         let seam = try XCTUnwrap(f.leftSeamHit)
+        let seam = try XCTUnwrap(router.dock.geometry.splitters.first { $0.axis == .row && $0.index == 0 }).hit
         let seamPoint = CanvasPoint(seam.x + seam.width / 2, f.player.y + f.player.height / 2)
         XCTAssertEqual(router.cursor(at: seamPoint.x, seamPoint.y), .columnResize, "hovering the seam: resize arrow")
         router.pointerDown(x: f.player.x + 40, y: f.player.y + 40, shift: false)
@@ -78,6 +95,7 @@ final class StageHostCursorTests: XCTestCase {
     func testTheSettingsCardShowsTheArrowOverEverything() throws {
         let (s, router, f) = try makeRouter()
         let seam = try XCTUnwrap(f.leftSeamHit)
+        let seam = try XCTUnwrap(router.dock.geometry.splitters.first { $0.axis == .row && $0.index == 0 }).hit
         s.showSettings()
         XCTAssertEqual(router.cursor(at: f.player.x + f.player.width / 2, f.player.y + f.player.height / 2), .arrow)
         XCTAssertEqual(router.cursor(at: seam.x + seam.width / 2, f.player.y + 10), .arrow)

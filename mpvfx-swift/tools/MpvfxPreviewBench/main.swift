@@ -36,10 +36,20 @@ import CoreGraphics
 //   MpvfxPreviewBench <scenario> <fixtures dir> <results file> [frames] [--no-realtime]
 //   MpvfxPreviewBench --make-clips <fixtures dir>   (writes the clips with the media engine's encoder; Clips.swift)
 //   (--no-realtime: playback only, for allocation counts under valgrind --tool=dhat)
-//   scenarios: 1080p, 4k, stacked, graded, scrub, export, export-serial
+//   scenarios: 1080p, 4k, stacked, dissolve (Dissolve.swift), graded, scrub, export, export-serial
 //   (export: 10 s of 1080p30 exported to MP4 through renderNativeTimeline, frames painted by PreviewExportFrames as
 //   the app installs it; export_fps, paint_ms and encode_ms per frame, peak RSS. export-serial: the same export
 //   painting and encoding in turn on one thread, the baseline measured on the same machine in the same run)
+//
+// Memory (issue #97): next to peak_rss_mib each line records what the budgeted caches held at their peak
+// (cache_bytes_mib: decoded frames cached plus in flight; in_flight_mib: frames the lanes were decoding;
+// grader_bytes_mib: graded pictures, sampled at every draw), their budgets (budget_sum_mib, MemoryBudget.previewTotal
+// for this machine), the process before any decoding (start_rss_mib) and peak_rss_mib minus the caches' peaks
+// (unaccounted_mib: the binaries and engine libraries, the engine's decoder state, canvas surfaces, allocator
+// overhead). The cache peaks may come from different moments than the RSS peak, so unaccounted_mib is a lower bound
+// on what the process held outside the caches at its peak: at that moment the caches held at most their peaks.
+// The playback phase's compositor is released before the real-time phase starts its own, as closing a project
+// does, so the two phases' caches are never held at once.
 
 func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
 
@@ -113,6 +123,8 @@ final class Run {
     let rect: CanvasRect
     let ready = DispatchSemaphore(value: 0)
     var paintSeconds = 0.0, draws = 0, stalls = 0
+    /// Most bytes of graded pictures the grader held, sampled after every draw (outside the paint timing).
+    var gradedPeak = 0
 
     init(_ doc: NativeProjectDocument, width: Int, height: Int) {
         screen = Screen(width: width, height: height)
@@ -125,13 +137,20 @@ final class Run {
         let t0 = now()
         compositor.draw(screen.canvas, in: rect, time: time, elements: [], context: FrameDrawContext(isPlaying: playing))
         paintSeconds += now() - t0; draws += 1
+        gradedPeak = max(gradedPeak, compositor.gradedMemoBytes)
         return compositor.lastShown.allSatisfy { $0.exact && $0.gradeCurrent }
     }
 
     /// Draws `time` until every layer shows its exact, fully graded frame (a stall after 10 s is counted and skipped).
-    func show(_ time: Double, playing: Bool) {
-        while !draw(time, playing: playing) {
-            if ready.wait(timeout: .now() + 10) == .timedOut { stalls += 1; return }
+    /// Returns when (`now()`) the first draw that put a picture on every layer ended: a stand-in or the exact frame.
+    @discardableResult
+    func show(_ time: Double, playing: Bool) -> Double? {
+        var first: Double?
+        while true {
+            let done = draw(time, playing: playing)
+            if first == nil && compositor.lastShown.allSatisfy({ $0.frame != nil }) { first = now() }
+            if done { return first }
+            if ready.wait(timeout: .now() + 10) == .timedOut { stalls += 1; return first }
         }
     }
 
@@ -152,6 +171,28 @@ final class Run {
 
 func fmt(_ v: Double) -> String { String(format: "%.2f", v) }
 
+func mib(_ bytes: Int) -> Double { Double(bytes) / 1_048_576 }
+
+/// What the budgeted caches held at their peak over every compositor a scenario ran (one phase after another, so
+/// the largest of each is what was held at once), and their budgets.
+struct CachePeaks {
+    var held = 0, inFlight = 0, graded = 0, budget = 0
+
+    mutating func add(_ run: Run) {
+        let cache = run.compositor.cache
+        held = max(held, cache.peakHeldBytes)
+        inFlight = max(inFlight, cache.peakInFlightBytes)
+        graded = max(graded, run.gradedPeak)
+        budget = max(budget, cache.budgetBytes + run.compositor.gradedMemoBudget)
+    }
+
+    func fields(peakRSS: Double, startRSS: Double) -> [String: String] {
+        ["cache_bytes_mib": fmt(mib(held)), "in_flight_mib": fmt(mib(inFlight)), "grader_bytes_mib": fmt(mib(graded)),
+         "budget_sum_mib": fmt(mib(budget)), "start_rss_mib": fmt(startRSS),
+         "unaccounted_mib": fmt(peakRSS - mib(held) - mib(graded))]
+    }
+}
+
 /// Unthrottled forward playback: every frame shown exactly, as fast as the pipeline delivers them.
 func playback(_ run: Run, frames: Int) -> [String: String] {
     _ = run.draw(0, playing: false); run.show(0, playing: false)
@@ -170,56 +211,99 @@ func playback(_ run: Run, frames: Int) -> [String: String] {
     return out
 }
 
+/// Sleeps until `deadline` (a `now()` value), rounding the wait up a microsecond so the wake is never early.
+func sleepUntil(_ deadline: Double) {
+    let wait = deadline - now()
+    if wait > 0 { usleep(UInt32(min(1, wait) * 1e6) + 1) }
+}
+
 /// Real-time playback for `seconds` at 30 draws per second, as the display timer drives it: the share of draws that
 /// showed every layer's exact frame (the rest held an earlier frame), how many different pictures reached the screen
-/// per second (smoothness: 30 is every frame), and how far the shown frame trailed the playhead.
-func realtime(_ doc: NativeProjectDocument, width: Int, height: Int, seconds: Double) -> [String: String] {
-    let run = Run(doc, width: width, height: height)
+/// per second (smoothness: 30 is every frame), how far the shown frame trailed the playhead, and the draw cadence
+/// (`DrawCadence`: draw interval and wake lateness p95 and max, draws that repeated the previous picture, ticks dropped
+/// after a late draw). Each draw is due in the middle of its frame, so OS wake jitter under half a frame never decides
+/// which frame a draw samples, and a draw that overruns drops the ticks it missed, as a display timer does.
+/// `realtime_paint_ms_per_draw` separates a slow draw from a late wake.
+///
+/// On macOS the run is declared a latency-critical, user-initiated activity: a command-line process on the hosted
+/// runner is not a foreground app, and its 1080p draws began 126 ms after their deadlines and 152 ms apart at p95
+/// (bench run 39538341200), where the editor plays in a foreground window. `latencyCritical` asks for "the highest
+/// amount of timer and I/O precision
+/// available" (https://developer.apple.com/documentation/foundation/processinfo/activityoptions/latencycritical,
+/// read 2026-10-21).
+func realtime(_ run: Run, seconds: Double) -> [String: String] {
+    #if os(macOS)
+    let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical],
+                                                         reason: "real-time playback benchmark")
+    defer { ProcessInfo.processInfo.endActivity(activity) }
+    #endif
     run.show(0, playing: false)
-    var exact = 0, total = 0, changes = 0, lag = 0
-    var last: [Int?] = []
+    guard var cadence = DrawCadence(fps: 30) else { return [:] }
+    let paint0 = run.paintSeconds
+    var exact = 0, lag = 0
     let t0 = now()
     while true {
+        sleepUntil(t0 + cadence.nextDeadline(at: now() - t0))
         let t = now() - t0
         if t >= seconds { break }
         _ = run.draw(t, playing: true)
         let shown = run.compositor.lastShown
         if shown.allSatisfy({ $0.exact }) { exact += 1 }
-        let frames = shown.map(\.frame)
-        if frames != last { changes += 1; last = frames }
+        cadence.record(start: t, frames: shown.map(\.frame))
         let want = Int((t * 30 + 1e-6).rounded(.down))
         lag += shown.compactMap(\.frame).map { max(0, want - $0) }.max() ?? 0
-        total += 1
-        let next = Double(total) / 30
-        let wait = next - (now() - t0)
-        if wait > 0 { usleep(UInt32(wait * 1e6)) }
     }
-    let lanes = run.compositor.lanes.values
-    let restarts = lanes.reduce(0) { $0 + $1.restarts }, decoded = lanes.reduce(0) { $0 + $1.framesDecoded }
-    let skipped = lanes.reduce(0) { $0 + $1.framesSkipped }
+    var out = laneTotals(run)
     run.compositor.stopAll()
-    let n = Double(max(1, total))
-    return ["realtime_exact_pct": fmt(Double(exact) / n * 100), "realtime_draws": "\(total)",
-            "realtime_new_frames_per_s": fmt(Double(changes) / seconds), "realtime_mean_lag_frames": fmt(Double(lag) / n),
-            "realtime_lane_restarts": "\(restarts)", "realtime_frames_decoded": "\(decoded)", "realtime_frames_skipped": "\(skipped)"]
+    let draws = Double(max(1, cadence.starts.count))
+    out["realtime_exact_pct"] = fmt(Double(exact) / draws * 100)
+    out["realtime_draws"] = "\(cadence.starts.count)"
+    out["realtime_new_frames_per_s"] = fmt(Double(cadence.changes) / seconds)
+    out["realtime_mean_lag_frames"] = fmt(Double(lag) / draws)
+    out["realtime_paint_ms_per_draw"] = fmt((run.paintSeconds - paint0) / draws * 1000)
+    for (key, value) in cadence.metrics() { out["realtime_\(key)"] = fmt(value) }
+    return out
 }
 
-/// Random seeks while paused: time until the exact frame is on screen.
+/// Restarts, decoded and skipped frames summed over the run's decode lanes.
+func laneTotals(_ run: Run) -> [String: String] {
+    let lanes = run.compositor.lanes.values
+    return ["realtime_lane_restarts": "\(lanes.reduce(0) { $0 + $1.restarts })",
+            "realtime_frames_decoded": "\(lanes.reduce(0) { $0 + $1.framesDecoded })",
+            "realtime_frames_skipped": "\(lanes.reduce(0) { $0 + $1.framesSkipped })"]
+}
+
+/// Mean, 95th percentile and maximum of `seconds` in milliseconds, as `<prefix>_mean_ms`, `_p95_ms` and `_max_ms`.
+/// The percentile is the nearest rank, `ceil(0.95 n) - 1` in the sorted samples, as `.github/ci/bench.py` takes it.
+func latencyKeys(_ prefix: String, _ seconds: [Double]) -> [String: String] {
+    guard !seconds.isEmpty else { return [:] }
+    let sorted = seconds.sorted()
+    let mean = seconds.reduce(0, +) / Double(seconds.count)
+    let rank = Int((0.95 * Double(sorted.count)).rounded(.up)) - 1
+    let p95 = sorted[max(0, min(sorted.count - 1, rank))]
+    return ["\(prefix)_mean_ms": fmt(mean * 1000), "\(prefix)_p95_ms": fmt(p95 * 1000),
+            "\(prefix)_max_ms": fmt((sorted.last ?? 0) * 1000)]
+}
+
+/// Random seeks while paused: time until the first picture is on screen (`seek_first_*`: a stand-in such as the
+/// nearest cached frame, or the exact frame when it came first) and until the exact frame is (`seek_*`). A seek that
+/// stalled before any picture adds no first-picture sample; `stalls` counts it.
 func scrub(_ run: Run, seeks: Int, duration: Double) -> [String: String] {
     var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
-    var latencies: [Double] = []
+    var latencies: [Double] = [], firsts: [Double] = []
     for _ in 0..<seeks {
         seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
         let frame = Int((seed >> 33) % UInt64(duration * 30 - 1))
         let t0 = now()
-        run.show(Double(frame) / 30, playing: false)
-        latencies.append(now() - t0)
+        let first = run.show(Double(frame) / 30, playing: false)
+        let exact = now()
+        latencies.append(exact - t0)
+        if let first { firsts.append(first - t0) }
     }
-    let sorted = latencies.sorted()
-    let mean = latencies.reduce(0, +) / Double(max(1, latencies.count))
-    let p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
-    return ["seek_mean_ms": fmt(mean * 1000), "seek_p95_ms": fmt(p95 * 1000), "seek_max_ms": fmt((sorted.last ?? 0) * 1000),
-            "seeks": "\(seeks)", "stalls": "\(run.stalls)"]
+    var out = latencyKeys("seek", latencies)
+    out.merge(latencyKeys("seek_first", firsts)) { $1 }
+    out["seeks"] = "\(seeks)"; out["stalls"] = "\(run.stalls)"
+    return out
 }
 
 /// Exports the 1080p clip (10 s, 30 fps) to MP4 at standard quality, the app's default, and times it: frames per
@@ -251,6 +335,7 @@ func scenario(_ name: String) -> (clips: [Clip], seconds: Double)? {
     case "graded": return ([Clip(file: "clip1080.mp4", track: 0, grade: typicalGrade)], 10)
     case "scrub": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
     case "export", "export-serial": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
+    case "dissolve": return ([Clip(file: "clip1080.mp4", track: 0), Clip(file: "clip1080b.mp4", track: 0)], 10)
     default: return nil
     }
 }
@@ -259,7 +344,7 @@ func main() throws {
     let args = CommandLine.arguments
     if args.count == 3 && args[1] == "--make-clips" { try makeClips(args[2]); return }
     guard args.count >= 4, let sc = scenario(args[1]) else {
-        print("usage: MpvfxPreviewBench <1080p|4k|stacked|graded|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
+        print("usage: MpvfxPreviewBench <1080p|4k|stacked|dissolve|graded|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
         print("       MpvfxPreviewBench --make-clips <fixtures dir>"); exit(2)
     }
     let (width, height) = (1280, 720)
@@ -269,7 +354,9 @@ func main() throws {
         result["peak_rss_mib"] = fmt(peakMiB())
         return record(result, to: args[3])
     }
-    let doc = try document(sc.clips, dir: args[2], seconds: sc.seconds)
+    // Measured as peak_rss_mib is (getrusage / the peak working set), so the two compare on every OS.
+    let startRSS = peakMiB()
+    let doc = args[1] == "dissolve" ? try dissolveDocument(dir: args[2]) : try document(sc.clips, dir: args[2], seconds: sc.seconds)
     let frames = args.count > 4 ? Int(args[4]) ?? 120 : Int(sc.seconds * 30) - 2
     var result: [String: String] = ["scenario": args[1], "display": "\(width)x\(height)"]
     let run = Run(doc, width: width, height: height)
@@ -278,9 +365,18 @@ func main() throws {
     } else {
         result.merge(playback(run, frames: frames)) { $1 }
     }
-    run.compositor.stopAll()
-    if args[1] != "scrub" && !args.contains("--no-realtime") { result.merge(realtime(doc, width: width, height: height, seconds: min(5, sc.seconds - 0.5))) { $1 } }
-    result["peak_rss_mib"] = fmt(peakMiB())
+    var peaks = CachePeaks()
+    peaks.add(run)
+    run.compositor.releaseAll()
+    if args[1] != "scrub" && !args.contains("--no-realtime") {
+        let live = Run(doc, width: width, height: height)
+        result.merge(realtime(live, seconds: min(5, sc.seconds - 0.5))) { $1 }
+        peaks.add(live)
+        live.compositor.releaseAll()
+    }
+    let peak = peakMiB()
+    result["peak_rss_mib"] = fmt(peak)
+    result.merge(peaks.fields(peakRSS: peak, startRSS: startRSS)) { $1 }
     record(result, to: args[3])
 }
 

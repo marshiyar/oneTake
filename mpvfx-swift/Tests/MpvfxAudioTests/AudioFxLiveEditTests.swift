@@ -100,10 +100,10 @@ final class AudioFxLiveEditTests: XCTestCase {
         ("compressor", #"{"threshold":-30,"ratio":8}"#), ("limiter", #"{"limit":-6}"#), ("gate", #"{"threshold":-25,"range":-60}"#),
         ("saturate", #"{"type":"hard","threshold":-12}"#), ("bitcrush", #"{"bits":4}"#), ("pitchshift", #"{"semitones":5}"#),
         ("delay", #"{"time":90,"feedback":0.5,"mix":0.5}"#), ("chorus", #"{"depth":5,"mix":0.6}"#), ("phaser", #"{"speed":1.5}"#),
-        ("reverb", #"{"wet":0.6}"#),
+        ("reverb", #"{"wet":0.6}"#), ("denoise", #"{"amount":1,"learn":100}"#),
     ]
-    static func chain(_ type: String, _ params: String) -> String {
-        #"{"version":1,"nodes":[{"type":""# + type + #"","id":"x","params":"# + params + "}]}"
+    static func chain(_ type: String, _ params: String, version: Int = 1) -> String {
+        #"{"version":"# + String(version) + #","nodes":[{"type":""# + type + #"","id":"x","params":"# + params + "}]}"
     }
 
     static let dryOffline = AudioGraphRenderer.renderOffline(project(inputs()))
@@ -162,27 +162,45 @@ final class AudioFxLiveEditTests: XCTestCase {
 
     // MARK: preview (live playback)
 
-    /// Plays from 1 s, applies the FX mid-playback through the updater (as the session does), and checks what the
-    /// feeder renders next: it is the FX project's own render at that position, bit for bit (the rebuilt graph
-    /// is pre-rolled from frame 0), and it is not the dry signal.
+    /// Plays from 0.3 s, applies the FX mid-playback through the updater (as the session does), and checks what the
+    /// feeder renders once the swap's crossfade has passed: it is the FX project's own render at that position, bit
+    /// for bit (the rebuilt graph is pre-rolled from frame 0), and it is not the dry signal.
     func testEveryFxTypeIsHeardInLivePlaybackOnBothRacks() {
+        verifyEveryFxType(version: 1, requireAudibleChange: true)
+    }
+
+    /// V2 changes DSP semantics, while the live graph must still match the exported samples for every type.
+    func testEveryV2TypeMatchesExportOnBothRacks() {
+        verifyEveryFxType(version: 2, requireAudibleChange: false)
+    }
+
+    func verifyEveryFxType(version: Int, requireAudibleChange: Bool) {
         for rack in Rack.allCases {
             for (type, params) in Self.everyType {
+                // Denoise learns its noise profile from the span `learn`/`learn_from` points at. The shared
+                // params learn the first 100 ms (near-silence), which barely marks the loud slice this test
+                // measures; learn from the loud burst under the slice instead, as a user pointing at the noisy
+                // passage would. The export test keeps the shared params (it renders the whole second).
+                let params = type == "denoise" ? #"{"amount":1,"learn":125,"learn_from":0.375}"# : params
                 let source = GraphAudioSource(project: Self.project(Self.inputs()))
                 let updater = LiveAudioGraphUpdater(source: source, loadStem: Self.loadStem)
                 updater.submit(Self.inputs()); updater.waitUntilIdle()
                 source.seek(0.3)
                 _ = source.render(frames: 128 * 8)
-                let fxInputs = Self.inputs(rack, Self.chain(type, params))
+                let fxInputs = Self.inputs(rack, Self.chain(type, params, version: version))
                 updater.submit(fxInputs); updater.waitUntilIdle()
                 XCTAssertEqual(source.lastReplace, .rebuilt, "\(rack) \(type)")
+                XCTAssertEqual(source.position, 14400 + 128 * 8)
+                // The rebuilt graph crossfades in over `declickFrames` (LiveDeclickTests), then plays alone.
+                _ = source.render(frames: source.declickFrames)
                 let at = source.position
-                XCTAssertEqual(at, 14400 + 128 * 8)
                 let got = source.render(frames: 128 * 100)
                 let offline = AudioGraphRenderer.renderOffline(Self.project(fxInputs))
                 XCTAssertTrue(got == slice(offline, frame: at, frames: 128 * 100), "\(rack) \(type): live differs from export at the same frame")
-                let d = segDiff(got, slice(Self.dryOffline, frame: at, frames: 128 * 100))
-                XCTAssertGreaterThan(d, 0.01, "\(rack) \(type): live output unchanged (rel diff \(d))")
+                if requireAudibleChange {
+                    let d = segDiff(got, slice(Self.dryOffline, frame: at, frames: 128 * 100))
+                    XCTAssertGreaterThan(d, 0.01, "\(rack) \(type): live output unchanged (rel diff \(d))")
+                }
             }
         }
     }

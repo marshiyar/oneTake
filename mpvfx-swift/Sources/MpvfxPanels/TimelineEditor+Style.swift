@@ -60,6 +60,12 @@ public extension TimelineEditor {
         editClipStyle(clipId: clipId) { $0.strokeColor = hex.flatMap(normalizedHexColor) }
     }
 
+    /// Blend mode (`clip.style.blend`); normal removes the key so an unblended clip saves unchanged. One undo step.
+    @discardableResult
+    func setClipBlend(clipId: String, _ mode: NativeBlendMode) -> Bool {
+        editClipStyle(clipId: clipId) { $0.blend = mode == .normal ? nil : mode.rawValue }
+    }
+
     @discardableResult
     func setClipShadowPreset(clipId: String, _ preset: NativeClipShadowPreset) -> Bool {
         editClipStyle(clipId: clipId) { $0.shadows = preset == .none ? nil : preset.shadows }

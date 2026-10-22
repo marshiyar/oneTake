@@ -18,7 +18,7 @@ import MpvfxTheme
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
-        case split, cut, copy, paste, duplicate, thumbnails, mute, keepPitch, detachAudio, reattachAudio, delete
+        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -57,15 +57,25 @@ public struct TimelineClipMenu: Equatable, Sendable {
     /// `keepsPitch` is the clip's pitch option, nil for a clip without sound (no row).
     public static func entries(kind: TimelineClipKind, splitEnabled: Bool, thumbnails: Bool, muted: Bool,
                                canReattach: Bool, canDetach: Bool, canMute: Bool = true,
-                               canPaste: Bool = false, keepsPitch: Bool? = nil) -> [Entry] {
+                               canPaste: Bool = false, canPasteGrade: Bool = false, gradePasteReason: String? = nil,
+                               keepsPitch: Bool? = nil) -> [Entry] {
         var e: [Entry] = []
         let hasSplit = kind == .video || kind == .audio || kind == .image
         if hasSplit { e.append(.item(Item(action: .split, label: "Split", hint: "S", enabled: splitEnabled))); e.append(.divider) }
         e.append(.item(Item(action: .cut, label: "Cut", hint: "⌘X")))
         e.append(.item(Item(action: .copy, label: "Copy", hint: "⌘C")))
         e.append(.item(Item(action: .paste, label: "Paste", hint: "⌘V", enabled: canPaste)))
+        if kind == .video || kind == .image {
+            e.append(.item(Item(action: .copyGrade, label: "Copy grade", hint: "⌥⌘C")))
+            e.append(.item(Item(action: .pasteGrade, label: "Paste grade", hint: canPasteGrade ? "⌥⌘V" : gradePasteReason, enabled: canPasteGrade)))
+        }
         e.append(.item(Item(action: .duplicate, label: "Duplicate", hint: "⌘D")))
         e.append(.divider)
+        if kind == .video || kind == .audio || kind == .image {
+            e.append(.item(Item(action: .revealSource, label: "Reveal in media bin")))
+            e.append(.item(Item(action: .showSourceFile, label: "Show in file manager")))
+            e.append(.divider)
+        }
         if kind == .video || kind == .image {
             e.append(.item(Item(action: .thumbnails, label: "Show thumbnails", checked: thumbnails)))
             e.append(.divider)

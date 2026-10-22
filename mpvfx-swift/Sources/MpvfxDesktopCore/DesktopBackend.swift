@@ -16,9 +16,37 @@ import Foundation
 
 /// An error with a name ("Error", "AbortError") and a message, shown to the user as is.
 public struct DesktopError: Error, Equatable, CustomStringConvertible, Sendable {
+    public enum SaveFailure: String, Sendable {
+        case diskFull = "ENOSPC", quotaExceeded = "EDQUOT", readOnly = "EROFS"
+        case permissionDenied = "EACCES", folderMissing = "ENOENT"
+
+        public var reason: String {
+            switch self {
+            case .diskFull: return "The disk is full"
+            case .quotaExceeded: return "The storage quota is full"
+            case .readOnly: return "The folder is read-only"
+            case .permissionDenied: return "Permission to write was denied"
+            case .folderMissing: return "The project folder is unavailable"
+            }
+        }
+    }
     public var name: String
     public var message: String
+    public private(set) var saveFailure: SaveFailure?
     public init(_ message: String, name: String = "Error") { self.message = message; self.name = name }
+    public init(saveFailure: SaveFailure, folder: String) {
+        self.saveFailure = saveFailure
+        name = "SaveError"
+        let action: String
+        switch saveFailure {
+        case .diskFull: action = "The disk holding \(folder) is full. Free some space."
+        case .quotaExceeded: action = "The storage quota for \(folder) is full. Free some space or increase the quota."
+        case .readOnly: action = "The folder \(folder) is read-only. Make the folder or its drive writable."
+        case .permissionDenied: action = "MpVFX cannot write to \(folder). Give your account permission to write to this folder."
+        case .folderMissing: action = "The project folder \(folder) is unavailable. Reconnect its drive or restore the folder."
+        }
+        message = action + " Your edits are kept in memory. Once this is fixed, save again or keep editing to retry."
+    }
     public var description: String { message }
     public static func notImplemented(_ what: String) -> DesktopError {
         DesktopError("\(what) is not implemented yet")
@@ -38,6 +66,8 @@ public protocol LibraryService: Sendable {
     func relink(libraryId: String, assetId: String, path: String) async throws
     func root(libraryId: String) throws -> String
     func saveOutput(libraryId: String, jobId: String, destination: String, overwrite: Bool) async throws
+    func renameEvent(libraryId: String, eventId: String, name: String) async throws
+    func renameProject(libraryId: String, projectId: String, name: String) async throws
 }
 
 /// An open project: its id, its directory, and the native document text as last read or saved.
@@ -183,6 +213,13 @@ public struct DesktopMediaOperation: Equatable, Sendable {
     }
 }
 
+/// Result of `importCaptions`: the document text with the new caption track, already saved; the editor loads it.
+public struct DesktopCaptionImport: Equatable, Sendable {
+    public var content: String
+    public var cueCount: Int
+    public init(content: String, cueCount: Int) { self.content = content; self.cueCount = cueCount }
+}
+
 /// A library as the sidebar shows it: its events, projects, media and exports.
 public struct DesktopLibraryView: Equatable, Sendable {
     public var id: String
@@ -298,6 +335,12 @@ public protocol DesktopBackend: Sendable {
     /// Calls `onExternalChange` (on a background queue) with the new text whenever the document is changed
     /// on disk by anything other than this backend. Replaces an earlier watch on the same project.
     func watchProject(id: String, onExternalChange: @escaping @Sendable (String) -> Void) throws
+    /// Like `watchProject(id:onExternalChange:)`, and also reports `.missing` when the project's folder was moved or
+    /// deleted (`ProjectMoved.swift`). Replaces an earlier watch on the same project.
+    func watchProjectEvents(id: String, onEvent: @escaping @Sendable (DesktopProjectEvent) -> Void) throws
+    /// Points an open project at the folder it was moved to (`path`: the folder, its `.studio` or the document) and keeps
+    /// its id and watch; returns the document found there. Nothing is written.
+    func relocateProject(id: String, to path: String) throws -> DesktopProject
     /// Project folders in the projects directory and the open libraries, newest first.
     func listProjects() -> [DesktopProjectSummary]
     /// Recently opened projects that still exist, newest first.
@@ -314,6 +357,9 @@ public protocol DesktopBackend: Sendable {
     func videoFrames(projectId: String, request: DesktopVideoFramesRequest) async throws -> DesktopVideoFrames
     /// Pauses in a video's audio within the source range.
     func silences(projectId: String, source: String, sourceStart: Double, sourceDuration: Double) async throws -> [DesktopTimeRange]
+    /// Source times at scene boundaries; progress is 0...1 on a worker thread. Task cancellation stops analysis.
+    func sceneCuts(projectId: String, source: String, sourceStart: Double, sourceDuration: Double,
+                   framesPerSecond: Double, threshold: Double, onProgress: @escaping @Sendable (Double) -> Void) async throws -> [Double]
     /// Renames media and repoints the document's assets, saving `content` (the editor's document) in the same commit.
     func renameMedia(projectId: String, from: String, to: String, content: String) throws -> DesktopMediaOperation
     /// Moves media to the recovery folder. Placed media needs `removeUsages` (its clips and assets are removed).
@@ -321,6 +367,12 @@ public protocol DesktopBackend: Sendable {
 
     /// Copies a media file next to itself as "name (copy).ext" (then "(copy 2)", ...). Returns the new path.
     func duplicateMedia(projectId: String, path: String) throws -> String
+
+    /// Reads an SRT file into the caption track of `content` (the editor's document) and saves it. All or nothing: a
+    /// file that does not read in full throws an error naming its line, and nothing is saved.
+    func importCaptions(projectId: String, path: String, content: String) throws -> DesktopCaptionImport
+    /// Writes the caption track of `content` as an SRT file at `path` (crash-safe); returns the number of captions.
+    func exportCaptions(projectId: String, path: String, content: String) throws -> Int
 
     /// Typed library views (the `libraries` service has the commands that change them).
     func libraryViews() async throws -> [DesktopLibraryView]
@@ -392,6 +444,10 @@ public struct NotImplementedBackend: DesktopBackend {
     public func silences(projectId: String, source: String, sourceStart: Double, sourceDuration: Double) async throws -> [DesktopTimeRange] {
         throw DesktopError.notImplemented("Silence analysis")
     }
+    public func sceneCuts(projectId: String, source: String, sourceStart: Double, sourceDuration: Double,
+                          framesPerSecond: Double, threshold: Double, onProgress: @escaping @Sendable (Double) -> Void) async throws -> [Double] {
+        throw DesktopError.notImplemented("Scene analysis")
+    }
     public func renameMedia(projectId: String, from: String, to: String, content: String) throws -> DesktopMediaOperation {
         throw DesktopError.notImplemented("Media")
     }
@@ -425,4 +481,11 @@ public struct NotImplementedBackend: DesktopBackend {
     public var libraries: LibraryService? { nil }
     public var preferences: DesktopPreferences? { nil }
     public func close() async throws {}
+}
+
+public extension NotImplementedBackend {
+    func importCaptions(projectId: String, path: String, content: String) throws -> DesktopCaptionImport {
+        throw DesktopError.notImplemented("Caption import")
+    }
+    func exportCaptions(projectId: String, path: String, content: String) throws -> Int { throw DesktopError.notImplemented("Caption export") }
 }

@@ -6,21 +6,39 @@ name: linux-no-vulkan
 # exit 0) and scans Sources/ and tools/ for a Vulkan type outside `#if canImport(CMpvfxVulkan)` (.github/ci/vulkan-guard.py).
 
 on:
+  # Throttled: the headerless graph only changes with the manifest, the lockfile, the C shims or the
+  # guard itself. Swift-only changes reuse mpvfx-ci's headed build; the nightly schedule catches anything
+  # the filter misses (including a newly unguarded Vulkan use) within a day.
   pull_request:
     branches: [main]
     paths:
       - 'mpvfx-swift/Package.swift'
       - 'mpvfx-swift/Package.resolved'
       - 'mpvfx-swift/binaries.lock'
-      - 'mpvfx-swift/Sources/**'
-      - 'mpvfx-swift/Tests/**'
-      - 'mpvfx-swift/tools/**'
+      - 'mpvfx-swift/Sources/CMpvfxVulkan/**'
+      - 'mpvfx-swift/Sources/CVulkan/**'
+      - 'mpvfx-swift/Sources/CPulse/**'
+      - 'mpvfx-swift/Sources/CGtk3/**'
       - '.github/ci/vulkan-guard.py'
       - '.github/ci/test_vulkan_guard.py'
       - '.github/workflows/linux-no-vulkan.yml'
+      - '.github/workflows/linux-no-vulkan-source.yml'
+      - '.github/ci/source_workflows.py'
   push:
     branches: [main]
-    paths-ignore: ['**/*.md', '**/docs/**', '.gitignore']
+    paths:
+      - 'mpvfx-swift/Package.swift'
+      - 'mpvfx-swift/Package.resolved'
+      - 'mpvfx-swift/binaries.lock'
+      - 'mpvfx-swift/Sources/CMpvfxVulkan/**'
+      - 'mpvfx-swift/Sources/CVulkan/**'
+      - 'mpvfx-swift/Sources/CPulse/**'
+      - 'mpvfx-swift/Sources/CGtk3/**'
+      - '.github/ci/vulkan-guard.py'
+      - '.github/ci/test_vulkan_guard.py'
+      - '.github/workflows/linux-no-vulkan.yml'
+      - '.github/workflows/linux-no-vulkan-source.yml'
+      - '.github/ci/source_workflows.py'
   schedule:
     - cron: '43 6 * * *'   # nightly: catches a runner image or base image that starts shipping the headers
   workflow_dispatch:

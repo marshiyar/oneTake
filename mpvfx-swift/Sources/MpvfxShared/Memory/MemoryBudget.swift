@@ -36,6 +36,7 @@ private final class MemoryNotificationHandle: @unchecked Sendable {
 ///
 /// - Raw decoded preview frames (`PreviewFrameCache`): 10% of RAM, at most 2 GB, at least 256 MB
 ///   (1.6 GB / 819 MB: about 200 / 100 frames of 1080p RGBA, many seconds of decode-ahead and scrub history).
+///   Frames a decode lane is producing count against it before they are stored (`PreviewFrameCache.reserve`).
 /// - Graded preview pictures memoised per clip: 2% of RAM, 64…256 MB.
 /// - Media bin thumbnails, timeline filmstrips and waveform peaks (`MediaThumbnails`): 2% of RAM, 64…256 MB.
 ///
@@ -53,6 +54,13 @@ public enum MemoryBudget {
                                      env: [String: String] = ProcessInfo.processInfo.environment) -> Int {
         if let mb = env["MPVFX_PREVIEW_CACHE_MB"].flatMap(Int.init), mb > 0 { return mb << 20 }
         return bytes(fraction: 0.10, cap: 2 << 30, floor: 256 << 20, physical: physical)
+    }
+
+    /// Everything the preview pane's caches may hold together: raw frames (cached and in flight) plus graded
+    /// pictures. The preview benchmark compares its peak resident memory with this (`budget_sum_mib`).
+    public static func previewTotal(physical: Int = physicalMemory,
+                                    env: [String: String] = ProcessInfo.processInfo.environment) -> Int {
+        previewFrames(physical: physical, env: env) + gradedFrames(physical: physical)
     }
 
     /// Graded pictures the preview memoises per clip: 2% of RAM, 64…256 MB.

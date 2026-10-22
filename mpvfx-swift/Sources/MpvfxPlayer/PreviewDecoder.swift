@@ -83,6 +83,15 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     public private(set) var framesSkipped = 0
     /// Seconds spent getting frames from the engine, summed (diagnostics, the preview benchmark).
     public private(set) var decodeSeconds = 0.0
+    /// Set under `lock` when the lane gave up before producing any picture: the media could not be opened, or it
+    /// yielded no frame. Tile previews waiting on this lane then fall back instead of showing "Rendering" forever.
+    var gaveUpFlag = false
+    public var gaveUp: Bool { lock.lock(); defer { lock.unlock() }; return gaveUpFlag }
+    func giveUpIfNothingDecoded() {
+        guard framesDecoded == 0 else { return }
+        lock.lock(); let notify = !gaveUpFlag; gaveUpFlag = true; lock.unlock()
+        if notify { onFrame?() }
+    }
 
     init(layer: PreviewLayer, fps: Double, cache: PreviewFrameCache) {
         self.layer = layer; key = layer.laneKey; self.fps = fps; self.cache = cache
@@ -95,7 +104,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     /// Ask for `frame` on screen now, and (playing forward) `ahead` more after it, or (playing backward) `behind`
     /// more before it. Returns immediately.
     public func request(frame: Int, ahead: Int, behind: Int = 0, size: PreviewDecodeSize) {
-        let f = layer.kind == .image ? Self.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, frame))
+        let f = layer.isStill ? Self.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, frame))
         lock.lock()
         want = f; self.ahead = max(0, ahead); self.behind = max(0, behind); self.size = size
         waiting = !cache.contains(lane: key, frame: f)
@@ -122,6 +131,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     /// The lane's open reader of its source (opened on first use; nil when the file cannot be read).
     func openReader() -> VideoFrameReader? {
         if reader == nil { reader = try? VideoFrameReader(path: layer.source) }
+        if reader == nil { giveUpIfNothingDecoded() }
         return reader
     }
 
@@ -134,7 +144,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
             // One pool per decoded frame: this loop runs for as long as playback keeps asking for frames, and the
             // queue only drains its own pool when the loop returns.
             let worked = withAutoreleasePool {
-                layer.kind == .image ? stepStill(sz) : b > 0 ? stepReverse(want: w, behind: b, size: sz) : stepVideo(want: w, ahead: a, size: sz)
+                layer.isStill ? stepStill(sz) : b > 0 ? stepReverse(want: w, behind: b, size: sz) : stepVideo(want: w, ahead: a, size: sz)
             }
             if !worked {
                 lock.lock()
@@ -153,15 +163,17 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         if notify { onFrame?() }
     }
 
-    /// Returns false when there is nothing to do.
+    /// The one picture of an image or a held frame, decoded once at a size that serves the request. Returns false
+    /// when there is nothing to do.
     func stepStill(_ sz: PreviewDecodeSize) -> Bool {
         if let s = stillSize, s.width * 10 >= sz.width * 9 && s.height * 10 >= sz.height * 9 { return false }
         stillSize = sz
-        guard let reader = openReader(),
-              let img = MediaFrameStream(reader: reader, frames: .still(width: sz.width, height: sz.height)).next()
-        else { return false }
+        let frames = layer.holdSourceTime.map { MediaFrameStream.Frames(from: max(0, $0), fps: fps, width: sz.width, height: sz.height) }
+            ?? .still(width: sz.width, height: sz.height)
+        guard let reader = openReader() else { return false }
+        guard let next = reservedNext(MediaFrameStream(reader: reader, frames: frames)) else { giveUpIfNothingDecoded(); return false }
         framesDecoded += 1
-        cache.store(img, lane: key, frame: Self.stillFrame)
+        cache.store(next.image, lane: key, frame: Self.stillFrame, reserved: next.reserved)
         delivered(Self.stillFrame)
         return true
     }
@@ -182,56 +194,91 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         // A window that cannot fit would evict its own start and be decoded again forever.
         let a = min(a, frameCapacity(want: w, size: sz) - 1)
         let last = min(layer.endFrame - 1, w + a)
-        // The first frame in [w, w+a] the cache lacks (for the current size).
-        var target: Int?
-        // Playing forward, frames the stream passed over (aiming ahead of the playhead) are not gone back for.
-        var f = a > 0 && stream != nil && streamNext > w && streamNext <= last ? streamNext : w
-        while f <= last && f < deadFrom {
-            if !cache.contains(lane: key, frame: f) { target = f; break }
-            f += 1
-        }
-        // A frame decoded at a visibly different size than wanted (window resized) is decoded again.
-        if target == nil, w < deadFrom, let img = cache.frame(lane: key, frame: w),
-           !PreviewDecodeSize(width: img.width, height: img.height).serves(sz) { target = w }
-        guard var target else { return false }
-        // Playing and behind the playhead: aim where the playhead will be once the frame is decoded, not where it is.
-        // When even that overshoots by a second (decoding is far slower than playback), keep reading forward and show
-        // what decodes instead of chasing the playhead through frames that all have to be decoded anyway.
-        let second = Int(fps.rounded())
-        let behind = a > 0 && streamNext < w && target == w && stream != nil
-        let overloaded = behind && lead >= second
-        if behind { target = overloaded ? streamNext : min(last, w + lead) }
-
-        let reach = overloaded ? 4 * second : second
-        let usable = stream != nil && streamSize.map { $0.serves(sz) } == true && streamNext <= target && target - streamNext <= reach
-        if !usable {
-            closeStream()
-            let t = layer.sourceTime(at: Double(target) / fps)
-            guard let r = openReader() else {
-                deadFrom = min(deadFrom, target); return false
-            }
-            stream = MediaFrameStream(reader: r, frames: .init(from: max(0, t), fps: fps, width: sz.width, height: sz.height).playing(at: layer.rate))
-            streamSize = sz; streamNext = target; restarts += 1; lead = 0
+        guard let missing = forwardTarget(want: w, last: last, ahead: a, size: sz) else { return false }
+        let behind = isBehind(want: w, ahead: a, missing: missing)
+        let aim = behind ? aimAhead(want: w, last: last) : (target: missing, overloaded: false)
+        let target = aim.target
+        if !streamReaches(target, size: sz, within: aim.overloaded ? 4 * Int(fps.rounded()) : Int(fps.rounded())) {
+            guard startStream(at: target, size: sz) else { return false }
+            lead = 0
         }
         guard let s = stream else { return false }
         // Frames before the target are behind the playhead or already cached: pass over them instead of decoding and
         // converting each (the engine decodes forward to the target, skipping pictures nothing references).
         if streamNext < target { s.skip(target - streamNext); framesSkipped += target - streamNext; streamNext = target }
+        return decodeForward(s, catchingUp: behind)
+    }
+
+    /// The first frame in [w, last] the cache lacks (for the current size), else `w` when its cached picture is a
+    /// visibly different size than wanted (window resized). nil when nothing is missing.
+    func forwardTarget(want w: Int, last: Int, ahead a: Int, size sz: PreviewDecodeSize) -> Int? {
+        // Playing forward, frames the stream passed over (aiming ahead of the playhead) are not gone back for.
+        var frame = a > 0 && stream != nil && streamNext > w && streamNext <= last ? streamNext : w
+        while frame <= last && frame < deadFrom {
+            if !cache.contains(lane: key, frame: frame) { return frame }
+            frame += 1
+        }
+        return resizedFrame(w, size: sz)
+    }
+
+    /// `w` when its cached picture is a visibly different size than `sz` (window resized), so it is decoded again.
+    func resizedFrame(_ w: Int, size sz: PreviewDecodeSize) -> Int? {
+        guard w < deadFrom, let image = cache.frame(lane: key, frame: w) else { return nil }
+        return PreviewDecodeSize(width: image.width, height: image.height).serves(sz) ? nil : w
+    }
+
+    /// Playing forward with the open stream short of the playhead, which is the first frame missing.
+    func isBehind(want w: Int, ahead a: Int, missing: Int) -> Bool {
+        a > 0 && streamNext < w && missing == w && stream != nil
+    }
+
+    /// Playing and behind the playhead: aim where the playhead will be once the frame is decoded, not where it is.
+    /// When even that overshoots by a second (decoding is far slower than playback), keep reading forward and show
+    /// what decodes instead of chasing the playhead through frames that all have to be decoded anyway.
+    func aimAhead(want w: Int, last: Int) -> (target: Int, overloaded: Bool) {
+        lead >= Int(fps.rounded())
+            ? (target: streamNext, overloaded: true)
+            : (target: min(last, w + lead), overloaded: false)
+    }
+
+    /// Whether the open stream can serve `target` at `sz` by reading forward at most `reach` frames.
+    func streamReaches(_ target: Int, size sz: PreviewDecodeSize, within reach: Int) -> Bool {
+        guard stream != nil, streamSize.map({ $0.serves(sz) }) == true else { return false }
+        return streamNext <= target && target - streamNext <= reach
+    }
+
+    /// Starts a stream at timeline frame `frame`, fitted to `sz`. False when the file cannot be read: the media
+    /// counts as ended from there.
+    func startStream(at frame: Int, size sz: PreviewDecodeSize) -> Bool {
+        closeStream()
+        let seconds = layer.sourceTime(at: Double(frame) / fps)
+        guard let reader = openReader() else { deadFrom = min(deadFrom, frame); return false }
+        let frames = MediaFrameStream.Frames(from: max(0, seconds), fps: fps, width: sz.width, height: sz.height)
+        stream = MediaFrameStream(reader: reader, frames: frames.playing(at: layer.rate))
+        streamSize = sz; streamNext = frame; restarts += 1
+        return true
+    }
+
+    /// Decodes the open stream's next frame and stores it, unless a newer frame of the clip is already cached.
+    /// `catchingUp`: the lane is behind the playhead and adjusts how far ahead of it it aims.
+    func decodeForward(_ s: MediaFrameStream, catchingUp: Bool) -> Bool {
         let idx = streamNext
-        guard let img = timedNext(s) else {
+        guard let next = reservedNext(s) else {
             // Media shorter than the clip: hold the last frame from here on.
-            deadFrom = min(deadFrom, idx); closeStream(); return true
+            deadFrom = min(deadFrom, idx); closeStream(); giveUpIfNothingDecoded(); return true
         }
         streamNext += 1
-        if mediaAspect == nil { mediaAspect = Self.opaqueAspect(img) }
+        if mediaAspect == nil { mediaAspect = Self.opaqueAspect(next.image) }
         lock.lock(); let currentWant = want; lock.unlock()
-        if behind { lead = max(0, min(2 * Int(fps.rounded()), lead + currentWant - idx)) }
+        if catchingUp { lead = max(0, min(2 * Int(fps.rounded()), lead + currentWant - idx)) }
         // The playhead moved on while this frame decoded. It is still the newest picture of the clip, so it is kept to
         // be shown instead of an older one (dropping it froze the picture whenever decoding ran slower than playback);
         // it is dropped only when a newer frame is already cached.
-        if idx < currentWant, let held = cache.nearest(lane: key, to: currentWant), held.frame >= idx { framesSkipped += 1; return true }
+        if idx < currentWant, let held = cache.nearest(lane: key, to: currentWant), held.frame >= idx {
+            cache.release(next.reserved); framesSkipped += 1; return true
+        }
         framesDecoded += 1
-        cache.store(img, lane: key, frame: idx)
+        cache.store(next.image, lane: key, frame: idx, reserved: next.reserved)
         delivered(idx)
         return true
     }
@@ -244,38 +291,47 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         // Reverse fills up to two chunks, and a reused stream may start one frame before a chunk.
         let b = min(b, (frameCapacity(want: w, size: sz) - 1) / 2)
         guard b > 0 else { return stepVideo(want: w, ahead: 0, size: boxSize) }
-        let low = max(layer.startFrame, w - b)
-        var top: Int?
-        var f = min(w, deadFrom - 1)
-        while f >= low {
-            if !cache.contains(lane: key, frame: f) { top = f; break }
-            f -= 1
-        }
-        if top == nil, w < deadFrom, let img = cache.frame(lane: key, frame: w),
-           !PreviewDecodeSize(width: img.width, height: img.height).serves(sz) { top = w }
-        guard let top else { return false }
+        guard let top = reverseTop(want: w, low: max(layer.startFrame, w - b), size: sz) else { return false }
         // Read forward toward `top` when the open stream is already in this chunk; otherwise start the chunk.
         let chunkStart = max(layer.startFrame, top - b + 1)
         let usable = stream != nil && streamSize.map { $0.serves(sz) } == true && streamNext <= top && streamNext >= chunkStart - 1
-        if !usable {
-            closeStream()
-            let t = layer.sourceTime(at: Double(chunkStart) / fps)
-            guard let r = openReader() else {
-                deadFrom = min(deadFrom, chunkStart); return false
-            }
-            stream = MediaFrameStream(reader: r, frames: .init(from: max(0, t), fps: fps, width: sz.width, height: sz.height).playing(at: layer.rate))
-            streamSize = sz; streamNext = chunkStart; restarts += 1
-        }
+        if !usable, !startStream(at: chunkStart, size: sz) { return false }
         guard let s = stream else { return false }
+        return decodeChunkFrame(s, top: top)
+    }
+
+    /// The highest frame in [low, w] reverse playback has to decode: the first one the cache lacks counting down
+    /// from `w`, else `w` itself when its cached picture is a visibly different size than wanted. nil when nothing
+    /// is missing.
+    func reverseTop(want w: Int, low: Int, size sz: PreviewDecodeSize) -> Int? {
+        var frame = min(w, deadFrom - 1)
+        while frame >= low {
+            if !cache.contains(lane: key, frame: frame) { return frame }
+            frame -= 1
+        }
+        return resizedFrame(w, size: sz)
+    }
+
+    /// Reverse playback: decodes the open chunk stream's next frame and stores it; the chunk ends at `top`.
+    func decodeChunkFrame(_ s: MediaFrameStream, top: Int) -> Bool {
         let idx = streamNext
-        guard let img = timedNext(s) else { deadFrom = min(deadFrom, idx); closeStream(); return true }
+        guard let next = reservedNext(s) else { deadFrom = min(deadFrom, idx); closeStream(); return true }
         streamNext += 1
-        if mediaAspect == nil { mediaAspect = Self.opaqueAspect(img) }
+        if mediaAspect == nil { mediaAspect = Self.opaqueAspect(next.image) }
         framesDecoded += 1
-        cache.store(img, lane: key, frame: idx)
+        cache.store(next.image, lane: key, frame: idx, reserved: next.reserved)
         delivered(idx)
         if idx >= top { closeStream() }   // chunk done; the next one starts a chunk lower
         return true
+    }
+
+    /// The stream's next frame, its bytes reserved in the cache before it is decoded so the frame counts against the
+    /// budget while it is in flight (issue #97). nil at the end of the media, with the reservation given back; the
+    /// caller hands `reserved` to `cache.store` with the frame or to `cache.release` when it drops it.
+    func reservedNext(_ s: MediaFrameStream) -> (image: CanvasImage, reserved: Int)? {
+        let reserved = cache.reserve(s.width * s.height * 4, lane: key)
+        guard let image = timedNext(s) else { cache.release(reserved); return nil }
+        return (image, reserved)
     }
 
     func timedNext(_ s: MediaFrameStream) -> CanvasImage? {

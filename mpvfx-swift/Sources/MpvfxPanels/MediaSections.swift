@@ -16,9 +16,9 @@ import Foundation
 /// One tile of the Media panel: a project file, a library file not in this project yet, or a library export.
 /// The three live in different id spaces, so the reference carries which one it is.
 public enum MediaTileRef: Hashable {
-    case media(String), library(String), export(String)
+    case media(String), library(String), export(String), textLook(String)
     public var id: String {
-        switch self { case .media(let id), .library(let id), .export(let id): id }
+        switch self { case .media(let id), .library(let id), .export(let id), .textLook(let id): id }
     }
 }
 
@@ -109,6 +109,15 @@ extension LeftSidebarPanel {
         if !lib.isEmpty { out.append(MediaSection(id: "library", title: "Library media", layout: .grid, tiles: lib.map { .library($0.id) })) }
         let exp = filter.admitsExports ? visibleExports : []
         if !exp.isEmpty { out.append(MediaSection(id: "exports", title: "Exports", layout: .grid, tiles: exp.map { .export($0.id) })) }
+        if onAddTextLook != nil, filter.kind == .all, filter.usage == .all {
+            for group in TextLookPreset.Group.allCases {
+                let looks = TextLookPreset.all.filter { $0.group == group && matchesSearch($0.name + " " + group.rawValue) }
+                if !looks.isEmpty {
+                    out.append(MediaSection(id: "text-looks:" + group.rawValue, title: "Text · " + group.rawValue, layout: .grid,
+                                            tiles: looks.map { .textLook($0.id) }))
+                }
+            }
+        }
         return out
     }
 
@@ -135,6 +144,33 @@ extension LeftSidebarPanel {
         case .media(let id): return mediaItem(id)?.name ?? id
         case .library(let id): return libraryAsset(id)?.name ?? id
         case .export(let id): return export(id)?.label ?? id
+        case .textLook(let id): return TextLookPreset.preset(id)?.name ?? id
         }
+    }
+}
+
+/// Where the media bin's filter and sort choice lives between launches: one `mediaBinFilter` object inside a JSON
+/// preferences file. Other keys in the file are kept; a missing, unreadable or hostile file reads as the default
+/// choice, and an unknown value in it falls back to that field's default.
+public final class MediaFilterStore {
+    public let url: URL
+    public init(url: URL) { self.url = url }
+
+    public func load() -> MediaFilter {
+        guard let data = try? Data(contentsOf: url),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let raw = object["mediaBinFilter"] as? [String: Any] else { return MediaFilter() }
+        return MediaFilter(kind: (raw["kind"] as? String).flatMap(MediaFilter.Kind.init) ?? .all,
+                           usage: (raw["usage"] as? String).flatMap(MediaFilter.Usage.init) ?? .all,
+                           sort: (raw["sort"] as? String).flatMap(MediaFilter.Sort.init) ?? .timelineFirst)
+    }
+
+    public func save(_ filter: MediaFilter) {
+        var object: [String: Any] = [:]
+        if let data = try? Data(contentsOf: url), let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] { object = o }
+        object["mediaBinFilter"] = ["kind": filter.kind.rawValue, "usage": filter.usage.rawValue, "sort": filter.sort.rawValue]
+        guard let out = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? out.write(to: url, options: .atomic)
     }
 }

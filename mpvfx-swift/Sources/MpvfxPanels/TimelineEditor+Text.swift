@@ -17,7 +17,42 @@ import MpvfxTimeline
 
 // MARK: - Text layers: a clip of a "Text" element asset whose words live on the clip (`clip.text`)
 public extension TimelineEditor {
-    func clipText(clipId: String) -> NativeClipText? { clip(clipId)?.1.text }
+    func clipText(clipId: String) -> NativeClipText? {
+        guard let clip = clip(clipId)?.1 else { return nil }
+        return resolvedText(clip, document.textStyles ?? [])
+    }
+
+    /// Shared text-style commands. Each operation is one validated, undoable document edit.
+    @discardableResult
+    func applyTextStyleCommand(_ command: NativeTextStyleCommand) -> Bool {
+        guard let next = try? planNativeTextStyle(document, command, engine: engine) else { return false }
+        let label: String
+        switch command {
+        case .save: label = "Save text style"
+        case .apply: label = "Apply text style"
+        case .update: label = "Update text style"
+        case .detach: label = "Detach text style"
+        }
+        return withHistory(label) { commitValidated(next) }
+    }
+
+    @discardableResult
+    func saveTextStyle(clipId: String, styleId: String, name: String) -> Bool {
+        applyTextStyleCommand(.save(clipId: clipId, styleId: styleId, name: name))
+    }
+
+    @discardableResult
+    func applyTextStyle(styleId: String, clipIds: [String]) -> Bool {
+        applyTextStyleCommand(.apply(styleId: styleId, clipIds: clipIds))
+    }
+
+    @discardableResult
+    func updateTextStyle(styleId: String, fromClipId: String) -> Bool {
+        applyTextStyleCommand(.update(styleId: styleId, fromClipId: fromClipId))
+    }
+
+    @discardableResult
+    func detachTextStyle(clipIds: [String]) -> Bool { applyTextStyleCommand(.detach(clipIds: clipIds)) }
 
     /// Puts a new text layer on the timeline at `time` (on the first free video row, else a new one), centred on
     /// the canvas: white, bold, centre aligned, a tenth of the canvas height tall. One undo step. Returns its id.
@@ -42,11 +77,31 @@ public extension TimelineEditor {
     /// Edits a text clip's values in place. One undo step per call; false when nothing changed.
     @discardableResult
     func editClipText(clipId: String, _ body: (inout NativeClipText) -> Void) -> Bool {
-        editClip(clipId) { c in
-            guard var t = c.text else { return false }
+        let styles = document.textStyles ?? []
+        return editClip(clipId) { c in
+            guard let before = resolvedText(c, styles) else { return false }
+            var t = before
             body(&t)
-            guard t != c.text else { return false }
+            guard t != before else { return false }
+            if var link = c.textStyle {
+                let changed = changedNativeTextStyleFields(before, t)
+                let overrides = Set(link.overrides + changed)
+                link.overrides = overrides.sorted()
+                c.textStyle = link
+            }
             c.text = t; return true
+        }
+    }
+
+    /// Removes one local typography override so later style edits follow through again. Explicit nil/default
+    /// overrides are removed just like non-default ones; the stored local value is retained but no longer read.
+    @discardableResult
+    func resetTextStyleOverride(clipId: String, field: String) -> Bool {
+        editClip(clipId) { clip in
+            guard var link = clip.textStyle, link.isSupported, link.overrides.contains(field) else { return false }
+            link.overrides.removeAll { $0 == field }
+            clip.textStyle = link
+            return true
         }
     }
 
@@ -105,6 +160,24 @@ public extension TimelineEditor {
     func setTextTransform(clipId: String, _ transform: String?) -> Bool {
         if let v = transform, !NativeClipText.transforms.contains(v) { return false }
         return editClipText(clipId: clipId) { $0.textTransform = transform == "none" ? nil : transform }
+    }
+
+    /// Outlines and drop shadow (nil or an empty look removes it). One undo step; false when the look breaks a
+    /// document rule (more than two outlines, a width, offset or blur out of range, a colour that is not hex).
+    @discardableResult
+    func setTextLook(clipId: String, _ look: NativeTextLook?) -> Bool {
+        if let l = look, l.isSupported {
+            let o = l.outlines ?? []
+            guard o.count <= NativeTextLook.maxOutlines,
+                  o.allSatisfy({ NativeTextLook.outlineWidthRange.contains($0.width) && isNativeHexColor($0.color)
+                      && ($0.position.map(NativeTextLook.positions.contains) ?? true) }) else { return false }
+            if let sh = l.shadow {
+                guard isNativeHexColor(sh.color), NativeTextLook.shadowOffsetRange.contains(sh.resolvedX),
+                      NativeTextLook.shadowOffsetRange.contains(sh.resolvedY),
+                      NativeTextLook.shadowBlurRange.contains(sh.resolvedBlur) else { return false }
+            }
+        }
+        return editClipText(clipId: clipId) { $0.look = (look?.isEmpty ?? true) ? nil : look }
     }
 
     @discardableResult

@@ -68,7 +68,8 @@ public enum PanelFit {
     }
 }
 
-public enum RightPanelTab: String, Codable, Sendable { case design, renders }
+/// `easing` is the Keyframe Easing panel, a tab until a docking model hosts it (KeyframeEasingPanel.dock).
+public enum RightPanelTab: String, Codable, Sendable { case design, easing, renders }
 public enum LeftSidebarTab: String, Codable, Sendable, CaseIterable { case assets, compositions, blocks }
 
 /// The UI preferences and the sidebar tab key. Stored as JSON in the app's data directory.
@@ -80,8 +81,14 @@ public struct PanelPreferences: Codable, Equatable, Sendable {
     public var rightPanelTab: RightPanelTab?
     public var sidebarTab: LeftSidebarTab?
     public var openInspectorGroup: String?
+    /// The Design tab's order of its detachable groups (`DesignGroups` panel ids).
+    public var designGroupOrder: [String]?
     /// Timeline section height (NLEContext / studioUiPreferences `timelineHeight`).
     public var timelineHeight: Double?
+    /// What the Grade scopes read (`clip` | `program`); nothing saved is `clip`.
+    public var scopeSource: ColorScopes.Source?
+    /// The dockable Scopes panel's selected scope; unknown future names fall back without discarding the layout.
+    public var scopePanelKind: String?
     public init() {}
 }
 
@@ -139,9 +146,16 @@ public final class PanelLayoutState {
         rightPanelTab = p.rightPanelTab ?? .design
     }
 
+    /// What a docked side panel asks the dock for: its hide button and menu item close it, a reveal (a new text
+    /// layer, Edit Easing…) opens and focuses it.
+    public enum DockedRequest: Equatable, Sendable { case hide(Side), show(Side), showRightTab(RightPanelTab) }
+    /// Set by a host that lays the panels out in the dock: hiding and showing go to it, and nothing collapses to a
+    /// rail (the dock closes and reopens panels instead).
+    public var docked: ((DockedRequest) -> Void)?
+
     public var fitted: PanelFit.Fitted { PanelFit.fit(viewportWidth, preferred, reopened: reopened) }
-    public var effectiveLeftCollapsed: Bool { leftCollapsed || fitted.autoCollapseLeft }
-    public var effectiveRightCollapsed: Bool { rightCollapsed || fitted.autoCollapseRight }
+    public var effectiveLeftCollapsed: Bool { docked == nil && (leftCollapsed || fitted.autoCollapseLeft) }
+    public var effectiveRightCollapsed: Bool { docked == nil && (rightCollapsed || fitted.autoCollapseRight) }
     public var isResizing: Bool { drag != nil }
     public var resizingSide: Side? { drag?.side }
 
@@ -165,6 +179,7 @@ public final class PanelLayoutState {
 
     /// Toggle acts on what the user can see, not stored intent.
     public func toggleLeft() {
+        if let docked { docked(.hide(.left)); return }
         let next = !effectiveLeftCollapsed
         leftCollapsed = next
         persist { $0.leftCollapsed = next }
@@ -172,12 +187,14 @@ public final class PanelLayoutState {
     }
 
     public func setRightCollapsed(_ collapsed: Bool) {
+        if let docked { docked(collapsed ? .hide(.right) : .show(.right)); return }
         rightCollapsed = collapsed
         persist { $0.rightCollapsed = collapsed }
         if !collapsed { reopened.right = true }
     }
 
     public func setRightTab(_ tab: RightPanelTab) {
+        docked?(.showRightTab(tab))
         guard tab != rightPanelTab else { return }
         rightPanelTab = tab
         persist { $0.rightPanelTab = tab }

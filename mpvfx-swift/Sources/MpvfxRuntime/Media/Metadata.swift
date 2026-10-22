@@ -56,3 +56,29 @@ func mediaMetadata(_ probe: MediaProbe) -> MediaMetadata {
     return MediaMetadata(duration: duration, hasVideo: probe.video != nil, hasAudio: probe.audio?.decodable == true,
                          width: natural?.width, height: natural?.height)
 }
+
+/// The Info panel's facts for a probe of the file at `path` (`fileSize` from its stat).
+func clipInfo(_ probe: MediaProbe, path: String, fileSize: Int64?) -> ClipInfo {
+    let duration = probe.duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+    let fps = probe.video.flatMap { $0.frameRate.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } }
+    return ClipInfo(path: path, container: probe.container, videoCodec: probe.video?.codec,
+                    width: probe.video?.displayWidth, height: probe.video?.displayHeight,
+                    frameRate: probe.video?.still == true ? nil : fps, duration: duration, audioCodec: probe.audio?.codec,
+                    channels: probe.audio?.channels, sampleRate: probe.audio?.sampleRate, hdr: probe.video?.hdr, fileSize: fileSize)
+}
+
+/// The Info panel's facts for a media file named by an asset source (project-relative or absolute: linked media lives
+/// outside the project). Read-only. A file that is not there comes back as `ClipInfo.missing`; a file the engine cannot
+/// read throws `MediaToolError` in words for the user.
+public func readProjectClipInfo(_ projectDir: String, _ source: String, cancellation: MediaCancellation? = nil) throws -> ClipInfo {
+    guard !source.isEmpty, !source.contains("\0") else { throw MediaToolError("A media path is required") }
+    try cancellation?.throwIfCancelled()
+    let path = PosixPath.isAbsolute(source) ? PosixPath.normalize(source) : PosixPath.resolve(projectDir, source)
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return .missing(path: path) }
+    guard !isDirectory.boolValue else { throw MediaToolError("Media must be a regular file") }
+    let probe: MediaProbe
+    do { probe = try MediaProbe.probe(path: path) } catch let e as MediaError { throw mediaToolError(e) }
+    let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? NSNumber)?.int64Value
+    return clipInfo(probe, path: path, fileSize: size)
+}

@@ -34,6 +34,8 @@ public final class TimelineRegion {
     /// Filmstrips and waveforms for the clips (asked for before each paint).
     public var media: TimelineMediaFeeder?
     var top: Double { TimelineToolbar.height }
+    /// Status-line text for what is under the pointer: the track header control's action (nil elsewhere).
+    public var hint: String? { controller.headerHint }
 
     public init(controller: TimelineController, preferences: TimelineUIPreferencesStore? = nil) {
         self.controller = controller
@@ -105,6 +107,11 @@ public final class TimelineRegion {
     public var now: () -> Double = { Date().timeIntervalSinceReferenceDate }
 
     public func pointerDown(x: Double, y: Double, shift: Bool = false, alt: Bool = false, clickCount: Int = 1) {
+        pointerDown(x: x, y: y, keys: TimelineGestureKeys(shift: shift, alt: alt), clickCount: clickCount)
+    }
+
+    /// A press with every modifier (⌘/Ctrl too, for the slip gesture).
+    public func pointerDown(x: Double, y: Double, keys: TimelineGestureKeys, clickCount: Int = 1) {
         if y < top {
             toolbarCapture = true
             var clicks = clickCount
@@ -115,11 +122,12 @@ public final class TimelineRegion {
             controller.needsDisplay?()
             return
         }
-        controller.pointerDown(x: x, y: y - top, shift: shift, alt: alt)
+        controller.pointerDown(x: x, y: y - top, keys: keys)
     }
 
     public func pointerMove(x: Double, y: Double) {
         if toolbarCapture || (y < top && controller.gesture == nil) {
+            if controller.view.hoveredHeader != nil { controller.view.hoveredHeader = nil; controller.needsDisplay?() }
             toolbar.pointerMove(x: x, y: y, width: size.width)
             return
         }

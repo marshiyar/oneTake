@@ -91,6 +91,8 @@ public final class PlayerView {
     public var keepAnimating: (() -> Bool)?
     /// Pointer trail of the gesture being recorded, in view pixels.
     public var recordingTrail: [CanvasPoint] = []
+    /// Record motion's stage outline and banner (nil: Record is off). Set by the controller.
+    public var recordOverlay: RecordOverlay?
     /// Sibling stepped over by the last bring-forward / send-backward, and when.
     public var zOrderFlash: (id: String, start: Double)?
     static let zOrderFlashSeconds = 0.6
@@ -259,13 +261,22 @@ public final class PlayerView {
                 c.clip(Self.pixelAligned(frame, scale: c.deviceScale))   // square, pixel-exact stage edge
                 c.fillRect(frame, Self.canvasSurface)
                 let context = FrameDrawContext(backingScale: max(backingScale, c.deviceScale), isPlaying: playback.isPlaying,
-                                               speed: playback.playbackRate * playback.direction, liveElementIds: liveElementIds?())
+                                               speed: playback.playbackRate * playback.direction, liveElementIds: liveElementIds?(),
+                                               compareClipId: toolbar.compareEnabled ? selection : nil, comparePosition: toolbar.comparePosition)
                 frameSource.draw(c, in: frame, time: playback.currentTime, elements: elements.map { viewElement($0, in: size) },
                                  context: context)
             }
             Self.strokeSquare(c, frame, CanvasColor(ThemeTokens.white.alpha(0.10)), width: 1)   // border-white/10, square
             drawOverlays(c, size: size, frame: frame)
+            if toolbar.compareEnabled, selection != nil {
+                let x = frame.x + frame.width * toolbar.comparePosition
+                c.fillRect(CanvasRect(x: x - 1, y: frame.y, width: 2, height: frame.height), PanelTheme.stageInk.withAlpha(0.9))
+                c.drawText("Before", at: .init(frame.x + 10, frame.y + 10), font: CanvasFont(size: 11, weight: .semibold), color: PanelTheme.stageInk)
+                let after = "After", tw = c.measureText(after, font: CanvasFont(size: 11, weight: .semibold)).width
+                c.drawText(after, at: .init(frame.maxX - tw - 10, frame.y + 10), font: CanvasFont(size: 11, weight: .semibold), color: PanelTheme.stageInk)
+            }
             drawStageFeedback(c, size: size, frame: frame)
+            drawRecordOverlay(c, size: size, frame: frame)
             drawZoomChrome(c, size: size)
         }
         if !isFullscreen { toolbar.draw(c, width: size.width, cropAvailable: cropAvailable, cropActive: cropActive) }

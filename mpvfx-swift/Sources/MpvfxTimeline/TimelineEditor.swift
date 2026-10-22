@@ -38,10 +38,15 @@ public final class TimelineEditor {
     public var now: () -> Double = { Date().timeIntervalSince1970 }
     var pendingLabel: String?
     var pendingCoalesceKey: String?
+    var pendingCoalesceWindow: Double?
     public internal(set) var lastFailure: NativeProjectClipFailure?
     public internal(set) var lastPropertyFailure: NativeProjectKeyframeFailure?
     public let engine: KeyframeEngine?
     public var onChange: (() -> Void)?
+    /// What the last clip edit did to cut transitions ("Removed the transition between …"), nil when it changed none;
+    /// `onNotice` hands it to the host's toast.
+    public internal(set) var lastNotice: String?
+    public var onNotice: ((String) -> Void)?
     /// The undo/redo stacks changed (an edit, undo, redo, a reload); hosts persist them (usePersistentEditHistory).
     public var onHistoryChange: (() -> Void)?
     /// A media file's natural pixel size (default: the size cached on the asset); sizes untouched clips
@@ -76,9 +81,11 @@ public final class TimelineEditor {
                                               effectCount: c.effects.count)
                     m.lanes = Self.lanes(c, fps: f)
                     m.channels = c.parameterTracks.filter { !$0.keyframes.isEmpty }.map {
-                        TimelineKeyframeChannel(parameterId: $0.parameterId, group: Self.propertyGroup($0.parameterId).group, frames: $0.keyframes.map(\.frame).sorted())
+                        TimelineKeyframeChannel(parameterId: $0.parameterId, group: Self.propertyGroup($0.parameterId).group, frames: $0.keyframes.map(\.frame).sorted(),
+                                                eases: Dictionary($0.keyframes.map { ($0.frame, TimelineKeyframeEase($0.outgoing)) }, uniquingKeysWith: { a, _ in a }))
                     }
                     m.effects = c.effects.filter(\.enabled).map { TimelineEffectModel(id: "native:\($0.id)", label: Self.titleCase($0.effectId)) }
+                    m.beatTimes = c.visibleBeatFrames.map { $0.timeline / f }
                     m.muted = c.muted
                     m.assetId = c.assetId
                     if let srcFrames = a?.durationFrames, srcFrames > 0 {
@@ -100,6 +107,7 @@ public final class TimelineEditor {
                 track.groupId = t.clips.first { $0.audioGroupId?.isEmpty == false }?.audioGroupId
                 track.hidden = t.hidden == true
                 track.locked = t.locked == true
+                track.soloed = t.soloed == true
                 track.muted = !t.clips.isEmpty && t.clips.allSatisfy(\.muted)
                 return track
             }
@@ -126,35 +134,27 @@ public final class TimelineEditor {
         return out.replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
     }
 
-    /// Native parameter -> timeline property group (one lane per group, in first-seen order).
+    /// Native parameter -> timeline property group (one lane per group, in first-seen order): TimelineKeyframeCatalog.
     static func propertyGroup(_ parameterId: String) -> (group: String, label: String) {
-        switch parameterId {
-        case "transform.position", "transform.position.x", "transform.position.y": return ("position", "Position")
-        case let p where p.hasPrefix("transform.scale"): return ("scale", "Scale")
-        case let p where p.hasPrefix("transform.rotation"): return ("rotation", "Rotation")
-        case let p where p.hasPrefix("layout."): return ("size", "Size")
-        case let p where p.contains("opacity"): return ("opacity", "Opacity")
-        case let p where p.hasPrefix("audio."): return ("audio", "Audio")
-        default:
-            let tail = parameterId.split(separator: ".").last.map(String.init) ?? parameterId
-            return (parameterId, titleCase(tail))
-        }
+        let p = TimelineKeyframeCatalog.property(parameterId)
+        return (p.group, p.label)
     }
 
     static func lanes(_ c: NativeProjectClip, fps: Double) -> [TimelineLaneModel] {
         var out: [TimelineLaneModel] = []
         for t in c.parameterTracks where !t.keyframes.isEmpty {
-            let g = propertyGroup(t.parameterId)
+            let g = TimelineKeyframeCatalog.property(t.parameterId)
             let times = t.keyframes.map { $0.frame / fps }
             if let i = out.firstIndex(where: { $0.group == g.group }) {
                 out[i].keyframes = Array(Set(out[i].keyframes + times)).sorted()
-            } else { out.append(TimelineLaneModel(group: g.group, label: g.label, keyframes: times.sorted())) }
+            } else { out.append(TimelineLaneModel(group: g.group, label: g.label, keyframes: times.sorted(), kind: g.kind)) }
         }
         return out
     }
 
     /// TimelineLanes trackLabel: the first clip's label, else "Track N" (1-based display position).
     static func trackName(_ t: NativeProjectTrack, displayNumber: Int, assets: [String: NativeProjectAsset]) -> String {
+        if t.id.hasPrefix("track:voice:") { return "Voice" }
         if let c = t.clips.first { return assets[c.assetId]?.name ?? c.assetId }
         return "Track \(displayNumber)"
     }
@@ -188,10 +188,13 @@ public final class TimelineEditor {
         }
     }
 
-    /// Composition end in seconds (sequence.durationFrames, else last clip end).
+    /// Navigable end in seconds: authored composition (or last clip) and every saved marker.
+    /// Markers remain reachable after trimming/deleting clips, without rewriting the authored render duration.
     public var duration: Double {
-        if let d = document.sequence.durationFrames, d > 0 { return d / fps }
-        return (document.sequence.tracks.flatMap(\.clips).map { $0.startFrame + $0.durationFrames }.max() ?? 0) / fps
+        let contentEnd = document.sequence.durationFrames.flatMap { $0 > 0 ? $0 : nil }
+            ?? document.sequence.tracks.flatMap(\.clips).map { $0.startFrame + $0.durationFrames }.max() ?? 0
+        let markerEnd = document.sequence.markers?.map(\.time).filter { $0.isFinite && $0 >= 0 }.max() ?? 0
+        return max(contentEnd / fps, markerEnd)
     }
 
     public func address(clipId: String) -> NativeProjectClipAddress? {
@@ -213,6 +216,7 @@ public final class TimelineEditor {
             // Content past the composition end extends it (extendRootDurationIfNeeded); undo then restores both.
             if let extended = Self.extendingDuration(doc) { document = extended; pushHistory(.restoreDocument(before), defaultLabel: Self.label(for: command)) }
             else { document = doc; pushHistory(inverse, defaultLabel: Self.label(for: command)) }
+            reportTransitionChanges(from: before)
             lastFailure = nil
             onChange?(); return true
         } catch { lastFailure = NativeProjectClipFailure(code: .documentMismatch, message: "\(error)"); return false }
@@ -224,13 +228,17 @@ public final class TimelineEditor {
     }
 
     /// Run `body` so every history entry it records carries `label` (an enclosing call's label wins) (and folds with neighbours
-    /// sharing `coalesceKey`, e.g. a slider drag in an inspector field). Returns body's result.
+    /// sharing `coalesceKey`, e.g. a slider drag in an inspector field). An interaction with its own unique key can
+    /// supply an infinite coalesce window to span a physical key hold; the override ends with this call.
+    /// Returns body's result.
     @discardableResult
-    public func withHistory<T>(_ label: String, coalesceKey: String? = nil, _ body: () -> T) -> T {
-        let saved = (pendingLabel, pendingCoalesceKey)
+    public func withHistory<T>(_ label: String, coalesceKey: String? = nil,
+                               coalesceWindow: Double? = nil, _ body: () -> T) -> T {
+        let saved = (pendingLabel, pendingCoalesceKey, pendingCoalesceWindow)
         // The outermost caller names the entry (an inspector's "Set volume" wraps the op's own label).
         pendingLabel = pendingLabel ?? label; pendingCoalesceKey = pendingCoalesceKey ?? coalesceKey
-        defer { (pendingLabel, pendingCoalesceKey) = saved }
+        pendingCoalesceWindow = pendingCoalesceWindow ?? coalesceWindow
+        defer { (pendingLabel, pendingCoalesceKey, pendingCoalesceWindow) = saved }
         return body()
     }
 
@@ -241,7 +249,7 @@ public final class TimelineEditor {
 
     func pushHistory(_ inverse: NativeProjectClipCommand, defaultLabel: String) {
         let t = now()
-        if let key = pendingCoalesceKey, let last = undoStack.last, last.coalesceKey == key, t - last.time <= coalesceWindow {
+        if let key = pendingCoalesceKey, let last = undoStack.last, last.coalesceKey == key, t - last.time <= (pendingCoalesceWindow ?? coalesceWindow) {
             // Keep the older inverse: undo returns to the state before the first folded edit.
             undoStack[undoStack.count - 1].time = t
         } else {
@@ -268,6 +276,8 @@ public final class TimelineEditor {
         case .split: "Split clip"
         case .delete: "Delete clip"
         case .deleteMany: "Delete clips"
+        case .slip: "Slip clip"
+        case .roll: "Roll edit"
         case .restoreDocument: "Edit"
         }
     }

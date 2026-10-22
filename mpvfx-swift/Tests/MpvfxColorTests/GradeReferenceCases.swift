@@ -24,6 +24,8 @@ enum GradeReferenceCases {
         var interpolation: CubeLUT.Interpolation = .trilinear
         /// Effects driven by hash noise (sin-based or fract jumps) can flip a few pixels on 1-ulp differences.
         var noisy = false
+        /// A colour key (an effect of its own in the document, `ColorGradeParams.colorKey`).
+        var key: ColorGradeParams.ColorKey? = nil
     }
 
     static func params(_ s: String) -> ColorGradeParams {
@@ -33,7 +35,9 @@ enum GradeReferenceCases {
     }
 
     static func renderer(_ c: Case) -> ColorGradeRenderer {
-        ColorGradeRenderer(params: params(c.json), lut: c.lut, seedKey: "clip:reference", interpolation: c.interpolation)
+        var p = params(c.json)
+        p.colorKey = c.key
+        return ColorGradeRenderer(params: p, lut: c.lut, seedKey: "clip:reference", interpolation: c.interpolation)
     }
 
     /// A warm/cool test card: gradients, a hard edge, a circle and a few colour patches (so the qualifiers, edge
@@ -75,6 +79,15 @@ enum GradeReferenceCases {
             cases.append(Case(name: "adjust.\(k)+", json: #"{"adjust":{"\#(k)":0.6}}"#))
             cases.append(Case(name: "adjust.\(k)-", json: #"{"adjust":{"\#(k)":-0.45}}"#))
         }
+        // Contract 3: Warmth and Tint as channel gains, in the primary and in a secondary.
+        cases.append(Case(name: "v3.whiteBalance", json: #"{"version":3,"adjust":{"temperature":0.7,"tint":-0.4}}"#))
+        cases.append(Case(name: "v3.secondaryWhiteBalance", json: #"{"version":3,"secondaries":[{"key":{"hue":{"center":0,"range":180,"softness":0}},"correction":{"temperature":-0.6,"tint":0.5}}]}"#))
+        // Lift / Gamma / Gain / Offset and the contrast pivot (issue #176).
+        for k in GradeValues.balanceKeys {
+            cases.append(Case(name: "balance.\(k)", json: #"{"balance":{"\#(k)":{"hue":200,"amount":0.7,"level":0.35}}}"#))
+        }
+        cases.append(Case(name: "balance.all", json: #"{"balance":{"lift":{"hue":30,"amount":0.4,"level":-0.3},"gamma":{"hue":300,"amount":0.5,"level":-0.6},"gain":{"hue":120,"amount":0.3,"level":0.5},"offset":{"hue":60,"amount":0.2,"level":-0.2}}}"#))
+        cases.append(Case(name: "pivot", json: #"{"adjust":{"contrast":0.6},"pivot":0.3}"#))
         cases.append(Case(name: "intensity", json: #"{"adjust":{"saturation":-1,"exposure":0.4},"intensity":0.4}"#))
         for k in ColorGradeParams.wheelKeys {
             cases.append(Case(name: "wheel.\(k)", json: #"{"wheels":{"\#(k)":{"hue":210,"amount":0.8,"level":0.3}}}"#))
@@ -84,6 +97,12 @@ enum GradeReferenceCases {
         cases.append(Case(name: "hue.hueVsHue", json: #"{"hueCurves":{"hueVsHue":[[0,60],[120,-30],[240,90]]}}"#))
         cases.append(Case(name: "hue.hueVsSaturation", json: #"{"hueCurves":{"hueVsSaturation":[[0,-0.8],[120,0.5],[240,-0.2]]}}"#))
         cases.append(Case(name: "hue.hueVsLuma", json: #"{"hueCurves":{"hueVsLuma":[[0,0.3],[120,-0.2],[240,0.1]]}}"#))
+        // Curve shapes the editor makes: a steep rise after a flat floor, end points without (0,0)/(1,1), the
+        // 16-point maximum, and a local hue bump between two flat anchors (the first point on an empty hue curve).
+        cases.append(Case(name: "curve.steep", json: #"{"curves":{"red":[[0,0],[0.58,0],[0.62,0.65],[1,1]],"master":[[0.2,0.1],[0.8,0.9]]}}"#))
+        let sixteen = (0..<16).map { i in "[\(Double(i) / 15),\(i % 2 == 0 ? Double(i) / 15 : min(1, Double(i) / 15 + 0.08))]" }.joined(separator: ",")
+        cases.append(Case(name: "curve.sixteenPoints", json: #"{"curves":{"green":[\#(sixteen)]}}"#))
+        cases.append(Case(name: "hue.localBump", json: #"{"hueCurves":{"hueVsSaturation":[[60,0],[120,0.8],[180,0]],"hueVsHue":[[0,0],[30,40],[90,0],[180,-25],[270,0],[330,15]]}}"#))
         cases.append(Case(name: "secondaries", json: """
         {"secondaries":[{"key":{"hue":{"center":10,"range":30,"softness":20},"saturation":{"min":0.2,"max":1,"softness":0.1},"luma":{"min":0.1,"max":0.9,"softness":0.1}},
                           "correction":{"hueShift":40,"saturation":-0.5,"luma":0.1,"temperature":0.3,"tint":-0.2}},
@@ -126,6 +145,11 @@ enum GradeReferenceCases {
         cases.append(Case(name: "preset.vhs", json: #"{"preset":"vhs-playback"}"#, noisy: true))
         cases.append(Case(name: "preset.8mm", json: #"{"preset":"home-movie-8mm"}"#, noisy: true))
         cases.append(Case(name: "heavy.kuwaharaCrosshatchAscii", json: heavyJSON))
+        // Colour key: the matte comes from the source, spill from the graded colour, per key hue.
+        cases.append(Case(name: "key.green", json: #"{"adjust":{"exposure":0.1}}"#, key: .init(color: SIMD3(0.1, 0.7, 0.25), similarity: 0.12, smoothness: 0.25, spill: 0.8)))
+        cases.append(Case(name: "key.blueSpillSaturation", json: #"{"adjust":{"saturation":0.5}}"#, key: .init(color: SIMD3(0.16, 0.2, 0.86), similarity: 0.1, smoothness: 0.3, spill: 1)))
+        cases.append(Case(name: "key.redSpill", json: #"{"adjust":{"contrast":0.3}}"#, key: .init(color: SIMD3(0.93, 0.25, 0.2), similarity: 0.08, smoothness: 0.2, spill: 1)))
+        cases.append(Case(name: "key.only", json: #"{}"#, key: .init(color: SIMD3(0, 1, 0), similarity: 0.05, smoothness: 0.4, spill: 0)))
         return cases
     }
 

@@ -31,6 +31,8 @@ final class VisualSpecTests: XCTestCase {
         "viewport": T.viewportPair, "studioAccent": T.studioAccentPair, "mint": T.mintPair, "accentEdge": T.accentEdgePair,
         "clipVideo": T.clipVideoPair, "clipVideoHover": T.clipVideoHoverPair, "clipAudio": T.clipAudioPair,
         "clipAudioHover": T.clipAudioHoverPair, "waveform": T.waveformPair,
+        "trackControlIdle": T.trackControlIdlePair, "trackControlHover": T.trackControlHoverPair,
+        "trackTagText": T.trackTagTextPair, "trackTagOutline": T.trackTagOutlinePair,
     ]
 
     /// `| \`name\` | \`#RRGGBB\` | ... |` rows of the colour table.
@@ -125,6 +127,19 @@ final class VisualSpecTests: XCTestCase {
             for fill in [T.clipVideoPair, T.clipVideoHoverPair, T.clipAudioPair, T.clipAudioHoverPair].map({ $0.value(m) }) {
                 XCTAssertGreaterThanOrEqual(over(ink, T.clipNameAlpha, fill).contrast(fill), 4.5, "\(m) clip name")
                 XCTAssertGreaterThanOrEqual(over(ink, T.clipTimecodeAlpha, fill).contrast(fill), 3, "\(m) clip timecode")
+            }
+        }
+    }
+
+    func testDesignTextAndEssentialControlContrastInBothModes() {
+        XCTAssertGreaterThanOrEqual(T.scopeLabel.contrast(T.blackPair.dark), 4.5, "scope captions and scale labels on the fixed black plot")
+        for mode in ThemeMode.allCases {
+            for surface in [T.panelBgPair, T.panelBgInsetPair, T.panelSurfacePair, T.panelInputPair] {
+                let bg = surface.value(mode)
+                XCTAssertGreaterThanOrEqual(T.inspectorTextPair.value(mode).contrast(bg), 4.5, "\(mode) inspector labels, hints, summaries and status")
+                for edge in [T.inspectorControlPair, T.studioAccentPair] {
+                    XCTAssertGreaterThanOrEqual(edge.value(mode).contrast(bg), 3, "\(mode) slider track, resting knob, tab/field underline")
+                }
             }
         }
     }

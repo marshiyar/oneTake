@@ -18,12 +18,13 @@ import MpvfxCanvas
 
 final class TimelineZoomTests: XCTestCase {
     func testFitAndClamp() {
-        XCTAssertEqual(TimelineZoom.fitPixelsPerSecond(viewportWidth: 1266, duration: 10, contentOrigin: 264), 1000.0 / 60)  // min extent 60s
+        // docs/TIMELINE.md "Zoom": fit spans the end plus its margin (10 s + 1 s); half the fit is the zoom-out limit.
+        XCTAssertEqual(TimelineZoom.fitPixelsPerSecond(viewportWidth: 1266, duration: 10, contentOrigin: 264), 1000.0 / 11)
         XCTAssertEqual(TimelineZoom.fitPixelsPerSecond(viewportWidth: 200, duration: 10, contentOrigin: 264), 100)
         XCTAssertEqual(TimelineZoom.maxPercent(fit: 10), 14400)
-        XCTAssertEqual(TimelineZoom.clamp(3, fit: 10), 10)
+        XCTAssertEqual(TimelineZoom.clamp(3, fit: 10), 50)
         XCTAssertEqual(TimelineZoom.next(true, mode: .fit, manual: 500, fit: 10), 200)
-        XCTAssertEqual(TimelineZoom.next(false, mode: .manual, manual: 15, fit: 10), 10)
+        XCTAssertEqual(TimelineZoom.next(false, mode: .manual, manual: 150, fit: 10), 75)
         XCTAssertEqual(TimelineZoom.pinch(deltaY: 0, mode: .manual, manual: 300, fit: 10), 300)
         XCTAssertEqual(TimelineZoom.pinch(deltaY: -50, mode: .manual, manual: 100, fit: 10), (100 * exp(0.7)).rounded())
     }
@@ -72,8 +73,8 @@ final class TimelineControllerTests: XCTestCase {
     func make() throws -> (TimelineController, TimelineEditor) {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300)   // fit = (1266 - 264 - 2) / 60 px/s
-        c.setZoom(percent: 600)              // 100 px/s
+        c.viewport = CanvasSize(1266, 300)
+        c.setZoom(pixelsPerSecond: 100)
         return (c, e)
     }
     func clip(_ e: TimelineEditor, _ id: String) -> (track: String, start: Double, dur: Double)? {
@@ -170,7 +171,7 @@ final class TimelineVisualTests: XCTestCase {
     func testHandlesSquareCornerPreRollAndBeats() throws {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         c.view.selection = ["clip:b"]
         c.view.beats = [TimelineBeat(time: 8.5, strength: 1), TimelineBeat(time: 9.5, strength: 1)]   // showBeats needs two
         let t = CairoImageTarget(width: 1264, height: 300)
@@ -182,8 +183,9 @@ final class TimelineVisualTests: XCTestCase {
         let row0 = Int(TimelineLayout.rowTop(0))
         let squareCorner = rgb(264, rowA + 3), roundCorner = rgb(264 + 50, row0 + 3)   // unselected logo clip at 0.5s
         XCTAssertLessThan(roundCorner[0], squareCorner[0], "clip away from t=0 has an antialiased rounded corner")
-        // Selected clip:b: handle bar at left+4..6, top+6.
-        let bar = rgb(264 + 650 + 4, rowA + 3 + 20), body = rgb(264 + 650 + 20, rowA + 3 + 20)
+        // Selected clip:b: handle bar at left+4..6, top+6 to bottom-6; the body probe sits between the bar and the name.
+        let midY = rowA + 3 + Int(TimelineLayout.defaultTrackHeight - 2 * TimelineLayout.clipY) / 2
+        let bar = rgb(264 + 650 + 4, midY), body = rgb(264 + 650 + 9, midY)
         XCTAssertGreaterThan(bar[0], body[0], "trim handle bar visible on the selected clip")
         let beat = rgb(264 + 950, 280); XCTAssertGreaterThan(beat[1], beat[0] + 50, "beat line is green")
     }
@@ -232,13 +234,14 @@ final class TimelineChunk4Tests: XCTestCase {
     func make() throws -> (TimelineController, TimelineEditor) {
         let e = try TimelineEditor(json: TimelineEditor.demoJSON)
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 300); c.setZoom(percent: 600)   // 100 px/s
+        c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100)
         return (c, e)
     }
     func starts(_ e: TimelineEditor, _ track: String) -> [Double] {
         e.document.sequence.tracks.first { $0.id == track }!.clips.map(\.startFrame).sorted()
     }
-    let rowY = [64.0, 112.0, 160.0]
+    /// Row centres of the three demo tracks.
+    let rowY = (0..<3).map { TimelineLayout.rowTop($0) + TimelineLayout.defaultTrackHeight / 2 }
     func x(_ t: Double) -> Double { 264 + 100 * t }
 
     func testRazorSplitsClickedClipAndShiftSplitsAll() throws {

@@ -54,6 +54,58 @@ public enum TimelineGaps {
 }
 
 public extension TimelineEditor {
+    /// Copies only a visual clip's authored color grade. Unlike the clip clipboard this never carries geometry,
+    /// timing, or media, and therefore can safely be applied to clips which play another asset.
+    func copyGrade(_ clipId: String) -> TimelineGradeClipboard? {
+        guard let clip = clip(clipId)?.clip,
+              let kind = document.assets.first(where: { $0.id == clip.assetId })?.kind,
+              kind == .video || kind == .image,
+              let effect = clip.effects.first(where: { $0.effectId == "color-grading" }) else { return nil }
+        let mapped = TimelineClipboard.mapLuts(clip) { TimelineClipboard.absolute($0, in: projectDirectory) }
+        return TimelineGradeClipboard(projectDirectory: projectDirectory?.standardizedFileURL.path,
+                                      effect: mapped.effects.first { $0.effectId == "color-grading" } ?? effect)
+    }
+
+    /// External LUT files needed by a grade paste. The host imports these before the document is changed.
+    func filesToImport(_ board: TimelineGradeClipboard) -> [String] {
+        guard let source = board.lutSource else { return [] }
+        let absolute = TimelineClipboard.absolute(source, in: projectDirectory)
+        return HostPath.isAbsolute(absolute) && TimelineClipboard.relative(absolute, in: projectDirectory) == absolute ? [absolute] : []
+    }
+
+    /// Replaces the color grade on all selected visual clips in one undo step. Audio clips are deliberately skipped.
+    @discardableResult
+    func pasteGrade(_ board: TimelineGradeClipboard, onto ids: Set<String>) -> TimelineGradePasteResult? {
+        let selected = document.sequence.tracks.flatMap { track in track.clips.filter { ids.contains($0.id) }.map { (track, $0) } }
+        let kinds = Dictionary(document.assets.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first })
+        let visual = selected.filter { kinds[$0.1.assetId] == .video || kinds[$0.1.assetId] == .image }
+        let skipped = selected.count - visual.count
+        guard !visual.isEmpty else {
+            lastFailure = .init(code: .incompatibleDestination, message: "Select at least one video or image clip to paste a grade")
+            return nil
+        }
+        guard !visual.contains(where: { $0.0.locked == true }) else {
+            lastFailure = .init(code: .documentMismatch, message: "Track is locked")
+            return nil
+        }
+        var d = document
+        let targetIds = Set(visual.map { $0.1.id })
+        for ti in d.sequence.tracks.indices {
+            for ci in d.sequence.tracks[ti].clips.indices where targetIds.contains(d.sequence.tracks[ti].clips[ci].id) {
+                var effect = board.effect
+                effect = TimelineGradeClipboard.mapLut(effect) {
+                    TimelineClipboard.relative(TimelineClipboard.absolute($0, in: projectDirectory), in: projectDirectory)
+                }
+                let existing = d.sequence.tracks[ti].clips[ci].effects.firstIndex { $0.effectId == "color-grading" }
+                if let existing { effect.id = d.sequence.tracks[ti].clips[ci].effects[existing].id; d.sequence.tracks[ti].clips[ci].effects[existing] = effect }
+                else { d.sequence.tracks[ti].clips[ci].effects.append(effect) }
+            }
+        }
+        guard withHistory("Paste grade", { apply(.restoreDocument(d)) }) else { return nil }
+        lastFailure = nil
+        return TimelineGradePasteResult(pasted: visual.count, skippedAudio: skipped)
+    }
+
     /// One undoable move of several clips to new starts on their own tracks.
     @discardableResult
     func shift(_ starts: [(id: String, newStart: Double)]) -> Bool {
@@ -87,7 +139,8 @@ public extension TimelineEditor {
         for t in document.sequence.tracks {
             for c in t.clips where ids.contains(c.id) {
                 let clip = TimelineClipboard.mapLuts(c) { TimelineClipboard.absolute($0, in: projectDirectory) }
-                items.append(.init(trackId: t.id, trackKind: t.kind, trackRow: order.firstIndex(of: t.id) ?? 0, clip: clip))
+                items.append(.init(trackId: t.id, trackKind: t.kind, trackRow: order.firstIndex(of: t.id) ?? 0, clip: clip,
+                                   resolvedText: resolvedText(c, document.textStyles ?? [])))
             }
         }
         if items.isEmpty { return nil }
@@ -207,6 +260,13 @@ public extension TimelineEditor {
         for item in board.items {
             let ti = d.sequence.tracks.firstIndex { $0.id == destination[item.trackId] }!
             var c = item.clip
+            if !sameProject, c.textStyle != nil {
+                guard let text = item.resolvedText else {
+                    return refuse("This text style is from a newer editor and cannot be pasted into another project")
+                }
+                c.text = text
+                c.textStyle = nil
+            }
             c.id = newIds[item.clip.id]!
             c.startFrame = base + (item.clip.startFrame - first)
             c.assetId = assetIds[item.clip.assetId]!
@@ -222,6 +282,48 @@ public extension TimelineEditor {
     }
 }
 
+public struct TimelineGradePasteResult: Equatable, Sendable {
+    public let pasted: Int
+    public let skippedAudio: Int
+    public var message: String {
+        "Grade pasted on \(pasted) clip\(pasted == 1 ? "" : "s")" +
+        (skippedAudio == 0 ? "" : ", \(skippedAudio) audio clip\(skippedAudio == 1 ? "" : "s") skipped")
+    }
+}
+
+/// The in-process grade clipboard. LUT paths are made absolute when copied, just like the clip clipboard.
+public struct TimelineGradeClipboard: Equatable, Sendable {
+    public var projectDirectory: String?
+    public var effect: NativeClipEffect
+
+    public var lutSource: String? {
+        guard let lut = effect.parameters?["lut"] else { return nil }
+        if case .string(let source) = lut { return source }
+        if case .object(let object) = lut, case .string(let source)? = object["src"] { return source }
+        return nil
+    }
+
+    static func mapLut(_ effect: NativeClipEffect, _ transform: (String) -> String) -> NativeClipEffect {
+        var effect = effect
+        guard var parameters = effect.parameters else { return effect }
+        func mapped(_ source: String) -> String { source.contains(":") && !HostPath.isAbsolute(source) ? source : transform(source) }
+        switch parameters["lut"] {
+        case .string(let source)?: parameters["lut"] = .string(mapped(source))
+        case .object(var lut)?:
+            if case .string(let source)? = lut["src"] { lut["src"] = .string(mapped(source)); parameters["lut"] = .object(lut) }
+        default: break
+        }
+        effect.parameters = parameters
+        return effect
+    }
+
+    public func rebased(_ imported: [String: String]) -> TimelineGradeClipboard {
+        var copy = self
+        copy.effect = Self.mapLut(effect) { imported[$0] ?? $0 }
+        return copy
+    }
+}
+
 /// What ⌘C / ⌘X keep: the clips as they were when copied, with their tracks' kinds and rows and the assets they play
 /// (sources made absolute), so a paste works on other tracks and in another project.
 public struct TimelineClipboard: Equatable {
@@ -230,6 +332,9 @@ public struct TimelineClipboard: Equatable {
         /// The track's display row in the copied-from project.
         public var trackRow: Int
         public var clip: NativeProjectClip
+        /// Typography at copy time, independent of project style IDs. Cross-project paste detaches this snapshot;
+        /// same-project paste retains the live style link. Nil for an unsupported style that cannot be detached.
+        public var resolvedText: NativeClipText? = nil
     }
     public var projectId: String
     /// The copied-from project's folder (standardized path); nil when it had none.

@@ -30,9 +30,23 @@ public struct EffectsUIState: Equatable {
 /// border-input rail (Mix / settings), "Add effect", and the catalog: a 4-column family tab strip over a tile grid
 /// of the family's looks and effects. Every value is an amount in the clip's grade (undoable).
 extension InspectorPanel {
+    /// The selected effect's amount ("Mix"), keyframeable as `grade.effects.<key>` (issue #179).
+    func masterSlider(_ editor: TimelineEditor, _ s: Selected, _ sel: EffectSpecs.Spec,
+                      commit: @escaping (ColorGrading) -> Void) -> InspectorRow {
+        let g = editor.gradeShown(clipId: s.id, time: time)   // the grade the group's other rows show
+        let v = g.effect(sel.key) * 100
+        let fmt: (Double) -> String = { x in sel.masterFormat?(x / 100) ?? "\(Int(x.rounded()))%" }
+        let kf = NativeGradeParameter.effectKeys.contains(sel.key) ? gradeKeyframe(editor, s, [NativeGradeParameter.effectId(sel.key)], shown: g) : nil
+        return .init(.slider(.init(key: "fx:\(sel.key)", label: sel.masterLabel, position: v, min: 0, max: sel.max,
+                                   display: fmt(v), format: fmt, tier: .explicitCustom,
+                                   commit: { x in var n = g; n.effects[sel.key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
+                                   reset: { var n = g; n.effects[sel.key] = EffectSpecs.resetValue(effect: sel.key, sel.key); commit(n) },
+                                   keyframe: kf, step: 1, parseInput: { Self.effectSliderInput($0, key: sel.key) })), rail: true)
+    }
+
     func stylizeGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
-        let g = editor.colorGrading(clipId: s.id) ?? ColorGrading()
-        let commit: (ColorGrading) -> Void = { [weak self] n in self?.edited(editor.setColorGrading(clipId: s.id, n)) }
+        let t = time, g = editor.gradeShown(clipId: s.id, time: t)
+        let commit: (ColorGrading) -> Void = { [weak self] n in self?.edited(editor.commitGrade(clipId: s.id, time: t, shown: g, next: n)) }
         if effectsUI.clipId != s.id { effectsUI = EffectsUIState(clipId: s.id) }
         let active = EffectSpecs.all.filter { EffectSpecs.isActive(g, $0.key) }
         let catalogOpen = effectsUI.catalogOpen ?? active.isEmpty
@@ -61,13 +75,7 @@ extension InspectorPanel {
             })), rail: true))
             if sel.showMaster {
                 gap(4, rail: true)
-                let v = (g.effects[sel.key] ?? 0) * 100
-                let fmt: (Double) -> String = { x in sel.masterFormat?(x / 100) ?? "\(Int(x.rounded()))%" }
-                rows.append(.init(.slider(.init(key: "fx:\(sel.key)", label: sel.masterLabel, position: v, min: 0, max: sel.max,
-                                                display: fmt(v), format: fmt, tier: .explicitCustom,
-                                                commit: { x in var n = g; n.effects[sel.key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
-                                                reset: { var n = g; n.effects[sel.key] = EffectSpecs.resetValue(effect: sel.key, sel.key); commit(n) })),
-                                  rail: true))
+                rows.append(masterSlider(editor, s, sel, commit: commit))
             }
             for control in sel.settings {
                 gap(4, rail: true)
@@ -82,8 +90,8 @@ extension InspectorPanel {
             gap(8)
             let fam = EffectSpecs.families.first { $0.label == effectsUI.catalogFamily } ?? EffectSpecs.families[0]
             let looks = fam.presets.compactMap(ColorGrading.preset)
-            var tiles: [(label: String, on: Bool)] = looks.map { ($0.label, g.preset == $0.id) }
-            tiles += fam.effects.map { ($0.label, EffectSpecs.isActive(g, $0.key)) }
+            var tiles: [CatalogTile] = looks.map { ($0.label, g.preset == $0.id, Self.lookDemo($0, base: g, clipId: s.id)) }
+            tiles += fam.effects.map { ($0.label, EffectSpecs.isActive(g, $0.key), Self.effectDemo($0, base: g, clipId: s.id)) }
             rows.append(.init(.custom(tileGrid(id: "fx:tiles", tiles) { [weak self] i in
                 if i < looks.count {
                     var n = g.applying(looks[i]); n.lut = g.lut; commit(n)   // a look replaces the grade, keeping the LUT
@@ -95,7 +103,10 @@ extension InspectorPanel {
                 } else { apply(spec) }
             })))
         }
-        var group = InspectorGroup(id: "effects", title: "Effects", summary: active.isEmpty ? "none" : "\(active.count) active", rows: rows, spacing: 0)
+        var group = InspectorGroup(id: "effects", title: "Effects", summary: !g.effectsEnabled ? "off" : (active.isEmpty ? "none" : "\(active.count) active"), rows: rows, spacing: 0)
+        group.enabled = g.effectsEnabled
+        group.accessibilityLabel = "Effects enabled"
+        group.setEnabled = { v in var n = g; n.effectsEnabled = v; commit(n) }
         // FlatEffectsAccessory: reset every effect (and the palette) while any is active.
         if !active.isEmpty {
             group.reset = { var n = g; for k in ColorGrading.activeEffectKeys { n.effects[k] = nil }; n.palette = nil; commit(n) }
@@ -110,10 +121,10 @@ extension InspectorPanel {
             let hot = panel.hovered == .custom("fx:active:\(e.key)", 0)
             if selected { c.fillRect(r.snapped, PanelTheme.accent.withAlpha(0.1)) }   // bg-panel-bg-soft is not a theme colour: transparent
             c.strokeRect(r.snapped.insetBy(0.5), selected ? PanelTheme.accent : (hot ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)
-            PanelDraw.text(c, e.label, in: CanvasRect(x: r.x + 9, y: r.midY - 7.5, width: r.width - 60, height: 15), font: PanelTheme.font(10),
-                           color: selected ? PanelTheme.text0 : (hot ? PanelTheme.text1 : PanelTheme.text3))
+            PanelDraw.text(c, e.label, in: CanvasRect(x: r.x + 9, y: r.midY - 7.5, width: r.width - 60, height: 15), font: PanelTheme.font(11),
+                           color: selected ? PanelTheme.text0 : (hot ? PanelTheme.text1 : PanelTheme.inspectorText))
             PanelDraw.text(c, selected ? "Editing" : "Active", in: CanvasRect(x: r.x + 9, y: r.midY - 6.75, width: r.width - 18, height: 13.5),
-                           font: PanelTheme.font(9), color: PanelTheme.text5, align: .right)
+                           font: PanelTheme.font(11), color: PanelTheme.inspectorText, align: .right)
             panel.addHit(r, .custom("fx:active:\(e.key)", 0))
         }, pointer: { [weak self] _, _, phase in
             guard let self, phase == 0 else { return }
@@ -127,8 +138,8 @@ extension InspectorPanel {
             PanelDraw.text(c, e.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width - 40, height: 16.5), font: PanelTheme.font(11, .medium), color: PanelTheme.text1)
             let x = CanvasRect(x: r.maxX - 11, y: r.midY - 5.5, width: 11, height: 11)
             let reset = CanvasRect(x: x.x - 8 - 11, y: x.y, width: 11, height: 11)
-            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("fx:head", 0) ? PanelTheme.text1 : PanelTheme.text4)
-            PanelIcon.close.draw(c, in: x, color: panel.hovered == .custom("fx:head", 1) ? CanvasColor(ThemeTokens.red300) : PanelTheme.text4)
+            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("fx:head", 0) ? PanelTheme.text1 : PanelTheme.inspectorText)
+            PanelIcon.close.draw(c, in: x, color: panel.hovered == .custom("fx:head", 1) ? CanvasColor(ThemeTokens.red300) : PanelTheme.inspectorText)
             panel.addHit(reset.insetBy(-3), .custom("fx:head", 0))
             panel.addHit(x.insetBy(-3), .custom("fx:head", 1))
         }, pointer: { part, _, phase in
@@ -151,7 +162,8 @@ extension InspectorPanel {
             }
             return .init(.slider(.init(key: "fx:set:\(key)", label: label, position: value * scale, min: lo, max: hi,
                                        display: fmt((value * scale).rounded()), format: { fmt($0.rounded()) }, tier: tier,
-                                       commit: { x in set((x.rounded() / scale * 10000).rounded() / 10000) }, reset: { set(def) })), rail: true)
+                                       commit: { x in set((x.rounded() / scale * 10000).rounded() / 10000) }, reset: { set(def) }, step: 1,
+                                       parseInput: { Self.effectSliderInput($0, key: key) })), rail: true)
         case .toggle(_, let label):
             return .init(.toggle(.init(key: "fx:set:\(key)", label: label, on: value >= 0.5, tier: tier, set: { set($0 ? 1 : 0) }, reset: { set(def) })), rail: true)
         case .select(_, let label, let options):
@@ -159,14 +171,13 @@ extension InspectorPanel {
             return .init(.custom(InspectorCustomRow(id: "fx:sel:\(key)", height: 30, draw: { c, r, panel in
                 // FlatSelectRow: 11px tier label; mono 11px value + 10px caret on a 1px underline (accent/30 when custom).
                 PanelDraw.text(c, label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width / 2, height: 16.5), font: PanelTheme.font(11),
-                               color: tier == .explicitCustom ? PanelTheme.text2 : PanelTheme.text3)
+                               color: tier == .explicitCustom ? PanelTheme.text2 : PanelTheme.inspectorText)
                 let tw = c.measureText(options[i], font: PanelTheme.mono(11)).width
                 let box = CanvasRect(x: r.maxX - tw - 16, y: r.midY - 8.75, width: tw + 16, height: 17.5)
                 PanelDraw.text(c, options[i], in: CanvasRect(x: box.x, y: box.y, width: tw + 1, height: 16.5), font: PanelTheme.mono(11),
                                color: tier == .explicitCustom ? PanelTheme.text0 : PanelTheme.text1)
-                PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: box.maxX - 10, y: box.y + 3.25, width: 10, height: 10), color: PanelTheme.text4)
-                let hot = panel.hovered == .custom("fx:sel:\(key)", 0)
-                let line = tier == .explicitCustom ? PanelTheme.accent.withAlpha(hot ? 0.7 : 0.3) : PanelTheme.panelBorderInput.withAlpha(hot ? 1 : 0.5)
+                PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: box.maxX - 10, y: box.y + 3.25, width: 10, height: 10), color: PanelTheme.inspectorText)
+                let line = tier == .explicitCustom ? PanelTheme.accent : PanelTheme.inspectorControl
                 c.fillRect(CanvasRect(x: box.x, y: box.maxY - 1, width: box.width, height: 1).snapped, line)
                 panel.addHit(box.insetBy(-3), .custom("fx:sel:\(key)", 0))
             }, pointer: { _, _, phase in if phase == 0 { set(Double((i + 1) % options.count)) } })), rail: true)
@@ -176,10 +187,10 @@ extension InspectorPanel {
     /// `flex min-h-[30px] gap-1 text-[10px] font-medium text-panel-accent`: an 11px plus and "Add effect".
     func addEffectToggle(open: Bool) -> InspectorCustomRow {
         InspectorCustomRow(id: "fx:add", height: 30, draw: { c, r, panel in
-            let color = panel.hovered == .custom("fx:add", 0) ? PanelTheme.accent.withAlpha(0.8) : PanelTheme.accent
+            let color = panel.hovered == .custom("fx:add", 0) ? PanelTheme.accent : PanelTheme.accent
             PanelIcon.plus.draw(c, in: CanvasRect(x: r.x, y: r.midY - 5.5 + 1, width: 11, height: 11), color: color)
-            let w = c.measureText("Add effect", font: PanelTheme.font(10, .medium)).width
-            PanelDraw.text(c, "Add effect", in: CanvasRect(x: r.x + 15, y: r.midY - 7.5, width: w + 1, height: 15), font: PanelTheme.font(10, .medium), color: color)
+            let w = c.measureText("Add effect", font: PanelTheme.font(11, .medium)).width
+            PanelDraw.text(c, "Add effect", in: CanvasRect(x: r.x + 15, y: r.midY - 7.5, width: w + 1, height: 15), font: PanelTheme.font(11, .medium), color: color)
             panel.addHit(CanvasRect(x: r.x, y: r.y, width: 15 + w, height: r.height), .custom("fx:add", 0))
         }, pointer: { [weak self] _, _, phase in
             guard let self, phase == 0 else { return }
@@ -187,47 +198,47 @@ extension InspectorPanel {
         })
     }
 
-    /// `grid grid-cols-4 gap-px border border-panel-hairline bg-panel-hairline`: 25px bg-panel-bg tabs, 9px labels,
-    /// the open family medium accent, the rest text-4 (hover text-1).
+    /// The effect families on the shared inline tab bar (`PanelTabBar`), like the curve and scope tabs.
     func effectFamilyTabs() -> InspectorCustomRow {
         let fams = EffectSpecs.families
-        return InspectorCustomRow(id: "fx:tabs", height: 27, draw: { [weak self] c, r, panel in
+        let tabs = fams.map { PanelTab(id: $0.label, label: $0.label) }
+        let pick: (Int) -> Void = { [weak self] i in
+            guard let self, fams.indices.contains(i) else { return }
+            self.effectsUI.catalogFamily = fams[i].label; self.onEdited?()
+        }
+        return InspectorCustomRow(id: "fx:tabs", height: PanelGrid.rowHeight, draw: { [weak self] c, r, _ in
             guard let self else { return }
-            c.fillRect(r.snapped, PanelTheme.panelHairline)
-            let w = (r.width - 2 - Double(fams.count - 1)) / Double(fams.count)
-            for (i, f) in fams.enumerated() {
-                let tr = CanvasRect(x: r.x + 1 + Double(i) * (w + 1), y: r.y + 1, width: w, height: 25)
-                c.fillRect(tr.snapped, PanelTheme.panelBg)
-                let on = f.label == self.effectsUI.catalogFamily
-                PanelDraw.text(c, f.label, in: CanvasRect(x: tr.x + 8, y: tr.midY - 6.75, width: tr.width - 16, height: 13.5),
-                               font: PanelTheme.font(9, on ? .medium : .regular),
-                               color: on ? PanelTheme.accent : (panel.hovered == .custom("fx:tabs", i) ? PanelTheme.text1 : PanelTheme.text4), align: .center)
-                panel.addHit(tr, .custom("fx:tabs", i))
-            }
+            self.drawInlineTabs(c, PanelTabBar(tabs: tabs, selected: self.effectsUI.catalogFamily, style: .inline), row: ("fx:tabs", base: 0), in: r)
         }, pointer: { [weak self] part, _, phase in
-            guard let self, phase == 0, fams.indices.contains(part) else { return }
-            self.effectsUI.catalogFamily = fams[part].label; self.onEdited?()
+            guard let self, phase == 0, let i = self.inlineTab("fx:tabs", part: part, select: pick) else { return }
+            pick(i)
         })
     }
 
     /// FLAT_PREVIEW_GRID tiles (`grid-cols-3 gap-1`): a 16:9 bg-black/20 frame over a `px-2 py-1.5` 10px label, the
-    /// active ones accent/10 on the accent border.
-    func tileGrid(id: String, _ tiles: [(label: String, on: Bool)], onPick: @escaping (Int) -> Void) -> InspectorCustomRow {
-        let cols = 3, gap = 4.0, contentW = 375.0
-        let tileW = (contentW - gap * Double(cols - 1)) / Double(cols)
-        let tileH = 2 + (tileW - 2) * 9 / 16 + 27
-        let rowsN = max(1, (tiles.count + cols - 1) / cols)
-        return InspectorCustomRow(id: id, height: Double(rowsN) * tileH + Double(rowsN - 1) * gap, draw: { c, r, panel in
+    /// active ones accent/10 on the accent border. The frame shows the host's sample picture with the tile's look or
+    /// effect (`effectPreview`), its "Rendering" caption, or a placeholder with the reason.
+    typealias CatalogTile = (label: String, on: Bool, demo: TileDemo)
+
+    func tileGrid(id: String, _ tiles: [CatalogTile], onPick: @escaping (Int) -> Void) -> InspectorCustomRow {
+        let cols = 3, gap = 4.0
+        // The height follows the width the body draws at (the panel is resizable), as the Grade preset grid's does.
+        let natural = Self.previewGridHeight(count: max(1, tiles.count), width: bodyContentWidth, columns: cols, gap: gap)
+        let height = PanelGrid.snapUp(natural)   // a whole grid slot: the tiles take up the rounding, so no gap opens below them
+        let rowCount = Double((max(1, tiles.count) + cols - 1) / cols)
+        return InspectorCustomRow(id: id, height: height, draw: { [weak self] c, r, panel in
             let w = (r.width - gap * Double(cols - 1)) / Double(cols)
-            let h = 2 + (w - 2) * 9 / 16 + 27
+            let h = 2 + (w - 2) * 9 / 16 + 27 + max(0, r.height - natural) / rowCount
             for (i, t) in tiles.enumerated() {
                 let tr = CanvasRect(x: r.x + Double(i % cols) * (w + gap), y: r.y + Double(i / cols) * (h + gap), width: w, height: h)
                 let hov = panel.hovered == .custom(id, i)
                 if t.on { c.fillRect(tr, PanelTheme.accent.withAlpha(0.1)) }   // bg-panel-bg-soft resolves to transparent
                 let sw = CanvasRect(x: tr.x + 1, y: tr.y + 1, width: tr.width - 2, height: (tr.width - 2) * 9 / 16)
-                c.fillRect(sw, PanelTheme.stageScrim.withAlpha(0.2))
-                PanelDraw.text(c, t.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(10),
-                               color: t.on ? PanelTheme.text1 : (hov ? PanelTheme.text1 : PanelTheme.text3))
+                // The clip frame (else the sample picture) with the tile's look or effect, at the tile's device pixels (capped).
+                let px = Self.tilePixels(sw, scale: c.deviceScale)
+                Self.drawPreviewFrame(c, sw, self?.samplePreview(t.demo, px.width, px.height) ?? .failed(.noRenderer))
+                PanelDraw.text(c, t.label, in: CanvasRect(x: tr.x + 9, y: sw.maxY + 6, width: tr.width - 18, height: 15), font: PanelTheme.font(11),
+                               color: t.on ? PanelTheme.text1 : (hov ? PanelTheme.text1 : PanelTheme.inspectorText))
                 c.strokeRect(tr.insetBy(0.5), t.on ? PanelTheme.accent : (hov ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)
                 panel.addHit(tr, .custom(id, i))
             }
