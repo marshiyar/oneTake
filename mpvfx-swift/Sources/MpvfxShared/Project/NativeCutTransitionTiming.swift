@@ -61,7 +61,7 @@ public func nativeMaxTransitionLength(kind: NativeCutTransitionKind, alignment: 
                                       from: NativeTransitionSide, to: NativeTransitionSide) -> Double {
     let byClips = min(from.clip.durationFrames, to.clip.durationFrames)
     let fromHandles = from.handles, toHandles = to.handles
-    guard kind == .dissolve else { return byClips }
+    guard kind.overlaps else { return byClips }
     // The incoming clip shows media before its in point; the outgoing one, after its out point.
     let byHandles: Double
     switch alignment {
@@ -86,13 +86,15 @@ public struct NativeCutTransitionSpan: Equatable, Sendable {
     public var kind: NativeCutTransitionKind
     /// The dip colour (`#RRGGBB` or `#RRGGBBAA`; black by default).
     public var color: String
+    public var direction: NativeTransitionDirection = .left
+    public var softness: Double = 0
     /// Timeline frames [startFrame, endFrame) the transition covers, and the cut inside them.
     public var startFrame: Double, cutFrame: Double, endFrame: Double
 
     /// Frames the outgoing clip is drawn past its out point (a dissolve's overlap after the cut).
-    public var outgoingTail: Double { kind == .dissolve ? endFrame - cutFrame : 0 }
+    public var outgoingTail: Double { kind.overlaps ? endFrame - cutFrame : 0 }
     /// Frames the incoming clip is drawn before its in point (a dissolve's overlap before the cut).
-    public var incomingLead: Double { kind == .dissolve ? cutFrame - startFrame : 0 }
+    public var incomingLead: Double { kind.overlaps ? cutFrame - startFrame : 0 }
 
     /// Progress of `frame` through [from, to): 0 at `from`, 1 at `to`, linear in frame time.
     static func progress(_ frame: Double, from: Double, to: Double) -> Double {
@@ -111,6 +113,7 @@ public struct NativeCutTransitionSpan: Equatable, Sendable {
     /// from all of it at the cut to none at the end.
     public func incomingMix(atFrame frame: Double) -> NativeTransitionMix {
         switch kind {
+        case .wipe, .push: return .none
         case .dissolve: return NativeTransitionMix(opacity: Self.progress(frame, from: startFrame, to: endFrame))
         case .dip:
             guard endFrame > cutFrame else { return .none }
@@ -118,10 +121,12 @@ public struct NativeCutTransitionSpan: Equatable, Sendable {
         }
     }
 
+    public func progress(atFrame frame: Double) -> Double { Self.progress(frame, from: startFrame, to: endFrame) }
+
     /// Gain on the outgoing clip's sound at `frame` (fractional): an equal-power fade out over the dissolve, or
     /// over the dip's first part (up to the cut).
     public func outgoingGain(atFrame frame: Double) -> Double {
-        let end = kind == .dissolve ? endFrame : cutFrame
+        let end = kind.overlaps ? endFrame : cutFrame
         guard end > startFrame else { return 1 }
         return cos(Self.progress(frame, from: startFrame, to: end) * .pi / 2)
     }
@@ -129,7 +134,7 @@ public struct NativeCutTransitionSpan: Equatable, Sendable {
     /// Gain on the incoming clip's sound at `frame`: an equal-power fade in over the dissolve, or over the dip's
     /// second part (from the cut).
     public func incomingGain(atFrame frame: Double) -> Double {
-        let start = kind == .dissolve ? startFrame : cutFrame
+        let start = kind.overlaps ? startFrame : cutFrame
         guard endFrame > start else { return 1 }
         return sin(Self.progress(frame, from: start, to: endFrame) * .pi / 2)
     }
@@ -178,6 +183,6 @@ func resolveNativeCutTransition(_ entry: NativeCutTransition, clips: [String: Na
     guard length <= limit else { return nil }
     let range = nativeCutTransitionRange(cut: to.startFrame, length: length, alignment: alignment)
     return NativeCutTransitionSpan(id: id, fromClipId: from.id, toClipId: to.id, kind: kind,
-                                   color: entry.color ?? NativeCutTransition.defaultDipColor,
+                                   color: entry.color ?? NativeCutTransition.defaultDipColor, direction: entry.direction ?? .left, softness: entry.softness,
                                    startFrame: range.start, cutFrame: to.startFrame, endFrame: range.end)
 }

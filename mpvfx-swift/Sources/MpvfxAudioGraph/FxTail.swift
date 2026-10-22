@@ -49,6 +49,12 @@ public enum FxTail {
 
     /// `chainTailSeconds`: summed over the serial chain, capped at five seconds.
     public static func chainSeconds(_ chain: FxChain, _ automation: Automation? = nil) -> Double {
-        min(maxSeconds, chain.nodes.reduce(0) { $0 + nodeTail($1, automation) })
+        min(maxSeconds, chain.nodes.reduce(0) { total, node in
+            let latency: Double
+            if node.enabled != false, node.type == "limiter", (node.version ?? chain.version) >= 2 {
+                latency = AudioFx.normalize(node.type, node.params, version: 2).num("lookahead") / 1000
+            } else { latency = 0 }
+            return total + nodeTail(node, automation) + latency
+        })
     }
 }

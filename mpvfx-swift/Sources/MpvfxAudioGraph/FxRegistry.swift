@@ -152,6 +152,13 @@ public enum AudioFx {
 
     public static func definition(_ id: String, version: Int = 1) -> FxDef? {
         guard let def = byId[id] else { return nil }
+        if version >= 2, id == "limiter" {
+            return FxDef(id: def.id, label: def.label, group: def.group, params: [
+                num("limit", "Ceiling", "dB", -24, 0, 0.1, -1),
+                num("lookahead", "Lookahead", "ms", 0.5, 5, 0.1, 1.5),
+                num("release", "Release", "ms", 10, 1000, 1, 50, scale: .log),
+            ], implementation: def.implementation)
+        }
         guard version >= 2, id == "compressor" || id == "gate" else { return def }
         return FxDef(id: def.id, label: def.label, group: def.group, params: def.params.map {
             $0.key == "knee" ? num("knee", "Knee", "dB", 0, 36, 0.1, 9) : $0

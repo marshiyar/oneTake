@@ -31,8 +31,15 @@ New to the app? [`docs/GETTING_STARTED.md`](mpvfx-swift/docs/GETTING_STARTED.md)
 
 - **Editor:** the same custom-drawn editor on every platform (GTK 3 + Cairo on Linux, AppKit + Core Graphics on
   macOS, Win32 + Direct2D on Windows): library, media bin, preview, timeline and inspector.
-- **Editing:** multi-track timeline, keyframes on position, crop and other parameters, colour grading and stylize
-  effects, text layers, 3D transforms. Preview and export draw with the same painter, so what you see is what renders.
+- **Editing:** multi-track timeline (move, trim, split, ripple, slip, roll, multi-select), keyframes with a
+  dedicated easing panel, colour grading and stylize effects, text layers with grouped text looks, background
+  generator clips (solid, linear and radial gradients), align and distribute, and cut transitions (dissolve, dip,
+  wipe, push). Preview and export draw with the same painter, so what you see is what renders.
+- **Grading extras:** presets, colour wheels, curves, secondaries, LUTs, auto balance, reference-clip look
+  matching, and named looks you can save, rename and reuse. A dockable Scopes panel and the Grade scopes measure
+  the composited program frame (waveform, parade, vectorscope, histogram, false colour).
+- **Audio extras:** a dockable Mixer (per-track gain, pan, mute, solo, live meters), sequence markers with a
+  dockable Markers panel, and a Settings window (appearance, interface size, audio device, cache, export folder).
 - **Composition size:** Landscape 16:9, Portrait 9:16, Square 1:1, Vertical 4:5, 4K 16:9 or custom, from the Design
   tab. The Renders tab's output size scales the composition and keeps its shape.
 - **GPU grading:** the grade and stylize effects run through Metal (macOS), Vulkan (Linux) or Direct3D 11 (Windows),
@@ -79,7 +86,7 @@ not match its checksum. If `swift build` reports "Could not find Package.swift",
 if it cannot find `mpvfx_media.h` or `cvkf.h`, or the link step misses `mpvfx_media` or `cvkf`, run
 `python3 scripts/fetch-binaries.py` first. `MPVFX_PROJECT` takes a project folder or its `.studio/project.json`.
 
-**Status:** the media engine is pinned at 0.1.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`.
+**Status:** the media engine is pinned at 0.2.0 and the keyframe engine at 1.0.0 in `mpvfx-swift/binaries.lock`.
 
 Installers (macOS disk image, Windows setup.exe, Ubuntu/Debian .deb) are built by CI and published as releases:
 official releases come from `v*` tags and are the "latest" release; nightly builds of `main` are pre-releases named
@@ -98,22 +105,18 @@ sh scripts/doctor.sh         # what a full run needs that is missing, with fixes
 A full run starts with [`scripts/doctor.sh`](mpvfx-swift/scripts/doctor.sh): with a prerequisite missing it stops at
 once with `check: UNAVAILABLE` (exit 2), neither passed nor failed.
 
-CI ([`mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests, packages and install-smokes the app on Linux,
-Windows and macOS; `ci-ok` is the required check, and a green `main` publishes the installers. Two more workflows
-report on each build: [`strip-check.yml`](.github/workflows/strip-check.yml) verifies every published binary is
-stripped, and [`bench.yml`](.github/workflows/bench.yml) benchmarks startup, the audio graph, the colour grade (CPU vs
-GPU) and preview playback on all three platforms. How the installers are built and signed:
-[`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
-
-CI ([`.github/workflows/mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests and packages the app on Linux,
-Windows and macOS with the engine libraries pinned in [`binaries.lock`](mpvfx-swift/binaries.lock); `ci-ok` is the
-required check. [`strip-check.yml`](.github/workflows/strip-check.yml) then verifies that every published binary is stripped
-([`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), "Symbols"). Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
-Benchmarks ([`.github/workflows/bench.yml`](.github/workflows/bench.yml)) run from a release build on Linux, Windows and
-macOS after every green run on `main`, weekly, and by hand: startup to the first painted frame, the audio graph
-(`MpvfxAudioBench`), the colour grade on the CPU and the GPU (`MpvfxColorBench`) and preview playback
-(`MpvfxPreviewBench`), every sample with p50, p95, max and peak memory, as a table in the run summary and
-`bench-<os>.json` in the `bench-<os>` artifact ([`.github/ci/bench.py`](.github/ci/bench.py)).
+CI ([`.github/workflows/mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests, packages and install-smokes
+the app on Linux, Windows and macOS with the engine libraries pinned in [`binaries.lock`](mpvfx-swift/binaries.lock);
+`ci-ok` is the only required check, and a green `main` publishes the installers. Two more workflows report on each
+build: [`strip-check.yml`](.github/workflows/strip-check.yml) verifies every published binary is stripped
+([`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), "Symbols"), and
+[`bench.yml`](.github/workflows/bench.yml) benchmarks startup, the audio graph (`MpvfxAudioBench`), the colour grade
+on the CPU and the GPU (`MpvfxColorBench`) and preview playback (`MpvfxPreviewBench`) on all three platforms from a
+release build after every green run on `main`, weekly, and by hand. Every sample is reported with p50, p95, max and
+peak memory, as a table in the run summary and `bench-<os>.json` in the `bench-<os>` artifact
+([`.github/ci/bench.py`](.github/ci/bench.py)). How the installers are built and signed:
+[`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md). Every check is listed in
+[`.github/CHECKS.md`](.github/CHECKS.md). Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Repository layout
 
@@ -128,7 +131,7 @@ macOS after every green run on `main`, weekly, and by hand: startup to the first
 | [`Sources/MpvfxTimeline`](mpvfx-swift/Sources/MpvfxTimeline), [`Sources/MpvfxPanels`](mpvfx-swift/Sources/MpvfxPanels), [`Sources/MpvfxCanvas`](mpvfx-swift/Sources/MpvfxCanvas) | timeline, inspector and side panels, drawing abstraction |
 | [`Sources/MpvfxShared`](mpvfx-swift/Sources/MpvfxShared) | document schema, validation, export policy, shared types |
 | [`Sources/OneTakeMedia`](mpvfx-swift/Sources/OneTakeMedia), [`Sources/OneTakeKeyframes`](mpvfx-swift/Sources/OneTakeKeyframes) | Swift adapters over the two engines' C interfaces |
-| [`docs/`](mpvfx-swift/docs/) | [`GETTING_STARTED.md`](mpvfx-swift/docs/GETTING_STARTED.md), [`STATUS.md`](mpvfx-swift/docs/STATUS.md), [`FEATURES.md`](mpvfx-swift/docs/FEATURES.md), [`PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), [`MEMORY.md`](mpvfx-swift/docs/MEMORY.md) |
+| [`docs/`](mpvfx-swift/docs/) | [`GETTING_STARTED.md`](mpvfx-swift/docs/GETTING_STARTED.md) (first project), [`STATUS.md`](mpvfx-swift/docs/STATUS.md) (what works now), [`FEATURES.md`](mpvfx-swift/docs/FEATURES.md) (full inventory), [`ROADMAP.md`](mpvfx-swift/docs/ROADMAP.md) (what ships next), [`DESIGN.md`](mpvfx-swift/docs/DESIGN.md), [`EFFECTS.md`](mpvfx-swift/docs/EFFECTS.md), [`SCOPES.md`](mpvfx-swift/docs/SCOPES.md), [`TIMELINE.md`](mpvfx-swift/docs/TIMELINE.md), [`KEYFRAME_EASING.md`](mpvfx-swift/docs/KEYFRAME_EASING.md), [`PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), [`MEMORY.md`](mpvfx-swift/docs/MEMORY.md), [`IMPLEMENTATION_NOTES.md`](mpvfx-swift/docs/IMPLEMENTATION_NOTES.md) |
 | [`samples/getting-started`](mpvfx-swift/samples/getting-started) | the sample project the getting started guide opens |
 | [`binaries.lock`](mpvfx-swift/binaries.lock) | engine versions, download URLs and SHA-256 per platform |
 | [`.github/`](.github/) | CI, release publishing, strip check, benchmarks |
