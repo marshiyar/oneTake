@@ -242,7 +242,7 @@ func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, ela
     case "biquad-lowpass": return BiquadUnit(.lowpass, p, sr, version: version)
     case "compressor": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: false) : CompressorProcessor(p, sampleRate: sr))
     case "split-band-deesser": return ProcessorUnit(DeesserProcessor(p, sampleRate: sr))
-    case "limiter": return ProcessorUnit(LimiterProcessor(p, sampleRate: sr))
+    case "limiter": return version >= 2 ? LookaheadLimiterUnit(p, sr) : ProcessorUnit(LimiterProcessor(p, sampleRate: sr))
     case "gate": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: true) : GateProcessor(p, sampleRate: sr))
     case "bitcrusher": return ProcessorUnit(BitcrusherProcessor(p))
     case "pitch-shift": return ProcessorUnit(PitchShiftProcessor(p, sampleRate: sr))
@@ -258,7 +258,7 @@ func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, ela
 
 /// `buildFxChain` plus `scheduleChainAutomation`: a whole chain as a block processor.
 public final class FxChainProcessor {
-    struct Run { var presetId: String?; var units: [FxUnit]; var wet: GainStage?; var dry: GainStage? }
+    struct Run { var presetId: String?; var units: [FxUnit]; var wet: GainStage?; var dry: GainStage?; var dryDelay = FxFrameDelay() }
     var runs: [Run] = []
     var byId: [String: FxUnit] = [:]
     /// Every built unit, in `chain.enabledNodes` order (in-place parameter edits address units by position).
@@ -295,6 +295,9 @@ public final class FxChainProcessor {
             run.units.append(u)
             if let id = node.id, byId[id] == nil { byId[id] = u } else if let id = node.id { byId[id] = u }
             runs.append(run)
+        }
+        for i in runs.indices {
+            runs[i].dryDelay = FxFrameDelay(frames: runs[i].units.reduce(0) { $0 + $1.latencyFrames })
         }
         guard let automation else { return }
         for lane in automation.lanes {
@@ -362,7 +365,7 @@ public final class FxChainProcessor {
             let entry = tail
             for u in run.units { tail = finiteSamples(u.process(tail, frame: frame)) }
             if let wet = run.wet, let dry = run.dry {
-                tail = sum(wet.process(tail, frame: frame), dry.process(entry, frame: frame))
+                tail = sum(wet.process(tail, frame: frame), dry.process(run.dryDelay.process(entry), frame: frame))
             }
         }
         return tail

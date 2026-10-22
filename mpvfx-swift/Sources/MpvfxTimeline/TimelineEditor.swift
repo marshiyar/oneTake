@@ -152,6 +152,7 @@ public final class TimelineEditor {
 
     /// TimelineLanes trackLabel: the first clip's label, else "Track N" (1-based display position).
     static func trackName(_ t: NativeProjectTrack, displayNumber: Int, assets: [String: NativeProjectAsset]) -> String {
+        if t.id.hasPrefix("track:voice:") { return "Voice" }
         if let c = t.clips.first { return assets[c.assetId]?.name ?? c.assetId }
         return "Track \(displayNumber)"
     }
@@ -185,10 +186,13 @@ public final class TimelineEditor {
         }
     }
 
-    /// Composition end in seconds (sequence.durationFrames, else last clip end).
+    /// Navigable end in seconds: authored composition (or last clip) and every saved marker.
+    /// Markers remain reachable after trimming/deleting clips, without rewriting the authored render duration.
     public var duration: Double {
-        if let d = document.sequence.durationFrames, d > 0 { return d / fps }
-        return (document.sequence.tracks.flatMap(\.clips).map { $0.startFrame + $0.durationFrames }.max() ?? 0) / fps
+        let contentEnd = document.sequence.durationFrames.flatMap { $0 > 0 ? $0 : nil }
+            ?? document.sequence.tracks.flatMap(\.clips).map { $0.startFrame + $0.durationFrames }.max() ?? 0
+        let markerEnd = document.sequence.markers?.map(\.time).filter { $0.isFinite && $0 >= 0 }.max() ?? 0
+        return max(contentEnd / fps, markerEnd)
     }
 
     public func address(clipId: String) -> NativeProjectClipAddress? {
@@ -318,4 +322,42 @@ public extension TimelineEditor {
         tracks.reversed().filter { !$0.hidden }.flatMap { $0.clips.filter { !$0.hidden && $0.start <= time && time < $0.end && $0.kind != .audio } }
             .map { ($0.id, $0.name, $0.kind) }
     }
+}
+
+public extension TimelineEditor {
+    /// Publish an FX gesture without recording history. The owner is captured at pointer down.
+    @discardableResult
+    func previewAudioFxChain(owner: String, chain: String?) -> Bool {
+        guard let next = audioFxDocument(owner: owner, chain: chain), next != document else { return false }
+        document = next
+        onChange?()
+        return true
+    }
+
+    internal func audioFxDocument(owner: String, chain: String?) -> NativeProjectDocument? {
+        var next = document
+        if owner.hasPrefix("clip:") {
+            let id = String(owner.dropFirst(5))
+            guard !isClipLocked(id), let (_, clip) = clip(id),
+                  let kind = document.assets.first(where: { $0.id == clip.assetId })?.kind,
+                  kind == .audio || kind == .video else { return nil }
+            for t in next.sequence.tracks.indices {
+                if let c = next.sequence.tracks[t].clips.firstIndex(where: { $0.id == id }) {
+                    next.sequence.tracks[t].clips[c].audioFxChain = chain
+                }
+            }
+        } else if owner.hasPrefix("bus:"),
+                  let g = next.sequence.audioGroups?.firstIndex(where: { $0.id == String(owner.dropFirst(4)) }) {
+            next.sequence.audioGroups?[g].fxChain = chain
+        } else { return nil }
+        return next
+    }
+
+    /// Record the whole gesture's inverse using its original chain, retaining unrelated document edits.
+    func finishAudioFxGesture(owner: String, before: String?, after: String?) {
+        guard before != after else { return }
+        guard let original = audioFxDocument(owner: owner, chain: before), original != document else { return }
+        pushHistory(.restoreDocument(original), defaultLabel: "Set audio effects")
+    }
+
 }

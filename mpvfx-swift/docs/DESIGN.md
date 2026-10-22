@@ -80,9 +80,10 @@ text reaches 4.5:1 on every light surface. That caps how dark the shell can go (
 Each step is its own pull request, small enough to review on screenshots.
 
 1. **Palette** — the token values above, the editor defaulting to the dark appearance, and clips filled by media
-   kind. Light mode keeps working. *(this change)*
+   kind. Light mode keeps working. *(done)*
 2. **Flat panels** — remove the rounded cards and gaps between the shell's panels; 1 px black seams; tab strips
    with an underlined active tab and a panel menu button; a status line at the bottom of the window for hints.
+   *(done: flat panels with tab strips and a status line; see [FEATURES.md](FEATURES.md) §11)*
 3. **Clips show content** — frame thumbnails across video clips, waveforms across audio clips, the clip name in a
    18 px header strip, clip durations and the ruler as timecode. *(done)*
 4. **Track headers** — compact headers with a track tag (`V1`, `A1`) in the accent when targeted, lock, visibility,
@@ -94,7 +95,9 @@ Each step is its own pull request, small enough to review on screenshots.
    the previous/add/next keyframe buttons on the same row. Labels are `text2`, not `text3`: 11 px labels are body
    text and `text3` stays under 4.5:1 on the inspector's inset. *(done)*
 6. **Timeline extras** — coloured markers on the ruler, timecode on the playhead, audio meters docked beside the
-   timeline.
+   timeline. *(partial: sequence markers and the Markers panel have landed, and the Mixer carries live per-track
+   meters; meters docked beside the timeline itself are still to come — see [TIMELINE.md](TIMELINE.md) and
+   [STATUS.md](STATUS.md))*
 
 ## Words
 
