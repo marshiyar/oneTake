@@ -100,6 +100,8 @@ public final class TimelineController {
     public enum NativeAudioAction: String, Sendable { case detach, reattach }
     /// Clip menu Detach / Reattach audio (timelineCallbacks onNativeAudioAction). Unset: the editor edits directly.
     public var onNativeAudioAction: ((_ clipId: String, _ action: NativeAudioAction) -> Void)?
+    /// Clip source navigation; the host selects its bin tile or reveals its file without editing the document.
+    public var onRevealSource: ((_ clipId: String, _ inFileManager: Bool) -> Void)?
     /// Paste from another project: copies `paths` (absolute media and LUT files outside this project) into it and
     /// calls `done` with each path's copy (project-relative), or nil when any of them could not be brought in (the
     /// host says why); the paste then goes ahead with the copies, or not at all. Unset: the paste keeps the
@@ -418,6 +420,9 @@ public final class TimelineController {
         if case .function(9) = k.code { return easyEaseSelectedKeyframes(k) }
         if k.command, case .char(let ch) = k.code {
             switch Character(ch.lowercased()) {
+            case "f" where k.alt:
+                guard view.selection.count == 1, let id = view.selection.first else { return false }
+                return runClipMenu(k.shift ? .showSourceFile : .revealSource, clipId: id)
             case "z":
                 view.selectedKeyframes = []   // keyframeHistoryState: undo/redo clear the key selection
                 return k.shift ? (editor?.redo() ?? false) : (editor?.undo() ?? false)
