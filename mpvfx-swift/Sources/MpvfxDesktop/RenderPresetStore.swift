@@ -37,7 +37,7 @@ struct RenderPresetStore {
             }
             return presets
         } catch {
-            throw RenderPresetStoreError(path: path, reason: "could not read the file (\(error)); file left untouched")
+            throw RenderPresetStoreError(path: path, reason: "could not read the file; file left untouched")
         }
     }
 
@@ -68,6 +68,6 @@ struct RenderPresetStore {
             let directory = (path as NSString).deletingLastPathComponent
             try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
             try NativeDurableWrite().write(try JSONEncoder().encode(presets), to: path)
-        } catch { throw RenderPresetStoreError(path: path, reason: "could not save (\(error))") }
+        } catch { throw RenderPresetStoreError(path: path, reason: "could not save the presets") }
     }
 }

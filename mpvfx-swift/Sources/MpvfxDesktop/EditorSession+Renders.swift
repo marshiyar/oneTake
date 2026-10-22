@@ -115,14 +115,20 @@ extension SessionPanels {
         rendersPanel.settings = RenderSettingsBridge.model(preferences.renderSettings)
         let store = RenderPresetStore(userData: userData)
         do { rendersPanel.renderPresets = try store.load() }
-        catch { rendersPanel.actionError = "\(error)" }
+        catch {
+            let reason = (error as? RenderPresetStoreError)?.reason
+            rendersPanel.actionError = reason ?? "The render presets could not be loaded."
+        }
         rendersPanel.onSavePreset = { [weak self] name, settings in
             guard let self else { return }
             do {
                 self.rendersPanel.renderPresets = try store.save(name: name, settings: settings)
                 self.rendersPanel.presetName = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 self.rendersPanel.actionError = nil
-            } catch { self.rendersPanel.actionError = "\(error)" }
+            } catch {
+                let reason = (error as? RenderPresetStoreError)?.reason
+                self.rendersPanel.actionError = reason ?? "The preset could not be saved."
+            }
             self.redraw()
         }
         rendersPanel.onDeletePreset = { [weak self] name in
@@ -131,7 +137,10 @@ extension SessionPanels {
                 self.rendersPanel.renderPresets = try store.delete(name: name)
                 self.rendersPanel.presetName = ""
                 self.rendersPanel.actionError = nil
-            } catch { self.rendersPanel.actionError = "\(error)" }
+            } catch {
+                let reason = (error as? RenderPresetStoreError)?.reason
+                self.rendersPanel.actionError = reason ?? "The preset could not be deleted."
+            }
             self.redraw()
         }
         rendersPanel.onSettingsChanged = { [weak self] m in self?.preferences.renderSettings = RenderSettingsBridge.json(m) }
@@ -149,7 +158,8 @@ extension SessionPanels {
                 guard let self, self.projectId == projectId else { return }
                 switch result {
                 case .success(let list): self.renders.history = list; self.renders.loadError = nil
-                case .failure(let e): self.renders.loadError = "Couldn't load render history (\(e))."
+                case .failure(let e):
+                    self.renders.loadError = (e as? DesktopError)?.message ?? "Couldn't load render history."
                 }
                 self.publishRenders()
             }
