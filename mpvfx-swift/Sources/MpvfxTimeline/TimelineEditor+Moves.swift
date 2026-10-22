@@ -26,3 +26,29 @@ public extension TimelineEditor {
         do { return try nativeClipMoveOffsets(c, clipFrame: local, canvas: document.canvas, engine: engine) } catch { return .identity }
     }
 }
+
+public extension TimelineEditor {
+    /// Clear the moves only after every generated track validates; one undo restores all keys and moves.
+    @discardableResult func convertMovesToKeyframes(clipId: String) -> Bool {
+        guard let (track, clip) = clip(clipId), !isClipLocked(clipId),
+              let moves = clip.moves, !moves.isEmpty else { return false }
+        do {
+            let baked = try bakeNativeClipMoves(clip, canvas: document.canvas, frameRate: document.frameRate,
+                                                engine: engine ?? keyframeEngine())
+            var next = document
+            guard let ti = next.sequence.tracks.firstIndex(where: { $0.id == track.id }),
+                  let ci = next.sequence.tracks[ti].clips.firstIndex(where: { $0.id == clipId }) else { return false }
+            next.sequence.tracks[ti].clips[ci] = baked
+            _ = try serializeNativeProjectDocument(next, engine: engine)
+            withHistory("Convert moves to keyframes") { replaceDocument(next, inverse: .restoreDocument(document)) }
+            lastFailure = nil
+            return true
+        } catch let e as NativeKeyframeEvaluationError {
+            lastFailure = .init(code: .documentMismatch, message: e.message)
+            return false
+        } catch {
+            lastFailure = .init(code: .documentMismatch, message: "The moves could not be converted to keyframes.")
+            return false
+        }
+    }
+}

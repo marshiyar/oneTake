@@ -131,6 +131,19 @@ final class VisualSpecTests: XCTestCase {
         }
     }
 
+    func testDesignTextAndEssentialControlContrastInBothModes() {
+        XCTAssertGreaterThanOrEqual(T.scopeLabel.contrast(T.blackPair.dark), 4.5, "scope captions and scale labels on the fixed black plot")
+        for mode in ThemeMode.allCases {
+            for surface in [T.panelBgPair, T.panelBgInsetPair, T.panelSurfacePair, T.panelInputPair] {
+                let bg = surface.value(mode)
+                XCTAssertGreaterThanOrEqual(T.inspectorTextPair.value(mode).contrast(bg), 4.5, "\(mode) inspector labels, hints, summaries and status")
+                for edge in [T.inspectorControlPair, T.studioAccentPair] {
+                    XCTAssertGreaterThanOrEqual(edge.value(mode).contrast(bg), 3, "\(mode) slider track, resting knob, tab/field underline")
+                }
+            }
+        }
+    }
+
     /// The editor is dark until the user picks an appearance.
     func testDefaultAppearanceIsDark() {
         XCTAssertEqual(ThemeAppearance.default, .dark)
