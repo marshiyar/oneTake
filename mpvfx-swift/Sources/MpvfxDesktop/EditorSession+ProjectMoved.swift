@@ -91,13 +91,13 @@ extension EditorSession {
         let lastSaved = project.content
         let moved: DesktopProject
         do { moved = try backend.relocateProject(id: project.id, to: path) }
-        catch { onError("Could not use that folder", "\(error)"); return }
+        catch { onError("Could not use that folder", (error as? DesktopError)?.message ?? "The folder could not be opened. Check that it is still there, then try again."); return }
         projectFolderMissing = false
         adoptMovedFolder(moved)
         watchOpenProject()   // events about the new folder; the old folder's late ones are dropped
         panels?.projectSwitched()   // the media bin and renders now list the new folder
         guard moved.content == lastSaved else { externalChange(moved.content); return }
         do { try save() }
-        catch { if !projectFolderVanished(error, explicitSave: true) { onError("Could not save the project", "\(error)") } }
+        catch { if !projectFolderVanished(error, explicitSave: true) { onError("Could not save the project", (error as? DesktopError)?.message ?? "The project could not be saved. Check that the disk has free space and the folder is writable, then try again.") } }
     }
 }
