@@ -27,11 +27,13 @@ extension EditorSession {
         timeline.onOpenGroupFxRack = { [weak self] groupId in self?.openAudioGroupRack(groupId) }
         timelineRegion?.toolbar.onRemoveSilence = { [weak self] clipId in self?.removeSilence(clipId: clipId) }
         timeline.onNativeAudioAction = { [weak self] clipId, action in self?.nativeAudioAction(clipId: clipId, action) }
+        timeline.onRevealSource = { [weak self] clipId, inFileManager in
+            self?.revealClipSource(clipId: clipId, inFileManager: inFileManager)
+        }
         timeline.importForPaste = { [weak self] paths, done in self?.importForPaste(paths, done) }
         timeline.onAddText = { [weak self] time in self?.addText(at: time) }
         timeline.onEditKeyframeEasing = { [weak self] clipId, refs in self?.openKeyframeEasing(clipId: clipId, refs: refs) }
-        // onAddBeat stays unset: the toolbar's own addBeat(at:) is used, and the button is enabled only once a music clip
-        // has beat analysis (beatMusicClipId), which the native app does not produce yet.
+        // The timeline stores hand-placed beats directly on the selected audio clip (no analysis needed).
     }
 
     /// T: a new text layer at the playhead, selected, with its Text section open in Design.

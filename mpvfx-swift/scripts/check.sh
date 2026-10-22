@@ -30,6 +30,8 @@ fi
 
 run python3 -I -B scripts/fetch-binaries.py
 run python3 -I -B scripts/test_fetch_binaries.py
+run python3 -I -B scripts/check-design-wording.py
+run python3 -I -B scripts/test_design_wording.py
 run sh -c "cd .. && python3 -I -B mpvfx-swift/scripts/copyright.py"
 if command -v glslangValidator >/dev/null 2>&1 && command -v spirv-opt >/dev/null 2>&1; then
   run python3 -I -B scripts/gpu/gen-compute-shaders.py --check
