@@ -408,7 +408,8 @@ public struct PreviewComposition {
         if let s = num("transform.scale") { sx = s; sy = s } else if let s = vec("transform.scale") { sx = s.x; sy = s.y }
         if let x = num("transform.scaleX") { sx = x }
         if let y = num("transform.scaleY") { sy = y }
-        // The clip's fade (#85, #89) multiplies the keyframed opacity; export paints this layer too (ExportFramePainter).
+        // The clip's fade (#85, #89) multiplies the keyframed opacity; export paints this layer too
+        // (ExportFramePainter).
         let keyed = max(0, min(1, num("transform.opacity") ?? num("visual.opacity") ?? num("visual.autoAlpha") ?? 1))
         let fade = c.fadeGain(atFrame: local)
         let opacity = keyed * fade

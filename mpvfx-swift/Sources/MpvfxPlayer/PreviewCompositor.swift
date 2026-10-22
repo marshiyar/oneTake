@@ -175,7 +175,8 @@ public final class PreviewCompositor: FrameSource {
         // A layer only its fade hides this frame (a fade-in's first frame) keeps its decoder running.
         for layer in layers where !layer.isVisible && layer.needsDecoder {
             guard let lane = lane(for: layer, fps: comp.fps) else { continue }
-            lane.request(frame: frame, ahead: ahead, behind: behind, size: decodeSize(layer, scale: s, backing: context.backingScale))
+            lane.request(frame: frame, ahead: ahead, behind: behind,
+                         size: decodeSize(layer, scale: s, backing: context.backingScale))
             used.insert(lane.key)
         }
         // Pre-roll clips starting soon so their first frames are ready at the cut.
