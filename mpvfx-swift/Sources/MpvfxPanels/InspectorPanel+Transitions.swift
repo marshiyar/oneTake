@@ -52,7 +52,7 @@ extension InspectorPanel {
             }
             if transition.kind == .dip {
                 rows.append(.init(.segmented(.init(key: "transition:color", label: "Dip to",
-                    options: [("#000000", "Black", (transition.color ?? "#000000") == "#000000"), ("#ffffff", "White", transition.color?.lowercased() == "#ffffff")],
+                    options: [(NativeCutTransition.defaultDipColor, "Black", (transition.color ?? NativeCutTransition.defaultDipColor) == NativeCutTransition.defaultDipColor), (NativeCutTransition.whiteDipColor, "White", transition.color?.lowercased() == NativeCutTransition.whiteDipColor)],
                     select: { apply(.setColor(id: id, color: $0)) }))))
             }
             rows.append(.init(.buttons([.init(key: "transition:remove", label: "Remove transition", style: .muted, action: { apply(.remove(id: id)) })])))

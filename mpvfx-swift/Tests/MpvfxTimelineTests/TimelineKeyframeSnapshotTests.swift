@@ -37,7 +37,9 @@ final class TimelineKeyframeSnapshotTests: XCTestCase {
         Theme.setMode(mode)
         let e = try TimelineEditor(json: TimelineEditor.demoJSON, engine: KeyframeRuntime())
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1440, 900); c.setZoom(percent: 300)
+        c.viewport = CanvasSize(1440, 900); c.setZoom(percent: 200)
+        // At 300 % the 5 s ease key sits past the right edge and its sample point reads out of bounds; at 200 %
+        // the 1 s…5 s keys all fit on the 1440-wide surface, so no scroll is needed.
         let keys: [(String, NativeParameterValue, Double, NativeInterpolation)] = [
             (TimelineEditor.positionId, .vec2(Vec2Value(x: 0, y: 0)), 30, .linear), (TimelineEditor.scaleId, .vec2(Vec2Value(x: 1, y: 1)), 30, .linear),
             (TimelineEditor.opacityId, .number(1), 60, .linear), (NativeTransform3D.rotationXId, .number(5), 90, .linear),

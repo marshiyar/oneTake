@@ -23,4 +23,6 @@ public enum NativeGeneratorKind: String, CaseIterable, Sendable {
         return NativeFill(kind: "gradient", stops: [.init(offset: 0, color: "#4050B8"), .init(offset: 1, color: "#F2B880")],
                           angle: 90, gradientType: self == .radial ? "radial" : "linear", centerX: 0.5, centerY: 0.5)
     }
+    /// The inspector's fallback when a solid fill carries no colour: the model's own solid default.
+    public static var defaultSolidColor: String { Self.solid.fill.color ?? "#000000" }
 }

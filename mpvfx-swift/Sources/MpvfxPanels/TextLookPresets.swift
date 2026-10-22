@@ -36,17 +36,17 @@ public struct TextLookPreset: Equatable, Sendable {
     }
 
     public static let all: [TextLookPreset] = [
-        .init(id: "title", name: "Plain title", group: .titles, text: .init(content: "Your title", fontWeight: 700, color: "#ffffff", align: "center"),
+        .init(id: "title", name: "Plain title", group: .titles, text: .init(content: "Your title", fontWeight: 700, color: NativeClipText.newLayerColor, align: "center"),
               x: 0.1, y: 0.4, width: 0.8, height: 0.2, fontHeight: 0.10, seconds: 5, motion: .none),
-        .init(id: "name-strap", name: "Name and role", group: .straps, text: .init(content: "YOUR NAME\nYour role", fontWeight: 600, color: "#ffffff", align: "left"),
+        .init(id: "name-strap", name: "Name and role", group: .straps, text: .init(content: "YOUR NAME\nYour role", fontWeight: 600, color: NativeClipText.newLayerColor, align: "left"),
               x: 0.08, y: 0.72, width: 0.84, height: 0.22, fontHeight: 0.065, seconds: 5, motion: .none),
-        .init(id: "credits", name: "Rolling credits", group: .credits, text: .init(content: "DIRECTOR\nYour name\n\nPRODUCER\nYour name", fontWeight: 400, color: "#ffffff", align: "center"),
+        .init(id: "credits", name: "Rolling credits", group: .credits, text: .init(content: "DIRECTOR\nYour name\n\nPRODUCER\nYour name", fontWeight: 400, color: NativeClipText.newLayerColor, align: "center"),
               x: 0.1, y: 1, width: 0.8, height: 0.9, fontHeight: 0.055, seconds: 12, motion: .roll),
-        .init(id: "fade-title", name: "Fade in and out", group: .animated, text: .init(content: "Your title", fontWeight: 700, color: "#ffffff", align: "center"),
+        .init(id: "fade-title", name: "Fade in and out", group: .animated, text: .init(content: "Your title", fontWeight: 700, color: NativeClipText.newLayerColor, align: "center"),
               x: 0.1, y: 0.4, width: 0.8, height: 0.2, fontHeight: 0.10, seconds: 5, motion: .fade),
-        .init(id: "vertical-title", name: "Bold vertical title", group: .vertical, text: .init(content: "YOUR\nSTORY", fontWeight: 800, color: "#ffffff", align: "center"),
+        .init(id: "vertical-title", name: "Bold vertical title", group: .vertical, text: .init(content: "YOUR\nSTORY", fontWeight: 800, color: NativeClipText.newLayerColor, align: "center"),
               x: 0.08, y: 0.3, width: 0.84, height: 0.4, fontHeight: 0.12, seconds: 5, motion: .none),
-        .init(id: "vertical-caption", name: "Vertical caption", group: .vertical, text: .init(content: "Tell your story", fontWeight: 600, color: "#ffffff", align: "center"),
+        .init(id: "vertical-caption", name: "Vertical caption", group: .vertical, text: .init(content: "Tell your story", fontWeight: 600, color: NativeClipText.newLayerColor, align: "center"),
               x: 0.08, y: 0.7, width: 0.84, height: 0.22, fontHeight: 0.065, seconds: 5, motion: .fade),
     ]
     public static func preset(_ id: String) -> TextLookPreset? { all.first { $0.id == id } }

@@ -94,7 +94,7 @@ public enum AudioAutomation {
             r.label = "\(presetId) · Amount"
             return r
         case let .fx(nodeId, param):
-            guard let node = chain?.nodes.first(where: { $0.id == nodeId }), let def = AudioFx.definition(node.type),
+            guard let node = chain?.nodes.first(where: { $0.id == nodeId }), let def = AudioFx.definition(node.type, version: node.version ?? chain?.version ?? 1),
                   let p = def.params.first(where: { $0.key == param }),
                   case let .number(_, label, unit, mn, mx, step, d, scale, _) = p else { return nil }
             return AutomationRange(min: mn, max: mx, step: step, unit: unit, label: "\(def.label) · \(label)",

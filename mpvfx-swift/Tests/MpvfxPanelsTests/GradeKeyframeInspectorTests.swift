@@ -34,7 +34,7 @@ final class GradeKeyframeInspectorTests: XCTestCase {
         return (p, editor)
     }
 
-    func redraw(_ p: InspectorPanel) { p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 360, height: 3000)) }
+    func redraw(_ p: InspectorPanel) { p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 360, height: 8000)) }
 
     func click(_ p: InspectorPanel, _ hit: InspectorPanel.Hit) throws {
         let r = try XCTUnwrap(p.hits.rect { $0 == hit }, "\(hit) is drawn")
