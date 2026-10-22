@@ -34,7 +34,7 @@ final class SceneSplitSessionTests: XCTestCase {
         XCTAssertEqual(calls, 1)
         XCTAssertTrue(session.sceneSplitKey(EditorKey(.char("]"), ctrl: true, alt: true)))
         XCTAssertEqual(toolbar.sceneThreshold, 0.4)
-        XCTAssertTrue(session.sceneSplitKey(EditorKey(.char("["), meta: true, alt: true)))
+        XCTAssertTrue(session.sceneSplitKey(EditorKey(.char("["), alt: true, meta: true)))
         XCTAssertEqual(toolbar.sceneThreshold, 0.3)
         toolbar.sceneProgress = 0.2
         XCTAssertTrue(session.sceneSplitKey(EditorKey(.escape)))

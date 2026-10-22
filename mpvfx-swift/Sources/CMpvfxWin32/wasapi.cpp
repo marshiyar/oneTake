@@ -335,6 +335,14 @@ mpvfx_hresult mpvfx_wasapi_capture_discontinuities(MpvfxWasapiCapture *c, uint64
     return S_OK;
 }
 
+mpvfx_hresult mpvfx_wasapi_capture_latency(MpvfxWasapiCapture *c, int64_t *ticks) {
+    std::lock_guard<std::mutex> g(c->lock);
+    REFERENCE_TIME latency = 0;
+    const HRESULT hr = c->client->GetStreamLatency(&latency);
+    *ticks = latency;
+    return hr;
+}
+
 void mpvfx_wasapi_capture_close(MpvfxWasapiCapture *c) {
     if (!c) return;
     mpvfx_wasapi_capture_stop(c);
