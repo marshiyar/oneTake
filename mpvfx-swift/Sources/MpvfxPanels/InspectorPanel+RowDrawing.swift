@@ -207,8 +207,10 @@ extension InspectorPanel {
         if n.tier == .explicitCustom, n.reset != nil {
             let cell = CanvasRect(x: right - 11, y: r.y, width: 11, height: r.height)
             drawResetGlyph(c, cell, key: n.key, visible: isHovering(n.key))
-            addHit(Self.target(cell), .reset(n.key))
-            right = cell.x - PanelGrid.itemGap
+            // The reset hit is a full target wide: reserve it all, so it never covers the field.
+            let resetTarget = Self.target(cell)
+            addHit(resetTarget, .reset(n.key))
+            right = resetTarget.x - PanelGrid.itemGap
         }
         // The one-letter label's cell is a whole target wide (it is the scrub handle); the field starts after it.
         let cell = max(PanelGrid.minTarget - pad, c.measureText(n.label, font: Self.rowFont).width + PanelGrid.itemGap)

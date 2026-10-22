@@ -14,12 +14,13 @@
 import XCTest
 import MpvfxCanvas
 import MpvfxShared
-@testable import MpvfxTimeline
+import MpvfxTimeline
+import OneTakeKeyframes
 @testable import MpvfxPanels
 
 final class InspectorRatioLockTests: XCTestCase {
     func panel() throws -> (InspectorPanel, TimelineEditor) {
-        let editor = try TimelineEditor(json: InspectorPitchRowTests.json)
+        let editor = try TimelineEditor(json: InspectorPitchRowTests.json, engine: try? KeyframeRuntime())
         XCTAssertTrue(editor.applyTransform(clipId: "clip:a", time: 0, ClipTransform(width: 400, height: 200)))
         let panel = InspectorPanel()
         panel.editor = editor; panel.selection = ["clip:a"]; panel.openGroupId = "layout"
