@@ -59,12 +59,18 @@ extension InspectorPanel {
     private func buildAllGroups() -> [InspectorGroup] {
         if let editor, let g = selectedBus() { return [busFxGroup(editor, g)] }
         if let editor, showsComposition { return [compositionGroup(editor)] }
+        if let editor, selection.count > 1 {
+            return [alignmentGroup(editor)] + (hasUserLookSelection ? [userLooksGroup(editor)] : [])
+        }
         guard let editor, let s = selected() else { return [] }
         var groups: [InspectorGroup] = []
+        if let generator = generatorGroup(editor, s) { groups.append(generator) }
         if let text = textGroup(editor, s) { groups.append(text) }
         if s.isVisual { groups.append(transformGroup(editor, s)); groups.append(styleGroup(editor, s)) }
+        if let transition = transitionGroup(editor, s) { groups.append(transition) }
         if s.kind == .video || s.kind == .image {
             groups.append(gradeGroup(editor, s))
+            if userLookStore != nil { groups.append(userLooksGroup(editor)) }
             groups.append(stylizeGroup(editor, s))
         }
         if s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId }) { groups.append(effectsGroup(editor, s)) }
@@ -217,6 +223,7 @@ extension InspectorPanel {
         let channels = TimelineEditor.transformEasedParameterIds.filter { editor.isAnimated(clipId: s.id, $0) }
         if !channels.isEmpty { rows += easingRows(editor, s, channels: channels) }
         rows += arcMotionRows(editor, s)
+        rows += [.init(.heading("Align and distribute", trailing: nil))] + alignmentGroup(editor).rows
         return InspectorGroup(id: "layout", title: "Transform",
                               summary: "X \(PanelFormat.number(x, decimals: 0)) · Y \(PanelFormat.number(y, decimals: 0)) · \(Int(w.rounded())) × \(Int(h.rounded()))",
                               rows: rows)

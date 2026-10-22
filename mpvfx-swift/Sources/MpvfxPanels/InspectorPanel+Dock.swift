@@ -64,6 +64,7 @@ extension InspectorPanel {
         editor = source.editor; selection = source.selection; time = source.time
         audioGroupId = source.audioGroupId; selectedKeyframes = source.selectedKeyframes
         onEdited = source.onEdited; onSeek = source.onSeek; onClearSelection = source.onClearSelection
+        userLookStore = source.userLookStore; resolveUserLookLut = source.resolveUserLookLut; userLookLutExists = source.userLookLutExists
         onAnimate = source.onAnimate; onAudition = source.onAudition; onImportLut = source.onImportLut
         presetPreview = source.presetPreview; effectPreview = source.effectPreview
         presetPreviewsAvailable = source.presetPreviewsAvailable; onRetryPresetPreviews = source.onRetryPresetPreviews
@@ -76,7 +77,7 @@ extension InspectorPanel {
     func drawGroupMenuButton(_ c: CanvasContext, _ header: CanvasRect, _ id: String, rightEdge: Double) {
         let r = CanvasRect(x: rightEdge - 14, y: header.y + (header.height - 14) / 2, width: 14, height: 14)
         PanelIcon.panelMenu.draw(c, in: r, color: hovered == .groupMenu(id) ? PanelTheme.text1 : PanelTheme.text4)
-        addHit(r.insetBy(-4), .groupMenu(id))
+        addHit(r.insetBy(-5), .groupMenu(id))
     }
 
     func openGroupMenu(_ groupId: String) {
