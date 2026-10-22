@@ -18,6 +18,7 @@ import MpvfxBackend
 import MpvfxCanvas
 import MpvfxPanels
 import MpvfxShared
+import MpvfxTimeline
 @testable import MpvfxDesktop
 
 final class ReplaceMediaDragTests: XCTestCase {
