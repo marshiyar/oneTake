@@ -24,6 +24,19 @@ public enum NativeCutTransitionKind: String, CaseIterable, Sendable {
     case dissolve
     /// The outgoing clip fades to a colour up to the cut, and the incoming clip fades up from it.
     case dip
+    case wipe
+    case push
+
+    /// Transitions with both clips visible throughout the range borrow source handles.
+    public var overlaps: Bool { self != .dip }
+}
+
+/// Direction the new picture travels into the canvas.
+public enum NativeTransitionDirection: String, CaseIterable, Sendable {
+    case left, right, up, down
+    public var vector: (x: Double, y: Double) {
+        switch self { case .left: (-1, 0); case .right: (1, 0); case .up: (0, -1); case .down: (0, 1) }
+    }
 }
 
 /// Where the transition's range sits relative to the cut.
@@ -78,6 +91,15 @@ public struct NativeCutTransition: Codable, Equatable, Sendable {
     public var alignment: NativeCutTransitionAlignment? {
         get { object["alignment"] == nil ? .centre : object["alignment"]?.stringValue.flatMap(NativeCutTransitionAlignment.init(rawValue:)) }
         set { object["alignment"] = newValue.map { .string($0.rawValue) } }
+    }
+    /// Absent spatial options preserve the default leftward, hard-edge transition.
+    public var direction: NativeTransitionDirection? {
+        get { object["direction"] == nil ? .left : object["direction"]?.stringValue.flatMap(NativeTransitionDirection.init(rawValue:)) }
+        set { object["direction"] = newValue.map { .string($0.rawValue) } }
+    }
+    public var softness: Double {
+        get { object["softness"]?.numberValue ?? 0 }
+        set { object["softness"] = .number(newValue) }
     }
     public var color: String? {
         get { object["color"]?.stringValue }

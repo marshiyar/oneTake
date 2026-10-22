@@ -151,7 +151,7 @@ public final class PreviewCompositor: FrameSource {
                 PreviewPainter.drawOffline(layer, on: target, frame: area, scale: areaScale)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
-            if layer.kind == .text {   // text layers are laid out, not decoded
+            if layer.isProcedural {   // text layers are laid out, not decoded
                 PreviewPainter.drawText(layer, on: target, frame: area, scale: areaScale)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
@@ -301,7 +301,7 @@ public final class PreviewCompositor: FrameSource {
     public var maxReverseChunk = 48
 
     func lane(for layer: PreviewLayer, fps: Double) -> PreviewDecodeLane? {
-        guard decodesMedia, layer.kind != .text, layer.kind != .offline else { return nil }
+        guard decodesMedia, !layer.isProcedural, layer.kind != .offline else { return nil }
         if let l = lanes[layer.laneKey] { return l }
         let l = PreviewDecodeLane(layer: layer, fps: fps, cache: cache)
         l.onFrame = { [weak self] in self?.frameReady?() }
