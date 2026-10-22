@@ -179,8 +179,8 @@ extension KeyframeEasingPanel {
                    _ current: NativeInterpolation?) -> Double {
         var y = top
         let x = r.x + Self.pad, w = r.width - 2 * Self.pad
-        if t.parameterId == TimelineEditor.positionId {
-            chip(c, x: x, y: y, "Separate dimensions", hit: .disabled("dimensions"), active: false, enabled: false, disabledKey: "dimensions")
+        if [TimelineEditor.positionId, POSITION_X_PARAMETER_ID, POSITION_Y_PARAMETER_ID].contains(t.parameterId) {
+            chip(c, x: x, y: y, "Separate dimensions", hit: .dimensions, active: t.parameterId != TimelineEditor.positionId, enabled: editor.canTogglePositionDimensions(clipId: t.clipId), disabledKey: "dimensions")
             y += Self.rowH + 6
         }
         if overshootsWhileAutoOrienting(editor, t, current) {

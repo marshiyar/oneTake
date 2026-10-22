@@ -85,6 +85,7 @@ public final class TimelineEditor {
                                                 eases: Dictionary($0.keyframes.map { ($0.frame, TimelineKeyframeEase($0.outgoing)) }, uniquingKeysWith: { a, _ in a }))
                     }
                     m.effects = c.effects.filter(\.enabled).map { TimelineEffectModel(id: "native:\($0.id)", label: Self.titleCase($0.effectId)) }
+                    m.beatTimes = c.visibleBeatFrames.map { $0.timeline / f }
                     m.muted = c.muted
                     m.assetId = c.assetId
                     if let srcFrames = a?.durationFrames, srcFrames > 0 {

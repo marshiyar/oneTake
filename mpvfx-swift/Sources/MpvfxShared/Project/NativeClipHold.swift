@@ -90,7 +90,7 @@ public extension NativeProjectDocument {
     func isUndrawnHoldClip(_ clip: NativeProjectClip) -> Bool { clip.holdSourceFrame.map { !$0.isCurrentVersion } ?? false }
 
     /// Every clip preview and export leave out while the document keeps it (`isUndrawnElementClip`, `isUndrawnHoldClip`).
-    func isUndrawnClip(_ clip: NativeProjectClip) -> Bool { isUndrawnElementClip(clip) || isUndrawnHoldClip(clip) }
+    func isUndrawnClip(_ clip: NativeProjectClip) -> Bool { isUndrawnElementClip(clip) || isUndrawnHoldClip(clip) || isUndrawnTextStyleClip(clip) }
 
     /// The notice for held frames written by a newer version of the editor (kept, not drawn); nil when there is none.
     var unsupportedHoldNotice: String? {

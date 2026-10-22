@@ -128,6 +128,10 @@ final class CrossPaneDragGroup: CrossPaneDrag {
         active?.dragEnded(over: region, local: local)
         active = nil
     }
+    /// Modifiers are latched before the drag resolves: broadcast, so the move that starts the drag
+    /// carries an already-held Option to the bin drag. Every captured move refreshes the latch, so no
+    /// stale value can leak into a later gesture.
+    func updateDragModifiers(_ modifiers: PointerModifiers) { for d in drags { d.updateDragModifiers(modifiers) } }
     func drawDrag(_ c: CanvasContext) { for d in drags { d.drawDrag(c) } }
 }
 

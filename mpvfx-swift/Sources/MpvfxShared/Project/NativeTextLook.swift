@@ -156,7 +156,9 @@ func validateNativeTextLook(_ look: NativeJSONValue?, _ path: String, _ issues: 
 public extension NativeProjectDocument {
     /// One notice for text looks from a newer version, retained in the document but not drawn.
     var unsupportedTextLooksNotice: String? {
-        let count = sequence.tracks.flatMap(\.clips).filter { $0.text?.look?.isSupported == false }.count
+        let count = sequence.tracks.flatMap(\.clips).filter {
+            resolvedText($0, textStyles ?? [])?.look?.isSupported == false
+        }.count
         guard count > 0 else { return nil }
         return count == 1
             ? "1 text look from a newer version of the editor is kept in the project but not drawn in preview or export."
