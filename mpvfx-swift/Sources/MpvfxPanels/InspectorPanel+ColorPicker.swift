@@ -24,6 +24,9 @@ struct ColorFieldSpec {
     /// Whether the renderer reads an alpha byte for this property (Fill), so the picker offers it.
     var allowAlpha: Bool
     var historyLabel: String
+    /// Linked text fields display resolved values while their tier and reset follow the local override.
+    var tier: PropertyValueTier? = nil
+    var reset: (() -> Bool)? = nil
     /// Writes a normalized hex, or nil to clear; false when nothing changed.
     var apply: (String?) -> Bool
 }
@@ -52,10 +55,11 @@ extension InspectorPanel {
     /// A colour row: the field with its swatch, the format hint after a refused value, and the picker when open.
     func colorRows(_ f: ColorFieldSpec, clipId: String) -> [InspectorRow] {
         let swatchKey = "swatch:\(f.key)"
+        let tier = f.tier ?? (f.value == nil ? .default : .explicitCustom)
         let number = InspectorRow.Number(
-            key: f.key, label: f.label, text: f.value ?? f.placeholder, tier: f.value == nil ? .default : .explicitCustom,
+            key: f.key, label: f.label, text: f.value ?? f.placeholder, tier: tier,
             commit: { [weak self] text in self?.commitColorText(text, f) },
-            reset: f.value == nil ? nil : { [weak self] in self?.edited(f.apply(nil), label: f.historyLabel) },
+            reset: tier == .default ? nil : { [weak self] in self?.edited(f.reset?() ?? f.apply(nil), label: f.historyLabel) },
             swatch: InspectorRow.Swatch(color: normalizedHexColor(f.value ?? f.placeholder), key: swatchKey))
         let open = InspectorRow(.buttons([InspectorRow.Button(key: swatchKey, label: "Pick \(f.label.lowercased())", style: .chip) { [weak self] in
             self?.toggleColorPicker(f, clipId: clipId)
@@ -68,7 +72,7 @@ extension InspectorPanel {
 
     func colorHintRow(_ key: String) -> InspectorRow {
         InspectorRow(.custom(InspectorCustomRow(id: "colorHint:\(key)", height: 16, draw: { c, r, _ in
-            PanelDraw.text(c, Self.colorFormatHint, in: r, font: PanelTheme.font(10), color: PanelTheme.red400, align: .right)
+            PanelDraw.text(c, Self.colorFormatHint, in: r, font: PanelTheme.font(11), color: PanelTheme.red400, align: .right)
         })))
     }
 
@@ -147,7 +151,10 @@ extension InspectorPanel {
     static func projectColors(_ doc: NativeProjectDocument?) -> [String] {
         guard let doc else { return [] }
         var raw: [String?] = []
-        for clip in doc.sequence.tracks.flatMap(\.clips) { raw += [clip.style?.fill, clip.style?.strokeColor, clip.text?.color] }
+        for clip in doc.sequence.tracks.flatMap(\.clips) {
+            let text = resolvedText(clip, doc.textStyles ?? [])
+            raw += [clip.style?.fill, clip.style?.strokeColor, text?.color]
+        }
         raw.append(doc.canvas.background)
         var out: [String] = []
         for c in raw.compactMap({ $0.flatMap(normalizedHexColor) }) where !out.contains(c) { out.append(c) }

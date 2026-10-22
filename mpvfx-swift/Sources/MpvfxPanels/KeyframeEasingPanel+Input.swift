@@ -35,6 +35,12 @@ extension KeyframeEasingPanel {
         if pressView(hit, p, t) { return }
         let current = t.focused.flatMap { editor.outgoing($0) }
         switch hit {
+        case .dimensions:
+            if editor.togglePositionDimensions(clipId: t.clipId) {
+                state.chosenProperty = t.parameterId == TimelineEditor.positionId ? POSITION_X_PARAMETER_ID : TimelineEditor.positionId
+                state.pinnedSelection = selectedKeyframes
+                edited(true)
+            }
         case .copy: state.copy(editor, t)
         case .paste: edited(state.paste(editor, t))
         case .speedHandle(let side): drag = speedDragStart(side, editor, t); frozenSpeedRange = graphBox?.values
