@@ -47,6 +47,12 @@ public struct PreviewLayer: Equatable, Sendable {
     /// Degrees, clockwise, about the box centre (includes auto-rotate along the motion path).
     public var rotation: Double
     public var opacity: Double
+    /// The clip's fade gain at this frame (`NativeClipFade`), already in `opacity`; a live opacity override is
+    /// multiplied by it too (`PreviewCompositor.applyStage`).
+    public var fadeGain = 1.0
+    /// True when only the clip's fade hides the layer at this frame (a fade-in's first frame): it is not drawn, but
+    /// its decoder is kept ready for the frames that follow (`needsDecoder`).
+    public var hiddenByFade = false
     /// How the layer combines with the ones under it (`clip.style.blend`).
     public var blend = NativeBlendMode.normal
     public var crop: CropInsets
@@ -106,8 +112,13 @@ public struct PreviewLayer: Equatable, Sendable {
     public var isStill: Bool { kind == .image || holdSourceTime != nil }
 
     /// Nothing would reach the screen (zero area, zero scale, fully transparent, or cropped away).
-    public var isVisible: Bool {
-        opacity > 0 && box.width > 0 && box.height > 0 && abs(scaleX) >= 1e-6 && abs(scaleY) >= 1e-6 &&
+    public var isVisible: Bool { opacity > 0 && hasArea }
+
+    /// Drawn now, or hidden only by its fade: the compositor decodes and pre-rolls it either way.
+    public var needsDecoder: Bool { (opacity > 0 || hiddenByFade) && hasArea }
+
+    var hasArea: Bool {
+        box.width > 0 && box.height > 0 && abs(scaleX) >= 1e-6 && abs(scaleY) >= 1e-6 &&
             crop.left + crop.right < box.width && crop.top + crop.bottom < box.height
     }
 
@@ -397,7 +408,11 @@ public struct PreviewComposition {
         if let s = num("transform.scale") { sx = s; sy = s } else if let s = vec("transform.scale") { sx = s.x; sy = s.y }
         if let x = num("transform.scaleX") { sx = x }
         if let y = num("transform.scaleY") { sy = y }
-        let opacity = max(0, min(1, num("transform.opacity") ?? num("visual.opacity") ?? num("visual.autoAlpha") ?? 1))
+        // The clip's fade (#85, #89) multiplies the keyframed opacity; export paints this layer too
+        // (ExportFramePainter).
+        let keyed = max(0, min(1, num("transform.opacity") ?? num("visual.opacity") ?? num("visual.autoAlpha") ?? 1))
+        let fade = c.fadeGain(atFrame: local)
+        let opacity = keyed * fade
         let box = CanvasRect(x: (num("layout.left") ?? 0) + px, y: (num("layout.top") ?? 0) + py,
                              width: max(0, num("layout.width") ?? canvas.width), height: max(0, num("layout.height") ?? canvas.height))
         let crop = c.crop.map { CropInsets(top: max(0, $0.top), right: max(0, $0.right), bottom: max(0, $0.bottom), left: max(0, $0.left)) } ?? .zero
@@ -409,6 +424,8 @@ public struct PreviewComposition {
                             startFrame: Int(c.startFrame.rounded()), endFrame: Int((c.startFrame + c.durationFrames).rounded()),
                             box: box, scaleX: sx, scaleY: sy,
                             rotation: (num("transform.rotation") ?? 0) + autoRotate, opacity: opacity, crop: crop)
+        out.fadeGain = fade
+        out.hiddenByFade = fade == 0 && keyed > 0
         out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
         out.timelineFPS = fps
         out.motionRotation = autoRotate

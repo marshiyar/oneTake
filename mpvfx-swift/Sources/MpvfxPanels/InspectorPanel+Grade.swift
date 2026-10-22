@@ -29,6 +29,10 @@ public struct GradeUIState: Equatable {
     /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
+    /// A fresh physical arrow press starts a history group; its repeats reuse it.
+    var wheelKeyControl: String?
+    var wheelKeyCode: EditorKey.Code?
+    var wheelKeyHistory: String?
     /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
     /// past the drag threshold (a click that only selects a point never moves it).
     var curveGrab: (dx: Double, dy: Double, start: CanvasPoint, moved: Bool)?

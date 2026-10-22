@@ -15,6 +15,7 @@ import Foundation
 import XCTest
 import MpvfxCanvas
 import MpvfxShared
+import MpvfxTheme
 import MpvfxTimeline
 import OneTakeKeyframes
 @testable import MpvfxPanels
@@ -93,4 +94,24 @@ final class GradeKeyboardTests: XCTestCase {
         editor.undo()
         XCTAssertEqual(editor.colorGrading(clipId: "clip:a"), g)
     }
+    /// A4: the shared two-point accent outline encloses each focused grade control in both appearances.
+    func testEveryGradeControlDrawsAFocusRingInDarkAndLight() throws {
+        defer { Theme.setMode(.dark) }
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            let (p, _, c) = try inspector(ColorGrading())
+            for hit in [InspectorPanel.Hit.custom("grade:balance", 0), .custom("grade:balance", 10),
+                        .custom("grade:wheels", 0), .custom("grade:wheels", 10), .custom("grade:curve", 0)] {
+                try focus(p, c, hit)
+                let ring = try XCTUnwrap(p.focus.ringRect(p.hits))
+                let canvas = RecordingCanvas()
+                p.drawFocusAndScrollbar(canvas, body: CanvasRect(x: 0, y: 0, width: 380, height: 5000), content: 5000)
+                let outline = try XCTUnwrap(canvas.ops.first { $0.isStroke && $0.width == 2 && $0.color == PanelTheme.accent })
+                XCTAssertLessThanOrEqual(try XCTUnwrap(outline.points.map(\.x).min()), ring.x)
+                XCTAssertGreaterThanOrEqual(try XCTUnwrap(outline.points.map(\.x).max()), ring.maxX)
+                XCTAssertGreaterThan(PanelTheme.accent.a, 0)
+            }
+        }
+    }
+
 }
