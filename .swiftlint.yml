@@ -26,3 +26,10 @@ disabled_rules:
   # slashes; the rule cannot distinguish banners from real comments (which do
   # use a space, per convention).
   - comment_spacing
+  # The codebase puts opening braces on the same line (K&R). The opt-in
+  # Allman-style rule directly contradicts `opening_brace`, which the code
+  # satisfies; enabling both makes the gate unsatisfiable.
+  - contrasted_opening_brace
+  # Deinitializers exist only where cleanup is needed (audio I/O, writers);
+  # plain model, panel and test classes have nothing to tear down.
+  - required_deinit
