@@ -105,13 +105,14 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
 
     /// The selected clip's frame at `time` with its own grade (the scopes' captured frame), at most `pixelWidth` x
     /// `pixelHeight`. Shares the queue, the source lookup and the bounded cache with the preset tiles.
-    public func gradedFrame(clipId: String, time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
+    /// `exactOnly` waits for the requested frame and reduces straight RGBA with alpha-weighted RGB for measurement.
+    public func gradedFrame(clipId: String, time: Double, pixelWidth: Int, pixelHeight: Int, exactOnly: Bool = false) -> State {
         guard pixelWidth > 1, pixelHeight > 1, let at = clipFrame(clipId: clipId, time: time) else { return .unavailable }
         let (comp, layer, t, want) = (at.comp, at.layer, at.time, at.want)
-        guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
-            return compositor.decodesMedia ? .rendering : .unavailable
+        guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight, exactOnly: exactOnly) else {
+            return compositor.decodesMedia && !decodeGaveUp(lane: layer.laneKey) ? .rendering : .unavailable
         }
-        let slot = "\u{0}scope"
+        let slot = exactOnly ? "\u{0}match" : "\u{0}scope"
         let shownFrame = layer.isStill ? comp.frameIndex(at: t) : source.frame
         let key = Key(lane: layer.laneKey, frame: source.frame, preset: "\(slot)|\(layer.grade?.signature ?? "-")|\(shownFrame)", lut: "",
                       width: pixelWidth, height: pixelHeight)
@@ -128,7 +129,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         if !queued {
             let renderer = colorRenderer, grade = layer.grade, gradeTime = Double(shownFrame) / comp.fps
             queue.async { [weak self] in
-                self?.render(key, slot: slot, raw: source.image, time: gradeTime, renderer: renderer) { grade }
+                self?.render(key, slot: slot, raw: source.image, time: gradeTime, renderer: renderer, alphaCorrect: exactOnly) { grade }
             }
         }
         return .rendering
@@ -201,12 +202,13 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
 
     /// The raw frame to grade: the preview's exact frame, then our own decode's exact frame, then (while that
     /// decode runs) the nearest frame either cache holds. Starts the own decode when the preview has no exact frame.
-    func sourceFrame(_ layer: PreviewLayer, want: Int, fps: Double, pixelWidth: Int, pixelHeight: Int) -> (frame: Int, image: CanvasImage)? {
+    func sourceFrame(_ layer: PreviewLayer, want: Int, fps: Double, pixelWidth: Int, pixelHeight: Int, exactOnly: Bool = false) -> (frame: Int, image: CanvasImage)? {
         let lane = layer.laneKey
         if let img = compositor.cache.frame(lane: lane, frame: want) { return (want, img) }
         if let img = ownCache.frame(lane: lane, frame: want) { return (want, img) }
+        if exactOnly && decodeGaveUp(lane: lane) { return nil }
         // Under the playhead the preview's own lane is already decoding this frame; elsewhere ask for it ourselves.
-        if compositor.decodesMedia, compositor.lanes[lane] == nil {
+        if compositor.decodesMedia, exactOnly || compositor.lanes[lane] == nil {
             if ownLane?.key != lane {
                 ownLane?.stop()
                 let l = PreviewDecodeLane(layer: layer, fps: fps, cache: ownCache)
@@ -215,16 +217,17 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
             }
             ownLane?.request(frame: want, ahead: 0, size: PreviewDecodeSize(width: pixelWidth, height: pixelHeight))
         }
+        if exactOnly { return nil }
         return compositor.cache.nearest(lane: lane, to: want) ?? ownCache.nearest(lane: lane, to: want)
     }
 
-    func render(_ key: Key, slot: String, raw: CanvasImage, time: Double, renderer: ColorRenderer, grade makeGrade: () -> ColorGradeRenderer?) {
+    func render(_ key: Key, slot: String, raw: CanvasImage, time: Double, renderer: ColorRenderer, alphaCorrect: Bool = false, grade makeGrade: () -> ColorGradeRenderer?) {
         lock.lock()
         let wanted = latest[slot] == key
         if !wanted { pending.remove(key) }
         lock.unlock()
         guard wanted else { return }
-        var img = Self.downscale(raw, fitting: key.width, key.height)
+        var img = Self.downscale(raw, fitting: key.width, key.height, alphaCorrect: alphaCorrect)
         if let grade = makeGrade(), grade.isActive {
             var px = img.rgba
             renderer.render(grade, &px, width: img.width, height: img.height, time: time)
@@ -273,7 +276,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     public func wait() { ownLane?.wait(); queue.sync {} }
 
     /// Area-average downscale to the largest size with the image's aspect inside `w` x `h` (never upscales).
-    public static func downscale(_ img: CanvasImage, fitting w: Int, _ h: Int) -> CanvasImage {
+    public static func downscale(_ img: CanvasImage, fitting w: Int, _ h: Int, alphaCorrect: Bool = false) -> CanvasImage {
         guard img.width > 0, img.height > 0 else { return img }
         let s = min(1, min(Double(w) / Double(img.width), Double(h) / Double(img.height)))
         let ow = max(1, Int((Double(img.width) * s).rounded())), oh = max(1, Int((Double(img.height) * s).rounded()))
@@ -287,10 +290,15 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
                     var r = 0, g = 0, b = 0, a = 0
                     for sy in y0..<y1 {
                         var i = (sy * img.width + x0) * 4
-                        for _ in x0..<x1 { r += Int(src[i]); g += Int(src[i + 1]); b += Int(src[i + 2]); a += Int(src[i + 3]); i += 4 }
+                        for _ in x0..<x1 {
+                            let alpha = Int(src[i + 3]), weight = alphaCorrect ? alpha : 1
+                            r += Int(src[i]) * weight; g += Int(src[i + 1]) * weight; b += Int(src[i + 2]) * weight
+                            a += alpha; i += 4
+                        }
                     }
                     let n = (y1 - y0) * (x1 - x0), o = (y * ow + x) * 4
-                    out[o] = UInt8(r / n); out[o + 1] = UInt8(g / n); out[o + 2] = UInt8(b / n); out[o + 3] = UInt8(a / n)
+                    let weight = alphaCorrect ? max(1, a) : n
+                    out[o] = UInt8(r / weight); out[o + 1] = UInt8(g / weight); out[o + 2] = UInt8(b / weight); out[o + 3] = UInt8(a / n)
                 }
             }
         }
