@@ -409,7 +409,7 @@ public final class InspectorPanel {
 
     func drawNothingHere(_ c: CanvasContext, _ r: CanvasRect, top: Double) {
         PanelDraw.text(c, "Nothing here for this selection.", in: CanvasRect(x: r.x + 16, y: top, width: r.width - 32, height: 16),
-                       font: PanelTheme.font(11), color: PanelTheme.text4)
+                       font: PanelTheme.font(11), color: PanelTheme.inspectorText)
     }
 
     /// The smallest open group (header and body), on the grid.
@@ -452,12 +452,12 @@ public final class InspectorPanel {
         icon.draw(c, in: CanvasRect(x: row.x, y: row.y + (h - 15) / 2, width: 15, height: 15), color: iconColor)
         var ax = row.maxX
         let clear = CanvasRect(x: ax - 13, y: row.y + (h - 13) / 2, width: 13, height: 13)
-        PanelIcon.close.draw(c, in: clear, color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3)
+        PanelIcon.close.draw(c, in: clear, color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.inspectorText)
         hits.add(Self.target(clear), .headerClear)
         ax = clear.x - 11
         if let editor, editor.clip(s.id).map({ $0.clip.staticParameters != nil || !$0.clip.parameterTracks.isEmpty || $0.clip.crop != nil }) == true {
             let reset = CanvasRect(x: ax - 13, y: row.y + (h - 13) / 2, width: 13, height: 13)
-            PanelIcon.reset.draw(c, in: reset, color: hovered == .headerReset ? PanelTheme.text1 : PanelTheme.text3)
+            PanelIcon.reset.draw(c, in: reset, color: hovered == .headerReset ? PanelTheme.text1 : PanelTheme.inspectorText)
             hits.add(Self.target(reset), .headerReset)
             ax = reset.x - 11
         }
@@ -475,13 +475,13 @@ public final class InspectorPanel {
         let row = CanvasRect(x: r.x + 16, y: r.y, width: r.width - 32, height: h)
         PanelIcon.music.draw(c, in: CanvasRect(x: row.x, y: row.y + (h - 14) / 2, width: 14, height: 14), color: PanelTheme.audioViolet)
         let clear = CanvasRect(x: row.maxX - 16, y: row.y + (h - 16) / 2, width: 16, height: 16)
-        PanelIcon.close.draw(c, in: clear.insetBy(2), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3)
+        PanelIcon.close.draw(c, in: clear.insetBy(2), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.inspectorText)
         hits.add(Self.target(clear), .headerClear)
         let nameX = row.x + 24, avail = max(0, clear.x - 10 - nameX)
         let ns = PanelDraw.text(c, g.label ?? "Group", in: CanvasRect(x: nameX, y: row.y, width: avail * 0.6, height: h),
                                 font: PanelTheme.font(13, .semibold), color: PanelTheme.text0)
         PanelDraw.text(c, "Audio group", in: CanvasRect(x: nameX + ns.width + 8, y: row.y + 1.5, width: max(0, avail - ns.width - 8), height: h),
-                       font: PanelTheme.font(10), color: PanelTheme.text4)
+                       font: PanelTheme.font(11), color: PanelTheme.inspectorText)
         PanelDraw.hline(c, x0: r.x, x1: r.maxX, y: r.y + h, PanelTheme.panelHairline)
         return h + 1
     }
@@ -491,10 +491,10 @@ public final class InspectorPanel {
         let row = CanvasRect(x: r.x + 16, y: r.y + 12, width: r.width - 32, height: 28)
         PanelDraw.text(c, "\(selection.count) clips selected", in: row, font: PanelTheme.font(11, .semibold), color: PanelTheme.text1)
         let clear = CanvasRect(x: row.maxX - 28, y: row.y, width: 28, height: 28)
-        PanelDraw.text(c, "×", in: clear, font: PanelTheme.font(14), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.text3, align: .center)
+        PanelDraw.text(c, "×", in: clear, font: PanelTheme.font(14), color: hovered == .headerClear ? PanelTheme.text1 : PanelTheme.inspectorText, align: .center)
         hits.add(clear, .headerClear)
         PanelDraw.text(c, "Align visual clips below, or select one to edit properties.", in: CanvasRect(x: row.x, y: row.maxY + 4, width: row.width, height: 16),
-                       font: PanelTheme.font(10), color: PanelTheme.text4)
+                       font: PanelTheme.font(11), color: PanelTheme.text4)
     }
 
     func drawGroupHeader(_ c: CanvasContext, _ r: CanvasRect, _ g: InspectorGroup, open: Bool) {
@@ -517,12 +517,12 @@ public final class InspectorPanel {
             if g.enabled == false {   // a bypassed group says so beside its title, not only by the switch position
                 let x = inner.x + t.width + 8
                 PanelDraw.text(c, g.summary, in: CanvasRect(x: x, y: inner.y + 1, width: max(0, inner.maxX - 90 - x), height: inner.height),
-                               font: Self.rowFont, color: PanelTheme.text3)
+                               font: PanelTheme.mono(11), color: PanelTheme.inspectorText)
             }
-            PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text3)
+            PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.inspectorText)
             if g.reset != nil {
                 let rr = CanvasRect(x: accessoryX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
-                PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.text3)
+                PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.inspectorText)
                 hits.add(Self.target(rr), .groupReset(g.id))
                 accessoryX = rr.x - 10
             }
@@ -531,9 +531,9 @@ public final class InspectorPanel {
             let t = PanelDraw.text(c, g.title, in: CanvasRect(x: inner.x, y: inner.y, width: inner.width - 20, height: inner.height),
                                    font: PanelTheme.font(12, .medium), color: hovered == .group(g.id) ? PanelTheme.text1 : PanelTheme.text2)
             PanelDraw.text(c, g.summary, in: CanvasRect(x: inner.x + t.width + 8, y: inner.y + 1, width: max(0, inner.width - t.width - 28 - (detachable ? 22 : 0)), height: inner.height),
-                           font: Self.rowFont, color: PanelTheme.text3)
+                           font: PanelTheme.mono(11), color: PanelTheme.inspectorText)
             if detachable { drawGroupMenuButton(c, r, g.id, rightEdge: accessoryX) }
-            PanelIcon.groupCaretRight.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.text5)
+            PanelIcon.groupCaretRight.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.inspectorText)
             c.fillRect(CanvasRect(x: r.x, y: r.maxY - 1, width: r.width, height: 1).snapped, PanelTheme.panelHairline)
         }
     }

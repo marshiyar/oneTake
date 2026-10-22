@@ -31,7 +31,7 @@ extension InspectorPanel {
             panel.addHit(button, .custom("grade:autobalance", 0))
             if failed {
                 PanelDraw.text(c, "No frame to measure", in: CanvasRect(x: button.maxX + 8, y: r.y + 6.5, width: max(0, r.maxX - button.maxX - 8), height: 15),
-                               font: PanelTheme.font(9), color: PanelTheme.red400)
+                               font: PanelTheme.font(11), color: PanelTheme.red400)
             }
         }, pointer: { [weak self] _, _, phase in
             guard let self, phase == 0 else { return }

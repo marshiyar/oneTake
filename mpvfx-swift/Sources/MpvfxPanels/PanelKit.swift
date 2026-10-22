@@ -116,10 +116,10 @@ public enum PanelDraw {
         c.strokeRoundedRect(r.snapped.insetBy(-1), radius: radius + 1, PanelTheme.accent, width: 2)
     }
 
-    /// Small text button (`px-2 py-0.5 text-[10px] rounded`).
+    /// Small text button with the inspector’s 11 px secondary text floor.
     public static func smallButton(_ c: CanvasContext, _ r: CanvasRect, label: String, fill: CanvasColor?, color: CanvasColor) {
         if let fill { c.fillRoundedRect(r, radius: PanelTheme.radius, fill) }
-        text(c, label, in: r, font: PanelTheme.font(10), color: color, align: .center)
+        text(c, label, in: r, font: PanelTheme.font(11), color: color, align: .center)
     }
 }
 
