@@ -267,20 +267,14 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     let rightTracks = try rebasedTracks(clip, local, clip.durationFrames, engine) { nativeSplitTrackId($0.id, rightId, $0.parameterId) }
     var left = clip
     left.durationFrames = local; left.parameterTracks = leftTracks
-<<<<<<< HEAD
-=======
     left.moves = clip.movesForSplitPart(.left, duration: local)
->>>>>>> origin/main
     left.speedRamp = clip.speedRamp?.sliced(from: 0, until: local)
     // The cut is a new edge on both parts: the left keeps the fade-in, the right the fade-out.
     left.fadeOutFrames = nil; left.clampFades(movedEdge: .end)
     left.cropPivotSegments = rebaseNativeCropPivotSegments(clip, rebasedTracks: leftTracks, fromFrame: 0, untilFrameExclusive: local)
     var right = clip
     right.id = rightId; right.startFrame = splitFrame; right.durationFrames = clip.durationFrames - local
-<<<<<<< HEAD
-=======
     right.moves = clip.movesForSplitPart(.right, duration: right.durationFrames)
->>>>>>> origin/main
     right.speedRamp = clip.speedRamp?.sliced(from: local, until: clip.durationFrames)
     setSource(&right, position)
     right.fadeInFrames = nil; right.clampFades(movedEdge: .start)
