@@ -47,8 +47,9 @@ final class PanelLayoutSnapshotTests: XCTestCase {
         }
     }
 
-    /// The tab bars (docs/DESIGN.md "Tabs"): the header strip, the Grade curve tabs (behind an overflow button at
-    /// 280 pt) and the effect families, at every width in both appearances; the selected tab's underline is the accent.
+    /// The tab bars (docs/DESIGN.md "Tabs"): the header strip, the Grade curve tabs (two legible lines since
+    /// issue #357, every tab drawn even at 280 pt) and the effect families, at every width in both appearances;
+    /// the selected tab's underline is the accent.
     func testTabBarsAtEveryWidthInBothAppearances() throws {
         let scale = 1.0, h = PanelLayoutAuditTests.height   // tall enough for the whole Grade body
         for mode in [ThemeMode.dark, .light] {
@@ -67,10 +68,15 @@ final class PanelLayoutSnapshotTests: XCTestCase {
                     let name = "\(group) \(wName) \(mode)"
                     let design = try XCTUnwrap(r.hits.rect { $0 == .design }, name)
                     assertPixel(t, design.midX, design.maxY - 1, scale: scale, PanelTheme.accent, "\(name): Design underline")
-                    let id = group == "grade" ? "grade:curvetabs" : "fx:tabs"
-                    let bar = try XCTUnwrap(r.inspector.tabBars[id], name)
-                    let sel = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom(id, bar.base + bar.selected) }, name)
-                    assertPixel(t, sel.midX, sel.maxY - 1, scale: scale, PanelTheme.accent, "\(name): selected tab underline")
+                    if group == "grade" {
+                        // Master is the default tab; its 2pt accent bar sits at the tab rect's bottom.
+                        let sel = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:curvetabs", 0) }, name)
+                        assertPixel(t, sel.midX, sel.maxY - 1, scale: scale, PanelTheme.accent, "\(name): selected curve tab underline")
+                    } else {
+                        let bar = try XCTUnwrap(r.inspector.tabBars["fx:tabs"], name)
+                        let sel = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("fx:tabs", bar.base + bar.selected) }, name)
+                        assertPixel(t, sel.midX, sel.maxY - 1, scale: scale, PanelTheme.accent, "\(name): selected tab underline")
+                    }
                 }
             }
         }
