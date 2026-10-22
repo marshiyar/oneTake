@@ -108,6 +108,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>LSApplicationCategoryType</key><string>public.app-category.video</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
+<key>NSMicrophoneUsageDescription</key><string>MpVFX records your voice-over from the microphone onto the timeline.</string>
+<key>NSSpeechRecognitionUsageDescription</key><string>MpVFX turns the speech in your clips into captions on this Mac. Audio is not sent anywhere.</string>
 </dict></plist>
 PLIST
 plutil -lint "$app/Contents/Info.plist"
@@ -121,7 +123,8 @@ else
   set -- --force --sign -
 fi
 for f in "$app/Contents/Frameworks/"*; do if [ -e "$f" ]; then codesign "$@" "$f"; fi; done
-codesign "$@" "$app"
+# The hardened runtime blocks microphone access unless the app signs the audio-input entitlement (voice-over).
+codesign "$@" --entitlements packaging/macos/mpvfx.entitlements "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
 # notarize <dmg>: submit to Apple's notary service and wait; succeeds only on an Accepted verdict.

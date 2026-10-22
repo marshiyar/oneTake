@@ -111,7 +111,7 @@ public final class ProgramScopeRenderer: @unchecked Sendable {
         let frameIndex = comp.frameIndex(at: time)
         var parts: [Part] = [], pictures: [CanvasImage?] = []
         for (layer, lw, lh) in ExportFramePainter.layers(comp, at: time, scale: scale) {
-            let picture = layer.kind == .text ? nil : cachedPicture(layer, frameIndex: frameIndex)
+            let picture = layer.isProcedural ? nil : cachedPicture(layer, frameIndex: frameIndex)
             pictures.append(picture?.image)
             parts.append(Part(layer: layer, width: lw, height: lh, picture: picture.map {
                 PictureId(lane: layer.laneKey, frame: $0.frame, width: $0.image.width, height: $0.image.height)
@@ -124,7 +124,7 @@ public final class ProgramScopeRenderer: @unchecked Sendable {
 
     /// The raw picture the preview holds for `layer` at timeline frame `frameIndex`: exact, else the nearest cached.
     func cachedPicture(_ layer: PreviewLayer, frameIndex: Int) -> (frame: Int, image: CanvasImage)? {
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : frameIndex
+        let want = layer.isStill ? PreviewDecodeLane.stillFrame : frameIndex
         if let image = compositor.cache.frame(lane: layer.laneKey, frame: want) { return (want, image) }
         return compositor.cache.nearest(lane: layer.laneKey, to: want)
     }

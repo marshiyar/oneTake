@@ -33,6 +33,7 @@ public extension TimelineEditor {
             guard let i = d.sequence.tracks[t].clips.firstIndex(where: { $0.id == clipId }) else { continue }
             var c = d.sequence.tracks[t].clips[i]
             c.durationFrames = max(1, (c.durationFrames * old / rate).rounded())
+            c.moves = c.movesFitted(toDuration: c.durationFrames)
             c.clampFades(movedEdge: .end)
             c.playbackRate = abs(rate - 1) < 1e-9 ? nil : NativePlaybackRate(numerator: (rate * 1000).rounded(), denominator: 1000)
             d.sequence.tracks[t].clips[i] = c

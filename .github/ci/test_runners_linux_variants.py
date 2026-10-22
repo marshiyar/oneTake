@@ -71,6 +71,23 @@ class Handoff(unittest.TestCase):
         self.assertNotIn("needs", guard)
         self.assertNotIn("if", guard)
 
+    def test_runs_only_when_the_headerless_graph_can_change(self):
+        # Throttle: Swift-only changes reuse mpvfx-ci's headed build; the variants run on the
+        # manifest, the lockfile, the C shims, the guard and their own workflow files, plus the
+        # nightly/weekly schedule and hand runs. Broad Sources/** or Tests/** globs would fire
+        # both variants on every pull request again.
+        for wf in VARIANTS:
+            on = yaml.safe_load(text(f"{wf}.yml"))[True]
+            for event in ("pull_request", "push"):
+                paths = on[event]["paths"]
+                self.assertIn("mpvfx-swift/Package.swift", paths, f"{wf}/{event}")
+                self.assertIn("mpvfx-swift/binaries.lock", paths, f"{wf}/{event}")
+                for noise in ("mpvfx-swift/Sources/**", "mpvfx-swift/Tests/**", "mpvfx-swift/tools/**",
+                              "**/*.md"):
+                    self.assertNotIn(noise, paths, f"{wf}/{event}")
+            self.assertIn("schedule", on, wf)
+            self.assertIn("workflow_dispatch", on, wf)
+
 
 class Generated(unittest.TestCase):
     def setUp(self):

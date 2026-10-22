@@ -41,15 +41,36 @@ extension InspectorPanel {
         return editor.audioGroup(id)
     }
 
+    /// The groups this panel shows: the Design tab's, minus the ones living in their own dock panel and in the
+    /// user's order; or, for a detached panel (`pinnedPanel`), only that panel's groups.
     func buildGroups() -> [InspectorGroup] {
+        let all = buildAllGroups()
+        if let pinned = pinnedPanel { return all.filter { DesignGroups.panel(forGroup: $0.id) == pinned } }
+        let shown = all.filter { g in DesignGroups.panel(forGroup: g.id).map { !detachedPanels.contains($0) } ?? true }
+        let rank = DesignGroups.sanitized(order: designOrder)
+        // The ranked groups are reordered among their own slots; Text and Composition keep theirs.
+        func rankOf(_ g: InspectorGroup) -> Int? { DesignGroups.panel(forGroup: g.id).flatMap(rank.firstIndex(of:)) }
+        let ranked = shown.enumerated().compactMap { i, g in rankOf(g).map { (rank: $0, index: i, group: g) } }
+            .sorted { ($0.rank, $0.index) < ($1.rank, $1.index) }.map(\.group)
+        var next = ranked.makeIterator()
+        return shown.map { rankOf($0) == nil ? $0 : (next.next() ?? $0) }
+    }
+
+    private func buildAllGroups() -> [InspectorGroup] {
         if let editor, let g = selectedBus() { return [busFxGroup(editor, g)] }
         if let editor, showsComposition { return [compositionGroup(editor)] }
+        if let editor, selection.count > 1 {
+            return [alignmentGroup(editor)] + (hasUserLookSelection ? [userLooksGroup(editor)] : [])
+        }
         guard let editor, let s = selected() else { return [] }
         var groups: [InspectorGroup] = []
+        if let generator = generatorGroup(editor, s) { groups.append(generator) }
         if let text = textGroup(editor, s) { groups.append(text) }
         if s.isVisual { groups.append(transformGroup(editor, s)); groups.append(styleGroup(editor, s)) }
+        if let transition = transitionGroup(editor, s) { groups.append(transition) }
         if s.kind == .video || s.kind == .image {
             groups.append(gradeGroup(editor, s))
+            if userLookStore != nil { groups.append(userLooksGroup(editor)) }
             groups.append(stylizeGroup(editor, s))
         }
         if s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId }) { groups.append(effectsGroup(editor, s)) }
@@ -71,9 +92,9 @@ extension InspectorPanel {
         if ok { colorFieldError = nil; onEdited?() }
     }
     private func buildGroupTitle() -> String {
-        switch openGroupId {
+        switch pinnedPanel.flatMap({ DesignGroups.groups(of: $0).first }) ?? openGroupId {
         case "text": "Edit text"; case "layout": "Edit transform"; case "style": "Edit style"; case "grade": "Edit color grade"
-        case "effects": "Edit effects"; case "audio-fx": "Edit audio effects"; case "media": "Edit media"; default: "Edit properties"
+        case "effects", "clip-effects": "Edit effects"; case "audio-fx": "Edit audio effects"; case "media": "Edit media"; default: "Edit properties"
         }
     }
 
@@ -202,6 +223,7 @@ extension InspectorPanel {
         let channels = TimelineEditor.transformEasedParameterIds.filter { editor.isAnimated(clipId: s.id, $0) }
         if !channels.isEmpty { rows += easingRows(editor, s, channels: channels) }
         rows += arcMotionRows(editor, s)
+        rows += [.init(.heading("Align and distribute", trailing: nil))] + alignmentGroup(editor).rows
         return InspectorGroup(id: "layout", title: "Transform",
                               summary: "\(PanelFormat.number(x, decimals: 0))px,\(PanelFormat.number(y, decimals: 0))px · \(Int(w.rounded()))×\(Int(h.rounded()))",
                               rows: rows)
@@ -220,7 +242,7 @@ extension InspectorPanel {
             reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.opacityId)) },
             keyframe: keyframe(editor, s, TimelineEditor.opacityId, fallback: .number(op)))
         return InspectorGroup(id: "style", title: "Style", summary: Self.styleSummary(s.clip.style, opacityPercent: pct),
-                              rows: styleRows(editor, s) + [.init(.slider(slider))])
+                              rows: styleRows(editor, s) + [.init(.slider(slider)), blendRow(editor, s)])
     }
 
     // MARK: Effects

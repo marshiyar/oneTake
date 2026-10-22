@@ -59,8 +59,11 @@ final class TimelineInput: CanvasInput {
     /// only the modifier changes, so the landing preview follows it mid-drag.
     func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
         s.timeline.dragSwapDisabled = modifiers.contains(.alt)
-        // ⌘/Ctrl-click adds to the selection like ⇧ (clips and keyframe diamonds).
-        if button == PointerButton.primary { pointerDown(x: x, y: y, shift: modifiers.contains(.shift) || modifiers.command) }
+        // ⌘/Ctrl-click adds to the selection like ⇧ (clips and keyframe diamonds); ⌘/Ctrl+⌥ drag slips a clip, ⇧ drag on
+        // an edge rolls the cut, ⌥ on an edge ripple-trims (TimelineController.pointerDown).
+        guard button == PointerButton.primary else { return }
+        region.pointerDown(x: x, y: y, keys: TimelineGestureKeys(shift: modifiers.contains(.shift), alt: modifiers.contains(.alt),
+                                                                 command: modifiers.command))
     }
     func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
         s.timeline.dragSwapDisabled = modifiers.contains(.alt); region.pointerMove(x: x, y: y)
@@ -99,7 +102,12 @@ final class PlayerInput: CanvasInput {
         if !s.playerScroll(x: x, y: lastY, dy: dy) { s.player.scroll(x: x, y: lastY, dx: dx, dy: dy, zoom: ctrl) }
     }
     var lastY = 0.0
-    func keyDown(_ k: EditorKey) -> Bool { let h = s.commandKey(k) || s.playerKey(k) || s.keyframeKey(k) || s.player.keyDown(k) || s.timeline.keyDown(k) || s.player.globalKey(k); afterKey(); return h }
+    func keyDown(_ k: EditorKey) -> Bool {
+        // Stage text editing gets first refusal; an unhandled M only adds markers in the timeline pane.
+        let markerKey = !k.command && !k.alt && (k.code == .char("m") || k.code == .char("M"))
+        let h = s.commandKey(k) || s.playerKey(k) || s.keyframeKey(k) || s.player.keyDown(k) || (!markerKey && s.timeline.keyDown(k)) || s.player.globalKey(k)
+        afterKey(); return h
+    }
     func keyUp(_ k: EditorKey) { s.playback.keyUp(k) }
     func resized(_ size: CanvasSize) { s.player.size = size }
 }

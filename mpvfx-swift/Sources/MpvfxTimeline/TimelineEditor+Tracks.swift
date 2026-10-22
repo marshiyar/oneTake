@@ -89,6 +89,17 @@ public extension TimelineEditor {
         return updateTrack(trackId, muted ? "Mute track" : "Unmute track") { t in for i in t.clips.indices where muted || !detached.contains(t.clips[i].id) { t.clips[i].muted = muted } }
     }
 
+    /// Set a persisted mixer fader and pan as one undoable edit.
+    @discardableResult
+    func setTrackMixer(_ trackId: String, gainDB: Double, pan: Double) -> Bool {
+        guard gainDB.isFinite, (-60...12).contains(gainDB), pan.isFinite, (-1...1).contains(pan),
+              document.sequence.tracks.contains(where: { $0.id == trackId && $0.kind == .audio }) else { return false }
+        return updateTrack(trackId, "Adjust track mixer") {
+            $0.mixerGainDB = gainDB == 0 ? nil : gainDB
+            $0.mixerPan = pan == 0 ? nil : pan
+        }
+    }
+
     /// Solo or unsolo an audio track: while any audio track is soloed only soloed tracks are heard (DocumentAudioGraph).
     /// Solo changes what is monitored, not the clips, so a locked track accepts it too, as it accepts unlocking.
     /// Refused for video and mixed tracks, which have no solo button.
@@ -116,7 +127,9 @@ public extension TimelineEditor {
     /// Validate and commit a whole-document edit as one undo step.
     internal func commit(_ d: NativeProjectDocument, _ label: String) -> Bool {
         guard d != document else { return false }
-        return withHistory(label) { apply(.restoreDocument(d)) }
+        // Transitions follow the clips the edit moved, trimmed or removed, in the same step.
+        let fitted = reconcileNativeCutTransitions(d)
+        return withHistory(label) { apply(.restoreDocument(fitted)) }
     }
 
     /// Adds an empty track of `kind` to `d` at display position `index` of `order` (nil = bottom) and renumbers the
@@ -157,6 +170,8 @@ public extension TimelineEditor {
         case let .trimIn(a, _), let .trimOut(a, _), let .delete(a): return locked.contains(a.trackId)
         case let .split(a, _, _): return locked.contains(a.trackId)
         case .deleteMany(let list): return list.contains { locked.contains($0.trackId) }
+        case let .slip(a, _): return locked.contains(a.trackId)
+        case .roll(let roll): return locked.contains(roll.outgoing.trackId) || locked.contains(roll.incoming.trackId)
         }
     }
 }

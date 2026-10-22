@@ -22,6 +22,10 @@ public let NATIVE_PROJECT_DOCUMENT_PATH = ".studio/project.json"
 public enum NativeProjectAssetKind: String, Codable, Sendable { case video, audio, image, element }
 
 public func nativeAssetConsumesSourceFrames(_ kind: NativeProjectAssetKind) -> Bool { kind == .video || kind == .audio }
+/// A held clip shows one source frame however long it is, so trimming, extending or splitting it reads no source.
+public func nativeClipConsumesSourceFrames(_ clip: NativeProjectClip, _ kind: NativeProjectAssetKind) -> Bool {
+    clip.holdSourceFrame == nil && nativeAssetConsumesSourceFrames(kind)
+}
 
 public enum NativeProjectTrackKind: String, Codable, Sendable { case video, audio, mixed }
 
@@ -180,6 +184,10 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// In, Out and Loop moves over the clip's own values (NativeClipMoves.swift); absent means none.
+    public var moves: NativeClipMoves? = nil
+    /// A held source frame (`NativeClipHold`): the clip shows that one frame for its whole length; absent plays the source.
+    public var holdSourceFrame: NativeClipHold? = nil
     /// How a media clip's picture fills its box (the inspector's Fit row); absent means Fit, the contain fit every
     /// clip had before the option existed. Text clips ignore it.
     public var fit: NativeMediaFit? = nil
@@ -189,6 +197,13 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var fadeOutFrames: Double? = nil
     /// Parametric layer masks; absent means unmasked.
     public var masks: [NativeClipMask]? = nil
+    /// This clip's own canvas fill, or `inherit` for the project's (`NativeFill`); nil means the project's.
+    public var fill: NativeFill? = nil
+    /// Procedural picture on an element clip; uses the shared solid/gradient fill format.
+    public var generator: NativeFill? = nil
+    /// The text, voice, rate and pitch an audio clip made from text was spoken with (`NativeClipNarration`); absent
+    /// on every other clip.
+    public var narration: NativeClipNarrationRecord? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -225,13 +240,21 @@ public struct NativeProjectTrack: Codable, Equatable, Sendable {
     public var hidden: Bool?
     /// A locked track refuses clip edits (move, trim, split, delete, paste). Absent means unlocked.
     public var locked: Bool?
+    /// Cut transitions between adjacent clips of this track (`NativeCutTransition`). Absent means every cut is hard;
+    /// edits leave it absent rather than empty.
+    public var transitions: [NativeCutTransition]? = nil
+
     /// A soloed audio track is heard alone: while any audio track is soloed, the clips of every other track are left
     /// out of the mix (live playback and export). Ignored on video and mixed tracks. Absent means not soloed.
     public var soloed: Bool?
+    /// Mixer controls: absent means unity gain and centered pan.
+    public var mixerGainDB: Double? = nil
+    public var mixerPan: Double? = nil
 
     public init(id: String, kind: NativeProjectTrackKind, lane: NativeProjectTrackLane? = nil, clips: [NativeProjectClip], hidden: Bool? = nil,
-                locked: Bool? = nil, soloed: Bool? = nil) {
+                locked: Bool? = nil, soloed: Bool? = nil, transitions: [NativeCutTransition]? = nil) {
         self.id = id; self.kind = kind; self.lane = lane; self.clips = clips; self.hidden = hidden; self.locked = locked; self.soloed = soloed
+        self.transitions = transitions
     }
 }
 
@@ -253,6 +276,8 @@ public struct NativeProjectSequence: Codable, Equatable, Sendable {
     /// The caption track (`NativeCaptionTrack.swift`); absent in a project without captions and in every project
     /// written before captions existed, which open unchanged.
     public var captions: NativeCaptionTrack? = nil
+    /// Sequence markers use seconds from the start; absent in older projects.
+    public var markers: [NativeSequenceMarker]? = nil
 }
 
 /// The timeline kind a document stores in `mediaEngine`. Every document is a native timeline drawn by the Swift
@@ -273,6 +298,8 @@ public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var assets: [NativeProjectAsset]; public var sequence: NativeProjectSequence
     /// The Easing panel's custom presets for this project (NativeEasingPreset.swift); nil writes no key.
     public var easingPresets: [NativeEasingPreset]? = nil
+    /// What fills the frame behind clips that do not cover it (`NativeFill`); nil writes no key (black bars).
+    public var compositionFill: NativeFill? = nil
 }
 
 public extension NativeProjectDocument {
@@ -328,8 +355,8 @@ public extension NativeProjectDocument {
 
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
-        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice,
-         unsupportedTextLooksNotice].compactMap { $0 }
+        [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
+         unsupportedHoldNotice, undrawnTransitionsNotice, unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
     }
 }
 
@@ -341,8 +368,11 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
     case invalidCaption = "invalid-caption"
+    case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
+    case duplicateTransition = "duplicate-transition"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
-    case invalidSpeedRamp = "invalid-speed-ramp"
+    case invalidSpeedRamp = "invalid-speed-ramp", invalidMove = "invalid-move"
+    case invalidNarration = "invalid-narration", invalidFill = "invalid-fill"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {
