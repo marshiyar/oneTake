@@ -52,6 +52,9 @@ public extension TimelineEditor {
         guard let ti = d.sequence.tracks.firstIndex(where: { $0.id == track.id }),
               let ci = d.sequence.tracks[ti].clips.firstIndex(where: { $0.id == clipId }) else { return false }
         d.sequence.tracks[ti].clips[ci].assetId = asset.id
+        if d.sequence.tracks[ti].clips[ci].staticParameters?.isEmpty == true {
+            d.sequence.tracks[ti].clips[ci].staticParameters = nil
+        }
         return commit(d, "Replace media")
     }
 
