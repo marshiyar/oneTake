@@ -18,8 +18,8 @@ import MpvfxTimeline
 import MpvfxTheme
 
 /// The Transform group's collapsible 3D transform (compact, as the flat panel shows it):
-/// the orientation cube (Transform3DCube: drag to tilt, reset to flat), then Depth, Tilt X, Tilt Y and
-/// Perspective, each keyframeable with its own reset. Rotation about Z lives in the Transform row only.
+/// the orientation cube (Transform3DCube: drag to tilt, reset to flat), then Depth, Tilt X, Tilt Y, Roll and
+/// Perspective, each keyframeable with its own reset. Roll is `transform.rotation` (rotation about Z is the same value).
 /// Every row draws through NativeTransform3D, the projection preview and export share.
 extension InspectorPanel {
     /// The cube's drag sensitivity: degrees per pixel.
@@ -70,6 +70,9 @@ extension InspectorPanel {
         })
         rows.append(row("tiltY", "Tilt Y", NativeTransform3D.rotationYId, ry, suffix: "°", step: 0.5) {
             editor.setParameter(clipId: s.id, NativeTransform3D.rotationYId, .number($0), time: t)
+        })
+        rows.append(row("roll", "Roll", TimelineEditor.rotationId, roll, suffix: "°", step: 0.5) {
+            editor.applyTransform(clipId: s.id, time: t, ClipTransform(rotation: $0))
         })
         rows.append(row("perspective", "Perspective", NativeTransform3D.perspectiveId, lens, suffix: "px", step: 1) {
             editor.setParameter(clipId: s.id, NativeTransform3D.perspectiveId, .number(max(0, $0)), time: t)   // parsePxNonNeg
