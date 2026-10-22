@@ -18,7 +18,7 @@ import MpvfxCanvas
 extension LeftSidebarPanel {
     /// Anything to search: project files, or library files and exports in the shown library.
     var hasContent: Bool {
-        !items.isEmpty || !(activeLibrary?.exports.isEmpty ?? true) || activeLibrary?.assets.contains { $0.eventId == activeEvent?.id } == true
+        onAddTextLook != nil || !items.isEmpty || !(activeLibrary?.exports.isEmpty ?? true) || activeLibrary?.assets.contains { $0.eventId == activeEvent?.id } == true
     }
 
     func drawSearchRow(_ c: CanvasContext, top: Double) -> Double {
@@ -145,6 +145,7 @@ extension LeftSidebarPanel {
         case .media(let id): return mediaItem(id)?.category == .fonts ? nil : .plus
         case .library(let id): return libraryAsset(id)?.available == true ? .plus : nil
         case .export(let id): return export(id)?.status == "complete" ? .download : nil
+        case .textLook: return .plus
         }
     }
 
@@ -156,6 +157,18 @@ extension LeftSidebarPanel {
     /// The picture fills the 16:9 tile (cut to its middle) for every shape of media, so the grid reads as one
     /// even surface; without a picture, the kind's glyph.
     func drawThumbContent(_ c: CanvasContext, _ ref: MediaTileRef, _ thumb: CanvasRect) {
+        if case .textLook(let id) = ref, let look = TextLookPreset.preset(id) {
+            c.withState {
+                c.clip(.roundedRect(thumb, radius: PanelTheme.radiusMd))
+                let font = CanvasFont(family: "Sans", size: max(11, thumb.height * 0.19), weight: .bold)
+                let words = look.text.content.split(separator: "\n").prefix(2)
+                for (i, line) in words.enumerated() {
+                    PanelDraw.text(c, String(line), in: CanvasRect(x: thumb.x + 8, y: thumb.midY - 14 + Double(i) * 18,
+                                   width: thumb.width - 16, height: 18), font: font, color: PanelTheme.neutral100, align: .center)
+                }
+            }
+            return
+        }
         if case .media(let id) = ref, let img = thumbnail(id) {
             c.withState {
                 c.clip(.roundedRect(thumb, radius: PanelTheme.radiusMd))
@@ -171,6 +184,7 @@ extension LeftSidebarPanel {
         case .media(let id): return MediaTileDraw.glyph(kind: mediaItem(id)?.category.rawValue ?? "")
         case .library(let id): return MediaTileDraw.glyph(kind: libraryAsset(id)?.kind ?? "")
         case .export: return .download
+        case .textLook: return .plus
         }
     }
 
@@ -185,7 +199,7 @@ extension LeftSidebarPanel {
             if let d = item.duration, let s = Self.binDuration(d) { MediaTileDraw.badge(c, s, right: thumb.maxX - M.badgeInset, bottom: thumb.maxY - M.badgeInset) }
         case .library(let id):
             if libraryAsset(id)?.available == false { MediaTileDraw.badge(c, "Missing", left: corner.x, top: corner.y, color: PanelTheme.red400) }
-        case .export: break
+        case .export, .textLook: break
         }
     }
 
@@ -327,6 +341,7 @@ extension LeftSidebarPanel {
         case .library(let id):
             if libraryAsset(id)?.available == false { return "\(name) · missing from the library · right-click to relink" }
             return "\(name) · in the library, not in this project · Enter adds it to the timeline"
+        case .textLook: return "\(name) · Click or Enter adds editable text at the playhead · drag onto the timeline or preview"
         case .export(let id):
             return export(id)?.status == "complete" ? "\(name) · Enter saves a copy" : "\(name) · \(export(id)?.status ?? "")"
         }

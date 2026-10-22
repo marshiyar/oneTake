@@ -481,3 +481,66 @@ final class MediaPanelInteractionTests: XCTestCase {
         }
     }
 }
+
+/// The media bin's filter and sort choice persists and is reachable from the keyboard.
+final class MediaBinFilterPersistenceTests: XCTestCase {
+    private func tempURL() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("mpvfx-bin-\(UUID().uuidString)/media-bin.json")
+    }
+
+    func testTheChoiceRoundTripsThroughTheStore() {
+        let store = MediaFilterStore(url: tempURL())
+        XCTAssertTrue(store.load().isDefault, "no file reads as the default choice")
+        let chosen = MediaFilter(kind: .video, usage: .notInTimeline, sort: .duration)
+        store.save(chosen)
+        XCTAssertEqual(MediaFilterStore(url: store.url).load(), chosen)
+    }
+
+    func testAPanelReportsEveryChangeAndNoRepeats() {
+        let s = MediaPanelFixture.panel()
+        var seen: [MediaFilter] = []
+        s.onFilterChange = { seen.append($0) }
+        s.filter.sort = .name
+        s.filter.sort = .name
+        s.filter = MediaFilter()
+        XCTAssertEqual(seen, [MediaFilter(sort: .name), MediaFilter()])
+    }
+
+    func testPickingInTheMenuIsKeptForTheNextLaunch() throws {
+        let store = MediaFilterStore(url: tempURL())
+        let s = MediaPanelFixture.panel()
+        s.onFilterChange = { store.save($0) }
+        s.filter = store.load()
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(364, 1500))
+        let r = try XCTUnwrap(s.hits.rect { $0 == .filter })
+        XCTAssertTrue(s.pointerDown(CanvasPoint(r.x + r.width / 2, r.y + r.height / 2), time: 0))
+        s.dropdown.pick("kind:audio")
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(364, 1500))
+        XCTAssertTrue(s.pointerDown(CanvasPoint(r.x + r.width / 2, r.y + r.height / 2), time: 1))
+        s.dropdown.pick("sort:name")
+        XCTAssertEqual(store.load(), MediaFilter(kind: .audio, usage: .all, sort: .name))
+    }
+
+    func testHostileFilesReadAsDefaultsAndOtherKeysSurvive() throws {
+        let url = tempURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        for junk in ["", "not json", "[1,2]", "{\"mediaBinFilter\": 7}", "{\"mediaBinFilter\": {\"kind\": 3, \"sort\": \"bogus\"}}"] {
+            try junk.write(to: url, atomically: true, encoding: .utf8)
+            XCTAssertTrue(MediaFilterStore(url: url).load().isDefault, junk)
+        }
+        try "{\"mediaBinFilter\": {\"kind\": \"audio\", \"sort\": \"bogus\"}, \"other\": 1}".write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(MediaFilterStore(url: url).load(), MediaFilter(kind: .audio))
+        MediaFilterStore(url: url).save(MediaFilter(sort: .name))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        XCTAssertEqual(object["other"] as? Int, 1)
+    }
+
+    func testTheFilterButtonOpensFromTheKeyboard() {
+        let s = MediaPanelFixture.panel()
+        s.draw(PanelMeasureCanvas(), size: CanvasSize(364, 1500))
+        for _ in 0..<8 { _ = s.keyDown(EditorKey(.tab)); s.draw(PanelMeasureCanvas(), size: CanvasSize(364, 1500)) }
+        XCTAssertEqual(s.focus.current, .filter)
+        XCTAssertTrue(s.keyDown(EditorKey(.enter)))
+        XCTAssertTrue(s.dropdown.isOpen)
+    }
+}

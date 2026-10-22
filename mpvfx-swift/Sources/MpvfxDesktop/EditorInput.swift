@@ -102,7 +102,12 @@ final class PlayerInput: CanvasInput {
         if !s.playerScroll(x: x, y: lastY, dy: dy) { s.player.scroll(x: x, y: lastY, dx: dx, dy: dy, zoom: ctrl) }
     }
     var lastY = 0.0
-    func keyDown(_ k: EditorKey) -> Bool { let h = s.commandKey(k) || s.playerKey(k) || s.keyframeKey(k) || s.player.keyDown(k) || s.timeline.keyDown(k) || s.player.globalKey(k); afterKey(); return h }
+    func keyDown(_ k: EditorKey) -> Bool {
+        // Stage text editing gets first refusal; an unhandled M only adds markers in the timeline pane.
+        let markerKey = !k.command && !k.alt && (k.code == .char("m") || k.code == .char("M"))
+        let h = s.commandKey(k) || s.playerKey(k) || s.keyframeKey(k) || s.player.keyDown(k) || (!markerKey && s.timeline.keyDown(k)) || s.player.globalKey(k)
+        afterKey(); return h
+    }
     func keyUp(_ k: EditorKey) { s.playback.keyUp(k) }
     func resized(_ size: CanvasSize) { s.player.size = size }
 }

@@ -14,6 +14,7 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxPanels
+import MpvfxPlayer
 import MpvfxRuntime
 import MpvfxShared
 import MpvfxTimeline
@@ -51,6 +52,20 @@ extension EditorSession {
 
     /// The panels that read the document: History, and the ones added next to it.
     func installDocumentPanels(_ router: EditorShellRouter) {
+        let markers = MarkersPanel()
+        markers.editor = editor
+        markers.onJump = { [weak self] time in
+            guard let self else { return }
+            self.timeline.playback.seek(time); self.timeline.syncFromPlayback()
+        }
+        installDockedPanel(router, id: DockPanels.markers, panel: markers)
+
+        let mixer = MixerPanel()
+        mixer.editor = editor
+        installDockedPanel(router, id: DockPanels.mixer, panel: mixer) { [weak self, weak mixer] in
+            guard let self, let mixer else { return }
+            mixer.meters = self.playback.isPlaying ? (self.graph?.meters ?? [:]).mapValues { ($0.peak, $0.rms) } : [:]
+        }
         let history = HistoryPanel()
         history.editor = editor
         installDockedPanel(router, id: DockPanels.history, panel: history)
@@ -58,6 +73,17 @@ extension EditorSession {
         feed.panel.onCopy = { [weak self] text in self?.panels?.copyToClipboard?(text) }
         installDockedPanel(router, id: DockPanels.info, panel: feed.panel) { [weak feed] in feed?.refresh() }
         clipInfoFeed = feed
+        let scopes = ScopesPanel(layout: router.layout)
+        let program = ProgramScopeRenderer(compositor: compositor)
+        let refresh: () -> Void = { [weak self] in self?.postToUI { [weak self] in self?.redraw() } }
+        program.onReady = refresh
+        scopes.worker.onReady = refresh
+        scopes.onChange = { [weak self] in self?.redraw() }
+        scopes.programFrame = { [weak self] width, height in
+            guard let self else { return .unavailable }
+            return PresetPreviewState(program.frame(at: self.playback.currentTime, pixelWidth: width, pixelHeight: height))
+        }
+        installDockedPanel(router, id: DockPanels.scopes, panel: scopes)
     }
 }
 
