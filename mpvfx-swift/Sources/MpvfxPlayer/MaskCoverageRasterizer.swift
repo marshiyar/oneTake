@@ -72,7 +72,8 @@ public enum MaskCoverageRasterizer {
         var out = [Double](repeating: 0, count: w * h)
         let kind = m.kind
         out.withUnsafeMutableBufferPointer { buf in
-            let base = SendablePointer(buf.baseAddress!)
+            guard let baseAddress = buf.baseAddress else { return }
+            let base = SendablePointer(baseAddress)
             DispatchQueue.concurrentPerform(iterations: h) { y in
                 let row = base.pointer + y * w
                 for x in 0..<w {
@@ -116,8 +117,10 @@ public enum MaskCoverageRasterizer {
         rowValue.withUnsafeMutableBufferPointer { rvBuf in
         horizontal.withUnsafeMutableBufferPointer { hBuf in
         kernel.withUnsafeBufferPointer { kBuf in
-            let src = inBuf.baseAddress!, dst = SendablePointer(hBuf.baseAddress!), kp = kBuf.baseAddress!
-            let rv = SendablePointer(rvBuf.baseAddress!)
+            guard let src = inBuf.baseAddress, let hBase = hBuf.baseAddress,
+                let kp = kBuf.baseAddress, let rvBase = rvBuf.baseAddress else { return }
+            let dst = SendablePointer(hBase)
+            let rv = SendablePointer(rvBase)
             DispatchQueue.concurrentPerform(iterations: height) { y in
                 let inRow = src + y * width, outRow = dst.pointer + y * width
                 // A constant row blurs to one value; summed in the same tap order as the general path.
@@ -158,7 +161,9 @@ public enum MaskCoverageRasterizer {
         horizontal.withUnsafeBufferPointer { hBuf in
         output.withUnsafeMutableBufferPointer { oBuf in
         kernel.withUnsafeBufferPointer { kBuf in
-            let src = hBuf.baseAddress!, dst = SendablePointer(oBuf.baseAddress!), kp = kBuf.baseAddress!
+            guard let src = hBuf.baseAddress, let oBase = oBuf.baseAddress,
+                let kp = kBuf.baseAddress else { return }
+            let dst = SendablePointer(oBase)
             DispatchQueue.concurrentPerform(iterations: height) { y in
                 let outRow = dst.pointer + y * width
                 // Window of identical constant rows: every column sums the same value in the same tap order.

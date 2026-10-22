@@ -85,8 +85,9 @@ public enum Theme {
     public static func removeObserver(_ id: Int) { state.removeObserver(id) }
 
     // SAFETY: storedMode is accessed only under modeLock. Observers (including their non-Sendable
-    // captures) and nextObserver are accessed only after a main-thread precondition. Native GTK,
-    // AppKit and Win32 callbacks use this synchronous API without requiring actor-isolated callers.
+    // captures) and nextObserver run on the main thread: off-main callers are bounced there synchronously
+    // below, so delivery order and observer identity stay exact. Native GTK, AppKit and Win32 callbacks
+    // use this synchronous API without requiring actor-isolated callers.
     private final class State: @unchecked Sendable {
         private let modeLock = NSLock()
         private var storedMode: ThemeMode = .dark
@@ -100,7 +101,7 @@ public enum Theme {
         }
 
         func setMode(_ m: ThemeMode) {
-            precondition(Thread.isMainThread, "Theme mutations must run on the main thread")
+            if !Thread.isMainThread { return DispatchQueue.main.sync { setMode(m) } }
             guard m != mode else { return }
             modeLock.lock()
             storedMode = m
@@ -112,14 +113,14 @@ public enum Theme {
         }
 
         func addObserver(_ fn: @escaping (ThemeMode) -> Void) -> Int {
-            precondition(Thread.isMainThread, "Theme observers must be registered on the main thread")
+            if !Thread.isMainThread { return DispatchQueue.main.sync { addObserver(fn) } }
             nextObserver += 1
             observers.append((nextObserver, fn))
             return nextObserver
         }
 
         func removeObserver(_ id: Int) {
-            precondition(Thread.isMainThread, "Theme observers must be removed on the main thread")
+            if !Thread.isMainThread { return DispatchQueue.main.sync { removeObserver(id) } }
             observers.removeAll { $0.id == id }
         }
     }
