@@ -11,24 +11,32 @@ name: linux-optional-headers
 on:
   pull_request:
     branches: [main]
+    # Throttled like linux-no-vulkan: the headerless graph only changes with the manifest, the
+    # lockfile or the C shims. The weekly schedule catches anything the filter misses.
     paths:
       - 'mpvfx-swift/Package.swift'
       - 'mpvfx-swift/Package.resolved'
       - 'mpvfx-swift/binaries.lock'
-      - 'mpvfx-swift/Sources/**'
-      - 'mpvfx-swift/Tests/**'
-      - 'mpvfx-swift/tools/**'
+      - 'mpvfx-swift/Sources/CMpvfxVulkan/**'
+      - 'mpvfx-swift/Sources/CVulkan/**'
+      - 'mpvfx-swift/Sources/CPulse/**'
+      - 'mpvfx-swift/Sources/CGtk3/**'
       - '.github/workflows/linux-optional-headers.yml'
+      - '.github/workflows/linux-optional-headers-source.yml'
+      - '.github/ci/source_workflows.py'
   push:
     branches: [main]
     paths:
       - 'mpvfx-swift/Package.swift'
       - 'mpvfx-swift/Package.resolved'
       - 'mpvfx-swift/binaries.lock'
-      - 'mpvfx-swift/Sources/**'
-      - 'mpvfx-swift/Tests/**'
-      - 'mpvfx-swift/tools/**'
+      - 'mpvfx-swift/Sources/CMpvfxVulkan/**'
+      - 'mpvfx-swift/Sources/CVulkan/**'
+      - 'mpvfx-swift/Sources/CPulse/**'
+      - 'mpvfx-swift/Sources/CGtk3/**'
       - '.github/workflows/linux-optional-headers.yml'
+      - '.github/workflows/linux-optional-headers-source.yml'
+      - '.github/ci/source_workflows.py'
   schedule:
     - cron: '23 5 * * 4'   # weekly, for toolchain image drift on an unchanged main
   workflow_dispatch:

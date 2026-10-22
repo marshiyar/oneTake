@@ -28,11 +28,11 @@ extension InspectorPanel {
             guard let self else { return }
             if self.grade.samplePending, let clipId { self.captureSampleFrame(clipId) }   // a capture still rendering
             let hot = panel.hovered == .custom("sec:sample", 0)
-            let color = hot ? PanelTheme.accent.withAlpha(0.8) : PanelTheme.accent
+            let color = hot ? PanelTheme.accent : PanelTheme.accent
             PanelIcon.phosphor(.eyedropper).draw(c, in: CanvasRect(x: r.x, y: r.y + 8, width: 12, height: 12), color: color)
             let label = self.grade.samplePending ? "Capturing frame" : "Sample color from frame"
-            let w = c.measureText(label, font: PanelTheme.font(10, .medium)).width
-            PanelDraw.text(c, label, in: CanvasRect(x: r.x + 18, y: r.y + 6.5, width: r.width - 18, height: 15), font: PanelTheme.font(10, .medium), color: color)
+            let w = c.measureText(label, font: PanelTheme.font(11, .medium)).width
+            PanelDraw.text(c, label, in: CanvasRect(x: r.x + 18, y: r.y + 6.5, width: r.width - 18, height: 15), font: PanelTheme.font(11, .medium), color: color)
             panel.addHit(CanvasRect(x: r.x, y: r.y, width: 18 + w, height: r.height), .custom("sec:sample", 0))
         }, pointer: { [weak self] _, _, phase in
             guard let self, phase == 0, let clipId else { return }
@@ -41,20 +41,20 @@ extension InspectorPanel {
         })))]
         if grade.sampleError {
             rows.append(.init(.custom(InspectorCustomRow(id: "sec:sampleError", height: 16, draw: { c, r, _ in
-                PanelDraw.text(c, "Preview frame unavailable. Try again after the media loads.", in: r, font: PanelTheme.font(9), color: PanelTheme.red400)
+                PanelDraw.text(c, "Preview frame unavailable. Try again after the media loads.", in: r, font: PanelTheme.font(11), color: PanelTheme.red400)
             }))))
         }
         guard let frame = grade.sampleFrame, g.secondaries.indices.contains(sel) else { return rows }
-        let key = g.secondaries[sel]
+        let key = grade.qualifierDraft ?? g.secondaries[sel]
         // Source / Selection matte (`flex gap-2 text-[9px]`, the active one in the accent).
         rows.append(.init(.custom(InspectorCustomRow(id: "sec:view", height: 16, draw: { [weak self] c, r, panel in
             guard let self else { return }
             var x = r.x
             for (i, label) in ["Source", "Selection matte"].enumerated() {
                 let on = (i == 1) == self.grade.showMatte
-                let w = c.measureText(label, font: PanelTheme.font(9)).width
-                PanelDraw.text(c, label, in: CanvasRect(x: x, y: r.y + 1, width: w + 1, height: 14), font: PanelTheme.font(9),
-                               color: on ? PanelTheme.accent : (panel.hovered == .custom("sec:view", i) ? PanelTheme.text2 : PanelTheme.text4))
+                let w = c.measureText(label, font: PanelTheme.font(11)).width
+                PanelDraw.text(c, label, in: CanvasRect(x: x, y: r.y + 1, width: w + 1, height: 14), font: PanelTheme.font(11),
+                               color: on ? PanelTheme.accent : (panel.hovered == .custom("sec:view", i) ? PanelTheme.text2 : PanelTheme.inspectorText))
                 panel.addHit(CanvasRect(x: x - 2, y: r.y, width: w + 4, height: r.height), .custom("sec:view", i))
                 x += w + 8
             }
@@ -93,7 +93,7 @@ extension InspectorPanel {
         switch scopeFrame?(clipId, Self.sampleFrameSize, Self.sampleFrameSize) ?? .unavailable {
         case .ready(let img): grade.sampleFrame = img; grade.samplePending = false; grade.sampleError = false
         case .rendering: grade.samplePending = true
-        case .unavailable: grade.samplePending = false; grade.sampleError = true
+        case .unavailable, .failed: grade.samplePending = false; grade.sampleError = true
         }
     }
 }

@@ -38,14 +38,14 @@ public enum TimelineStripColor {
 extension TimelineView {
     typealias BL = TimelineLayout
 
-    /// Effects strips are always shown; lanes only for expanded clips (trackHeights).
+    /// Effects strips are always shown; a keyed clip shows its lane rows (one summary row, more when expanded).
     public func effectLaneCount(track i: Int) -> Int {
         guard tracks.indices.contains(i) else { return 0 }
         return tracks[i].clips.map(\.effects.count).max() ?? 0
     }
     public func expandedLaneCount(track i: Int) -> Int {
         guard tracks.indices.contains(i) else { return 0 }
-        return tracks[i].clips.filter { expandedClips.contains($0.id) }.map(\.lanes.count).max() ?? 0
+        return trackLaneRows(i).count
     }
     public func trackRowHeight(_ i: Int) -> Double {
         trackHeight + Double(effectLaneCount(track: i)) * BL.effectStripHeight + Double(expandedLaneCount(track: i)) * BL.laneHeight
@@ -106,43 +106,72 @@ extension TimelineView {
                 c.drawText(label, at: .init(sr.x + 6, sr.y + 4), font: ef, color: CanvasColor(ThemeTokens.onMint))
             }
         }
-        guard expandedClips.contains(clip.id) else { return }
-        let laneBase = base + Double(effectLaneCount(track: i)) * BL.effectStripHeight
-        for (j, lane) in clip.lanes.enumerated() {
-            let lr = CanvasRect(x: r.x, y: laneBase + Double(j) * BL.laneHeight, width: r.width, height: BL.laneHeight)
-            c.fillRect(lr, CanvasColor(ThemeTokens.white.alpha(0.025)))
+        let laneTop = base + Double(effectLaneCount(track: i)) * BL.effectStripHeight
+        let rows = trackLaneRows(i)
+        for row in laneRows(clip) {
+            guard let j = rows.firstIndex(of: row) else { continue }
+            let lr = CanvasRect(x: r.x, y: laneTop + Double(j) * BL.laneHeight, width: r.width, height: BL.laneHeight)
+            // The summary and kind rows sit on a slightly stronger wash than the property rows under them.
+            c.fillRect(lr, CanvasColor(ThemeTokens.white.alpha(row == .summary ? 0.045 : 0.025)))
             c.fillRect(CanvasRect(x: lr.x, y: lr.maxY - 1, width: lr.width, height: 1), theme.rowBorder)
-            drawDiamonds(c, clip, group: lane.group, barX: r.x, cy: lr.y + lr.height / 2)
+            drawMarks(c, clip, scope: rowScope(row, clip), origin: CanvasPoint(r.x, lr.y + lr.height / 2))
         }
     }
 
-    /// trackHeaderLabelRows: 28px rows, 1px white/15 spine + 6px tick, 46px label, accent ◆.
+    /// The header column of a track's lane rows (each row for its `rowOwner`): the summary row's disclosure and
+    /// "Keyframes", each kind row's disclosure, mark and name, each property row's spine, mark and label; then ‹ ◆ ›.
     func drawLaneHeaders(_ c: CanvasContext, track i: Int, top: Double) {
-        let expanded = tracks[i].clips.filter { expandedClips.contains($0.id) }.max { $0.lanes.count < $1.lanes.count }
-        guard let clip = expanded, !clip.lanes.isEmpty else { return }
-        let laneBase = top + trackHeight + Double(effectLaneCount(track: i)) * BL.effectStripHeight
-        let f = CanvasFont(family: Self.uiFontFamily, size: 10)
-        for (j, lane) in clip.lanes.enumerated() {
-            let y = laneBase + Double(j) * BL.laneHeight
-            let last = j == clip.lanes.count - 1
+        let rows = trackLaneRows(i)
+        let base = top + trackHeight + Double(effectLaneCount(track: i)) * BL.effectStripHeight
+        for (j, row) in rows.enumerated() {
+            guard let clip = rowOwner(row, track: i) else { continue }
+            let y = base + Double(j) * BL.laneHeight
             c.fillRect(CanvasRect(x: 0, y: y, width: BL.labelColumnWidth, height: BL.laneHeight), theme.gutterBackground)
+            drawLaneHeaderLabel(c, clip, row, y: y)
+            drawLaneNavigation(c, clip, row, y: y)
+        }
+    }
+
+    func drawLaneHeaderLabel(_ c: CanvasContext, _ clip: TimelineClipModel, _ row: TimelineLaneRow, y: Double) {
+        let last = laneRows(clip).last == row
+        let f = CanvasFont(family: Self.uiFontFamily, size: 10, weight: row == .summary ? .medium : .regular)
+        let ink = CanvasColor(ThemeTokens.white.alpha(0.65)), cy = y + BL.laneHeight / 2
+        var x = 22.0
+        switch row {
+        case .summary, .kind:
+            let open = row == .summary ? expandedClips.contains(clip.id) : !(collapsedKinds[clip.id]?.contains(rowKind(row, clip) ?? .transform) ?? false)
+            let d = Self.disclosureRect(laneTop: y, row: row)
+            c.drawText(open ? "▾" : "▸", at: .init(d.centerX - 4, cy - 7), font: .mono(12), color: ink)
+            x = d.maxX + 2
+        case .property:
             c.fillRect(CanvasRect(x: 12, y: y, width: 1, height: last ? BL.laneHeight / 2 : BL.laneHeight), CanvasColor(ThemeTokens.white.alpha(0.15)))
-            c.fillRect(CanvasRect(x: 12, y: y + BL.laneHeight / 2, width: 6, height: 1), CanvasColor(ThemeTokens.white.alpha(0.15)))
-            if let l = Self.ellipsize(c, lane.label, font: f, maxWidth: 46) {
-                c.drawText(l, at: .init(22, y + 9), font: f, color: CanvasColor(ThemeTokens.white.alpha(0.65)))
-            }
-            // PropertyGroupNavigation: ‹ (white/55, white/15 disabled) ◆/◇ (accent) ›.
-            let nav = laneNavigation?(clip.id, j) ?? TimelineKeyframeNavigation()
-            for (ctl, r) in Self.laneControlRects(laneTop: y) {
-                let glyph: String, color: CanvasColor
-                switch ctl {
-                case .prev: glyph = "‹"; color = CanvasColor(ThemeTokens.white.alpha(nav.prev == nil ? 0.15 : 0.55))
-                case .next: glyph = "›"; color = CanvasColor(ThemeTokens.white.alpha(nav.next == nil ? 0.15 : 0.55))
-                case .toggle: glyph = nav.current == nil ? "◇" : "◆"; color = theme.accent
-                }
-                let gf = CanvasFont(size: ctl == .toggle ? 10 : 12)
+            c.fillRect(CanvasRect(x: 12, y: cy, width: 6, height: 1), CanvasColor(ThemeTokens.white.alpha(0.15)))
+        }
+        if let kind = rowKind(row, clip) {
+            TimelineKeyframeGlyph.draw(c, .init(kind), at: CanvasPoint(x + 5, cy), r: 4.5)
+            x += 14
+        }
+        if let l = Self.ellipsize(c, rowLabel(row, clip), font: f, maxWidth: Self.laneControlsX - 6 - x) {
+            c.drawText(l, at: .init(x, y + 9), font: f, color: ink)
+        }
+    }
+
+    /// PropertyGroupNavigation: ‹ (white/55, white/15 disabled), the row's mark (filled on a key, outlined elsewhere;
+    /// the summary's in the accent), ›.
+    func drawLaneNavigation(_ c: CanvasContext, _ clip: TimelineClipModel, _ row: TimelineLaneRow, y: Double) {
+        let nav = laneRowNavigation?(clip.id, row) ?? TimelineKeyframeNavigation()
+        for (ctl, r) in Self.laneControlRects(laneTop: y) {
+            switch ctl {
+            case .prev, .next:
+                let off = (ctl == .prev ? nav.prev : nav.next) == nil
+                let gf = CanvasFont(size: 12), glyph = ctl == .prev ? "‹" : "›"
                 let w = c.measureText(glyph, font: gf).width
-                c.drawText(glyph, at: .init(r.centerX - w / 2, r.centerY - gf.size / 2 - 1), font: gf, color: color)
+                c.drawText(glyph, at: .init(r.centerX - w / 2, r.centerY - gf.size / 2 - 1), font: gf, color: CanvasColor(ThemeTokens.white.alpha(off ? 0.15 : 0.55)))
+            case .toggle:
+                let kind = rowKind(row, clip)
+                let style = TimelineKeyframeGlyph.Style(shape: kind?.shape ?? .diamond, color: kind?.color ?? theme.accent)
+                if nav.current == nil { TimelineKeyframeGlyph.drawOutline(c, style, at: CanvasPoint(r.centerX, r.centerY), r: 4.5) }
+                else { TimelineKeyframeGlyph.draw(c, style, at: CanvasPoint(r.centerX, r.centerY), r: 4.5) }
             }
         }
     }

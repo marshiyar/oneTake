@@ -71,11 +71,12 @@ public extension TimelineEditor {
     }
 
     /// The default box (fitTimelineAssetGeometry of the media's natural size) when the clip's size is untouched,
-    /// else nil (nativeClipNaturalLayout).
+    /// else nil (nativeClipFitLayout: also nil for a Fill or Stretch clip, whose untouched box is the canvas).
     func naturalLayout(clipId: String) -> NativeClipLayoutBox? {
         guard let (_, c) = clip(clipId), let asset = document.assets.first(where: { $0.id == c.assetId }),
               asset.kind == .video || asset.kind == .image else { return nil }
-        return nativeClipNaturalLayout(c, natural: naturalSize(asset), canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
+        return nativeClipFitLayout(c, natural: naturalSize(asset),
+                                   canvasWidth: document.canvas.width, canvasHeight: document.canvas.height)
     }
 
     /// The default box for the clip's media whether or not its size was edited (full canvas when unknown).
@@ -123,6 +124,8 @@ public extension TimelineEditor {
     func transform(clipId: String, time: Double) -> ClipTransform {
         var t = ClipTransform()
         if case .vec2(let p)? = parameterValue(clipId: clipId, parameterId: Self.positionId, time: time) { t.x = p.x; t.y = p.y }
+        if case .number(let v)? = parameterValue(clipId: clipId, parameterId: POSITION_X_PARAMETER_ID, time: time) { t.x = v }
+        if case .number(let v)? = parameterValue(clipId: clipId, parameterId: POSITION_Y_PARAMETER_ID, time: time) { t.y = v }
         if case .number(let v)? = parameterValue(clipId: clipId, parameterId: Self.widthId, time: time) { t.width = v }
         if case .number(let v)? = parameterValue(clipId: clipId, parameterId: Self.heightId, time: time) { t.height = v }
         if case .number(let v)? = parameterValue(clipId: clipId, parameterId: Self.rotationId, time: time) { t.rotation = v }
@@ -144,7 +147,11 @@ public extension TimelineEditor {
                 cmds.append(.setStatic(address: a, value: v))
             }
         }
-        if let x = t.x, let y = t.y { put(Self.positionId, .vec2, .vec2(Vec2Value(x: x, y: y))) }
+        if let x = t.x, let y = t.y {
+            if c.parameterTracks.contains(where: { $0.parameterId == POSITION_X_PARAMETER_ID || $0.parameterId == POSITION_Y_PARAMETER_ID }) {
+                put(POSITION_X_PARAMETER_ID, .number, .number(x)); put(POSITION_Y_PARAMETER_ID, .number, .number(y))
+            } else { put(Self.positionId, .vec2, .vec2(Vec2Value(x: x, y: y))) }
+        }
         if let w = t.width { put(Self.widthId, .number, .number(w)) }
         if let h = t.height { put(Self.heightId, .number, .number(h)) }
         if let r = t.rotation { put(Self.rotationId, .number, .number(r)) }
@@ -220,13 +227,25 @@ public extension TimelineEditor {
     /// Frame (clip-local) of a position keyframe at the playhead, if one exists.
     func positionKeyframeActive(clipId: String, time: Double) -> Bool {
         guard let (_, c) = clip(clipId), let f = localFrame(clipId: clipId, time: time) else { return false }
-        return c.parameterTracks.contains { $0.parameterId == Self.positionId && $0.keyframes.contains { $0.frame == f } }
+        let ids = c.parameterTracks.contains { $0.parameterId == Self.positionId }
+            ? [Self.positionId] : [POSITION_X_PARAMETER_ID, POSITION_Y_PARAMETER_ID]
+        return ids.allSatisfy { id in c.parameterTracks.contains { $0.parameterId == id && $0.keyframes.contains { $0.frame == f } } }
     }
 
     /// Toolbar/K toggle: remove the position keyframe at the playhead, or add one holding the current position.
     @discardableResult
     func togglePositionKeyframe(clipId: String, time: Double) -> Bool {
         guard let (track, c) = clip(clipId), let f = localFrame(clipId: clipId, time: time) else { return false }
+        if c.parameterTracks.contains(where: { positionComponentOf($0.parameterId) != nil }) {
+            let current = transform(clipId: clipId, time: time)
+            let active = positionKeyframeActive(clipId: clipId, time: time)
+            let commands: [NativeProjectAtomicPropertyCommand] = [(POSITION_X_PARAMETER_ID, current.x ?? 0), (POSITION_Y_PARAMETER_ID, current.y ?? 0)].map { id, value in
+                let address = NativeProjectParameterAddress(sequenceId: sequenceId, trackId: track.id, clipId: clipId, parameterId: id)
+                return active ? .keyframe(.delete(address: address, frame: f))
+                    : .keyframe(.upsert(address: address, valueType: .number, frame: f, value: .number(value), baselineValue: .number(value)))
+            }
+            return applyProperty(.batch(commands))
+        }
         let a = NativeProjectParameterAddress(sequenceId: sequenceId, trackId: track.id, clipId: clipId, parameterId: Self.positionId)
         if positionKeyframeActive(clipId: clipId, time: time) {
             return applyProperty(.atomic(.keyframe(.delete(address: a, frame: f))))

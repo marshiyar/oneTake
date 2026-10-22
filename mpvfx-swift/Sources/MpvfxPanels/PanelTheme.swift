@@ -39,9 +39,16 @@ public enum PanelTheme {
     /// `studio-accent` / `panel-accent` (#2D7FFF). The inline-style mint (`P.accent`, `--hf-accent`) is `mint`.
     public static var accent: CanvasColor { c(T.studioAccentPair) }
     public static var mint: CanvasColor { c(T.mintPair) }
+    /// A primary button (fill, hover fill) under `onAccent` text.
+    public static var primaryFill: CanvasColor { c(T.primaryFillPair) }
+    public static var primaryFillHover: CanvasColor { c(T.primaryFillHoverPair) }
     /// Property row labels in the inspector (number, slider, toggle and segmented rows, pair headings): text-2, the
     /// grey that still reaches 4.5:1 on the inspector's inset and on the compact fields' panel grey in both modes.
     public static var rowLabel: CanvasColor { text2 }
+    public static var inspectorText: CanvasColor { c(T.inspectorTextPair) }
+    public static var inspectorControl: CanvasColor { c(T.inspectorControlPair) }
+    public static let inspectorHintSize = 11.0, inspectorSectionSize = 11.5
+
 
     // MARK: panel.* (theme.js)
     public static var panelBg: CanvasColor { c(T.panelBgPair) }
@@ -52,6 +59,8 @@ public enum PanelTheme {
     public static var panelBorder: CanvasColor { c(T.panelBorderPair) }
     public static var panelBorderInput: CanvasColor { c(T.panelBorderInputPair) }
     public static var panelHairline: CanvasColor { c(T.panelHairlinePair) }
+    public static var checkerLight: CanvasColor { c(T.checkerLightPair) }
+    public static var checkerDark: CanvasColor { c(T.checkerDarkPair) }
     public static var text0: CanvasColor { c(T.textPairs[0]) }
     public static var text1: CanvasColor { c(T.textPairs[1]) }
     public static var text2: CanvasColor { c(T.textPairs[2]) }
@@ -91,6 +100,11 @@ public enum PanelTheme {
     /// White ink and dark scrim for chrome drawn over the picture (the stage stays neutral).
     public static let stageInk = CanvasColor(T.stageInk)
     public static let stageScrim = CanvasColor(T.stageScrim)
+    /// Scope graticule ink, skin-tone line and clipping marks (on the black scope background).
+    public static let scopeInk = CanvasColor(T.scopeInk)
+    public static let scopeLabel = CanvasColor(T.scopeLabel)
+    public static let scopeSkin = CanvasColor(T.scopeSkin)
+    public static let scopeClip = CanvasColor(T.scopeClip)
 
     // MARK: Derived surfaces used by the shell
     /// A resize seam under the pointer (`white/18`); at rest the seam is the black shell, while dragging the accent.
@@ -123,6 +137,9 @@ public enum PanelTheme {
     public static let seamWidth = 1.0, seamHitWidth = 13.0
     /// Collapsed rail width (`w-10`); a seam follows a rail as it follows a panel.
     public static let railBox = 40.0
+    /// The smallest pointer target, in points (WCAG 2.2 SC 2.5.8; docs/DESIGN.md "Accessibility floors"). A hit rect
+    /// grows to it around its glyph (`CanvasRect.target`); the glyph keeps its drawn size.
+    public static let minTarget = 24.0
 }
 
 /// Value coloring of a property row (value tier).
@@ -158,6 +175,20 @@ extension CanvasColor {
 extension CanvasRect {
     var midY: Double { y + height / 2 }
     var midX: Double { x + width / 2 }
+    /// This rect grown about its centre to at least `PanelTheme.minTarget` in each dimension: the hit rect of a
+    /// glyph drawn smaller than a pointer target. A dimension already that large is kept.
+    var target: CanvasRect {
+        let w = max(width, PanelTheme.minTarget), h = max(height, PanelTheme.minTarget)
+        return CanvasRect(x: midX - w / 2, y: midY - h / 2, width: w, height: h)
+    }
+    /// `target`, slid (never shrunk) to stay inside `bounds` where it fits, so it does not cover the control beside
+    /// it: a reset glyph in a column's corner keeps its 24 points inside the column.
+    func target(in bounds: CanvasRect) -> CanvasRect {
+        let t = target
+        func slide(_ v: Double, _ len: Double, _ lo: Double, _ hi: Double) -> Double { hi - lo < len ? v : min(max(v, lo), hi - len) }
+        return CanvasRect(x: slide(t.x, t.width, bounds.x, bounds.maxX), y: slide(t.y, t.height, bounds.y, bounds.maxY),
+                          width: t.width, height: t.height)
+    }
     /// The rect with its edges on whole layout pixels (rounded half up), as Chromium snaps backgrounds and borders
     /// laid out at fractional positions (a 44.5px header paints 45).
     var snapped: CanvasRect {

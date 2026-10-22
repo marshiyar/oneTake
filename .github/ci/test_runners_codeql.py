@@ -39,6 +39,23 @@ class Handoff(unittest.TestCase):
         self.wf = workflow("codeql.yml")
         self.jobs = self.wf["jobs"]
 
+    def test_push_and_pull_request_runs_are_throttled_to_security_relevant_paths(self):
+        # The CodeQL throttle: docs-only, theme/scopes/panels-only and test-only changes must not
+        # start a run; parser, platform-shell, script and workflow changes must. The weekly schedule
+        # and hand runs stay unfiltered.
+        on = self.wf[True] if True in self.wf else self.wf["on"]
+        for event in ("pull_request", "push"):
+            paths = on[event]["paths"]
+            self.assertNotIn("paths-ignore", on[event])
+            for want in ("mpvfx-swift/Sources/MpvfxRuntime/**", "mpvfx-swift/Sources/MpvfxShared/**",
+                         "mpvfx-swift/scripts/**", ".github/workflows/**"):
+                self.assertIn(want, paths)
+            for noise in ("**/*.md", "mpvfx-swift/Tests/**", "mpvfx-swift/Sources/MpvfxTheme/**",
+                          "mpvfx-swift/Sources/MpvfxScopes/**"):
+                self.assertNotIn(noise, paths)
+        self.assertIn("schedule", on)
+        self.assertIn("workflow_dispatch", on)
+
     def test_sent_for_main_pushes_and_same_repository_pull_requests_only(self):
         cond = self.jobs["swift-runners"]["if"]
         self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/main'", cond)
@@ -74,12 +91,12 @@ class Handoff(unittest.TestCase):
     def test_the_local_swift_job_is_skipped_when_the_analysis_was_sent(self):
         swift = self.jobs["swift"]
         self.assertEqual(swift["needs"], "swift-runners")
-        self.assertEqual(swift["if"], "${{ !cancelled() && needs.swift-runners.outputs.sent != 'true' }}")
+        self.assertEqual(swift["if"], "${{ !cancelled() && vars.CODEQL_PAUSED == 'false' && needs.swift-runners.outputs.sent != 'true' }}")
         self.assertEqual(swift["runs-on"], "macos-26")
 
     def test_python_and_actions_stay_local_on_every_event(self):
         job = self.jobs["scripts-and-workflows"]
-        self.assertNotIn("if", job)
+        self.assertEqual(job["if"], "vars.CODEQL_PAUSED == 'false'")
         self.assertEqual(job["strategy"]["matrix"]["language"], ["python", "actions"])
 
 

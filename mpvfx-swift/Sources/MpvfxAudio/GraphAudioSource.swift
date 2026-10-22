@@ -21,7 +21,10 @@ import MpvfxAudioGraph
 /// Exactness: the graph is a strictly in-order pull from frame 0 (FX state, quanta alignment and envelopes
 /// are all counted from frame 0), so a seek is a *pre-roll*: render, and discard, up to the target. A forward
 /// seek continues from the current position (identical stream, cheaper); a backward seek, or a rebuilt
-/// project, starts a fresh renderer at frame 0. Output at gain 1 / unmuted is bit-identical to `renderAll()`.
+/// project, starts a fresh renderer at frame 0. Output at gain 1 / unmuted is bit-identical to `renderAll()`,
+/// except inside the `declickFrames` after a live change: a rebuilt graph crossfades in from the old one, a transport
+/// gain or mute change ramps (after the window the output is exact again), and an in-place parameter glides
+/// (`LiveEdit`; the filters keep their state, so it settles onto the export render rather than matching it).
 public final class GraphAudioSource: AudioRenderSource {
     public static let quantum = 128
     /// Frames per pre-roll pull (any partition gives the same samples; big chunks are just faster).
@@ -43,7 +46,14 @@ public final class GraphAudioSource: AudioRenderSource {
         precondition(project.sampleRate.rounded() == project.sampleRate, "integral sample rate")
         format = AudioFormat(sampleRate: Int(project.sampleRate), channels: 2)
         self.project = project
-        renderer = AudioGraphRenderer(project)
+        renderer = Self.liveRenderer(project)
+    }
+
+    private static func liveRenderer(_ project: AudioGraphProject) -> AudioGraphRenderer {
+        let renderer = AudioGraphRenderer(project)
+        // Capture through pre-roll too: a bus may already have pulled future input. Only render publishes it.
+        renderer.collectsMeters = true
+        return renderer
     }
 
     /// Transport gain/mute have their own lock: the UI sets them every tick, and must never wait behind a seek
@@ -59,13 +69,31 @@ public final class GraphAudioSource: AudioRenderSource {
     }
     /// Next frame the graph will render.
     public var position: Int { lock.lock(); defer { lock.unlock() }; return renderer.position }
+    /// Last block actually pulled by playback; never publishes seek pre-roll meters.
+    public var meters: [String: AudioGraphRenderer.Meter] { meterLock.lock(); defer { meterLock.unlock() }; return liveMeters }
+    private let meterLock = NSLock()
+    private var liveMeters: [String: AudioGraphRenderer.Meter] = [:]
+    private var meterGeneration = 0
+    private var metersStopped = false
+
+    public func playbackStopped() { resetMeters(stopped: true) }
+
+    private func resetMeters(stopped: Bool) {
+        meterLock.lock()
+        liveMeters = [:]; meterGeneration += 1; metersStopped = stopped
+        meterLock.unlock()
+    }
     public var lastPreRoll: PreRoll? { lock.lock(); defer { lock.unlock() }; return lastPreRoll_ }
 
     public func seek(_ t: Double) { seek(frame: Int(((t.isFinite ? max(0, t) : 0) * project.sampleRate).rounded())) }
 
     public func seek(frame target: Int) {
+        resetMeters(stopped: false)
         lock.lock(); defer { lock.unlock() }
         seekGeneration += 1
+        // A seek starts a new stream (the device was flushed, or the loop wrapped): nothing to fade from.
+        fadingOut = nil; renderedSinceSeek = false
+        gainLock.lock(); appliedGain = nil; gainRamp = nil; gainLock.unlock()
         let t = max(0, min(target, renderer.totalFrames))
         if target < renderer.position, let a = armed, a.version == projectVersion, a.renderer.position == t {
             // The loop start, pre-rolled in the background: the wrap is a pointer swap, not a pre-roll from frame 0.
@@ -96,7 +124,7 @@ public final class GraphAudioSource: AudioRenderSource {
         arming = (target, version)
         lock.unlock()
         armQueue.async { [weak self] in
-            let r = AudioGraphRenderer(p)
+            let r = Self.liveRenderer(p)
             var left = target
             while left > 0 {
                 let n = min(left, Self.preRollChunk); _ = r.render(n); left -= n
@@ -154,16 +182,18 @@ public final class GraphAudioSource: AudioRenderSource {
         }
         lock.unlock()
         let start = DispatchTime.now().uptimeNanoseconds
-        var fresh = AudioGraphRenderer(newProject)
+        var fresh = Self.liveRenderer(newProject)
         while true {
             if currentTicket() != ticket { return }
             lock.lock()
             let target = min(renderer.position, fresh.totalFrames), gen = seekGeneration
-            if target < fresh.position { lock.unlock(); fresh = AudioGraphRenderer(newProject); continue }   // seeked backward meanwhile
+            if target < fresh.position { lock.unlock(); fresh = Self.liveRenderer(newProject); continue }   // seeked backward meanwhile
             if target - fresh.position <= Self.swapCatchUpFrames {
                 var left = target - fresh.position
                 while left > 0 { let n = min(left, Self.preRollChunk); _ = fresh.render(n); left -= n }
                 project = newProject
+                // Mid-fade, what is heard is still a blend: the new graph fades in over that blend, not over the old one.
+                if renderedSinceSeek { fadingOut = SwapFade(outgoing: OutgoingGraph(renderer, under: fadingOut), frames: declickFrames) }
                 renderer = fresh
                 projectVersion += 1
                 lastReplace = .rebuilt
@@ -185,7 +215,7 @@ public final class GraphAudioSource: AudioRenderSource {
 
     func preRoll(to target0: Int, fresh: Bool) {
         let start = DispatchTime.now().uptimeNanoseconds
-        if fresh { renderer = AudioGraphRenderer(project) }
+        if fresh { renderer = Self.liveRenderer(project) }
         let from = renderer.position
         let target = max(from, min(target0, renderer.totalFrames))
         var left = target - from
@@ -193,13 +223,88 @@ public final class GraphAudioSource: AudioRenderSource {
         lastPreRoll_ = PreRoll(fromFrame: from, targetFrame: target, seconds: Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9)
     }
 
+    // MARK: Declicking
+
+    /// Frames a rebuilt graph crossfades in over, and a transport gain or mute change ramps over (20 ms at 48 kHz).
+    public var declickFrames: Int { LiveEdit.glideFrames(Double(format.sampleRate)) }
+    /// What a rebuild replaced, still rendering at the same position while the new graph fades in.
+    var fadingOut: SwapFade?
+    var renderedSinceSeek = false
+    /// The transport gain the last rendered frame had, and the ramp toward a new one (`gainLock`).
+    var appliedGain: Float?
+    var gainRamp: LiveGlide?
+
+    /// A crossfade in flight: the newer graph's weight over `outgoing` rises from 0 to 1.
+    struct SwapFade {
+        let outgoing: OutgoingGraph
+        var glide: LiveGlide
+        init(outgoing: OutgoingGraph, frames: Int) { self.outgoing = outgoing; glide = LiveGlide(from: 0, to: 1, frames: frames) }
+
+        /// Blends `out` (the newer graph's block) over the outgoing sound, in place; false once the fade is done.
+        mutating func blend(_ out: inout [Float], _ frames: Int) -> Bool {
+            let old = outgoing.render(frames)
+            for k in 0..<frames {
+                let w = glide.next()
+                out[2 * k] = old[2 * k] + (out[2 * k] - old[2 * k]) * w
+                out[2 * k + 1] = old[2 * k + 1] + (out[2 * k + 1] - old[2 * k + 1]) * w
+            }
+            return !glide.finished
+        }
+    }
+
+    /// The sound a swap replaced: a renderer, itself still fading in over an older sound when the swap came mid-fade.
+    final class OutgoingGraph {
+        let renderer: AudioGraphRenderer
+        var under: SwapFade?
+        init(_ renderer: AudioGraphRenderer, under: SwapFade?) { self.renderer = renderer; self.under = under }
+
+        /// `frames` interleaved stereo frames (silence past the end), blended over `under` while its fade lasts.
+        func render(_ frames: Int) -> [Float] {
+            var out = renderer.render(frames)
+            if out.count < frames * 2 { out += [Float](repeating: 0, count: frames * 2 - out.count) }
+            if var u = under { under = u.blend(&out, frames) ? u : nil }
+            return out
+        }
+    }
+
     public func render(frames: Int) -> [Float] {
+        meterLock.lock(); let generation = meterGeneration; meterLock.unlock()
         lock.lock()
         var out = renderer.render(frames)
-        lock.unlock()
-        gainLock.lock(); let g: Float = isMuted ? 0 : Float(gain); gainLock.unlock()
         if out.count < frames * 2 { out += [Float](repeating: 0, count: frames * 2 - out.count) } // past the end: silence
-        if g != 1 { for i in out.indices { out[i] *= g } }
+        if fadingOut != nil { crossfadeFromOldGraph(&out, frames) }
+        meterLock.lock()
+        if generation == meterGeneration && !metersStopped { liveMeters = renderer.meters }
+        meterLock.unlock()
+        renderedSinceSeek = true
+        lock.unlock()
+        applyTransportGain(&out, frames)
         return out
+    }
+
+    /// A rebuilt graph (bypass, add, remove, reorder, a parameter that cannot change in place) is not switched in at
+    /// one sample: for `declickFrames` the old graph keeps rendering and the output crossfades linearly from it to
+    /// the new one, which is then heard alone, sample-identical to the export render. Under `lock`.
+    private func crossfadeFromOldGraph(_ out: inout [Float], _ frames: Int) {
+        guard var fade = fadingOut else { return }
+        fadingOut = fade.blend(&out, frames) ? fade : nil
+    }
+
+    /// Transport gain and mute: a change ramps linearly over `declickFrames` from the gain the stream had; the first
+    /// block after a seek takes the gain as it is.
+    private func applyTransportGain(_ out: inout [Float], _ frames: Int) {
+        gainLock.lock(); defer { gainLock.unlock() }
+        let target: Float = isMuted ? 0 : Float(gain)
+        let current = appliedGain ?? target
+        if target != (gainRamp?.to ?? current) { gainRamp = LiveGlide(from: current, to: target, frames: declickFrames) }
+        guard var ramp = gainRamp else {
+            appliedGain = target
+            if target != 1 { for i in out.indices { out[i] *= target } }
+            return
+        }
+        var g = current
+        for k in 0..<frames { g = ramp.next(); out[2 * k] *= g; out[2 * k + 1] *= g }
+        appliedGain = g
+        gainRamp = ramp.finished ? nil : ramp
     }
 }

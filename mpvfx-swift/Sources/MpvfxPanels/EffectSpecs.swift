@@ -48,33 +48,33 @@ public enum EffectSpecs {
     public static let families: [Family] = [
         Family(label: "Essentials", presets: [], effects: [
             Spec(key: "blur", label: "Blur", masterLabel: "Radius", masterFormat: { String(format: "%.1fpx", 0.75 + pow($0, 1.35) * 32) }),
-            Spec(key: "pixelate", label: "Pixelate", masterLabel: "Cell Size", masterFormat: { "\(Int((1 + $0 * 47).rounded()))px" }),
+            Spec(key: "pixelate", label: "Pixelate", masterLabel: "Cell size", masterFormat: { "\(Int((1 + $0 * 47).rounded()))px" }),
             Spec(key: "bloom", label: "Bloom", masterLabel: "Intensity", max: 300,
                  settings: [.slider(key: "bloomRadius", label: "Radius", min: 1, max: 100, scale: 1, unit: "px", format: nil)]),
         ]),
-        Family(label: "Retro & Glitch", presets: ["creator-camcorder", "vhs-playback", "home-movie-8mm"], effects: [
-            Spec(key: "chromaBleed", label: "Chroma Softening", masterLabel: "Smear"),
-            Spec(key: "tapeDamage", label: "Tape Damage", showMaster: false,
+        Family(label: "Retro & glitch", presets: ["creator-camcorder", "vhs-playback", "home-movie-8mm"], effects: [
+            Spec(key: "chromaBleed", label: "Chroma softening", masterLabel: "Smear"),
+            Spec(key: "tapeDamage", label: "Tape damage", showMaster: false,
                  settings: [percent("tapeTracking", "Tracking"), percent("tapeNoise", "Noise"), percent("tapeSpeed", "Speed")]),
-            Spec(key: "filmArtifacts", label: "Film Artifacts", masterLabel: "Density"),
+            Spec(key: "filmArtifacts", label: "Film artifacts", masterLabel: "Density"),
             Spec(key: "scanlines", label: "Scanlines", masterLabel: "Opacity",
-                 settings: [percent("scanlineCount", "Line Count", format: { "\(Int((50 + $0 * 450).rounded()))" }), percent("scanlineSoftness", "Softness")]),
-            Spec(key: "crtCurvature", label: "CRT Curvature", masterLabel: "Curvature"),
-            Spec(key: "chromaticAberration", label: "Channel Separation", masterLabel: "Separation", settings: [degrees("chromaticAngle", "Angle", 360)]),
-            Spec(key: "digitalGlitch", label: "Digital Glitch", showMaster: false, settings: [
-                percent("digitalGlitchColorSplit", "Color Split"), percent("digitalGlitchLineTear", "Line Tear"),
-                percent("digitalGlitchPixelate", "Pixelation"), percent("digitalGlitchBlockAmount", "Block Amount"),
-                percent("digitalGlitchBlockDisplacement", "Displacement"), percent("digitalGlitchBlockOpacity", "Block Opacity"),
+                 settings: [percent("scanlineCount", "Line count", format: { "\(Int((50 + $0 * 450).rounded()))" }), percent("scanlineSoftness", "Softness")]),
+            Spec(key: "crtCurvature", label: "CRT curvature", masterLabel: "Curvature"),
+            Spec(key: "chromaticAberration", label: "Channel separation", masterLabel: "Separation", settings: [degrees("chromaticAngle", "Angle", 360)]),
+            Spec(key: "digitalGlitch", label: "Digital glitch", showMaster: false, settings: [
+                percent("digitalGlitchColorSplit", "Color split"), percent("digitalGlitchLineTear", "Line tear"),
+                percent("digitalGlitchPixelate", "Pixelation"), percent("digitalGlitchBlockAmount", "Block amount"),
+                percent("digitalGlitchBlockDisplacement", "Displacement"), percent("digitalGlitchBlockOpacity", "Block opacity"),
                 percent("digitalGlitchSpeed", "Speed"),
             ]),
         ]),
         Family(label: "Print", presets: ["editorial-halftone", "two-ink-print"], effects: [
-            Spec(key: "halftone", label: "Halftone", showMaster: false, settings: [percent("halftoneSize", "Dot Size")]),
-            Spec(key: "twoInkPrint", label: "Two-Ink Print", showMaster: false, settings: [percent("twoInkPrintSize", "Dot Size")]),
-            Spec(key: "dither", label: "Ordered Dither", showMaster: false,
-                 settings: [percent("ditherSize", "Point Size", format: { String(format: "%.1fpx", 1 + $0 * 4) })], palette: "mono"),
-            Spec(key: "monoScreen", label: "Mono Screen", showMaster: false, settings: [
-                percent("monoScreenSize", "Cell Size", format: { "\(Int((4 + $0 * 14).rounded()))px" }),
+            Spec(key: "halftone", label: "Halftone", showMaster: false, settings: [percent("halftoneSize", "Dot size")]),
+            Spec(key: "twoInkPrint", label: "Two-ink print", showMaster: false, settings: [percent("twoInkPrintSize", "Dot size")]),
+            Spec(key: "dither", label: "Ordered dither", showMaster: false,
+                 settings: [percent("ditherSize", "Point size", format: { String(format: "%.1fpx", 1 + $0 * 4) })], palette: "mono"),
+            Spec(key: "monoScreen", label: "Mono screen", showMaster: false, settings: [
+                percent("monoScreenSize", "Cell size", format: { "\(Int((4 + $0 * 14).rounded()))px" }),
                 degrees("monoScreenAngle", "Angle", 90), percent("monoScreenSpread", "Spread"),
                 .select(key: "monoScreenShape", label: "Shape", options: ["Circle", "Square", "Diamond", "Triangle", "Line"]),
                 .toggle(key: "monoScreenInvert", label: "Invert"),
@@ -82,24 +82,24 @@ public enum EffectSpecs {
         ]),
         Family(label: "Art", presets: [], effects: [
             Spec(key: "ascii", label: "ASCII", showMaster: false, settings: [
-                percent("asciiSize", "Character Size", format: { "\(Int((4 + $0 * 76).rounded()))px" }),
+                percent("asciiSize", "Character size", format: { "\(Int((4 + $0 * 76).rounded()))px" }),
                 .select(key: "asciiStyle", label: "Style", options: ["Standard", "Dense", "Minimal", "Blocks", "Braille", "Technical", "Matrix", "Hatching"]),
-                .toggle(key: "asciiInvert", label: "Invert"), .toggle(key: "asciiColor", label: "Use Source Color"),
-                percent("asciiRotation", "Edge Rotation"),
+                .toggle(key: "asciiInvert", label: "Invert"), .toggle(key: "asciiColor", label: "Use source color"),
+                percent("asciiRotation", "Edge rotation"),
             ], palette: "mono"),
             Spec(key: "engraving", label: "Engraving", showMaster: false, settings: [
-                percent("engravingSpacing", "Spacing"), percent("engravingMinThickness", "Min Thickness"),
-                percent("engravingMaxThickness", "Max Thickness"), degrees("engravingAngle", "Angle", 180),
+                percent("engravingSpacing", "Spacing"), percent("engravingMinThickness", "Min thickness"),
+                percent("engravingMaxThickness", "Max thickness"), degrees("engravingAngle", "Angle", 180),
                 percent("engravingContrast", "Contrast"), percent("engravingSharpness", "Sharpness"),
-                percent("engravingWave", "Wave"), percent("engravingWaveFrequency", "Wave Frequency"),
+                percent("engravingWave", "Wave"), percent("engravingWaveFrequency", "Wave frequency"),
             ], palette: "art"),
             Spec(key: "crosshatch", label: "Crosshatch", showMaster: false, settings: [
                 percent("crosshatchSpacing", "Spacing"), percent("crosshatchThickness", "Thickness"),
                 degrees("crosshatchAngle", "Angle", 180), percent("crosshatchContrast", "Contrast"),
-                percent("crosshatchEdges", "Edge Detail"), percent("crosshatchLineWeight", "Line Variation"),
-                percent("crosshatchWave", "Wave"), percent("crosshatchWaveFrequency", "Wave Frequency"),
+                percent("crosshatchEdges", "Edge detail"), percent("crosshatchLineWeight", "Line variation"),
+                percent("crosshatchWave", "Wave"), percent("crosshatchWaveFrequency", "Wave frequency"),
             ], palette: "art"),
-            Spec(key: "kuwahara", label: "Kuwahara Paint", showMaster: false, settings: [
+            Spec(key: "kuwahara", label: "Kuwahara paint", showMaster: false, settings: [
                 percent("kuwaharaRadius", "Radius", format: { "\(Int((2 + $0 * 14).rounded()))px" }),
                 percent("kuwaharaSharpness", "Sharpness"),
                 percent("kuwaharaSaturation", "Saturation", format: { "\(Int(($0 * 200).rounded()))%" }),

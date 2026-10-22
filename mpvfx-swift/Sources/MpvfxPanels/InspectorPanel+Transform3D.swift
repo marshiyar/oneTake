@@ -42,10 +42,10 @@ extension InspectorPanel {
         let rx = value(NativeTransform3D.rotationXId), ry = value(NativeTransform3D.rotationYId)
         let z = value(NativeTransform3D.zId), lens = value(NativeTransform3D.perspectiveId)
         let roll = value(TimelineEditor.rotationId)
-        var rows: [InspectorRow] = [.init(.spacer(6)), .init(.custom(transform3DHeader()))]
+        var rows: [InspectorRow] = [.init(.spacer(PanelGrid.unit)), .init(.custom(transform3DHeader()))]
         guard transform3DOpen else { return rows }
         rows.append(.init(.custom(cubeRow(editor, s, pose: (rx, ry, roll), z: z, lens: lens))))
-        rows.append(.init(.note("Drag to tilt · the ↺ under the cube resets to flat")))
+        rows.append(.init(.note("Drag to tilt · use Reset 3D transform to return to flat")))
         // Comp-derived lens (naturalDepthPerspective): the composition height, one comp-height back.
         let naturalLens = editor.document.canvas.height.rounded()
         func row(_ key: String, _ label: String, _ pid: String, _ v: Double, suffix: String, step: Double,
@@ -80,15 +80,15 @@ extension InspectorPanel {
         return rows
     }
 
-    /// `text-[10px] font-medium uppercase tracking-wider` toggle with its caret (collapsed by default).
+    /// Sentence-case disclosure with its caret (collapsed by default).
     func transform3DHeader() -> InspectorCustomRow {
         InspectorCustomRow(id: "3d:toggle", height: 24, draw: { [weak self] c, r, panel in
             guard let self else { return }
             let hot = panel.hovered == .custom("3d:toggle", 0)
-            PanelDraw.text(c, "3D TRANSFORM", in: CanvasRect(x: r.x, y: r.y, width: r.width - 16, height: r.height),
-                           font: PanelTheme.font(10, .medium), color: hot ? PanelTheme.text2 : PanelTheme.text4)
+            PanelDraw.text(c, "3D transform", in: CanvasRect(x: r.x, y: r.y, width: r.width - 16, height: r.height),
+                           font: PanelTheme.font(11, .medium), color: hot ? PanelTheme.text2 : PanelTheme.inspectorText)
             let caret = CanvasRect(x: r.maxX - 9, y: r.y + (r.height - 9) / 2, width: 9, height: 9)
-            (self.transform3DOpen ? PanelIcon.groupCaretDown : PanelIcon.groupCaretRight).draw(c, in: caret, color: hot ? PanelTheme.text2 : PanelTheme.text4)
+            (self.transform3DOpen ? PanelIcon.groupCaretDown : PanelIcon.groupCaretRight).draw(c, in: caret, color: hot ? PanelTheme.text2 : PanelTheme.inspectorText)
             panel.addHit(r, .custom("3d:toggle", 0))
         }, pointer: { [weak self] _, _, phase in
             guard let self, phase == 0 else { return }
@@ -142,7 +142,7 @@ extension InspectorPanel {
             }
             panel.addHit(frame, .custom(id, 0))
             let reset = CanvasRect(x: frame.x + frame.width / 2 - 6, y: frame.maxY + 3, width: 12, height: 12)
-            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom(id, 1) ? PanelTheme.text1 : PanelTheme.text4)
+            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom(id, 1) ? PanelTheme.text1 : PanelTheme.inspectorText)
             panel.addHit(reset.insetBy(-3), .custom(id, 1))
         }, pointer: { [weak self] part, p, phase in
             guard let self else { return }

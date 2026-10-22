@@ -18,7 +18,10 @@ Download the installer for your system from [the website](https://marshiyar.gith
 | Windows 10 or 11, x64 | `setup.exe`, or the portable zip | MpVFX in the Start menu (installed per user in `%LOCALAPPDATA%\Programs\MpVFX`); the zip runs where you unpack it |
 | Ubuntu 24.04 or newer, Debian 13 | `.deb`, or the archive | MpVFX in the applications menu, `mpvfx` on the command line |
 
-The Windows installer and the Linux package are not signed yet. To build from source instead, follow [Build from source](../../README.md#build-from-source).
+The Windows installer is not code-signed yet (SmartScreen asks for **More info**, then **Run anyway**); the Linux
+package is unsigned, and the macOS disk image is Developer ID signed and notarized when the signing secrets are set
+(see [`PACKAGING.md`](PACKAGING.md)). To build from source instead, follow
+[Build from source](../../README.md#build-from-source).
 
 The first launch creates your own project, called MpVFX, and opens it. It lives in `.config/MpVFX/projects/MpVFX` in
 your home folder, on every system (`$XDG_CONFIG_HOME/MpVFX` when that variable is set; `MPVFX_USER_DATA_DIR` moves the
@@ -35,8 +38,11 @@ repository, so you can use it freely.
 2. Copy `mpvfx-swift/samples/getting-started` somewhere of your own, for example your home folder. The app saves your
    edits into the folder it opens, so work on a copy. The `.studio` folder is hidden in most file managers; copy the
    whole `getting-started` folder and it comes along.
-3. Start MpVFX with `MPVFX_PROJECT` set to that folder. There is no File > Open for a project folder yet, so this is how
-   the app opens a project outside a library:
+3. Open that copy in MpVFX. On macOS use **File > Open…** (Cmd+O); on every system the Media panel's **…** menu has
+   **Open project…**, and **File > Open Recent** (macOS) reopens a project you opened before. Pick the
+   `getting-started` folder (the one holding `.studio/project.json`); the app saves the project you had open first,
+   and a folder that is not a project is reported while your open project stays. From a terminal,
+   `MPVFX_PROJECT` opens a project at launch instead:
 
    ```sh
    # Linux
@@ -64,9 +70,11 @@ Without `MPVFX_PROJECT` the app opens your own MpVFX project again. The steps be
 
 ## 3. Import media
 
-Click **Import media** at the top of the media bin, or press Ctrl+I, and pick files; or drag files from your file manager
-onto the window. Each file is copied into the project folder, checked, and listed in the bin. Dropped on the timeline's
-tracks, the files are also placed on the timeline from the drop point on.
+Click **Import** at the top of the media bin (or **Import media…** in its **…** menu), or press Ctrl+I, and pick
+files; or drag files from your file manager onto the window. Each file is copied into the project folder, checked,
+and listed in the bin. Dropped on the timeline's tracks, the files are also placed on the timeline from the drop
+point on. The bin's search and filter menu (kind, timeline use, order) narrow the list, and that choice is kept
+between launches.
 
 To put a bin file on the timeline, drag its card onto a track (it lands at the pointer) or onto the preview (it lands
 at the playhead), double-click the card, or choose **Add to timeline** from the card's menu.
@@ -98,7 +106,9 @@ half and press Delete; then press Ctrl+Z and use Shift+Delete instead, and the t
 
 Select a video clip or a picture on the timeline and open **Grade** on the Design tab. The group has, top to bottom:
 
-- **Scopes:** histogram, waveform, RGB parade and vectorscope of the selected clip's graded frame.
+- **Scopes:** waveform, RGB parade, vectorscope, histogram and false colour of the selected clip's graded frame or
+  of the composited program (the row's Clip / Program switch); the dockable Scopes panel (Window / Panels) shows the
+  same program scopes beside the preview.
 - **Presets:** looks such as Warm Daylight, Clean Studio and Mono Clean, each shown on a frame of the clip. **Amount**
   sets how strongly the grade applies.
 - **Primary:** exposure, contrast, highlights, shadows, whites, blacks, temperature, tint, vibrance and saturation.
@@ -108,6 +118,9 @@ Select a video clip or a picture on the timeline and open **Grade** on the Desig
 - **Custom LUT:** import a `.cube` file with + and apply it.
 - **Finish:** vignette and grain, each with its own settings behind the gear.
 - **Copy grade to:** the same grade on the other clips of this file, or on all the project's media.
+- **Auto balance** sets exposure, warmth and tint from the frame's statistics, and **Match look** fits the grade to
+  another clip you pick as a reference; both are one undo step and stay editable. **Saved looks** stores a grade
+  under a name so you can apply it to other clips later.
 
 The first clip of the sample uses Warm Daylight. Select the tide clip and pick a preset of your own; the preview shows
 the change at once. Preview and export draw with the same painter, so the export looks like the preview. The grade runs on the GPU (Metal on macOS,
@@ -133,14 +146,22 @@ folder. An export never replaces a file that is already there, and a project wit
 ## 7. Your own project
 
 Your own project, MpVFX, opens whenever you start the app without `MPVFX_PROJECT`. Edits save a moment after you make
-them, and Ctrl+S saves at once. To keep several projects apart, create a library with **New library** at the top of the
-left panel: a library holds events and projects, and its navigator switches between them and back to your own project.
+them, and Ctrl+S saves at once. To keep several projects apart, create a library with **New library** in the **…** menu at the top of
+the Media panel: a library holds events and projects. The switcher beside it (library ▸ event) picks the event, and the
+**…** menu switches between projects and back to your own project.
 
 The composition is 1920×1080 in a new project. To change it, press Esc in the timeline so nothing is selected, then pick a preset (16:9, 9:16, 1:1, 4:5, 4K) or type a width and height on the Design tab.
+
+A few more things worth trying on the sample: press M in the timeline to drop a sequence marker and open the
+Markers panel from Window / Panels to jump between markers; open the Mixer from Window / Panels to ride the music
+track's gain and pan; add a background from the Media panel menu (Solid colour, Linear gradient, Radial gradient)
+and edit it under Design > Background; and drag a text look from the Media sidebar onto the timeline for a title.
 
 ## Where to go next
 
 - [`STATUS.md`](STATUS.md): every feature and how complete it is.
+- [`FEATURES.md`](FEATURES.md): the full inventory, including what is partial, missing or dropped on purpose.
 - [`EFFECTS.md`](EFFECTS.md): the grade and stylize effects in detail.
+- [`TIMELINE.md`](TIMELINE.md): zoom, track height, the ruler and the sequence end.
 - The keyboard button under the preview lists the shortcuts, with undo and redo.
 - [Known limits](../../README.md#known-limits) in the README: what is slow or missing today.

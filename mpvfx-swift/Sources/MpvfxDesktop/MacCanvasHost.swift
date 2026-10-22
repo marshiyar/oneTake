@@ -25,6 +25,7 @@ final class MacCanvasHost: NSView {
     /// Cursor for a point (resize seams); nil = arrow.
     var cursorAt: ((Double, Double) -> NSCursor?)?
     var lastSize = CanvasSize(0, 0)
+    var accessibilityControls: (() -> [CanvasAccessibilityControl])?
     /// A file drag from Finder moved over the canvas (nil: it left).
     var onFilesDragged: ((CanvasPoint?) -> Void)?
     /// Files dropped from Finder (local paths, view points).
@@ -42,13 +43,23 @@ final class MacCanvasHost: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    func invalidate() { needsDisplay = true }
+    override func accessibilityChildren() -> [Any]? {
+        accessibilityControls?().map { control in
+            let local = NSRect(x: control.frame.x, y: control.frame.y, width: control.frame.width, height: control.frame.height)
+            let screen = window?.convertToScreen(convert(local, to: nil)) ?? local
+            return MacCanvasAccessibilitySwitch(parent: self, label: control.label, value: control.value,
+                                                frame: screen, press: control.press)
+        }
+    }
+
+    func invalidate() { refreshCursor(); needsDisplay = true }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let cg = NSGraphicsContext.current?.cgContext else { return }
         let size = CanvasSize(Double(bounds.width), Double(bounds.height))
         if size != lastSize { lastSize = size; input?.resized(size) }
         paint(CoreGraphicsCanvas(context: cg), size)
+        refreshCursor()
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -95,7 +106,8 @@ final class MacCanvasHost: NSView {
     // MARK: Pointer
     override func mouseDown(with e: NSEvent) {
         window?.makeFirstResponder(self)
-        let p = point(e)
+        let p = point(e); lastPoint = p
+        defer { refreshCursor() }
         // Control-click is the macOS secondary click.
         if e.modifierFlags.contains(.control) { input?.secondaryClick(x: p.x, y: p.y); return }
         input?.pointerDown(x: p.x, y: p.y, button: PointerButton.primary, modifiers: Self.modifiers(e))
@@ -111,16 +123,18 @@ final class MacCanvasHost: NSView {
     /// recording switches between move, opacity and rotation on the modifier alone, like the original's keydown).
     override func flagsChanged(with e: NSEvent) {
         super.flagsChanged(with: e)
-        if let p = lastPoint { input?.pointerMove(x: p.x, y: p.y, modifiers: Self.modifiers(e)) }
+        if let p = lastPoint { input?.pointerMove(x: p.x, y: p.y, modifiers: Self.modifiers(e)); refreshCursor() }
     }
     // Middle and extra buttons (DOM numbering): the preview pans on a middle-button drag.
     override func otherMouseDown(with e: NSEvent) {
-        let p = point(e)
+        let p = point(e); lastPoint = p
         input?.pointerDown(x: p.x, y: p.y, button: PointerButton.fromAppKit(e.buttonNumber), modifiers: Self.modifiers(e))
+        updateCursor(p)
     }
     override func otherMouseDragged(with e: NSEvent) { move(e) }
     override func otherMouseUp(with e: NSEvent) {
-        let p = point(e); input?.pointerUp(x: p.x, y: p.y, button: PointerButton.fromAppKit(e.buttonNumber))
+        let p = point(e); lastPoint = p
+        input?.pointerUp(x: p.x, y: p.y, button: PointerButton.fromAppKit(e.buttonNumber)); refreshCursor()
     }
     static func modifiers(_ e: NSEvent) -> PointerModifiers {
         let f = e.modifierFlags
@@ -132,13 +146,24 @@ final class MacCanvasHost: NSView {
         return m
     }
     private func updateCursor(_ p: (x: Double, y: Double)) { (cursorAt?(p.x, p.y) ?? .arrow).set() }
+    /// Redraws and modal changes need a refresh too. Do not set a global AppKit cursor when this view is
+    /// behind another app/window or the pointer has left its bounds.
+    private func refreshCursor() {
+        guard let window, window.isKeyWindow,
+              NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0) == window.windowNumber else { return }
+        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard bounds.contains(p) else { return }
+        updateCursor((Double(p.x), Double(p.y)))
+    }
     override func mouseUp(with e: NSEvent) {
         guard !e.modifierFlags.contains(.control) else { return }
-        let p = point(e); input?.pointerUp(x: p.x, y: p.y, button: PointerButton.primary)
+        let p = point(e); lastPoint = p
+        input?.pointerUp(x: p.x, y: p.y, button: PointerButton.primary); refreshCursor()
     }
     override func rightMouseDown(with e: NSEvent) {
         window?.makeFirstResponder(self)
-        let p = point(e); input?.secondaryClick(x: p.x, y: p.y)
+        let p = point(e); lastPoint = p
+        input?.secondaryClick(x: p.x, y: p.y); updateCursor(p)
     }
 
     override func scrollWheel(with e: NSEvent) {
@@ -150,7 +175,7 @@ final class MacCanvasHost: NSView {
         let scale = precise ? 1.0 : 53.0
         let dx = -Double(e.scrollingDeltaX) * scale, dy = -Double(e.scrollingDeltaY) * scale
         guard dx != 0 || dy != 0 else { return }
-        input?.scroll(dx: dx, dy: dy, x: p.x, ctrl: e.modifierFlags.contains(.control), shift: e.modifierFlags.contains(.shift), precise: precise)
+        input?.scroll(dx: dx, dy: dy, x: p.x, ctrl: Self.modifiers(e).zoomsWheel, shift: e.modifierFlags.contains(.shift), precise: precise)
     }
 
     /// Trackpad pinch arrives in Chromium as a ctrl+wheel; do the same so the timeline zooms.
@@ -165,17 +190,24 @@ final class MacCanvasHost: NSView {
     /// ⌘-shortcuts reach the focused editor view before the menu bar (the editor gets keys first and the menu
     /// runs an accelerator only when the editor did not handle it), so ⌘Z/⌘C/⌘V/⌘= etc. drive the editor.
     override func performKeyEquivalent(with e: NSEvent) -> Bool {
+        defer { refreshCursor() }
         guard e.type == .keyDown, e.modifierFlags.contains(.command), window?.firstResponder === self,
               let k = MacCanvasHost.key(e), input?.keyDown(k) == true else { return super.performKeyEquivalent(with: e) }
         return true
     }
     override func keyDown(with e: NSEvent) {
+        defer { refreshCursor() }
         guard let k = MacCanvasHost.key(e), input?.keyDown(k) == true else { super.keyDown(with: e); return }
     }
     override func keyUp(with e: NSEvent) {
+        defer { refreshCursor() }
         guard let k = MacCanvasHost.key(e) else { super.keyUp(with: e); return }
         input?.keyUp(k)
     }
+
+    /// F1…F12 as AppKit reports them in `charactersIgnoringModifiers`.
+    static let functionKeys = [NSF1FunctionKey, NSF2FunctionKey, NSF3FunctionKey, NSF4FunctionKey, NSF5FunctionKey, NSF6FunctionKey,
+                               NSF7FunctionKey, NSF8FunctionKey, NSF9FunctionKey, NSF10FunctionKey, NSF11FunctionKey, NSF12FunctionKey]
 
     static func key(_ e: NSEvent) -> EditorKey? {
         let code: EditorKey.Code
@@ -193,14 +225,31 @@ final class MacCanvasHost: NSView {
         case 36, 76: code = .enter      // return, keypad enter
         case 48: code = .tab
         default:
-            // Shift is kept (like a GDK keyval), other modifiers are not; function keys are private-use scalars.
-            guard let scalar = e.charactersIgnoringModifiers?.unicodeScalars.first,
-                  scalar.value > 32, !(0xF700...0xF8FF).contains(scalar.value) else { return nil }
+            // Shift is kept (like a GDK keyval), other modifiers are not; function keys are private-use scalars:
+            // F1…F12 become EditorKey.Code.function, the others are dropped.
+            guard let scalar = e.charactersIgnoringModifiers?.unicodeScalars.first, scalar.value > 32 else { return nil }
+            if let n = Self.functionKeys.firstIndex(of: Int(scalar.value)) { code = .function(n + 1); break }
+            guard !(0xF700...0xF8FF).contains(scalar.value) else { return nil }
             code = .char(Character(scalar))
         }
         let f = e.modifierFlags
         return EditorKey(code, shift: f.contains(.shift), ctrl: f.contains(.control), alt: f.contains(.option),
                          meta: f.contains(.command), isRepeat: e.type == .keyDown && e.isARepeat)
     }
+}
+
+private final class MacCanvasAccessibilitySwitch: NSAccessibilityElement {
+    private let action: () -> Void
+    init(parent: Any, label: String, value: Bool, frame: NSRect, press: @escaping () -> Void) {
+        action = press
+        super.init()
+        // NSAccessibilityElement's role/frame/label/parent constructor is a class method, not an init.
+        setAccessibilityRole(.checkBox)
+        setAccessibilityLabel(label)
+        setAccessibilityParent(parent)
+        setAccessibilityFrameInParentSpace(frame)
+        setAccessibilityValue(value)
+    }
+    override func accessibilityPerformPress() -> Bool { action(); return true }
 }
 #endif

@@ -15,7 +15,8 @@ big cache. It was thousands of small buffers that were never freed:
 
 Linux never showed this because Foundation there has no autorelease pools; the same code freed each chunk at once.
 
-The app no longer runs FFmpeg: the in-house media engine (a prebuilt library loaded in-process, `binaries.lock`) hands decoded frames
+The app no longer runs FFmpeg: the in-house media engine (a prebuilt library loaded in-process, `binaries.lock`;
+media 0.2.0, keyframes 1.0.0 at this revision) hands decoded frames
 and samples over in memory, so no pipe is read any more. The pool and budget rules below still apply to every long
 background loop.
 
@@ -33,6 +34,15 @@ background loop.
   - media bin thumbnails, filmstrips: 2% of RAM, 64 to 256 MB;
   - idle Metal grade targets: at most 6 sizes and 256 MB.
   Least recently used entries go first.
+- **Frames being decoded count against the frame budget.** A decode lane reserves a frame's bytes in
+  `PreviewFrameCache` before it decodes it (`reserve`, which evicts to make room) and hands the reservation over when
+  it stores the frame, or gives it back when the media ended or the frame was dropped. A reservation that would take
+  the frames in flight past the budget waits until another is settled, and the reserving lane's newest frame is kept
+  while it fits (it is what the layer shows if the decode fails). Cached plus in-flight frames stay within
+  `MemoryBudget.previewFrames` for any number of lanes (a single frame larger than the whole budget is still kept);
+  before, each lane decoding at a full cache held one more frame outside it
+  (`PreviewMemoryTests.testTwoStacked1080pLanesKeepCachedPlusInFlightFramesWithinTheBudget`). Lookahead
+  (`PreviewCompositor.maxLookahead`, 12) and reverse chunks are cache entries, inside the budget.
 - **Memory pressure gives memory back.** `MemoryPressureMonitor` listens to macOS memory warnings. On a warning the
   frame cache drops to half its budget, thumbnails trim to half, the grader keeps only its most recent picture, and
   the Metal pool empties. On a critical warning the caches empty completely. Views re-request what they need.
@@ -52,7 +62,30 @@ background loop.
 ## Risks
 
 - Budgets are estimates of picture bytes. Allocator overhead and the media engine's own working memory (decoder state) are not counted, so the real
-  footprint sits somewhat above the sum of the budgets.
+  footprint sits somewhat above the sum of the budgets (`MemoryBudget.previewTotal`: frames plus graded pictures).
+  The preview benchmark reports the gap per scenario as `unaccounted_mib`; the target is at most 512 MiB above
+  `budget_sum_mib` on the Linux hosted runner (issue #97).
+- Until issue #97 the preview benchmark kept its playback phase's compositor, with a frame cache filled up to the
+  budget, alive while its real-time phase filled a second one, so `peak_rss_mib` counted two caches the app never
+  holds at once (Linux stacked 3328 MiB was about one 1597 MiB budget plus 320 real-time frames of 3.5 MiB plus the
+  process). The bench now releases the first compositor before the second starts.
+- Measured after issue #97 (bench workflow run 39541322522, merge commit 8487937, GitHub-hosted Linux runner with
+  15.6 GiB RAM and 4 cores, 5 processes per scenario, 1280x720 display; p95, MiB). `budget_sum_mib` is 1854:
+
+  | scenario | `peak_rss_mib` | `cache_bytes_mib` | `in_flight_mib` | `grader_bytes_mib` | `unaccounted_mib` |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | stacked | 2243 (was 3328 p50) | 1596 | 7.0 | 0 | 647 |
+  | 1080p | 1631 (was 2169 p50) | 1055 | 3.5 | 0 | 576 |
+  | graded | 1627 (was 2220 p50) | 1055 | 3.5 | 3.5 | 569 |
+  | 4k | 1382 (was 1575 p50) | 633 | 3.5 | 0 | 749 |
+  | scrub | 711 | 137 | 3.5 | 0 | 574 |
+
+  Every scenario is within `budget_sum_mib` + 512 (2366). `start_rss_mib` is 25. The 570 to 750 MiB left
+  unaccounted is what the process holds once decoding runs outside the caches (the engine's decoder state, canvas
+  surfaces, allocator overhead); scrub, with an almost empty cache, shows the same amount. Real-time playback is
+  unchanged: 100% exact frames and 30 new pictures/s for 1080p, stacked and graded, and 10.0 for 4K (was 10.4).
+  Unthrottled fps is 1.3 to 2.2% lower than in run 39517931817 (stacked 34.73 against 35.26, 1080p 63.67 against
+  64.79, p50).
 - Dropping graded pictures under budget pressure costs a re-grade (a GPU pass on macOS, CPU time on Linux) when that
   clip is shown again.
 - The macOS-only paths (Metal pool budget, the system memory-pressure source, `phys_footprint`) are exercised only on
@@ -64,6 +97,11 @@ background loop.
   `PreviewMemoryTests` (frame cache budget and eviction, pressure, removed clips, grader budget, a long
   play / scrub / grade / reverse session, and a 600-frame read loop whose footprint must stay flat),
   `MetalPoolMemoryTests` (Metal pool within budget, emptied on pressure).
+- Preview benchmark (`tools/MpvfxPreviewBench`, run by `.github/workflows/bench.yml`): each scenario's line has
+  `peak_rss_mib`, `cache_bytes_mib` (frames cached plus in flight at their peak), `in_flight_mib`,
+  `grader_bytes_mib`, `budget_sum_mib`, `start_rss_mib` (before any decoding) and `unaccounted_mib`
+  (`peak_rss_mib` minus the caches' peaks: a lower bound on what the process held outside the caches at its peak,
+  since the peaks need not coincide).
 - Smoke run: `MPVFX_SMOKE_MEMORY=<rounds>` launches the app, drives the open project through rounds of play, scrub,
   grade edits, reverse and replay, simulates a memory warning halfway, and exits 0 (`PASS`) or 4 (`FAIL`) with a
   footprint report. `MPVFX_SMOKE_MEMORY_LIMIT_MB` sets the allowed growth beyond what the caches hold (default 256),

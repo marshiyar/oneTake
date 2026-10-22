@@ -25,7 +25,14 @@ public final class PlayerView {
     public static let controlsPaddingX = 12.0          // px-3
     /// Padding between the viewport and the composition stage.
     public static let stagePadding = 8.0
-    public static let handleDot = 12.0, handleHit = 16.0
+    /// Handle dot size and its square hit target (24 pt, at any zoom: the chrome is drawn in view px).
+    public static let handleDot = 12.0, handleHit = 24.0
+    /// How far beyond a corner's target the rotate zone reaches, and the shortest side that still shows its edge
+    /// handle (shorter sides leave the room to the corners and the body).
+    public static let rotateZone = 18.0, edgeHandleMinSide = 48.0
+    /// The anchor's target radius: its drawn crosshair (16 pt), not a 24 pt square, because it sits in the middle of
+    /// the box where a press moves the layer.
+    public static let anchorHit = 8.0
     // Chrome colours follow the appearance (ThemeTokens); the stage canvas and the chrome drawn over the
     // picture (guides, handles, zoom readout) stay the same in both modes.
     public static var neutral100: CanvasColor { PanelStyle.neutral50 }
@@ -84,6 +91,8 @@ public final class PlayerView {
     public var keepAnimating: (() -> Bool)?
     /// Pointer trail of the gesture being recorded, in view pixels.
     public var recordingTrail: [CanvasPoint] = []
+    /// Record motion's stage outline and banner (nil: Record is off). Set by the controller.
+    public var recordOverlay: RecordOverlay?
     /// Sibling stepped over by the last bring-forward / send-backward, and when.
     public var zOrderFlash: (id: String, start: Double)?
     static let zOrderFlashSeconds = 0.6
@@ -97,6 +106,8 @@ public final class PlayerView {
     var morph: (from: Double, to: Double, start: Double)?
     var lastPlaying: Bool?
     public var cropActive = false
+    /// The transform box: anchors, hovered and dragged part, readout and cursor (PlayerView+TransformBox.swift).
+    public var transformChrome = TransformChrome()
 
     public enum Button: Equatable, CaseIterable { case play, mute, speed, loop, fullscreen, shortcuts }
 
@@ -170,7 +181,7 @@ public final class PlayerView {
         let s = scale(in: size)
         return StageElement(id: e.id, name: e.name, rect: toView(e.rect, in: size), kind: e.kind, rotation: e.rotation,
                             crop: CropInsets(top: e.crop.top * s, right: e.crop.right * s, bottom: e.crop.bottom * s, left: e.crop.left * s),
-                            opacity: e.opacity, scale: e.scale)
+                            opacity: e.opacity, scale: e.scale, locked: e.locked)
     }
 
     /// The element as it shows on screen: view coordinates with its uniform scale (transform.scale, live while a
@@ -250,13 +261,22 @@ public final class PlayerView {
                 c.clip(Self.pixelAligned(frame, scale: c.deviceScale))   // square, pixel-exact stage edge
                 c.fillRect(frame, Self.canvasSurface)
                 let context = FrameDrawContext(backingScale: max(backingScale, c.deviceScale), isPlaying: playback.isPlaying,
-                                               speed: playback.playbackRate * playback.direction, liveElementIds: liveElementIds?())
+                                               speed: playback.playbackRate * playback.direction, liveElementIds: liveElementIds?(),
+                                               compareClipId: toolbar.compareEnabled ? selection : nil, comparePosition: toolbar.comparePosition)
                 frameSource.draw(c, in: frame, time: playback.currentTime, elements: elements.map { viewElement($0, in: size) },
                                  context: context)
             }
             Self.strokeSquare(c, frame, CanvasColor(ThemeTokens.white.alpha(0.10)), width: 1)   // border-white/10, square
             drawOverlays(c, size: size, frame: frame)
+            if toolbar.compareEnabled, selection != nil {
+                let x = frame.x + frame.width * toolbar.comparePosition
+                c.fillRect(CanvasRect(x: x - 1, y: frame.y, width: 2, height: frame.height), PanelTheme.stageInk.withAlpha(0.9))
+                c.drawText("Before", at: .init(frame.x + 10, frame.y + 10), font: CanvasFont(size: 11, weight: .semibold), color: PanelTheme.stageInk)
+                let after = "After", tw = c.measureText(after, font: CanvasFont(size: 11, weight: .semibold)).width
+                c.drawText(after, at: .init(frame.maxX - tw - 10, frame.y + 10), font: CanvasFont(size: 11, weight: .semibold), color: PanelTheme.stageInk)
+            }
             drawStageFeedback(c, size: size, frame: frame)
+            drawRecordOverlay(c, size: size, frame: frame)
             drawZoomChrome(c, size: size)
         }
         if !isFullscreen { toolbar.draw(c, width: size.width, cropAvailable: cropAvailable, cropActive: cropActive) }
@@ -317,6 +337,7 @@ public final class PlayerView {
             Self.strokeSquare(c, m, theme.accent, width: 1)
         }
         drawGuides(c, frame: frame)
+        drawTransformFeedback(c, size: size)
     }
 
     /// Snap guides: full-frame 1px lines and dashed equal-gap boxes with their size.
@@ -377,37 +398,6 @@ public final class PlayerView {
         }
     }
     public var hoveredFit = false
-
-    /// border-2 border-studio-accent/80 (60% when cropped), always square; corner dots
-    /// 12px white with 1.5px accent border; rotate chip 18px, border accent/70, surface fill, accent icon.
-    func drawSelection(_ c: CanvasContext, _ ve: StageElement) {
-        let r = ve.visibleRect
-        rotated(c, ve) {
-            let cropped = !ve.crop.isZero
-            Self.strokeSquare(c, r, theme.accent.withAlpha(cropped ? 0.6 : 0.8), width: 2)
-            for h in HandleCorner.allCases {
-                let p = handleCentre(h, of: r), d = Self.handleDot
-                let dot = CanvasRect(x: p.x - d / 2, y: p.y - d / 2, width: d, height: d)
-                c.fillRoundedRect(dot, radius: d / 2, PanelTheme.stageInk)
-                c.strokeRoundedRect(dot.insetBy(0.75), radius: d / 2, theme.accent, width: 1.5)
-            }
-            // Rotate chip, drawn in the element's rotated frame.
-            let cx = r.x + r.width / 2, cy = r.maxY + 12 + 11
-            let chip = CanvasRect(x: cx - 9, y: cy - 9, width: 18, height: 18)
-            c.fillRoundedRect(chip, radius: 9, Self.studioSurface)
-            c.strokeRoundedRect(chip.insetBy(0.5), radius: 9, theme.accent.withAlpha(0.7), width: 1)
-            c.withState {
-                c.translate(cx - 5.5, cy - 5.5); c.scale(11 / 24, 11 / 24)
-                var a = CanvasPath(); a.move(to: .init(3, 12)); a.curve(to: .init(18.74, 5.74), c1: .init(3, 4), c2: .init(13, 1))
-                a.line(to: .init(21, 8))
-                var b = CanvasPath(); b.move(to: .init(21, 3)); b.line(to: .init(21, 8)); b.line(to: .init(16, 8))
-                var d2 = CanvasPath(); d2.move(to: .init(21, 12)); d2.curve(to: .init(5.26, 18.26), c1: .init(21, 20), c2: .init(11, 23))
-                d2.line(to: .init(3, 16))
-                var e = CanvasPath(); e.move(to: .init(8, 16)); e.line(to: .init(3, 16)); e.line(to: .init(3, 21))
-                for p in [a, b, d2, e] { c.stroke(p, theme.accent, StrokeStyle(width: 2.5)) }
-            }
-        }
-    }
 
     /// Crop handles: 1px accent outline on the crop rect, accent edge lines extended 12px, 10px white
     /// square knobs with an accent border at each edge midpoint.

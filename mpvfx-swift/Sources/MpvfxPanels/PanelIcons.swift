@@ -31,8 +31,13 @@ public enum PanelIcon: Equatable, Sendable {
     case selectCaret
     case close, eye, eyeOff, layers, film, image, music, text, font, reset, trash, plus, upload, download, help, spinnerArc, diamond, diamondFilled
     case chevronLeft, chevronRight, check, keyframeNav
+    case alignLeft, alignCenter, alignRight, alignJustify, textUppercase, textLowercase, textCapitalize, textItalic
+    /// Audition: play and stop on a tile.
+    case play, stop
     /// Three dots in a row: a panel's menu button (the end of its tab strip).
     case panelMenu
+    /// A funnel: the Media panel's filter button.
+    case filter
     /// Any Phosphor glyph by name.
     case phosphor(PhosphorIcon)
 }
@@ -46,6 +51,14 @@ public extension PanelIcon {
         func stroke(_ d: [String], _ w: Double = lineWidth) { c.strokeSVG(d, viewBox: 24, in: box, color, width: w) }
         func fill(_ d: [String], _ vb: Double = 24) { c.fillSVG(d, viewBox: vb, in: box, color) }
         switch self {
+        case .alignLeft: stroke(["M4 5h16M4 10h10M4 15h16M4 20h10"])
+        case .alignCenter: stroke(["M4 5h16M7 10h10M4 15h16M7 20h10"])
+        case .alignRight: stroke(["M4 5h16M10 10h10M4 15h16M10 20h10"])
+        case .alignJustify: stroke(["M4 5h16M4 10h16M4 15h16M4 20h16"])
+        case .textUppercase: stroke(["M3 19 8 5l5 14M5 14h6M15 19V5h5M15 12h4M15 19h5"])
+        case .textLowercase: stroke(["M4 11c8-4 8 8 1 8c-5 0-3-6 4-4M10 10v9M15 5v14M15 12c8-5 8 10 0 6"])
+        case .textCapitalize: stroke(["M3 19 8 5l5 14M5 14h6M16 11c7-3 7 8 1 8c-4 0-3-5 3-4M21 10v9"])
+        case .textItalic: stroke(["M10 5h9M5 19h9M15 5 9 19"])
         case .sidebarShowLeft: stroke(["M5 4v16", "m10 7 5 5-5 5"])
         case .sidebarHideLeft: stroke(["m14 7-5 5 5 5", "M19 4v16"])
         // Chromium's disclosure marker: a solid triangle ~0.6em, the em box being the 12px summary text.
@@ -54,6 +67,8 @@ public extension PanelIcon {
         case .groupCaretRight: fill(["M4 2l4 4-4 4z"], 12)
         case .groupCaretDown: fill(["M2 4l4 4 4-4z"], 12)
         case .selectCaret: stroke(["m6 9 6 6 6-6"], 2)
+        case .play: fill(["M7 4.5 L19.5 12 L7 19.5 Z"])
+        case .stop: fill(["M6.5 6.5 H17.5 V17.5 H6.5 Z"])
         case .chevronLeft: stroke(["m15 18-6-6 6-6"])
         case .chevronRight: stroke(["m9 18 6-6-6-6"])
         case .check: PhosphorIcon.check.draw(c, in: box, color: color)
@@ -78,6 +93,7 @@ public extension PanelIcon {
         case .diamond: stroke(["M12 4 20 12 12 20 4 12Z"])
         case .diamondFilled, .keyframeNav: fill(["M12 4 20 12 12 20 4 12Z"])
         case .panelMenu: fill(["M4 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z", "M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z", "M16 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z"])
+        case .filter: stroke(["M4 5h16l-6 7v6l-4 2v-8Z"])
         case .phosphor(let p): p.draw(c, in: box, color: color)
         }
     }

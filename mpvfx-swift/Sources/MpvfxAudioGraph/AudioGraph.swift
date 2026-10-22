@@ -36,6 +36,8 @@ public struct AudioGraphTrack: Sendable {
     public var id: String
     /// Stereo planes at the graph's sample rate.
     public var stem: [[Float]]
+    public var mixerGain: Double = 1
+    public var meterId: String? = nil
     public var start: Double
     public var end: Double
     public var volume: Double
@@ -44,6 +46,12 @@ public struct AudioGraphTrack: Sendable {
     public var fxChain: FxChain?
     public var automation: Automation?
     public var groupId: String?
+    /// Cut transition fades on the clip's sound (nil: none), applied to the stem before its effects.
+    public var transitionGain: AudioTransitionGain? = nil
+    /// Fade-in and fade-out lengths in seconds (0: none): a linear gain ramp on the stem before the FX chain,
+    /// multiplied with the volume and its automation (`ClipFadeRamp`). Set after `init`.
+    public var fadeIn: Double = 0
+    public var fadeOut: Double = 0
     public init(id: String, stem: [[Float]], start: Double, end: Double, volume: Double = 1, pan: Double = 0, muted: Bool = false,
                 fxChain: FxChain? = nil, automation: Automation? = nil, groupId: String? = nil) {
         self.id = id; self.stem = stem; self.start = start; self.end = end; self.volume = volume; self.pan = pan; self.muted = muted
@@ -118,7 +126,10 @@ final class ChainStage {
     let upstream: (Int, inout [Float], inout [Float]) -> Void // fills exactly n frames
     var fifoL: [Float] = [], fifoR: [Float] = [], head = 0
     var frame = 0 // context frame of the next quantum
-    init(_ chain: FxChainProcessor, upstream: @escaping (Int, inout [Float], inout [Float]) -> Void) { self.chain = chain; self.upstream = upstream }
+    var skip: Int // latency frames still to drop from the start, so the output stays aligned with the input
+    init(_ chain: FxChainProcessor, upstream: @escaping (Int, inout [Float], inout [Float]) -> Void) {
+        self.chain = chain; self.upstream = upstream; skip = chain.latencyFrames
+    }
     func next(_ count: Int, _ l: inout [Float], _ r: inout [Float], _ offset: Int) {
         var written = 0
         while written < count {
@@ -128,6 +139,7 @@ final class ChainStage {
                 let y = chain.process([a, b], frame: frame)
                 frame += dspBlockSize
                 fifoL = y[0]; fifoR = y[1]; head = 0
+                if skip > 0 { let drop = min(skip, fifoL.count); head = drop; skip -= drop; continue }
             }
             let take = min(count - written, fifoL.count - head)
             for k in 0..<take { l[offset + written + k] = fifoL[head + k]; r[offset + written + k] = fifoR[head + k] }
@@ -141,7 +153,8 @@ final class ChainStage {
 final class TrackStage: FrameSource {
     let startFrame: Int
     let length: Int           // frames of the processed file that survive atrim
-    var volume: Float         // in-place editable (AudioGraphRenderer.applyParameterEdits) unless baked
+    /// In-place editable (AudioGraphRenderer.applyParameterEdits) unless baked; glides once the stage has played.
+    var volume: LiveGain
     /// The volume lives in the envelope walker (automation), so `volume` is fixed at 1.
     let bakedVolume: Bool
     /// The clip's FX chain as built (nil: no enabled nodes), for in-place parameter edits.
@@ -157,10 +170,15 @@ final class TrackStage: FrameSource {
         let dur = t.end - t.start
         let stemFrames = t.stem.first?.count ?? 0
         let n = min(stemFrames, filterFrames(dur, sr))
-        let stemL = t.stem[0], stemR = t.stem.count > 1 ? t.stem[1] : t.stem[0]
-        let prepared: (Int) -> (Float, Float) = quantize
+        var stemL = t.stem[0], stemR = t.stem.count > 1 ? t.stem[1] : t.stem[0]
+        if let fades = t.transitionGain {
+            // Baked here, on the graph-build thread, so rendering stays a plain read of the stem.
+            let g = fades.samples(count: n, start: t.start, sampleRate: sr)
+            for i in 0..<n { stemL[i] *= g[i]; stemR[i] *= g[i] }
+        }
+        let prepared = ClipFadeRamp(t, sampleRate: sr).applied(to: quantize
             ? { i in i < n ? (s16ToF32(f32ToS16(stemL[i])), s16ToF32(f32ToS16(stemR[i]))) : (0, 0) }
-            : { i in i < n ? (stemL[i], stemR[i]) : (0, 0) }
+            : { i in i < n ? (stemL[i], stemR[i]) : (0, 0) })
         let chain = t.fxChain.flatMap { $0.enabledNodes.isEmpty ? nil : $0 }
         let tail = t.fxChain.map { FxTail.chainSeconds($0, t.automation) } ?? 0
         let laneKf = t.automation.flatMap { VolumeEnvelope.laneKeyframes($0, trackStart: t.start, duration: dur) }
@@ -200,24 +218,82 @@ final class TrackStage: FrameSource {
             }
         }
         length = min(fileLength, filterFrames(dur + tail, sr))
-        volume = filterVolume(baked ? 1 : t.volume)
+        volume = LiveGain(filterVolume(baked ? 1 : t.volume))
         bakedVolume = baked
         startFrame = Int(jsMathRound(t.start * 1000)) * Int(sr) / 1000
         panGains = equalPower(t.pan)
+        mixerGain = Float(t.mixerGain)
     }
+
+    var captureMeter = false
+    var meterSamples: [Float] = []
+    var mixerGain: Float = 1
 
     func pull(_ count: Int, _ l: inout [Float], _ r: inout [Float], _ offset: Int) {
         for k in 0..<count {
             let c = produced + k
+            let g = volume.next()
             var a: Float = 0, b: Float = 0
             if c >= startFrame && local < length {
                 fileFrame(&a, &b); local += 1
-                a *= volume; b *= volume
+                a *= g; b *= g
                 if let (gl, gr) = panGains { a *= gl; b *= gr }
             }
+            a *= mixerGain; b *= mixerGain
+            if captureMeter { meterSamples.append(a); meterSamples.append(b) }
             l[offset + k] = a; r[offset + k] = b
         }
         produced += count
+    }
+}
+
+@inline(__always) func finiteOrZero(_ x: Float) -> Float { x.isFinite ? x : 0 }
+
+/// A fader the live edit moves: before the stage has played, `set` assigns (the stage then renders exactly as one
+/// built with the value); afterwards it glides there linearly over `frames` frames.
+struct LiveGain {
+    private(set) var value: Float
+    private var glide: LiveGlide?
+    private var played = false
+    init(_ value: Float) { self.value = value }
+    mutating func set(_ v: Float, frames: Int) {
+        guard played, frames > 0, v != value || glide != nil else { value = v; glide = nil; return }
+        glide = LiveGlide(from: value, to: v, frames: frames)
+    }
+    /// The gain for the next frame.
+    @inline(__always) mutating func next() -> Float {
+        played = true
+        guard var g = glide else { return value }
+        value = g.next()
+        glide = g.finished ? nil : g
+        return value
+    }
+}
+
+/// A clip's fades as a gain per stem frame: linear from 0 at the clip start to 1 after `fadeIn` seconds, and from 1
+/// to 0 at the clip end over `fadeOut`, multiplied and clamped (the same ramp as `NativeClipFade.gain`).
+struct ClipFadeRamp {
+    let inFrames: Double, outFrames: Double, endFrame: Double
+    init(_ track: AudioGraphTrack, sampleRate sr: Double) {
+        inFrames = track.fadeIn.isFinite ? max(0, track.fadeIn) * sr : 0
+        outFrames = track.fadeOut.isFinite ? max(0, track.fadeOut) * sr : 0
+        endFrame = (track.end - track.start) * sr
+    }
+    var isUnity: Bool { inFrames <= 0 && outFrames <= 0 }
+    /// `frame` with the ramp applied; `frame` itself when there is no fade, so an unfaded clip renders as before.
+    func applied(to frame: @escaping (Int) -> (Float, Float)) -> (Int) -> (Float, Float) {
+        if isUnity { return frame }
+        return { i in
+            let (a, b) = frame(i)
+            let g = gain(atFrame: i)
+            return (a * g, b * g)
+        }
+    }
+    func gain(atFrame i: Int) -> Float {
+        let x = Double(i)
+        let up = inFrames > 0 ? min(1, max(0, x / inFrames)) : 1
+        let down = outFrames > 0 ? min(1, max(0, (endFrame - x) / outFrames)) : 1
+        return Float(up * down)
     }
 }
 
@@ -232,7 +308,7 @@ func equalPower(_ pan: Double) -> (Float, Float)? {
 /// track-input filter of the final mix (start 0, volume = fader unless baked).
 final class GroupStage: FrameSource {
     let members: [TrackStage]
-    var volume: Float         // in-place editable unless baked
+    var volume: LiveGain      // in-place editable unless baked
     let bakedVolume: Bool
     var proc: FxChainProcessor?
     let panGains: (Float, Float)?
@@ -245,7 +321,7 @@ final class GroupStage: FrameSource {
         let chain = g.fxChain.flatMap { $0.enabledNodes.isEmpty ? nil : $0 }
         let kf = g.automation.flatMap { VolumeEnvelope.laneKeyframes($0, trackStart: 0, duration: duration) }
         var walker = kf.flatMap { $0.isEmpty ? nil : VolumeEnvelope.walker($0, trackStart: 0, baseVolume: g.volume) }
-        volume = filterVolume(walker != nil ? 1 : g.volume)
+        volume = LiveGain(filterVolume(walker != nil ? 1 : g.volume))
         bakedVolume = walker != nil
         panGains = equalPower(g.pan)
         let members = self.members
@@ -280,7 +356,8 @@ final class GroupStage: FrameSource {
     func pull(_ count: Int, _ l: inout [Float], _ r: inout [Float], _ offset: Int) {
         source(count, &l, &r, offset)
         for k in 0..<count {
-            l[offset + k] *= volume; r[offset + k] *= volume
+            let v = volume.next()
+            l[offset + k] *= v; r[offset + k] *= v
             if let (gl, gr) = panGains { l[offset + k] *= gl; r[offset + k] *= gr }
         }
     }
@@ -307,11 +384,19 @@ public final class AudioGraphRenderer {
     var groupStages: [String: GroupStage] = [:]
     let scale: Float
     let makeup: Float
+    let meteredTrackIDs: Set<String>
     public private(set) var position = 0
+    /// Live-only tap after each clip fader/pan and before bus processing.
+    public var collectsMeters = false
+    public struct Meter: Equatable, Sendable {
+        public var peak: Double, rms: Double
+    }
+    public private(set) var meters: [String: Meter] = [:]
     public var totalFrames: Int { project.totalFrames }
 
     public init(_ project: AudioGraphProject) {
         self.project = project
+        meteredTrackIDs = Set(project.tracks.filter { $0.meterId != nil }.map(\.id))
         let sr = project.sampleRate
         let mutedGroups = Set(project.groups.filter(\.muted).map(\.id))
         var ungrouped: [FrameSource] = []
@@ -344,15 +429,35 @@ public final class AudioGraphRenderer {
     /// Next `frames` frames (clamped to the end), interleaved stereo.
     public func render(_ frames: Int) -> [Float] {
         let count = max(0, min(frames, totalFrames - position))
+        for (id, stage) in trackStages {
+            stage.captureMeter = collectsMeters && meteredTrackIDs.contains(id)
+            if !stage.captureMeter { stage.meterSamples.removeAll(keepingCapacity: true) }
+        }
         var outL = [Float](repeating: 0, count: count), outR = outL
         var l = outL, r = outR
         for input in inputs {
             input.pull(count, &l, &r, 0)
             for k in 0..<count { outL[k] += l[k] * scale; outR[k] += r[k] * scale }
         }
+        if collectsMeters {
+            var sums: [String: [Float]] = [:]
+            for t in project.tracks {
+                guard let id = t.meterId, let stage = trackStages[t.id] else { continue }
+                var samples = sums[id] ?? [Float](repeating: 0, count: count * 2)
+                for i in 0..<min(samples.count, stage.meterSamples.count) { samples[i] += stage.meterSamples[i] }
+                // Bus FX can pull ahead to compensate latency. Keep that input for the next timeline block.
+                stage.meterSamples.removeFirst(min(count * 2, stage.meterSamples.count))
+                sums[id] = samples
+            }
+            meters = sums.mapValues { samples in
+                Meter(peak: Double(samples.map { abs($0) }.max() ?? 0),
+                      rms: sqrt(samples.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(max(1, samples.count))))
+            }
+        }
         position += count
         var out = [Float](repeating: 0, count: count * 2)
-        for k in 0..<count { out[2 * k] = outL[k] * makeup; out[2 * k + 1] = outR[k] * makeup }
+        // A non-finite sample never reaches the device or the encoder.
+        for k in 0..<count { out[2 * k] = finiteOrZero(outL[k] * makeup); out[2 * k + 1] = finiteOrZero(outR[k] * makeup) }
         return out
     }
 
@@ -387,10 +492,12 @@ public final class AudioGraphRenderer {
     /// Applied before the first render, the output is bit-identical to `AudioGraphRenderer(next)`; mid-stream,
     /// the filters keep their state, so the edit is heard at once instead of after a pre-roll from frame 0.
     public func applyParameterEdits(_ next: AudioGraphProject) -> Bool {
+        guard zip(project.tracks, next.tracks).allSatisfy({ $0.mixerGain == $1.mixerGain && $0.meterId == $1.meterId }) else { return false }
         let old = project
         guard old.duration == next.duration, old.sampleRate == next.sampleRate, old.quantizeIntermediates == next.quantizeIntermediates,
               old.tracks.count == next.tracks.count, old.groups.count == next.groups.count else { return false }
         var edits: [() -> Void] = []
+        let glide = LiveEdit.glideFrames(next.sampleRate)
         func chainEdits(_ a: FxChain?, _ b: FxChain?, _ automation: Automation?, _ proc: FxChainProcessor?) -> Bool {
             if a == b { return true }
             guard let a, let b, let proc, !a.enabledNodes.isEmpty,
@@ -401,13 +508,14 @@ public final class AudioGraphRenderer {
         }
         for (a, b) in zip(old.tracks, next.tracks) {
             guard a.id == b.id, a.start == b.start, a.end == b.end, a.pan == b.pan, a.muted == b.muted, a.groupId == b.groupId,
-                  a.automation == b.automation, sameStem(a.stem, b.stem) else { return false }
+                  a.transitionGain == b.transitionGain,
+                  a.fadeIn == b.fadeIn, a.fadeOut == b.fadeOut, a.automation == b.automation, sameStem(a.stem, b.stem) else { return false }
             let stage = trackStages[a.id]
             if a.volume != b.volume {
                 if let stage {
                     guard !stage.bakedVolume else { return false }
                     let v = filterVolume(b.volume)
-                    edits.append { stage.volume = v }
+                    edits.append { stage.volume.set(v, frames: glide) }
                 }
             }
             // A track that was not built (muted, or in a muted group) has nothing running to edit.
@@ -419,7 +527,7 @@ public final class AudioGraphRenderer {
             if a.volume != b.volume, let stage {
                 guard !stage.bakedVolume else { return false }
                 let v = filterVolume(b.volume)
-                edits.append { stage.volume = v }
+                edits.append { stage.volume.set(v, frames: glide) }
             }
             if stage != nil, !chainEdits(a.fxChain, b.fxChain, a.automation, stage?.proc) { return false }
         }

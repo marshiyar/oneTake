@@ -45,6 +45,9 @@ jobs:
         persist-credentials: false
         repository: ${{ inputs.source_repository }}
         ref: ${{ inputs.source_ref }}
+    - name: Budget check tests
+      working-directory: .
+      run: python3 -I -B .github/ci/test_bench.py
     - name: Engine libraries (binaries.lock)
       run: python3 -I -B scripts/fetch-binaries.py
     - name: Release build
@@ -67,6 +70,21 @@ jobs:
           ${{ runner.temp }}/bench.log
         if-no-files-found: ignore
         retention-days: 90
+    - name: Main's latest bench report, the baseline of the regression rule (pull requests)
+      if: github.event_name == 'pull_request'
+      working-directory: .
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: python3 -I -B .github/ci/bench_base.py bench-linux "$RUNNER_TEMP/bench/bench-linux.json" "$RUNNER_TEMP/bench-main.json"
+    - name: Budgets (.github/ci/bench-budgets.json)
+      run: |
+        set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
+        python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-linux.json" --budgets ../.github/ci/bench-budgets.json --strict \
+          --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
+        code=${PIPESTATUS[0]}
+        set -e
+        cat "$RUNNER_TEMP/budgets.log" >> "$GITHUB_STEP_SUMMARY"
+        exit "$code"
   macos:
     runs-on: xcode-27
     timeout-minutes: 90
@@ -111,3 +129,18 @@ jobs:
           ${{ runner.temp }}/bench.log
         if-no-files-found: ignore
         retention-days: 90
+    - name: Main's latest bench report, the baseline of the regression rule (pull requests)
+      if: github.event_name == 'pull_request'
+      working-directory: .
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: python3 -I -B .github/ci/bench_base.py bench-macos "$RUNNER_TEMP/bench/bench-darwin.json" "$RUNNER_TEMP/bench-main.json"
+    - name: Budgets (.github/ci/bench-budgets.json)
+      run: |
+        set +e   # the shell runs with -e and pipefail: keep the exit code, append the table to the summary, then exit
+        python3 -I -B ../.github/ci/bench.py --check "$RUNNER_TEMP/bench/bench-darwin.json" --budgets ../.github/ci/bench-budgets.json --strict \
+          --baseline "$RUNNER_TEMP/bench-main.json" | tee "$RUNNER_TEMP/budgets.log"
+        code=${PIPESTATUS[0]}
+        set -e
+        cat "$RUNNER_TEMP/budgets.log" >> "$GITHUB_STEP_SUMMARY"
+        exit "$code"

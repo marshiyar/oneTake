@@ -276,6 +276,19 @@ final class InspectorTextAuditTests: XCTestCase {
         XCTAssertEqual(editor.undoLabel, undoBefore)
     }
 
+    func testSettingATextLookIsOneUndoStepAndRefusesOutOfRangeValues() throws {
+        let id = try XCTUnwrap(editor.addTextClip(at: 1))
+        XCTAssertFalse(editor.setTextLook(clipId: id, NativeTextLook(outlines: [.init(width: 101, color: "#000000")])))
+        XCTAssertFalse(editor.setTextLook(clipId: id, NativeTextLook(shadow: .init(x: 501, color: "#000000"))))
+        XCTAssertNil(editor.clipText(clipId: id)?.look)
+        XCTAssertTrue(editor.setTextLook(clipId: id, NativeTextLook(outlines: [.init(width: 8, color: "#000000")])))
+        XCTAssertEqual(editor.clipText(clipId: id)?.look?.outlines?.first?.width, 8)
+        XCTAssertNoThrow(try parseNativeProjectDocument(editor.document))
+        _ = editor.undo()
+        XCTAssertNil(editor.clipText(clipId: id)?.look, "one undo removes the look")
+        XCTAssertNotNil(editor.clip(id), "and keeps the layer")
+    }
+
     func testValidationKeepsAnElementWithoutTextAsAnUndrawnLayer() throws {
         let plain = Self.json.replacingOccurrences(of: ##""text":{"content":"Hello world","fontSize":20,"color":"#ffffff"}"##, with: ##""hidden":false"##)
         let kept = try parseNativeProjectDocument(try NativeJSONValue.parse(plain))

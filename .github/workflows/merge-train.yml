@@ -1,6 +1,11 @@
-# The merge train (.github/ci/merge_train.py): pull requests the owner labels `queue` are merged together onto main as
-# one train/<n> pull request, tested once by mpvfx-ci, and landed together (squash); a failing train is split in two
-# until the failing pull request is found. One train is open at a time.
+# The merge train (.github/ci/merge_train.py): pull requests labelled `queue` are merged together onto main as one
+# train/<n> pull request, tested once by mpvfx-ci, and landed together (squash); a failing train is split in two until
+# the failing pull request is found. One train is open at a time.
+#
+# The label comes from the owner, or from the review App: before each scheduled or CI-triggered round, `autoqueue`
+# queues every ready pull request (ci-ok, Codacy and names-issue green on its head, mergeable, no unanswered Codex P0/P1
+# finding, not stacked on another open pull request, no label `hold`). The owner keeps control with `hold`. Pull
+# requests may still be merged directly at any time; the train drops them and retries on the new main.
 #
 # Nothing from a pull request runs here. Both jobs check out main only; a pull request's commits are only merged
 # with git (which runs none of their code). pull_request_target is used so this file and the script always come from
@@ -16,21 +21,26 @@ on:
   workflow_dispatch:
   pull_request_target:   # zizmor: ignore[dangerous-triggers] main's file and script only; PR code is never checked out or run
     types: [labeled, closed]
-  workflow_run:          # zizmor: ignore[dangerous-triggers] reads ci-ok results only; runs nothing from the train
+  workflow_run:          # zizmor: ignore[dangerous-triggers] reads check results only; runs nothing from a pull request
     workflows: [mpvfx-ci]
-    types: [completed]
-    branches: ['train/**']
+    types: [completed]     # pull request runs (trains and ordinary ones); the job skips push and other runs
 
 permissions: {}
 
 jobs:
-  # The owner added `queue`: note the head commit they queued (the train takes exactly that commit).
+  # `queue` was added (by the owner or the App): note the head commit queued (the train takes exactly that commit).
+  # Off unless the repository variable MERGE_TRAIN is true (owner ruling 2026-10-21: PRs are merged directly, never
+  # queued). Nothing is deleted.
   record:
     if: >-
-      github.event_name == 'pull_request_target' && github.event.action == 'labeled' &&
+      vars.MERGE_TRAIN == 'true' && github.event_name == 'pull_request_target' && github.event.action == 'labeled' &&
       github.event.label.name == 'queue'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # One record at a time per pull request: a label removed and added again records the newest head last.
+    concurrency:
+      group: merge-train-record-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     permissions: {}
     steps:
       - name: Token for the review App
@@ -59,10 +69,13 @@ jobs:
   train:
     needs: record
     if: >-
-      always() && needs.record.result != 'failure' && (
-        github.event_name != 'pull_request_target' ||
-        (github.event.action == 'labeled' && github.event.label.name == 'queue') ||
-        (github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'train')))
+      always() && vars.MERGE_TRAIN == 'true' && needs.record.result != 'failure' && (
+        (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
+        github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request_target' && github.event.action == 'labeled' &&
+          github.event.label.name == 'queue') ||
+        (github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
+          contains(github.event.pull_request.labels.*.name, 'train')))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
@@ -81,13 +94,20 @@ jobs:
           permission-contents: write        # turn on auto-merge
           permission-pull-requests: write   # comments, labels, close/reopen trains
           permission-issues: write
-          permission-checks: read           # ci-ok on train heads
+          permission-checks: read           # ci-ok on train heads; ci-ok, Codacy, names-issue on pull request heads
           permission-actions: read          # link to the failed run
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+      - name: Queue ready pull requests
+        if: github.event_name != 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_LOGIN: ${{ steps.app.outputs.app-slug }}[bot]
+          OWNER: ${{ github.repository_owner }}
+        run: python3 -I -B .github/ci/merge_train.py autoqueue
       - name: One round of the train
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

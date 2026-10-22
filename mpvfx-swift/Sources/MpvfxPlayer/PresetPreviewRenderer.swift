@@ -73,13 +73,8 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     /// `pixelHeight` device pixels at most (aspect-fit). Call on the UI thread.
     public func preview(clipId: String, presetId: String, lut: ColorGradeParams.Lut?, time: Double, pixelWidth: Int, pixelHeight: Int,
                         version: Int = ColorGradeParams.currentVersion) -> State {
-        guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
-              let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
-        let c = entry.clip
-        let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
-        let t = max(first, min(last, time))
-        let layer = comp.layer(entry, at: t)
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        guard pixelWidth > 1, pixelHeight > 1, let at = clipFrame(clipId: clipId, time: time) else { return .unavailable }
+        let (comp, layer, t, want) = (at.comp, at.layer, at.time, at.want)
         guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
             return compositor.decodesMedia ? .rendering : .unavailable
         }
@@ -97,7 +92,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         lock.unlock()
         if !queued {
             let dir = projectDir(), renderer = colorRenderer
-            let shownFrame = layer.kind == .image ? comp.frameIndex(at: t) : source.frame
+            let shownFrame = layer.isStill ? comp.frameIndex(at: t) : source.frame
             let gradeTime = Double(shownFrame) / comp.fps
             queue.async { [weak self] in
                 self?.render(key, slot: presetId, raw: source.image, time: gradeTime, renderer: renderer) {
@@ -110,19 +105,15 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
 
     /// The selected clip's frame at `time` with its own grade (the scopes' captured frame), at most `pixelWidth` x
     /// `pixelHeight`. Shares the queue, the source lookup and the bounded cache with the preset tiles.
-    public func gradedFrame(clipId: String, time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
-        guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition,
-              let entry = comp.entries.first(where: { $0.clip.id == clipId }) else { return .unavailable }
-        let c = entry.clip
-        let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
-        let t = max(first, min(last, time))
-        let layer = comp.layer(entry, at: t)
-        let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
-        guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight) else {
-            return compositor.decodesMedia ? .rendering : .unavailable
+    /// `exactOnly` waits for the requested frame and reduces straight RGBA with alpha-weighted RGB for measurement.
+    public func gradedFrame(clipId: String, time: Double, pixelWidth: Int, pixelHeight: Int, exactOnly: Bool = false) -> State {
+        guard pixelWidth > 1, pixelHeight > 1, let at = clipFrame(clipId: clipId, time: time) else { return .unavailable }
+        let (comp, layer, t, want) = (at.comp, at.layer, at.time, at.want)
+        guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight, exactOnly: exactOnly) else {
+            return compositor.decodesMedia && !decodeGaveUp(lane: layer.laneKey) ? .rendering : .unavailable
         }
-        let slot = "\u{0}scope"
-        let shownFrame = layer.kind == .image ? comp.frameIndex(at: t) : source.frame
+        let slot = exactOnly ? "\u{0}match" : "\u{0}scope"
+        let shownFrame = layer.isStill ? comp.frameIndex(at: t) : source.frame
         let key = Key(lane: layer.laneKey, frame: source.frame, preset: "\(slot)|\(layer.grade?.signature ?? "-")|\(shownFrame)", lut: "",
                       width: pixelWidth, height: pixelHeight)
         lock.lock()
@@ -138,15 +129,62 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         if !queued {
             let renderer = colorRenderer, grade = layer.grade, gradeTime = Double(shownFrame) / comp.fps
             queue.async { [weak self] in
-                self?.render(key, slot: slot, raw: source.image, time: gradeTime, renderer: renderer) { grade }
+                self?.render(key, slot: slot, raw: source.image, time: gradeTime, renderer: renderer, alphaCorrect: exactOnly) { grade }
             }
         }
         return .rendering
     }
 
+    /// The composited program frame at composition `time` (every visible layer, graded, painted as export paints it),
+    /// at most `pixelWidth` x `pixelHeight`: what the colour picker's eyedropper samples. Painted on the caller's
+    /// thread from frames already decoded (the preview's, else this renderer's own lane); `.rendering` while a
+    /// picture layer has none yet, `.unavailable` when it never will (no decoder).
+    public func programFrame(time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
+        guard pixelWidth > 1, pixelHeight > 1, let comp = compositor.composition else { return .unavailable }
+        let cw = max(comp.canvas.width, 1), ch = max(comp.canvas.height, 1)
+        let s = min(Double(pixelWidth) / cw, Double(pixelHeight) / ch)
+        let w = max(2, Int((cw * s).rounded())), h = max(2, Int((ch * s).rounded()))
+        let frame = comp.frameIndex(at: time)
+        var missing = false
+        do {
+            let painter = try ExportFramePainter(composition: comp, width: w, height: h, pad: comp.background)
+            let image = try painter.paint(time: time) { [self] layer, _, lw, lh in
+                let want = layer.kind == .image ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, frame))
+                guard let f = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: lw, pixelHeight: lh) else { missing = true; return nil }
+                return f.image
+            }
+            // A picture layer without a frame: wait for its decode, or, with no decoder, say so rather than offer a
+            // frame with the picture missing to sample from.
+            guard missing else { return .ready(image) }
+            return compositor.decodesMedia ? .rendering : .unavailable
+        } catch {
+            return .unavailable   // the raster canvas could not be made or drawn on: the picker says the frame is unavailable
+        }
+    }
+
+    /// The composition entry of `clipId` when it has a picture to decode (not offline: its file is missing).
+    func decodableEntry(_ clipId: String) -> (comp: PreviewComposition, entry: PreviewComposition.Entry)? {
+        guard let comp = compositor.composition,
+              let entry = comp.entries.first(where: { $0.clip.id == clipId && $0.kind != .offline }) else { return nil }
+        return (comp, entry)
+    }
+
+    /// `clipId`'s layer at `time` clamped into the clip, and the frame to decode for it.
+    private func clipFrame(clipId: String, time: Double) -> (comp: PreviewComposition, layer: PreviewLayer, time: Double, want: Int)? {
+        guard let found = decodableEntry(clipId) else { return nil }
+        let (comp, entry) = found
+        let c = entry.clip
+        let first = c.startFrame / comp.fps, last = (c.startFrame + max(1, c.durationFrames) - 1) / comp.fps
+        let t = max(first, min(last, time))
+        let layer = comp.layer(entry, at: t)
+        let want = layer.isStill ? PreviewDecodeLane.stillFrame : max(layer.startFrame, min(layer.endFrame - 1, comp.frameIndex(at: t)))
+        return (comp, layer, t, want)
+    }
+
     /// Whether `clipId` has a picture to preview: a visual clip with readable media, and a decoder or a decoded frame.
     public func isAvailable(clipId: String) -> Bool {
-        guard let comp = compositor.composition, let e = comp.entries.first(where: { $0.clip.id == clipId }) else { return false }
+        guard let found = decodableEntry(clipId) else { return false }
+        let (comp, e) = found
         if compositor.decodesMedia { return true }
         let lane = comp.layer(e, at: e.clip.startFrame / comp.fps).laneKey
         return compositor.cache.nearest(lane: lane, to: 0) != nil
@@ -164,12 +202,13 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
 
     /// The raw frame to grade: the preview's exact frame, then our own decode's exact frame, then (while that
     /// decode runs) the nearest frame either cache holds. Starts the own decode when the preview has no exact frame.
-    func sourceFrame(_ layer: PreviewLayer, want: Int, fps: Double, pixelWidth: Int, pixelHeight: Int) -> (frame: Int, image: CanvasImage)? {
+    func sourceFrame(_ layer: PreviewLayer, want: Int, fps: Double, pixelWidth: Int, pixelHeight: Int, exactOnly: Bool = false) -> (frame: Int, image: CanvasImage)? {
         let lane = layer.laneKey
         if let img = compositor.cache.frame(lane: lane, frame: want) { return (want, img) }
         if let img = ownCache.frame(lane: lane, frame: want) { return (want, img) }
+        if exactOnly && decodeGaveUp(lane: lane) { return nil }
         // Under the playhead the preview's own lane is already decoding this frame; elsewhere ask for it ourselves.
-        if compositor.decodesMedia, compositor.lanes[lane] == nil {
+        if compositor.decodesMedia, exactOnly || compositor.lanes[lane] == nil {
             if ownLane?.key != lane {
                 ownLane?.stop()
                 let l = PreviewDecodeLane(layer: layer, fps: fps, cache: ownCache)
@@ -178,16 +217,17 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
             }
             ownLane?.request(frame: want, ahead: 0, size: PreviewDecodeSize(width: pixelWidth, height: pixelHeight))
         }
+        if exactOnly { return nil }
         return compositor.cache.nearest(lane: lane, to: want) ?? ownCache.nearest(lane: lane, to: want)
     }
 
-    func render(_ key: Key, slot: String, raw: CanvasImage, time: Double, renderer: ColorRenderer, grade makeGrade: () -> ColorGradeRenderer?) {
+    func render(_ key: Key, slot: String, raw: CanvasImage, time: Double, renderer: ColorRenderer, alphaCorrect: Bool = false, grade makeGrade: () -> ColorGradeRenderer?) {
         lock.lock()
         let wanted = latest[slot] == key
         if !wanted { pending.remove(key) }
         lock.unlock()
         guard wanted else { return }
-        var img = Self.downscale(raw, fitting: key.width, key.height)
+        var img = Self.downscale(raw, fitting: key.width, key.height, alphaCorrect: alphaCorrect)
         if let grade = makeGrade(), grade.isActive {
             var px = img.rgba
             renderer.render(grade, &px, width: img.width, height: img.height, time: time)
@@ -212,7 +252,8 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         return ColorGradeParams(json: o)
     }
 
-    static func size(_ i: CanvasImage) -> Int { i.width * i.height * 4 }
+    /// Pixels plus the drawable the inspector's draw makes from them (#95).
+    static func size(_ i: CanvasImage) -> Int { i.drawnBytes }
 
     func evict(protecting keep: Key) {
         guard bytes > budgetBytes else { return }
@@ -235,7 +276,7 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
     public func wait() { ownLane?.wait(); queue.sync {} }
 
     /// Area-average downscale to the largest size with the image's aspect inside `w` x `h` (never upscales).
-    public static func downscale(_ img: CanvasImage, fitting w: Int, _ h: Int) -> CanvasImage {
+    public static func downscale(_ img: CanvasImage, fitting w: Int, _ h: Int, alphaCorrect: Bool = false) -> CanvasImage {
         guard img.width > 0, img.height > 0 else { return img }
         let s = min(1, min(Double(w) / Double(img.width), Double(h) / Double(img.height)))
         let ow = max(1, Int((Double(img.width) * s).rounded())), oh = max(1, Int((Double(img.height) * s).rounded()))
@@ -249,10 +290,15 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
                     var r = 0, g = 0, b = 0, a = 0
                     for sy in y0..<y1 {
                         var i = (sy * img.width + x0) * 4
-                        for _ in x0..<x1 { r += Int(src[i]); g += Int(src[i + 1]); b += Int(src[i + 2]); a += Int(src[i + 3]); i += 4 }
+                        for _ in x0..<x1 {
+                            let alpha = Int(src[i + 3]), weight = alphaCorrect ? alpha : 1
+                            r += Int(src[i]) * weight; g += Int(src[i + 1]) * weight; b += Int(src[i + 2]) * weight
+                            a += alpha; i += 4
+                        }
                     }
                     let n = (y1 - y0) * (x1 - x0), o = (y * ow + x) * 4
-                    out[o] = UInt8(r / n); out[o + 1] = UInt8(g / n); out[o + 2] = UInt8(b / n); out[o + 3] = UInt8(a / n)
+                    let weight = alphaCorrect ? max(1, a) : n
+                    out[o] = UInt8(r / weight); out[o + 1] = UInt8(g / weight); out[o + 2] = UInt8(b / weight); out[o + 3] = UInt8(a / n)
                 }
             }
         }
