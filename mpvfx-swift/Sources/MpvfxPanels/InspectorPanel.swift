@@ -497,7 +497,9 @@ public final class InspectorPanel {
                 targetHover(c, Self.target(rr), .groupReset(g.id))
                 PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.text3)
                 hits.add(Self.target(rr), .groupReset(g.id), label: "Reset " + g.title)
-                accessoryX = rr.x - 10
+                // The reset target and the menu hit are each 24 pt wide: leave a full 12 pt
+                // glyph gap so the adjacent targets never overlap at any panel width.
+                accessoryX = rr.x - 12
             }
             if detachable { drawGroupMenuButton(c, r, g.id, rightEdge: accessoryX) }
         } else {
