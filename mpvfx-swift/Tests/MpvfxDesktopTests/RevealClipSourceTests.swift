@@ -44,7 +44,8 @@ final class RevealClipSourceTests: XCTestCase {
         session = s
         s.audio?.stop()
         _ = s.installShell(userData: fresh.path) {}
-        s.panels?.left.items = [.init(id: source, name: "logo.png", path: source, category: .images, duration: nil, used: true)]
+        s.panels?.left.items = [.init(id: source, name: "logo.png", path: source, category: .images,
+                                            duration: nil, used: true)]
         return s
     }
 

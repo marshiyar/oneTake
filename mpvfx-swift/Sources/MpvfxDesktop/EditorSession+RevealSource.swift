@@ -21,10 +21,15 @@ extension EditorSession {
     func revealClipSource(clipId: String, inFileManager: Bool) {
         do {
             let source = try clipSource(clipId: clipId)
-            guard let panels else { throw DesktopError("Open the editor window and try again.", name: "SourceUnavailableError") }
+            guard let panels else {
+                throw DesktopError("Open the editor window and try again.", name: "SourceUnavailableError")
+            }
             if inFileManager {
                 guard let reveal = panels.revealPath else {
-                    throw DesktopError("The file manager is unavailable. Open this folder manually: \((source.path as NSString).deletingLastPathComponent)", name: "SourceUnavailableError")
+                    let folder = (source.path as NSString).deletingLastPathComponent
+                    throw DesktopError(
+                        "The file manager is unavailable. Open this folder manually: \(folder)",
+                        name: "SourceUnavailableError")
                 }
                 reveal(source.path)
             } else {
@@ -41,17 +46,21 @@ extension EditorSession {
         guard let (_, clip) = editor.clip(clipId),
               let asset = editor.document.assets.first(where: { $0.id == clip.assetId }),
               let source = asset.source, !source.isEmpty else {
-            throw DesktopError("This clip has no source file. Select a video, image or audio clip.", name: "SourceUnavailableError")
+            throw DesktopError(
+                "This clip has no source file. Select a video, image or audio clip.",
+                name: "SourceUnavailableError")
         }
         let path: String
-        if HostPath.isAbsolute(source) { path = source }
-        else if let projectDir { path = projectDir.appendingPathComponent(source).path }
-        else {
+        if HostPath.isAbsolute(source) { path = source } else if let projectDir {
+            path = projectDir.appendingPathComponent(source).path
+        } else {
             throw DesktopError("Open the clip's project folder and try again.", name: "SourceUnavailableError")
         }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else {
-            throw DesktopError("The source file is missing: \(path). Reconnect its drive, restore the file, or relink the clip's media.", name: "SourceMissingError")
+            throw DesktopError(
+                "The source file is missing: \(path). Reconnect its drive or relink the clip's media.",
+                name: "SourceMissingError")
         }
         return (source, path)
     }
