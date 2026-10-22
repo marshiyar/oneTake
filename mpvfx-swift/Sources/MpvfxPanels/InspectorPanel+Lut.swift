@@ -206,7 +206,7 @@ extension InspectorPanel {
                 canvas.rotate(LutLayout.quarterTurn)
                 canvas.translate(-caret.midX, -caret.midY)
             }
-            canvas.fillSVG(["M2 3l3 4 3-4z"], viewBox: LutLayout.caretSize, in: caret, PanelTheme.text5)
+            canvas.fillSVG(["M2 3l3 4 3-4z"], viewBox: LutLayout.caretSize, in: caret, PanelTheme.inspectorText)
         }
         addHit(row, .custom("lut:toggle", 0))
     }

@@ -1,6 +1,15 @@
 # Feature inventory
 
 Timeline controls (#165): Fit button and ⇧Z; fit is the zoom-out limit; the zoom readout follows the ruler's major interval. S/M/L rows are 32/48/72 px with pressed state. Clip edits shorten an explicit sequence duration together with their undo step (omitted durations stay inferred). The pre-zero gutter has no identity fill; clips show `fx N` pills and quiet effect strips; toolbar hover names reach the status line in readable text. Native CoreGraphics timeline fixture captures cover 1440×900 and 1280×800 in both themes; full shell/GPU captures remain unverified.
+Text style model and commands (#282): project `textStyles` records and optional clip links share typography while
+keeping each layer's words. Save, apply to multiple layers, update from a layer and detach are validated atomic
+editor commands with undo/redo. Cross-project clip paste detaches a resolved typography snapshot so missing or
+colliding style IDs cannot change the appearance; same-project paste keeps the live style link. Inspector edits
+override only the changed fields; nil can explicitly restore a field's default, and Reset removes the override to
+follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
+style/link versions and kinds remain serialized and undrawn with an open notice. The style browser is a later UI
+slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
+and `TextStyleRenderingTests`.
 
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript
@@ -68,6 +77,7 @@ The shell is `[left sidebar | preview | right panel]` over a full-width timeline
 | Audio rows: icon, name, duration, waveform bars | done | exact |
 | Asset preview overlay / audition (play an asset) | missing (panels) | n/a |
 | Drag from bin to timeline (insert at drop time/track) | done: a 4 px drag starts it, the drop inserts at the pointer's time on the track under it when the kind fits and the track is unlocked (`EditorSession+AssetDrag.swift`); while over the tracks the drop outline shows (1 px accent/60 inside the tracks area, `AssetDropOutline`); edge auto-scroll during the drag is missing | close |
+| Option/Alt-drop a bin card onto a clip to replace its media | done: keeps timing, trim, transform, grade, moves and keyframes; reports missing source frames when too short; one undo step includes adding a new asset (`TimelineReplaceMediaTests`, `ReplaceMediaDragTests`). Keyboard replacement and a clip-menu chooser are not implemented | n/a |
 | Drag from bin to stage | done: the shell router keeps pointer capture and converts to player points; the player highlights the drop and inserts at the playhead | close |
 | Asset context menu: Add at playhead, Copy path, Rename, Delete (+ remove placements, undoable) | done | exact |
 | Double-click / Enter adds asset to timeline | done | n/a |
@@ -88,12 +98,14 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Header hide toggle, Ungroup (⌘⇧G) | missing (panels) | n/a |
 | Accordion: one open group, others as summary rows | done | exact |
 | Value tiers (default / explicit default / custom + reset ↺) | done | exact |
+| Convert layer moves to keyframes (`TimelineEditor.convertMovesToKeyframes`) | conversion API implemented: one undo step, existing keys retained; sparse move segments with frame samples where combined animation needs them (#275). Swift regression tests added; not run in the authoring environment; user-facing command entry remains to be wired | exact at project frames, pending CI |
 | Transform: X, Y, W, H, rotation, scale | done (undoable, keyframes at the playhead when animated; audit tests 0996b1e) | exact |
+| Transform: lock size / scale ratio | implemented (#450): shared per-clip lock beside Size and Scale X/Y; coupled edits preserve the current ratio, key at the playhead and undo together; stored as optional `scaleRatioLocked`. Swift tests added; not run in the contribution environment (toolchain unavailable) | close |
 | Transform: layer order | done: the Layer order field writes the clip's `layout.zIndex`, the stacking key preview and export share (the stage menu's z-order writes the same key); empty / reset returns to track order; test | close |
 | Transform: flex align/justify/direction/gap | dropped: flex layout of web containers has no native counterpart | n/a |
 | Keyframe diamond and prev/next per property | done: with the stopwatch (start / stop animating, keeping the playhead's value) on the same row | close |
 | Keyframe easing presets (hold / linear / ease in/out) | done (setOutgoing) | close |
-| Keyframe easing custom curve handles, per-segment ease list, apply to all | done in the Keyframe Easing panel (the right panel's Easing tab; the inspector's "Easing…", the keyframe menu's "Edit Easing…", the ☰ menu and macOS View > Keyframe Easing open it): value and speed graphs with draggable speed handles, zoom and pan, the segment curve with handles and a motion preview, presets plus the project's own (saved in `project.json`), copy / paste, influence and speed numbers, F9 / ⇧F9 / ⌘⇧F9 easy ease; every edit applies to every selected key in one undo step. Spring and bounce (#192) and separate dimensions (#193) are shown disabled until the engine or the document supports them (`docs/KEYFRAME_EASING.md`) | close |
+| Keyframe easing custom curve handles, per-segment ease list, apply to all | done in the Keyframe Easing panel (the right panel's Easing tab; the inspector's "Easing…", the keyframe menu's "Edit Easing…", the ☰ menu and macOS View > Keyframe Easing open it): value and speed graphs with draggable speed handles, zoom and pan, the segment curve with handles and a motion preview, presets plus the project's own (saved in `project.json`), copy / paste, influence and speed numbers, F9 / ⇧F9 / ⌘⇧F9 easy ease; every edit applies to every selected key in one undo step. Separate dimensions (#193) converts straight position keys to independent scalar X/Y tracks in one undo step; exact rejoin requires matching key times and easing. Spring and bounce (#192) remain disabled (`docs/KEYFRAME_EASING.md`) | close |
 | Ease curve editor (cubic bezier handles, spring, bounce params) | partial: cubic bezier handles work; spring and bounce parameters are missing (panels) | close |
 | Arc motion (needs 2+ position keyframes; auto-rotate; reset control points) | done: Transform group rows (the note under 2 keyframes, Arc Motion switch, Auto-Rotate, curviness 0-3 per segment) write `setMotionPath` / `setAutoRotate`; preview and export draw the same curved path, and export now adds the auto-rotate tangent like the preview (it ignored it before); one audit test per control. Not ported: Reset of hand-placed bezier control points (no stage handles for them) | close |
 | 3D transform: tilt X/Y, roll, depth, perspective, scale; cube widget; keyframe; reset orientation | missing (panels; recording writes 3D rotation, the inspector has no rows) | n/a |
@@ -107,6 +119,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Clip timing: start, end, duration | removed on purpose (2026-10-13): the timeline rows move, trim and split clips; speed stays as Rate in Media (see §13) | n/a |
 | Media: volume, muted, rate, media start, play video sound | done | exact |
 | Media: fit (Fit, Fill, Stretch) | done: the Media group's Fit select on video and image clips, one undo step, with the reset back to Fit; saved as `clip.fit` (absent = Fit, so older projects open and save unchanged). Fill covers the box keeping the aspect and clips the overflow; Stretch maps the picture onto the box; an untouched Fill or Stretch clip's box is the whole frame. Preview and export draw it with one painter (`NativeClipLayout.swift` `nativeMediaRect`, `PreviewComposition.swift`, `InspectorPanel+MediaFit.swift`) | close |
+| Layout grids (#321) | partial: pure split-screen/PiP plans and one-step undo, existing transform/crop/fit fields; geometry and refusal tests. Layout menu, diagrams, shortcuts and swapping remain #322 | n/a |
 | Media: loop, object position | missing in the native document (panels + preview) | n/a |
 | Align / distribute | done (#449): six align buttons in Transform, frame/selection reference; three or more visual clips distribute with equal edge gaps. Multi-selection supports the same keyboard-operable controls. Existing position parameters are written at the playhead when animated, in one undo step. Only the changed component is keyed, preserving 2D path tangents and the untouched axis; a single selection uses the frame reference; preview/export share their existing painter (`AlignmentTests`, `AlignmentInspectorTests`, `AlignmentPainterTests`) | exact |
 | Text: content, multiple fields, font picker, size, weight, color, align, letter spacing, line height, case/style | partial: native text layers (`clip.text` on a Text element asset; T adds one at the playhead). The Text group comes first, in this order: Content (`\n` breaks a line), Font (family name), Size, Weight (number or label), Letter spacing (px/em), Line height (multiple, %, px, normal), Align L/C/R/J, Case · Style, Color (hex). Preview and export draw one layout (`TextLayout`: wrap at the box width, half-leading line boxes, justify, per-character spacing); export rasterizes it with the preview's renderer into a still the clip renders like an image, so transform, crop, style and opacity apply. Missing: several text fields per layer, the font picker popover, the colour picker | close |
@@ -126,6 +139,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | missing (panels; the renderer already reads every setting and the palette) | n/a |
 | Clip effects other than the grade (listed with enable toggle and remove) | partial: listed and toggleable; not rendered, and export refuses them | close |
 | Audio FX: presets by family, EQ (Tone) bands, signal chain with bypass / remove / clear | done (edits `audioFxChain`, undoable; playback and export hear it) | close |
+| One-step voice clean-up: noise reduction and dynamic levelling, strength, before/after | implemented (#461): Clean up voice, Strength (controls both stages), Listen before/after and Remove clean-up in the Audio FX rack; keyboard operable, undoable and saved in the existing project FX chain. Playback and export share the DSP; denoise learns from the first 500 ms (`VoiceCleanupTests`, `VoiceCleanupInspectorTests`) | close |
 | Audio FX: add menu with descriptions, per-node parameter editing, move up/down | missing (panels; coordinate with swift-audiofx-hang on these rows) | n/a |
 | Audio FX: voiceover carve, leveller ("even out its loud and quiet parts"), audition, preset run amount | missing UI (panels); DSP exists in `MpvfxAudioGraph` | n/a |
 | Audio group bus rack (opened from the timeline group header FX / name buttons) | done (de10f47): the inspector shows the bus's FX chain and Group volume; a popover form is not drawn (panels-visual) | close |
@@ -248,7 +262,7 @@ Features that only show in some states, and what the editor does with each.
 
 | Feature | Status |
 | --- | --- |
-| Flat inspector | done: the only inspector |
+| Flat inspector | done: the only inspector; sliders take Tab focus, arrows nudge (Shift ×10, Home/End for bounds), Enter edits the displayed value, and Delete/Backspace resets; repeated keys share one undo step (#174) |
 | Timeline row virtualization | n/a: the canvas timeline draws visible rows only |
 | Show thumbnails toggle | done (toggle persisted) |
 | Test hooks | `MPVFX_SMOKE_*` environment hooks |
@@ -277,7 +291,7 @@ Every item of the owner's screenshot review, with its status now.
 | Selected clip header: name, reset, visibility, close | partial: name, reset and close work; visibility is missing (panels) |
 | Color wheels Shadows / Midtones / Highlights with wheel, slider, Hue / Amount / Level, per-wheel reset | done |
 | Curves Master, R, G, B, Hue/Hue, Hue/Sat, Hue/Luma; editable graph; reset | done |
-| Secondary color: add / delete selection | done (eyedropper missing) |
+| Secondary color: add / delete selection, eyedropper and Hue / Saturation / Luma qualifiers | done: gradient ranges with two 24 pt keyboard-adjustable handles, softness, live selection matte and one undo step per drag (#181) |
 | Custom LUT dropdown | done |
 | Finish section and the other sections (transform, crop, opacity) | done |
 | Timeline toolbar: select, blade, link/ripple, keyframe add/navigate, tools, track height, zoom | done (timeline) |
@@ -296,6 +310,22 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+- Design inspector legibility (#173): labels, hints, state tags and summaries use AA secondary ink in both appearances; text/values are at least 11 px, section headings 11.5 px below 12 px group titles, and essential slider/field edges reach 3:1.
+Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
+Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.
+### Hand-placed beat marks (#289)
+
+Select an audio clip and press B or Add beat to store a mark at the audio clock time. Marks stay on their source frames when clips move or trim, support one-step undo, snap clip edges, and persist in project.json. Drag a mark to move it, Option-click to delete, or Option-comma / Option-period to jump. Unknown beat versions remain in the project with an open notice.
+
+### Design wording (#186)
+
+**done — panels / panels-visual.** Design controls and section headings use sentence case. Align, case, style and
+crop reset use vector icons with word tooltips and native accessible names. Summaries use the 11 px label font
+and human names; Primary and secondary correction say Temperature. Rotation appears once in Transform; the
+3D transform disclosure retains tilt, depth and perspective. Document keys and editing commands are unchanged.
+Evidence: `DesignWordingTests`, the Design wording scanner and its three regressions. Native offscreen panel
+captures cover dark/light at 1440×900 and 1280×800; full application screenshot verification remains manual.
 
 ## 13. Recently landed
 

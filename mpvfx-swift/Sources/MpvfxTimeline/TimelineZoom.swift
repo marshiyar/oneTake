@@ -105,7 +105,7 @@ public enum TimelineSnapping {
             guard t.isFinite, t >= 0 else { return }
             let r = TimelineZoom.jsRound(t * 1000) / 1000
             if let e = byTime[r], e.type.rawValue <= type.rawValue { return }
-            byTime[r] = TimelineSnapTarget(time: r, type: type)
+            byTime[r] = TimelineSnapTarget(time: type == .beat ? t : r, type: type)
         }
         for b in beats { add(b, .beat) }
         for c in clips where !excluding.contains(c.key) { add(c.start, .clipEdge); add(c.start + c.duration, .clipEdge) }

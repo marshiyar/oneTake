@@ -44,10 +44,9 @@ public final class TimelineToolbar {
         sceneThreshold = max(0.1, min(0.9, ((sceneThreshold + (increase ? 0.1 : -0.1)) * 10).rounded() / 10))
         controller.needsDisplay?()
     }
-    /// Beat analysis loaded for this clip (the analysed music); the add-beat button needs it.
+    /// Legacy analysis selection retained for hosts; hand-placed beats use the selected audio clip.
     public var beatMusicClipId: String?
-    /// Add a user beat at a composition time (beatEditActions.addBeatAtCompositionTime). Without it the beat
-    /// only lands in the view's beat grid.
+    /// Notification after a beat was persisted on the selected audio clip; never replaces the document edit.
     public var onAddBeat: ((_ time: Double) -> Void)?
     public var hovered: Item?
     var draggingSlider: Item?
@@ -82,12 +81,8 @@ public final class TimelineToolbar {
         guard !isRemovingSilence, let c = selectedClip, !selectedLocked else { return false }
         return c.kind == .video && c.assetId != nil
     }
-    /// canAddBeatAt: analysis loaded and the playhead within the music clip.
-    public var canAddBeat: Bool {
-        guard let id = beatMusicClipId, let c = controller.clip(id)?.clip else { return false }
-        let t = controller.playback.currentTime
-        return t >= c.start && t <= c.end
-    }
+    /// Hand-placed beats do not require prior analysis.
+    public var canAddBeat: Bool { controller.canAddSelectedBeat }
     public var zoomPercent: Double {
         TimelineZoom.percent(controller.zoomMode, manual: controller.manualZoomPercent, fit: controller.fitPixelsPerSecond)
     }
@@ -149,7 +144,7 @@ public final class TimelineToolbar {
             return "Split at scene changes (Ctrl/Cmd+Alt+S); select an editable video"
         case .sceneThreshold: return "Scene threshold \(Int(sceneThreshold * 100))% (Ctrl/Cmd+Alt+[ / ]); click to increase, wraps at 90%"
         case .addBeat:
-            return beatMusicClipId == nil ? "Add a music track with beat analysis to place beats"
+            return controller.selectedBeatClipId == nil ? "Select an audio clip to place beats (B)"
                 : canAddBeat ? "Add beat at playhead" : "A beat already exists at the playhead"
         case .trackHeight: return "Track height"
         case .trackSmall: return "Small tracks (32 px)"
@@ -253,8 +248,8 @@ public final class TimelineToolbar {
         case .sceneThreshold:
             if sceneThreshold >= 0.9 { sceneThreshold = 0.1 } else { adjustSceneThreshold(increase: true) }
         case .addBeat:
-            let t = controller.playback.currentTime
-            if let onAddBeat { onAddBeat(t) } else { controller.addBeat(at: t) }
+            let t = controller.beatEventTime
+            if controller.addBeat(at: t) { onAddBeat?(t) }
         case .trackSmall: controller.setTrackHeight(32)
         case .trackMedium: controller.setTrackHeight(48)
         case .trackLarge: controller.setTrackHeight(72)

@@ -45,6 +45,10 @@ public enum PanelTheme {
     /// Property row labels in the inspector (number, slider, toggle and segmented rows, pair headings): text-2, the
     /// grey that still reaches 4.5:1 on the inspector's inset and on the compact fields' panel grey in both modes.
     public static var rowLabel: CanvasColor { text2 }
+    public static var inspectorText: CanvasColor { c(T.inspectorTextPair) }
+    public static var inspectorControl: CanvasColor { c(T.inspectorControlPair) }
+    public static let inspectorHintSize = 11.0, inspectorSectionSize = 11.5
+
 
     // MARK: panel.* (theme.js)
     public static var panelBg: CanvasColor { c(T.panelBgPair) }
@@ -98,6 +102,7 @@ public enum PanelTheme {
     public static let stageScrim = CanvasColor(T.stageScrim)
     /// Scope graticule ink, skin-tone line and clipping marks (on the black scope background).
     public static let scopeInk = CanvasColor(T.scopeInk)
+    public static let scopeLabel = CanvasColor(T.scopeLabel)
     public static let scopeSkin = CanvasColor(T.scopeSkin)
     public static let scopeClip = CanvasColor(T.scopeClip)
 

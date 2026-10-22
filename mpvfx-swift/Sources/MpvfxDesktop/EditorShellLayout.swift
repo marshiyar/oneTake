@@ -78,11 +78,16 @@ final class ShellPane {
 /// The router keeps sending the source pane its moves (pointer capture) and also reports where the pointer is.
 protocol CrossPaneDrag: AnyObject {
     func isDragging(from region: EditorShellRouter.Region) -> Bool
+    func updateDragModifiers(_ modifiers: PointerModifiers)
     /// `local` is in `region`'s coordinates (nil region: outside every pane).
     func dragMoved(over region: EditorShellRouter.Region?, local: CanvasPoint, window: CanvasPoint)
     func dragEnded(over region: EditorShellRouter.Region?, local: CanvasPoint)
     /// Drawn above every pane, in window coordinates.
     func drawDrag(_ c: CanvasContext)
+}
+
+extension CrossPaneDrag {
+    func updateDragModifiers(_ modifiers: PointerModifiers) {}
 }
 
 /// Lays the window out through the dock and routes drawing and input to the panes. Host-neutral: a shell gives it
