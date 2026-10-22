@@ -225,7 +225,7 @@ extension InspectorPanel {
         rows += arcMotionRows(editor, s)
         rows += [.init(.heading("Align and distribute", trailing: nil))] + alignmentGroup(editor).rows
         return InspectorGroup(id: "layout", title: "Transform",
-                              summary: "\(PanelFormat.number(x, decimals: 0))px,\(PanelFormat.number(y, decimals: 0))px · \(Int(w.rounded()))×\(Int(h.rounded()))",
+                              summary: "X \(PanelFormat.number(x, decimals: 0)) · Y \(PanelFormat.number(y, decimals: 0)) · \(Int(w.rounded())) × \(Int(h.rounded()))",
                               rows: rows)
     }
 
@@ -295,7 +295,7 @@ extension InspectorPanel {
             display: AudioGainFader.text(gv), format: { AudioGainFader.text(AudioGainFader.gain(position: $0)) },
             tier: gv == 1 ? .default : .explicitCustom, centerTick: true,
             commit: { [weak self] p in self?.edited(editor.setAudioGroupVolume(gid, AudioGainFader.gain(position: p))) },
-            reset: { [weak self] in self?.edited(editor.setAudioGroupVolume(gid, 1)) })))]
+            reset: { [weak self] in self?.edited(editor.setAudioGroupVolume(gid, 1)) }, parseInput: Self.gainSliderInput)))]
     }
 
     static func audioFxSummary(_ chain: FxChain) -> String {
@@ -325,7 +325,7 @@ extension InspectorPanel {
                                  : editor.setClipVolume(clipId: s.id, (g * 1_000_000).rounded() / 1_000_000), label: "Set volume")
                 },
                 reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.volumeId)) },
-                keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol))))))
+                keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol)), parseInput: Self.gainSliderInput))))
             if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
         }
         if s.kind == .video || s.kind == .audio {
@@ -354,7 +354,7 @@ extension InspectorPanel {
             key: "rate", label: "Rate", position: rate * 100, min: 25, max: 300, display: Self.rateText(rate),
             format: { Self.rateText($0 / 100) }, tier: rate == 1 ? .default : .explicitCustom,
             commit: { [weak self] p in self?.edited(editor.setPlaybackRate(clipId: s.id, p.rounded() / 100)) },
-            reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }, detent: 100)))
+            reset: { [weak self] in self?.edited(editor.setPlaybackRate(clipId: s.id, 1)) }, detent: 100, step: 1, parseInput: { PanelFormat.parse($0.replacingOccurrences(of: "×", with: "x")).map { $0 * 100 } })))
     }
 
     static func rateText(_ rate: Double) -> String { String(format: "%.2f×", rate) }

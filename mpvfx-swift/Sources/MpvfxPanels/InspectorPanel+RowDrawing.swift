@@ -128,7 +128,7 @@ extension InspectorPanel {
     func drawSubheader(_ c: CanvasContext, _ r: CanvasRect, _ t: String, _ buttons: [InspectorRow.Button]) {
         var x = r.maxX
         for b in buttons.reversed() {
-            let w = max(PanelGrid.minTarget, c.measureText(b.label, font: PanelTheme.font(11, .medium)).width + 8)
+            let w = max(PanelGrid.minTarget, b.icon == nil ? c.measureText(b.label, font: PanelTheme.font(11, .medium)).width + 8 : PanelGrid.minTarget)
             let br = CanvasRect(x: x - w, y: r.y, width: w, height: r.height)
             drawButton(c, br, b, plain: true)
             x = br.x - PanelGrid.itemGap
@@ -363,7 +363,8 @@ extension InspectorPanel {
         let edge = drawAccessories(c, line: lines.0, Self.sliderAccessories(s)) - gearSpace
         let cols = PanelGrid.columns(lines.0)
         let labelW = stacked ? max(0, edge - lines.0.x - PanelGrid.columnGap) : cols.label.width
-        PanelDraw.text(c, s.label, in: CanvasRect(x: lines.0.x, y: lines.0.midY - 8.25, width: labelW, height: 16.5), font: Self.rowFont, color: s.tier.labelColor)
+        let label = sliderInputError == s.key ? "Enter \(s.format(s.min))…\(s.format(s.max))" : s.label
+        PanelDraw.text(c, label, in: CanvasRect(x: lines.0.x, y: lines.0.midY - 8.25, width: labelW, height: 16.5), font: Self.rowFont, color: s.tier.labelColor)
         drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: stacked ? lines.1.maxX : edge)
     }
 
@@ -382,7 +383,10 @@ extension InspectorPanel {
         let drag = sliderDrag?.key == s.key ? sliderDrag : nil
         let pos = drag?.current ?? s.position
         let custom = s.tier == .explicitCustom || drag != nil
-        PanelDraw.text(c, drag != nil ? s.format(pos) : s.display, in: valueRect, font: PanelTheme.mono(11),
+        let editing = field?.key == s.key
+        let text = editing ? (field?.draft ?? s.display) : (drag != nil ? s.format(pos) : s.display)
+        if editing { drawFieldEditing(c, valueRect, text: text, font: PanelTheme.mono(11), readOnly: false) }
+        PanelDraw.text(c, text, in: valueRect, font: PanelTheme.mono(11),
                        color: s.tier.valueInk(disabled: s.disabled, adjusting: drag != nil), align: .right)
         let track = CanvasRect(x: trackX, y: line.midY - PanelGrid.minTarget / 2, width: max(10, valueRect.x - 8 - trackX), height: PanelGrid.minTarget)
         let pct = max(0, min(1, (pos - s.min) / max(1e-9, s.max - s.min)))
@@ -393,7 +397,10 @@ extension InspectorPanel {
         let k = custom ? 8.0 : 7.0
         c.fill(.roundedRect(CanvasRect(x: track.x + track.width * pct - k / 2, y: track.midY - k / 2, width: k, height: k), radius: k / 2),
                custom ? PanelTheme.white : PanelTheme.inspectorText)
-        if !s.disabled { addHit(track, .slider(s.key)) }
+        if !s.disabled {
+            addHit(track, .slider(s.key))
+            addHit(Self.target(valueRect), .field(s.key))
+        }
     }
 
     /// FlatToggle: grey label (rowLabel, truncated before the switch), 24×14 pill ending at the value edge, knob 10px
@@ -410,7 +417,7 @@ extension InspectorPanel {
 
     /// Each option's natural width: its label plus padding, never under a target.
     static func segmentWidths(_ c: CanvasContext, _ s: InspectorRow.Segmented) -> [Double] {
-        s.options.map { max(PanelGrid.minTarget, c.measureText($0.label, font: rowFont).width + segmentPad) }
+        s.options.map { max(PanelGrid.minTarget, s.icons[$0.key] == nil ? c.measureText($0.label, font: rowFont).width + segmentPad : PanelGrid.minTarget) }
     }
 
     /// The options' natural width side by side.
@@ -447,8 +454,13 @@ extension InspectorPanel {
         let area = stacked ? lines.1 : CanvasRect(x: cols.control.x, y: r.y, width: max(0, Self.valueEdge(r) - cols.control.x), height: r.height)
         for (o, or) in zip(s.options, Self.segmentRects(Self.segmentWidths(c, s), in: area)) {
             let hov = hovered == .segment(s.key, o.key)
-            PanelDraw.text(c, o.label, in: CanvasRect(x: or.x + 2, y: or.midY - 8.25, width: max(0, or.width - 4), height: 16.5), font: Self.rowFont,
-                           color: o.active ? PanelTheme.text0 : (hov ? PanelTheme.text2 : PanelTheme.inspectorText), align: .center)
+            let color = o.active ? PanelTheme.text0 : (hov ? PanelTheme.text2 : PanelTheme.inspectorText)
+            if let icon = s.icons[o.key] {
+                icon.draw(c, in: CanvasRect(x: or.midX - 8, y: or.midY - 8, width: 16, height: 16), color: color)
+            } else {
+                PanelDraw.text(c, o.label, in: CanvasRect(x: or.x + 2, y: or.midY - 8.25, width: max(0, or.width - 4), height: 16.5),
+                               font: Self.rowFont, color: color, align: .center)
+            }
             if o.active { c.fillRect(CanvasRect(x: or.x, y: or.maxY - 2, width: or.width, height: 2), PanelTheme.accent) }
             addHit(or, .segment(s.key, o.key))
         }
@@ -459,6 +471,11 @@ extension InspectorPanel {
     func drawButton(_ c: CanvasContext, _ r: CanvasRect, _ b: InspectorRow.Button, plain: Bool) {
         let hov = hovered == .button(b.key)
         let font = PanelTheme.font(plain ? 10 : 11, .medium)
+        if let icon = b.icon {
+            icon.draw(c, in: CanvasRect(x: r.midX - 7, y: r.midY - 7, width: 14, height: 14), color: hov ? PanelTheme.text1 : PanelTheme.text3)
+            if !b.disabled { addHit(r, .button(b.key)) }
+            return
+        }
         switch b.style {
         case .accent: PanelDraw.text(c, b.label, in: r, font: font, color: PanelTheme.accent, align: .center)
         case .muted: PanelDraw.text(c, b.label, in: r, font: font, color: hov ? PanelTheme.text1 : PanelTheme.inspectorText, align: .center)

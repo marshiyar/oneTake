@@ -29,6 +29,10 @@ public struct GradeUIState: Equatable {
     /// Live values while a wheel (`<set id>:<wheel>`) / curve point is dragged (committed on release).
     var wheelDraft: (key: String, wheel: ColorGrading.Wheel)?
     var curveDraft: [[Double]]?
+    /// A fresh physical arrow press starts a history group; its repeats reuse it.
+    var wheelKeyControl: String?
+    var wheelKeyCode: EditorKey.Code?
+    var wheelKeyHistory: String?
     /// The pressed curve point: the pointer's offset from its centre, where the press was, and whether it has moved
     /// past the drag threshold (a click that only selects a point never moves it).
     var curveGrab: (dx: Double, dy: Double, start: CanvasPoint, moved: Bool)?
@@ -150,7 +154,7 @@ extension InspectorPanel {
             guard let self else { return }
             self.edited(editor.copyColorGrading(from: s.id, toAllProjectMedia: self.grade.copyToProject) > 0)
         }))))
-        let summary = g.enabled ? "\(g.preset ?? "neutral") · \(Int((g.intensity * 100).rounded()))%" : "off"
+        let summary = Self.gradeSummary(g)
         var group = InspectorGroup(id: "grade", title: "Grade", summary: summary, rows: rows, spacing: 0)
         group.enabled = g.enabled
         group.accessibilityLabel = "Grade enabled"
@@ -159,6 +163,13 @@ extension InspectorPanel {
         // not drawn: the native preview has no compare bypass or runtime handshake yet.
         group.reset = g.isAuthored ? { commit(ColorGrading()) } : nil
         return group
+    }
+
+    /// Preset IDs remain document data; summaries use the catalog's human name.
+    static func gradeSummary(_ grade: ColorGrading) -> String {
+        guard grade.enabled else { return "Off" }
+        let name = grade.preset.flatMap { ColorGrading.preset($0)?.label } ?? "Neutral"
+        return "\(name) · \(Int((grade.intensity * 100).rounded()))%"
     }
 
     /// The ten Primary sliders, `space-y-0.5`, each keyframeable (issue #179).
@@ -172,7 +183,8 @@ extension InspectorPanel {
                                             tier: abs(v) > 1e-6 ? .explicitCustom : .default, centerTick: true,
                                             commit: { x in var n = g; n.adjust[a.key] = (x / a.scale * 1000).rounded() / 1000; commit(n) },
                                             reset: { var n = g; n.adjust[a.key] = 0; commit(n) },   // 0, not nil: a missing key reads the preset's value
-                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g)))))
+                                            keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.adjustId(a.key)], shown: g), step: 1,
+                                            parseInput: { PanelFormat.parse($0).map { $0 * (a.key == "exposure" ? 100 : 1) } }))))
             if a.key == "contrast" { rows.append(.init(.spacer(2))); rows.append(pivotSlider(g, commit: commit)) }
         }
         return rows
@@ -248,6 +260,7 @@ extension InspectorPanel {
                                       commit: { x in var n = g; n.details[key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
                                       reset: { var n = g; n.details[key] = ColorGrading.defaultDetail(key); commit(n) })   // explicit, as above
         row.keyframe = keyframe
+        row.step = 1
         if gear {   // Vignette settings / Grain settings
             row.settings = (grade.finishSettings == key, { [weak self] in
                 guard let self else { return }
@@ -411,7 +424,7 @@ extension InspectorPanel {
                     _ apply: @escaping (inout ColorGrading.Secondary, Double) -> Void) -> InspectorRow {
             .init(.slider(.init(key: key, label: label, position: v, min: lo, max: hi, display: fmt(v), format: fmt,
                                 tier: abs(v - def) > 1e-6 ? .explicitCustom : .default, centerTick: center, commit: set(apply),
-                                reset: { var n = g; apply(&n.secondaries[sel], def); commit(n) })))
+                                reset: { var n = g; apply(&n.secondaries[sel], def); commit(n) }, step: 1)))
         }
         let deg: (Double) -> String = { "\(Int($0.rounded()))°" }, pct: (Double) -> String = { "\(Int($0.rounded()))%" }
         rows.append(.init(.heading("Qualifier", trailing: nil)))
@@ -422,7 +435,7 @@ extension InspectorPanel {
         rows.append(slider("sec:shift", "Hue shift", s.hueShift, -180, 180, deg, def: 0, center: true) { $0.hueShift = $1.rounded() })
         rows.append(slider("sec:sat", "Saturation", s.saturation * 100, -100, 100, pct, def: 0, center: true) { $0.saturation = ($1 / 100 * 100).rounded() / 100 })
         rows.append(slider("sec:luma", "Luma", s.luma * 100, -100, 100, pct, def: 0, center: true) { $0.luma = ($1 / 100 * 100).rounded() / 100 })
-        rows.append(slider("sec:temp", "Warmth", s.temperature * 100, -100, 100, pct, def: 0, center: true) { $0.temperature = ($1 / 100 * 100).rounded() / 100 })
+        rows.append(slider("sec:temp", "Temperature", s.temperature * 100, -100, 100, pct, def: 0, center: true) { $0.temperature = ($1 / 100 * 100).rounded() / 100 })
         rows.append(slider("sec:tint", "Tint", s.tint * 100, -100, 100, pct, def: 0, center: true) { $0.tint = ($1 / 100 * 100).rounded() / 100 })
         // The selection's controls sit `space-y-1.5` under the header.
         let tail = rows[headCount...].flatMap { [InspectorRow(.spacer(6)), $0] }

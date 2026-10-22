@@ -84,6 +84,11 @@ extension LeftSidebarPanel {
             binScroller.clamp(max: binMax)
         }
         if list.isEmpty { binMax = 0; binScroller.clamp(max: 0) }
+        if let ref = pendingReveal, tileFrames.contains(where: { $0.0 == ref }) {
+            pendingReveal = nil
+            scrollIntoView(ref)
+            onChange?()
+        }
         // The grid scrolls under the search row: a hairline marks the edge only while something is under it.
         if binScroll > 0.5 { PanelDraw.hline(c, x0: 0, x1: r.maxX, y: r.y, PanelTheme.panelHairline) }
         PanelScrollbar.draw(c, track: r, offset: binScroll, content: r.height + binMax, hovered: false, opacity: binScroller.barOpacity)

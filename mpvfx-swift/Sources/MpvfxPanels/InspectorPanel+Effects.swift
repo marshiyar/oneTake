@@ -41,7 +41,7 @@ extension InspectorPanel {
                                    display: fmt(v), format: fmt, tier: .explicitCustom,
                                    commit: { x in var n = g; n.effects[sel.key] = (x / 100 * 1000).rounded() / 1000; commit(n) },
                                    reset: { var n = g; n.effects[sel.key] = EffectSpecs.resetValue(effect: sel.key, sel.key); commit(n) },
-                                   keyframe: kf)), rail: true)
+                                   keyframe: kf, step: 1, parseInput: { Self.effectSliderInput($0, key: sel.key) })), rail: true)
     }
 
     func stylizeGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
@@ -162,7 +162,8 @@ extension InspectorPanel {
             }
             return .init(.slider(.init(key: "fx:set:\(key)", label: label, position: value * scale, min: lo, max: hi,
                                        display: fmt((value * scale).rounded()), format: { fmt($0.rounded()) }, tier: tier,
-                                       commit: { x in set((x.rounded() / scale * 10000).rounded() / 10000) }, reset: { set(def) })), rail: true)
+                                       commit: { x in set((x.rounded() / scale * 10000).rounded() / 10000) }, reset: { set(def) }, step: 1,
+                                       parseInput: { Self.effectSliderInput($0, key: key) })), rail: true)
         case .toggle(_, let label):
             return .init(.toggle(.init(key: "fx:set:\(key)", label: label, on: value >= 0.5, tier: tier, set: { set($0 ? 1 : 0) }, reset: { set(def) })), rail: true)
         case .select(_, let label, let options):

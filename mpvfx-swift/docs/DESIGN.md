@@ -178,3 +178,17 @@ Media) in the `.strip` style, and the tab rows inside a panel (curve modes, scop
   remove the entry; never add one to make a change pass.
 - Screenshots: the screenshot bot posts before/after images on each pull request that touches the UI; a reviewer
   compares them against the principles above.
+
+### Design tab wording (#186)
+
+Control labels, toggles, section headings and disclosure headings use sentence case. Preserve established
+abbreviations (ASCII, CRT, LUT, RGB, FX) and coordinate axes (X, Y, Z). Named looks are proper names, so their
+catalog spelling (for example Warm Daylight) also appears in group summaries. Never change document keys to
+match display wording. The primary and secondary correction label is Temperature; both retain `temperature`.
+
+Align, case, style and crop reset draw vector icons from `PanelIcon`. Each option's word label supplies both its
+hover tooltip and its native accessibility name. Group summaries use the 11 px label font and `text3`, including
+position/dimensions (`X 0 · Y 0 · 640 × 360`), fill/opacity, and the human grade preset name.
+
+`python3 scripts/check-design-wording.py` scans Design display-label literals and rejects title case in
+multi-word controls. It is run by `scripts/check.sh`; named preset catalog entries are exempt.
