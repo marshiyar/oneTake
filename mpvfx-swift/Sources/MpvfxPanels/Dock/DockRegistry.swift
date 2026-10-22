@@ -70,7 +70,7 @@ public struct DockRegistry: Equatable, Sendable {
     public static let maxExtent = 4096.0
     public init() {}
 
-    /// The built-in editor panels: Media, Preview, Design, Renders, Timeline, History, Info.
+    /// The built-in editor panels: Media, Preview, Design, Renders, Timeline, History, Info, Effects.
     public static var editor: DockRegistry {
         var r = DockRegistry()
         for spec in DockPanels.builtIn + DesignGroups.specs { r.specs.append(spec) }
@@ -116,6 +116,11 @@ public enum DockPanels {
     public static let timeline: DockPanelID = "timeline"
     public static let history: DockPanelID = "history"
     public static let info: DockPanelID = "info"
+    public static let effects: DockPanelID = "effects"
+    public static let scopes: DockPanelID = "scopes"
+    public static let markers: DockPanelID = "markers"
+
+    public static let mixer: DockPanelID = "mixer"
 
     /// Minimums follow `PanelFit` (the preview's 360 × 200 floor, the 200 / 280 pt side panels, the 100 pt timeline).
     public static let builtIn: [DockPanelSpec] = [
@@ -130,6 +135,11 @@ public enum DockPanels {
         DockPanelSpec(id: timeline, title: "Timeline", defaultDock: .bottom, minSize: CanvasSize(320, PanelFit.minTimelineHeight))
             .preferring(CanvasSize(0, 360)).alwaysOpen(),
         DockPanelSpec(id: history, title: "History", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
+        DockPanelSpec(id: mixer, title: "Mixer", defaultDock: .bottom, minSize: CanvasSize(280, 180)).closedByDefault(),
         DockPanelSpec(id: info, title: "Info", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
+        DockPanelSpec(id: effects, title: "Effects", defaultDock: .left, minSize: CanvasSize(PanelFit.minLeft, 160)),
+        DockPanelSpec(id: scopes, title: "Scopes", defaultDock: .right, minSize: CanvasSize(240, 180))
+            .preferring(CanvasSize(360, 0)).closedByDefault(),
+        DockPanelSpec(id: markers, title: "Markers", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)).closedByDefault(),
     ]
 }

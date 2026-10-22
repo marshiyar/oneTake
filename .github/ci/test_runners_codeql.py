@@ -39,6 +39,23 @@ class Handoff(unittest.TestCase):
         self.wf = workflow("codeql.yml")
         self.jobs = self.wf["jobs"]
 
+    def test_push_and_pull_request_runs_are_throttled_to_security_relevant_paths(self):
+        # The CodeQL throttle: docs-only, theme/scopes/panels-only and test-only changes must not
+        # start a run; parser, platform-shell, script and workflow changes must. The weekly schedule
+        # and hand runs stay unfiltered.
+        on = self.wf[True] if True in self.wf else self.wf["on"]
+        for event in ("pull_request", "push"):
+            paths = on[event]["paths"]
+            self.assertNotIn("paths-ignore", on[event])
+            for want in ("mpvfx-swift/Sources/MpvfxRuntime/**", "mpvfx-swift/Sources/MpvfxShared/**",
+                         "mpvfx-swift/scripts/**", ".github/workflows/**"):
+                self.assertIn(want, paths)
+            for noise in ("**/*.md", "mpvfx-swift/Tests/**", "mpvfx-swift/Sources/MpvfxTheme/**",
+                          "mpvfx-swift/Sources/MpvfxScopes/**"):
+                self.assertNotIn(noise, paths)
+        self.assertIn("schedule", on)
+        self.assertIn("workflow_dispatch", on)
+
     def test_sent_for_main_pushes_and_same_repository_pull_requests_only(self):
         cond = self.jobs["swift-runners"]["if"]
         self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/main'", cond)
