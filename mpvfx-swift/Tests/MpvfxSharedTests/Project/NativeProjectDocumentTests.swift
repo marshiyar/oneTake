@@ -128,7 +128,7 @@ final class NativeProjectDocumentTests: XCTestCase {
         XCTAssertEqual(p.canvas, .init(width: 1920, height: 1080, background: "#101010"))
         XCTAssertEqual(p.sequence.tracks[0].clips[0].muted, false)
         XCTAssertEqual(p.sequence.tracks[0].clips[0].playbackRate, .init(numerator: 1, denominator: 1))
-        XCTAssertEqual(p.sequence.tracks[0].clips[0].staticParameters, [:])
+        XCTAssertNil(p.sequence.tracks[0].clips[0].staticParameters, "untouched clips decode to nil, not an empty map")
         XCTAssertEqual(p.sequence.tracks[0].lane, .init(authoredTrack: 0, displayTrack: 0))
     }
 
