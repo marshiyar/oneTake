@@ -329,7 +329,7 @@ final class TargetSizeTests: XCTestCase {
                            .custom("sec:head", 0), .custom("sec:head", 1), .custom("grade:scopes", InspectorPanel.ScopePart.refresh),
                            .custom("grade:curvefoot", 0), .custom("grade:curvefoot", 1)]
                         : [.groupReset("effects"), .custom("fx:head", 0), .custom("fx:head", 1), .custom("fx:tabs", 0)]
-                    for action in expected { XCTAssertTrue(targets.contains { $0.action == action }, "fixture draws \(action)") }
+                    for action in expected { XCTAssertTrue(targets.contains { $0.action == action }, "\(group) \(width) \(mode): fixture draws \(action)") }
                     for target in targets {
                         let context = "\(group) \(width) \(target.action)"
                         XCTAssertGreaterThanOrEqual(target.rect.width, 24, context)
