@@ -276,6 +276,8 @@ public enum ThemeTokens {
     public static let curveHueHuePair = ThemePair(0xF0ABFC, 0xC026D3)
     public static let curveHueSatPair = ThemePair(0xFACC15, 0xA16207)
     public static let curveHueLumaPair = ThemePair(0xF8FAFC, 0x27272A)
+    public static let curveLumaSatPair = ThemePair(0x67E8F9, 0x0E7490)
+    public static let curveSatSatPair = ThemePair(0xFDBA74, 0xC2410C)
     /// Preview viewport around the stage.
     public static let viewportPair = ThemePair(0x141414, 0xE7E7EA)
     /// Keyframe marks by property kind (timeline lanes and inspector). Each kind also has its own shape, which carries

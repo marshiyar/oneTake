@@ -26,6 +26,7 @@ public struct ColorGrading: Equatable, Sendable {
     public static let maxCurvePoints = 16, maxSecondaries = 4
     public static let adjustKeys = ["exposure", "contrast", "highlights", "shadows", "whites", "blacks", "temperature", "tint", "vibrance", "saturation"]
     public static let wheelKeys = ["shadows", "midtones", "highlights"]
+    public static let deltaCurveKeys = ["lumaVsSaturation", "saturationVsSaturation"]
     public static let curveKeys = ["master", "red", "green", "blue"]
     public static let hueCurveKeys = ["hueVsHue", "hueVsSaturation", "hueVsLuma"]
     public static let detailKeys = ["vignette", "vignetteMidpoint", "vignetteRoundness", "vignetteFeather", "grain", "grainSize", "grainRoughness"]
@@ -88,7 +89,7 @@ public struct ColorGrading: Equatable, Sendable {
     var presetValues: Preset? { preset.flatMap(Self.preset) }
     /// A control's own default (what a reset writes): 0 for an adjust key, the contract default for a detail.
     public static func defaultDetail(_ k: String) -> Double { detailDefaults[k] ?? 0 }
-    public func curve(_ k: String) -> [[Double]] { let c = curves[k] ?? []; return c.isEmpty ? [[0, 0], [1, 1]] : c }
+    public func curve(_ k: String) -> [[Double]] { let c = curves[k] ?? []; return c.isEmpty ? (Self.deltaCurveKeys.contains(k) ? GradeCurve.flatDelta : GradeCurve.identity) : c }
     public func hueCurve(_ k: String) -> [[Double]] { hueCurves[k] ?? [] }
 
     /// Anything differs from neutral (`hasHfColorGradingAuthoredValues`).
@@ -131,7 +132,7 @@ public struct ColorGrading: Equatable, Sendable {
         if !wheels.isEmpty { o["wheels"] = wheelSet(wheels, Self.wheelKeys) }
         if !balance.isEmpty { o["balance"] = wheelSet(balance, GradeValues.balanceKeys) }
         if let pivot { o["pivot"] = .number(pivot) }
-        if !curves.isEmpty { var c = NativeJSONObject(); for k in Self.curveKeys { if let v = curves[k] { c[k] = pts(v) } }; o["curves"] = .object(c) }
+        if !curves.isEmpty { var c = NativeJSONObject(); for k in Self.curveKeys + Self.deltaCurveKeys { if let v = curves[k] { c[k] = pts(v) } }; o["curves"] = .object(c) }
         if !hueCurves.isEmpty { var c = NativeJSONObject(); for k in Self.hueCurveKeys { if let v = hueCurves[k] { c[k] = pts(v) } }; o["hueCurves"] = .object(c) }
         if !secondaries.isEmpty {
             o["secondaries"] = .array(secondaries.map { s in .object([
@@ -328,10 +329,10 @@ public enum ColorCurveMath {
     }
     /// `count + 1` evenly spaced samples across the tab's input range (0…1, or 0…360 degrees for hue curves).
     public static func samples(_ points: [[Double]], hue: Bool, limit: ClosedRange<Double>, count: Int) -> [(x: Double, y: Double)] {
-        let rgb = GradeCurve.normalizedRGB(points), h = GradeCurve.normalizedHue(points, limit: limit)
+        let rgb = limit.lowerBound < 0 ? GradeCurve.normalizedDelta(points) : GradeCurve.normalizedRGB(points), h = GradeCurve.normalizedHue(points, limit: limit)
         return (0...count).map { k in
             let n = Double(k) / Double(count)
-            return hue ? (n * 360, GradeCurve.valueHue(h, at: n * 360, limit: limit)) : (n, GradeCurve.valueRGB(rgb, at: n))
+            return hue ? (n * 360, GradeCurve.valueHue(h, at: n * 360, limit: limit)) : (n, (limit.lowerBound < 0 ? GradeCurve.valueDelta(rgb, at: n) : GradeCurve.valueRGB(rgb, at: n)))
         }
     }
 }
