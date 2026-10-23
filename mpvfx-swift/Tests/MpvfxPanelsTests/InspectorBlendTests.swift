@@ -178,7 +178,7 @@ final class InspectorBlendTests: XCTestCase {
         inspector.draw(canvas, in: CanvasRect(x: 0, y: 0, width: width, height: 4_000))
         let keys: [String]
         switch group {
-        case "layout": keys = ["y", "h", "rotation", "scale", "layerOrder"]
+        case "layout": keys = ["y", "h", "rotation", "scaleY", "layerOrder"]
         case "style": keys = ["fill", "strokeColor"]
         default: keys = ["rate"]
         }
