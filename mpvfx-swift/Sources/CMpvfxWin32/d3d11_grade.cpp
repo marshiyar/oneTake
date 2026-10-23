@@ -35,8 +35,8 @@ const char *const kEntry[MPVFX_GPU_KERNELS] = {"mpvfx_blur_pass", "mpvfx_kuwahar
 // Parameter buffer layout (floats): the unorm table (256), then per dispatch hdr (64) and u (448).
 constexpr UINT kConstFloats = 256, kStrideFloats = 512, kHdrFloats = 64, kMaxPasses = MPVFX_GPU_MAX_PASSES;
 constexpr UINT kParamFloats = kConstFloats + kStrideFloats * kMaxPasses;
-// SRV registers (scripts/gpu/hlsl.inc): t0 hdr, t1 u, t2..t5 pictures, t6 moments, t7..t10 tables, t11 unorm table.
-constexpr UINT kSrvSlots = 12;
+// SRV registers (scripts/gpu/hlsl.inc): t0 hdr, t1 u, t2..t5 pictures, t6 moments, t7..t10 tables, t11 unorm table, t12 Sat/Sat.
+constexpr UINT kSrvSlots = 13;
 
 /// A structured buffer with its views (any may be absent).
 struct Buffer {
@@ -77,7 +77,7 @@ struct MpvfxD3D11Grade {
     // Per grade.
     uint64_t tableKey = 0;
     bool tablesValid = false;
-    Buffer curves, hue, sec, lut;
+    Buffer curves, hue, sec, lut, saturation;
     std::string name;
     bool software = false;
     std::string err;
@@ -332,10 +332,11 @@ int ensureTables(MpvfxD3D11Grade *g, const MpvfxGpuGradeJob *j) {
     uint64_t h = fnv1a(key, strlen(key));
     if (g->tablesValid && g->tableKey == h) return 0;
     g->tablesValid = false;
-    for (Buffer *b : {&g->curves, &g->hue, &g->sec, &g->lut}) *b = Buffer();
+    for (Buffer *b : {&g->curves, &g->hue, &g->sec, &g->lut, &g->saturation}) *b = Buffer();
     UINT lutTexels = static_cast<UINT>(j->lutSize) * static_cast<UINT>(j->lutSize) * static_cast<UINT>(j->lutSize);
     HRESULT hr = S_OK;
     if (j->curveTexels > 0) hr = makeBuffer(g, g->curves, {16, static_cast<UINT>(j->curveTexels), kSrv, j->curves});
+    if (SUCCEEDED(hr) && j->saturationTexels > 0) hr = makeBuffer(g, g->saturation, {16, static_cast<UINT>(j->saturationTexels), kSrv, j->saturation});
     if (SUCCEEDED(hr) && j->hueTexels > 0) hr = makeBuffer(g, g->hue, {16, static_cast<UINT>(j->hueTexels), kSrv, j->hue});
     if (SUCCEEDED(hr) && j->secondaryTexels > 0) hr = makeBuffer(g, g->sec, {16, static_cast<UINT>(j->secondaryTexels), kSrv, j->secondaries});
     if (SUCCEEDED(hr) && lutTexels > 0) hr = makeBuffer(g, g->lut, {16, lutTexels, kSrv, j->lut});
@@ -367,7 +368,7 @@ bool passAliases(const MpvfxGpuPass &p) {
 void dispatch(MpvfxD3D11Grade *g, const MpvfxGpuPass &p, int i) {
     ID3D11ShaderResourceView *srv[kSrvSlots] = {g->hdrViews[i].get(), g->uViews[i].get(), srvOf(g, p.in[0]), srvOf(g, p.in[1]),
                                                 srvOf(g, p.in[2]), srvOf(g, p.in[3]), srvOf(g, p.momIn), g->curves.srv.get(),
-                                                g->hue.srv.get(), g->sec.srv.get(), g->lut.srv.get(), g->unormView.get()};
+                                                g->hue.srv.get(), g->sec.srv.get(), g->lut.srv.get(), g->unormView.get(), g->saturation.srv.get()};
     ID3D11UnorderedAccessView *uav[2] = {uavOf(g, p.outPx), uavOf(g, p.outMom)};
     g->context->CSSetShader(g->shaders[p.kernel].get(), nullptr, 0);
     g->context->CSSetShaderResources(0, kSrvSlots, srv);
@@ -440,7 +441,7 @@ extern "C" void mpvfx_d3d11_grade_release_buffers(MpvfxD3D11Grade *g) {
     if (!g) return;
     std::lock_guard<std::mutex> hold(g->lock);
     for (Buffer &b : g->bufs) b = Buffer();
-    for (Buffer *b : {&g->curves, &g->hue, &g->sec, &g->lut}) *b = Buffer();
+    for (Buffer *b : {&g->curves, &g->hue, &g->sec, &g->lut, &g->saturation}) *b = Buffer();
     g->readback.reset();
     g->readbackCount = 0;
     g->tablesValid = false;

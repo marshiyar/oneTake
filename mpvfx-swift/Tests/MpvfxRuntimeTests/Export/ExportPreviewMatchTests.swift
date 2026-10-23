@@ -218,4 +218,16 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/cancelled.mp4"))
         XCTAssertEqual(try leftovers(root), [])
     }
+    func testLumaAndSaturationCurvesExportMatchesAtThreeTimes() throws {
+        for key in ["lumaVsSaturation", "saturationVsSaturation"] {
+            let points = key == "lumaVsSaturation" ? "[[0,0],[0.25,0],[0.5,-1],[1,-1]]" : "[[0,1],[0.3,1],[1,0]]"
+            let grade = "{\"version\":2,\"curves\":{\"\(key)\":\(points)}}"
+            let mov = try export(.mov, grade: grade, name: key)
+            let frames = try pairs(mov, [0, 0.9, 1.9])
+            XCTAssertEqual(frames.map { maxAbsDiff($0.1, $0.2) }.filter { $0 > 1 }, [], key)
+            let plain = try previewExportFrame(try export(.mov, grade: "{}", name: "plain-" + key).input, at: 0.9)
+            XCTAssertGreaterThan(maxAbsDiff(frames[1].2, plain), 1, "\(key) must actually change the frame")
+        }
+    }
+
 }

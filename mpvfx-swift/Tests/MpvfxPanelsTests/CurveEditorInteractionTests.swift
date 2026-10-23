@@ -208,7 +208,7 @@ final class CurveEditorInteractionTests: XCTestCase {
                     XCTAssertGreaterThanOrEqual(s.count, 3, "\(tab.key) step \(step): \(s)")
                 } else {
                     guard let s = g.curves[tab.key] else { continue }
-                    XCTAssertEqual(GradeCurve.normalizedRGB(s), s, "\(tab.key) step \(step)")
+                    XCTAssertEqual(tab.min < 0 ? GradeCurve.normalizedDelta(s) : GradeCurve.normalizedRGB(s), s, "\(tab.key) step \(step)")
                 }
             }
         }

@@ -25,7 +25,7 @@ public struct MenuItem: Equatable, Sendable {
         case about, services, hide, hideOthers, showAll, quit
         /// MpVFX > Settings… (Cmd+,): the editor's Settings card (Ctrl+, on Linux and Windows).
         case settings
-        case openProject
+        case openProject, saveFrame
         /// File > Open Recent: a submenu the shell fills from `DesktopBackend.recentProjects()` when it opens.
         case openRecent
         case closeWindow
@@ -76,6 +76,7 @@ public enum MenuModel {
                 Menu(label: "File", items: [
                     MenuItem(label: "Open…", command: .openProject, key: "o", modifiers: [.command]),
                     MenuItem(label: "Open Recent", command: .openRecent),
+                    MenuItem(label: "Save frame…", command: .saveFrame, key: "e", modifiers: [.command, .shift]),
                     MenuItem(label: "Close Window", command: .closeWindow, key: "w", modifiers: [.command], separatorBefore: true),
                 ]),
                 Menu(label: "Edit", items: [

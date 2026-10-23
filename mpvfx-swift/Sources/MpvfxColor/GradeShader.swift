@@ -109,10 +109,11 @@ struct GradeUniforms: Sendable {
 /// One grade bound to one frame size and time: the uniforms, curve tables, LUT and multipass textures.
 struct GradeProgram: Sendable {
     var u = GradeUniforms()
-    // Advanced texture (`u_advanced`, 1024 x 3 RGBA8): row 0 RGB curves (r, g, b, master), row 1 hue curves,
-    // row 2 secondary qualifier/correction texels. Stored as byte/255.
+    // Tables stored as byte/255: RGB curves (r, g, b, master), hue curves with Luma/Sat in w,
+    // Sat/Sat in x of its own table, and secondary qualifier/correction texels.
     var curveRows: [V4] = []
     var hueRows: [V4] = []
+    var saturationRows: [V4] = []
     var secondaryTexels: [V4] = []
     var lut: CubeLUT?
     var interpolation: CubeLUT.Interpolation = .trilinear
@@ -380,7 +381,7 @@ struct GradeProgram: Sendable {
         let c = curve(hueRows, hsv.x)
         let originalLuma = lumaOf(color)
         hsv.x = fract(hsv.x + decodeSigned(c.x) * 0.5)
-        hsv.y = clampf(hsv.y * Swift.max(0, 1 + decodeSigned(c.y)), 0, 1)
+        hsv.y = clampf(hsv.y * Swift.max(0, 1 + decodeSigned(c.y) + decodeSigned(curve(hueRows, originalLuma).w) + decodeSigned(curve(saturationRows, hsv.y).x)), 0, 1)
         var shifted = hsvToRgb(hsv)
         shifted += V3(repeating: originalLuma - lumaOf(shifted) + decodeSigned(c.z))
         return shifted
