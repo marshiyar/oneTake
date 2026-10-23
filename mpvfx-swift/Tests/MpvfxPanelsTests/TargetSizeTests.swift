@@ -320,10 +320,14 @@ final class TargetSizeTests: XCTestCase {
                     let right = try Self.design(open: group), panel = right.inspector
                     try configureGradeAndEffects(panel)
                     let canvas = PanelMeasureCanvas(), size = CanvasSize(width, 4000)
-                    right.draw(canvas, size: size)
+                    // The asserted draw uses a taller canvas: with the Finish tune rows open the grade
+                    // column is ~4520pt at 364pt wide, and rows past the canvas are culled, not drawn.
+                    let tall = CanvasSize(width, 6000)
+                    right.draw(canvas, size: tall)
                     try captureGradeAndEffects(right, group: group, width: width, mode: mode, size: size)
-                    right.draw(canvas, size: size)
+                    right.draw(canvas, size: tall)
                     let targets = panel.hits.regions.filter { isGradeOrEffectsTarget($0.action) }
+
                     let expected: [InspectorPanel.Hit] = group == "grade"
                         ? [.groupReset("grade"), .reset("grade:adj:exposure"), .keyframe("grade:det:vignette#gear"),
                            .custom("sec:head", 0), .custom("sec:head", 1), .custom("grade:scopes", InspectorPanel.ScopePart.refresh),
