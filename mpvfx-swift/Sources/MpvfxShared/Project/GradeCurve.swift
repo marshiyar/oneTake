@@ -26,6 +26,27 @@ public enum GradeCurve {
     public static let maxPoints = 16
     public static let identity: [[Double]] = [[0, 0], [1, 1]]
 
+    public static let flatDelta: [[Double]] = [[0, 0], [1, 0]]
+
+    /// Nonperiodic unit-input saturation deltas, with neutral anchors at missing edges.
+    public static func normalizedDelta(_ raw: [[Double]]) -> [[Double]] {
+        guard raw.count >= 2, raw.count <= maxPoints else { return flatDelta }
+        var points: [[Double]] = []
+        for p in raw {
+            guard p.count == 2, p[0].isFinite, p[1].isFinite else { return flatDelta }
+            points.append([clamp(p[0], 0, 1), clamp(p[1], -1, 1)])
+        }
+        points.sort { $0[0] < $1[0] }
+        if zip(points, points.dropFirst()).contains(where: { $0[0] == $1[0] }) { return flatDelta }
+        if (points.first?[0] ?? 0) > 0 { points.insert([0, 0], at: 0) }
+        if (points.last?[0] ?? 1) < 1 { points.append([1, 0]) }
+        return points.count > maxPoints ? flatDelta : points
+    }
+
+    public static func valueDelta(_ normalized: [[Double]], at x: Double) -> Double {
+        clamp(Spline(normalized).value(at: clamp(x, 0, 1)), -1, 1)
+    }
+
     // MARK: Normalization (the shapes the renderer accepts)
 
     /// An RGB curve as the renderer reads it: inputs and outputs clamped to 0…1, sorted by input, an end point added

@@ -59,13 +59,14 @@ public enum GPUPolicy: Equatable, Sendable {
 extension GradeGPUFrame {
     /// Calls `body` with the C job (MpvfxGpuJob.h) viewing this frame's arrays; the pointers live for the call only.
     func withJob<R>(tableKey: String, _ body: (UnsafePointer<MpvfxGpuGradeJob>) -> R) -> R {
-        Self.withFloats([curveRows, hueRows, secondaryTexels, lut][...]) { tables in
+        Self.withFloats([curveRows, hueRows, secondaryTexels, lut, saturationRows][...]) { tables in
             uniforms.withUnsafeBufferPointer { u in
                 tableKey.withCString { key in
                     var job = MpvfxGpuGradeJob()
                     job.width = Int32(width); job.height = Int32(height)
                     job.uniforms = u.baseAddress; job.uniformCount = Int32(u.count)
                     job.curves = tables[0]; job.curveTexels = Int32(curveRows.count)
+                    job.saturation = tables[4]; job.saturationTexels = Int32(saturationRows.count)
                     job.hue = tables[1]; job.hueTexels = Int32(hueRows.count)
                     job.secondaries = tables[2]; job.secondaryTexels = Int32(secondaryTexels.count)
                     job.lut = tables[3]; job.lutSize = Int32(lut.isEmpty ? 0 : lutSize)

@@ -21,7 +21,7 @@ import CMpvfxColorShared
 public struct MetalGradeJob {
     public var width: Int, height: Int
     public var uniforms: [Float]
-    public var curveRows: [SIMD4<Float>], hueRows: [SIMD4<Float>], secondaryTexels: [SIMD4<Float>]
+    public var curveRows: [SIMD4<Float>], hueRows: [SIMD4<Float>], saturationRows: [SIMD4<Float>], secondaryTexels: [SIMD4<Float>]
     public var lutSize: Int, lut: [SIMD4<Float>]
     public var blurRadius: Float, blurIterations: Int, blurAmount: Float
     public var bloomWidth: Int, bloomHeight: Int, bloomRadius: Float
@@ -31,11 +31,11 @@ public struct MetalGradeJob {
     /// Identifies the source picture (lane, frame, size). A frame whose key matches one already resident on the GPU is
     /// not uploaded again, so a parameter change re-runs only the kernels. nil: always upload.
     public var sourceKey: String? = nil
-    public init(width: Int, height: Int, uniforms: [Float], curveRows: [SIMD4<Float>], hueRows: [SIMD4<Float>], secondaryTexels: [SIMD4<Float>],
+    public init(width: Int, height: Int, uniforms: [Float], curveRows: [SIMD4<Float>], hueRows: [SIMD4<Float>], saturationRows: [SIMD4<Float>], secondaryTexels: [SIMD4<Float>],
                 lutSize: Int, lut: [SIMD4<Float>], blurRadius: Float, blurIterations: Int, blurAmount: Float,
                 bloomWidth: Int, bloomHeight: Int, bloomRadius: Float, kuwaharaRadius: Int, kuwaharaExponent: Float, kuwaharaSaturation: Float,
                 tableKey: String) {
-        self.width = width; self.height = height; self.uniforms = uniforms; self.curveRows = curveRows; self.hueRows = hueRows
+        self.width = width; self.height = height; self.uniforms = uniforms; self.curveRows = curveRows; self.hueRows = hueRows; self.saturationRows = saturationRows
         self.secondaryTexels = secondaryTexels; self.lutSize = lutSize; self.lut = lut; self.blurRadius = blurRadius
         self.blurIterations = blurIterations; self.blurAmount = blurAmount; self.bloomWidth = bloomWidth; self.bloomHeight = bloomHeight
         self.bloomRadius = bloomRadius; self.kuwaharaRadius = kuwaharaRadius; self.kuwaharaExponent = kuwaharaExponent
@@ -240,7 +240,7 @@ public final class MetalGradePipeline: @unchecked Sendable {
 
     // MARK: Per-grade tables (LUT as a 3D texture, curves as 1D textures)
 
-    struct Tables { var curves: MTLTexture, hue: MTLTexture, secondaries: MTLTexture, lut: MTLTexture }
+    struct Tables { var curves: MTLTexture, hue: MTLTexture, saturation: MTLTexture, secondaries: MTLTexture, lut: MTLTexture }
 
     func texture1D(_ texels: [SIMD4<Float>]) throws -> MTLTexture {
         guard !texels.isEmpty else { return dummy1D }
@@ -271,7 +271,7 @@ public final class MetalGradePipeline: @unchecked Sendable {
         tick += 1
         if let hit = tables[key] { tables[key] = (hit.tables, tick); lock.unlock(); return hit.tables }
         lock.unlock()
-        let t = Tables(curves: try texture1D(f.curveRows), hue: try texture1D(f.hueRows), secondaries: try texture1D(f.secondaryTexels),
+        let t = Tables(curves: try texture1D(f.curveRows), hue: try texture1D(f.hueRows), saturation: try texture1D(f.saturationRows), secondaries: try texture1D(f.secondaryTexels),
                        lut: try texture3D(f.lut, size: f.lutSize))
         lock.lock()
         if tables.count >= 8, let oldest = tables.min(by: { $0.value.tick < $1.value.tick })?.key { tables[oldest] = nil }
@@ -356,7 +356,7 @@ public final class MetalGradePipeline: @unchecked Sendable {
         var slots = [MTLTexture](repeating: dummy2D, count: Int(GRADE_TEX_COUNT.rawValue))
         func put(_ k: MpvfxGradeTexture, _ tex: MTLTexture) { slots[Int(k.rawValue)] = tex }
         put(GRADE_TEX_SOURCE, t.src); put(GRADE_TEX_BLUR, blur); put(GRADE_TEX_KUWAHARA, kuwahara); put(GRADE_TEX_BLOOM, bloom)
-        put(GRADE_TEX_CURVES, tab.curves); put(GRADE_TEX_HUE, tab.hue); put(GRADE_TEX_SECONDARIES, tab.secondaries); put(GRADE_TEX_LUT, tab.lut)
+        put(GRADE_TEX_SATURATION, tab.saturation); put(GRADE_TEX_CURVES, tab.curves); put(GRADE_TEX_HUE, tab.hue); put(GRADE_TEX_SECONDARIES, tab.secondaries); put(GRADE_TEX_LUT, tab.lut)
         put(GRADE_TEX_OUTPUT, t.out)
         try dispatch(cb, gradePipe, textures: slots, params: f.uniforms, width: width, height: height)
         cb.commit()

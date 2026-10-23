@@ -101,6 +101,7 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     public static let adjustKeys = GradeValues.adjustKeys
     public static let wheelKeys = GradeValues.wheelKeys
+    public static let deltaCurveKeys = ["lumaVsSaturation", "saturationVsSaturation"]
     public static let curveKeys = ["master", "red", "green", "blue"]
     public static let hueCurveKeys = ["hueVsHue", "hueVsSaturation", "hueVsLuma"]
     public static let detailKeys = GradeValues.detailKeys
@@ -197,6 +198,7 @@ public struct ColorGradeParams: Equatable, Sendable {
         pivot = Self.limited(o["pivot"], fallback: GradeValues.defaultPivot, 0...1)
         let c = Self.object(o["curves"])
         for k in Self.curveKeys { curves[k] = Self.normalizeCurve(c?[k]) }
+        for k in Self.deltaCurveKeys { curves[k] = GradeCurve.normalizedDelta(Self.numericPoints(c?[k]) ?? []) }
         let h = Self.object(o["hueCurves"])
         for k in Self.hueCurveKeys { hueCurves[k] = Self.normalizeHueCurve(h?[k], limit: k == "hueVsHue" ? -180...180 : -1...1) }
         if case .array(let a)? = o["secondaries"] { secondaries = a.prefix(Self.maxSecondaries).compactMap(Self.normalizeSecondary) }
@@ -275,6 +277,7 @@ public struct ColorGradeParams: Equatable, Sendable {
     }
     public var hasWheelGrade: Bool { Self.wheelKeys.contains { k in let w = wheels[k] ?? Wheel(); return abs(w.amount) > 0.0001 || abs(w.level) > 0.0001 } }
     public var hasRgbCurves: Bool { Self.curveKeys.contains { k in (curves[k] ?? []).contains { abs($0[0] - $0[1]) > 0.0001 } } }
+    public var hasDeltaCurves: Bool { Self.deltaCurveKeys.contains { k in GradeCurve.normalizedDelta(curves[k] ?? []).contains { abs($0[1]) > 0.0001 } } }
     public var hasHueCurves: Bool { Self.hueCurveKeys.contains { k in (hueCurves[k] ?? []).contains { abs($0[1]) > 0.0001 } } }
     public var hasSecondaryCorrections: Bool { secondaries.contains { $0.enabled && $0.hasCorrection } }
 
@@ -284,7 +287,7 @@ public struct ColorGradeParams: Equatable, Sendable {
         if abs(detail("vignette")) > 0.0001 || abs(detail("grain")) > 0.0001 || Self.activeEffectKeys.contains(where: { abs(effect($0)) > 0.0001 }) { return true }
         if intensity == 0 { return false }
         if let lut, lut.intensity != 0 { return true }
-        return Self.adjustKeys.contains { abs(adjust($0)) > 0.0001 } || hasWheelGrade || hasBalance || hasRgbCurves || hasHueCurves || hasSecondaryCorrections
+        return Self.adjustKeys.contains { abs(adjust($0)) > 0.0001 } || hasWheelGrade || hasBalance || hasRgbCurves || hasHueCurves || hasDeltaCurves || hasSecondaryCorrections
     }
 
     /// Whether the picture changes over time on a still frame (grain, film dust, tape, glitch, waving hatch lines).

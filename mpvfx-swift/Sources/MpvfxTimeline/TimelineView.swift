@@ -381,6 +381,7 @@ public final class TimelineView {
     public var gapHighlight: [(row: Int, start: Double, end: Double)] = []
     public var gapMenu: GapMenu?
     public var clipMenu: TimelineClipMenu?
+    public var clipRename: TimelineClipRename?
     public var keyframeMenu: TimelineKeyframeMenu?
     /// thumbnailMode: "adaptive" (true, the default) draws filmstrips on video/image clips; "hidden" leaves
     /// plain bars. Audio clips always show their waveform. Toggled from the clip menu.
@@ -430,6 +431,7 @@ public final class TimelineView {
         if let m = clipMenu { drawClipMenu(c, m) }
         if let m = keyframeMenu { drawKeyframeMenu(c, m) }
         drawSlipRollOverlay(c)
+        if let rename = clipRename { drawClipRename(c, rename) }
     }
 
     /// bg-neutral-900, border-neutral-700, rounded-md, py-1; rows text-xs neutral-300 (disabled neutral-600),

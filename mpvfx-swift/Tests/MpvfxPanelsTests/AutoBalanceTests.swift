@@ -139,4 +139,90 @@ final class AutoBalanceTests: XCTestCase {
         c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))
         XCTAssertTrue(c.drawnStrings.contains("No frame to measure"))
     }
+
+    func testChangingSelectionCancelsAPendingBalanceWithoutEditingEitherClip() throws {
+        let (p, editor, c) = try inspector(frame: .rendering)
+        try press(p)
+        XCTAssertTrue(p.grade.autoBalancePending)
+        let before = editor.document
+        p.selection = ["clip:b"]
+        var requestedClips: [String] = []
+        p.scopeFrame = { clipId, _, _ in
+            requestedClips.append(clipId)
+            return .ready(Self.flat(30, 30, 30))
+        }
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))
+        XCTAssertFalse(p.grade.autoBalancePending)
+        XCTAssertEqual(requestedClips, [], "a stale request must not ask for the newly selected clip's frame")
+        XCTAssertEqual(editor.document, before, "neither the original nor the newly selected clip is edited")
+        XCTAssertFalse(editor.undo(), "cancelling adds no history entry")
+    }
+
+    func testReplacingTheEditorCancelsAPendingBalanceEvenWithTheSameClipIds() throws {
+        let (p, original, c) = try inspector(frame: .rendering)
+        try press(p)
+        let replacement = TimelineEditor(document: original.document, engine: try? KeyframeRuntime())
+        let before = replacement.document
+        p.editor = replacement
+        p.scopeFrame = { _, _, _ in .ready(Self.flat(30, 30, 30)) }
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))
+        XCTAssertFalse(p.grade.autoBalancePending)
+        XCTAssertEqual(replacement.document, before)
+        XCTAssertEqual(original.document, before)
+        XCTAssertFalse(replacement.undo(), "the old project's request cannot create history in its replacement")
+    }
+
+    func testLoadingAnotherDocumentIntoTheSameEditorCancelsAPendingBalance() throws {
+        let (p, editor, c) = try inspector(frame: .rendering)
+        try press(p)
+        var replacement = editor.document
+        replacement.id += "-replacement"
+        editor.loadDocument(replacement)
+        p.scopeFrame = { _, _, _ in .ready(Self.flat(30, 30, 30)) }
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))
+        XCTAssertFalse(p.grade.autoBalancePending)
+        XCTAssertEqual(editor.document, replacement, "matching clip ids in a replacement document are not enough")
+        XCTAssertFalse(editor.undo())
+    }
+
+    func testSeekingCancelsAPendingBalanceWithoutApplyingItAtAnotherTime() throws {
+        let (p, editor, c) = try inspector(frame: .rendering)
+        try press(p)
+        let before = editor.document
+        p.time = 1
+        p.scopeFrame = { _, _, _ in .ready(Self.flat(30, 30, 30)) }
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))
+        XCTAssertFalse(p.grade.autoBalancePending)
+        XCTAssertEqual(editor.document, before)
+        XCTAssertFalse(editor.undo())
+    }
+    func testSelectionRoundTripCancelsBeforeAnotherDraw() throws {
+        let (p, editor, c) = try inspector(frame: .rendering)
+        try press(p)
+        let before = editor.document
+        p.selection = ["clip:b"]
+        p.selection = ["clip:a"]
+        XCTAssertFalse(p.grade.autoBalancePending)
+        p.scopeFrame = { _, _, _ in .ready(Self.flat(30, 30, 30)) }
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))
+        XCTAssertEqual(editor.document, before)
+        XCTAssertFalse(editor.undo())
+    }
+
+    func testDocumentChangeCancelsWhileGradeIsCollapsed() throws {
+        let (p, editor, c) = try inspector(frame: .rendering)
+        try press(p)
+        p.openGroupId = "transform"
+        var replacement = editor.document
+        replacement.id += "-replacement"
+        editor.loadDocument(replacement)
+        var calls = 0
+        p.scopeFrame = { _, _, _ in calls += 1; return .ready(Self.flat(30, 30, 30)) }
+        c.reset(); p.draw(c, in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))
+        XCTAssertFalse(p.grade.autoBalancePending)
+        XCTAssertEqual(calls, 0)
+        XCTAssertEqual(editor.document, replacement)
+        XCTAssertFalse(editor.undo())
+    }
+
 }

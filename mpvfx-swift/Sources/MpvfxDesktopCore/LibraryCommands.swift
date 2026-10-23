@@ -14,10 +14,16 @@
 // Library commands (create, open, import, attach, relink, rename, save output) with dialogs behind NativeDialogs.
 import Foundation
 
-public struct FileFilter: Equatable, Sendable { public var name: String; public var extensions: [String] }
+public struct FileFilter: Equatable, Sendable {
+    public var name: String; public var extensions: [String]
+    public init(name: String, extensions: [String]) { self.name = name; self.extensions = extensions }
+}
 
 public struct SaveDialogOptions: Equatable, Sendable {
     public var title: String, defaultPath: String, buttonLabel: String?, filters: [FileFilter]
+    public init(title: String, defaultPath: String, buttonLabel: String?, filters: [FileFilter]) {
+        self.title = title; self.defaultPath = defaultPath; self.buttonLabel = buttonLabel; self.filters = filters
+    }
 }
 public struct OpenDialogOptions: Equatable, Sendable {
     public var title: String

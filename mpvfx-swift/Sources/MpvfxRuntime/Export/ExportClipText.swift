@@ -14,8 +14,8 @@
 import Foundation
 import MpvfxShared
 
-/// A clip that draws text: a `clip.text` on an element asset (native media documents have no other element layers).
-/// The frame renderer lays its words out with the preview's text renderer, so exported text is the preview's.
+/// A generated text or shape element needs no source media file.
+/// The frame renderer draws both through the preview's shared painter.
 func nativeIsTextClip(_ clip: NativeProjectClip, _ project: NativeProjectDocument) -> Bool {
-    clip.text != nil && project.assets.first(where: { $0.id == clip.assetId })?.kind == .element
+    (clip.text != nil || clip.shape?.isSupported == true) && project.assets.first(where: { $0.id == clip.assetId })?.kind == .element
 }
