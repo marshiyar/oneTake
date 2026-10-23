@@ -212,13 +212,13 @@ final class TimelineTrackHeaderPixelTests: XCTestCase {
         XCTAssertEqual(rgb(t, v2.x + 2, v2.centerY), ints(c.view.theme.gutterBackground), "an idle tag is an outline over the gutter")
     }
 
-    /// A 22 px clip bar (28 px row) still shows its content: the header strip takes half the bar (clipHeaderRect) and
+    /// A 26 px clip bar (32 px Small row) still shows its content: the header strip takes half the bar (clipHeaderRect) and
     /// the filmstrip fills the half below it.
     func testCompactClipKeepsItsHeaderStripAndFilmstrip() throws {
         let red = CanvasImage(width: 16, height: 9, rgba: (0..<(16 * 9)).flatMap { _ in [UInt8(255), 0, 0, 255] })
         let (t, c) = try render { $0.view.thumbnails = ["asset:a": .init(frames: [red], aspect: 16.0 / 9)] }
         let bar = c.view.clipRect(track: 1, c.view.tracks[1].clips[0])
-        XCTAssertEqual(bar.height, 22)
+        XCTAssertEqual(bar.height, 26)
         XCTAssertEqual(rgb(t, 264 + 300, bar.y + 2), ints(TimelineView.clipBackground(audio: false, hovered: false, dragging: false)),
                        "the header strip in the clip's kind colour")
         XCTAssertGreaterThan(rgb(t, 264 + 300, bar.maxY - 3)[0], 200, "the frames below it")
