@@ -16,11 +16,19 @@ import Foundation
 import MpvfxDesktopCore
 import MpvfxRuntime
 import MpvfxShared
+import struct MpvfxAudioGraph.FxNode
+import struct MpvfxAudioGraph.AudioFxModulePreset
 
 final class LibraryBridge: MpvfxDesktopCore.LibraryService, @unchecked Sendable {
     let service: MpvfxRuntime.LibraryService
     init(_ service: MpvfxRuntime.LibraryService) { self.service = service }
 
+    func audioFxPresets(projectId: String) throws -> [AudioFxModulePreset] {
+        do { return try service.audioFxPresets(projectId: projectId) } catch { throw RuntimeDesktopBackend.desktopError(error) }
+    }
+    func saveAudioFxPreset(projectId: String, name: String, node: FxNode) throws {
+        do { try service.saveAudioFxPreset(projectId: projectId, name: name, node: node) } catch { throw RuntimeDesktopBackend.desktopError(error) }
+    }
     func views() async throws -> JSONValue {
         let views = await service.views()
         let data = try JSONEncoder().encode(views)

@@ -110,6 +110,13 @@ public enum AudioFx {
             num("limit", "Ceiling", "dB", -24, 0, 0.1, -1), num("attack", "Attack", "ms", 0.1, 80, 0.1, 5),
             num("release", "Release", "ms", 1, 8000, 1, 50, scale: .log), num("level_out", "Output", "dB", -24, 24, 0.1, 0),
         ], implementation: "limiter"),
+        FxDef(id: "deesser", label: "De-esser", group: "dynamics", params: [
+            freq("frequency", "Detector frequency", 6500, 4000, 10000),
+            num("threshold", "Threshold", "dB", -60, 0, 0.5, -30), num("range", "Range", "dB", -24, 0, 0.5, -18),
+            num("attack", "Attack", "ms", 0.1, 20, 0.1, 1, scale: .log),
+            num("release", "Release", "ms", 10, 500, 1, 100, scale: .log),
+            .enumeration(key: "listen", label: "Listen", options: [("off", "Off"), ("on", "Detector band")], defaultValue: "off"),
+        ], implementation: "split-band-deesser"),
         FxDef(id: "gate", label: "Noise Gate", group: "dynamics", params: [
             num("threshold", "Threshold", "dB", -80, 0, 0.5, -35), num("range", "Range", "dB", -80, 0, 0.5, -24),
             num("ratio", "Ratio", ":1", 1, 20, 0.1, 10), num("attack", "Attack", "ms", 0.01, 9000, 0.1, 1, scale: .log),
@@ -231,12 +238,25 @@ public struct FxNode: Equatable, Sendable {
     public var fromLeveller: Bool?
     public var presetAmount: Double?
     public var enabled: Bool?
-    public var params: FxParams?
+    /// A is the original document parameter set. `params` always edits/hears the selected slot.
+    public var paramsA: FxParams?
+    public var paramsB: FxParams?
+    public var activeSlotB = false
+    public var params: FxParams? {
+        get { activeSlotB ? (paramsB ?? paramsA) : paramsA }
+        set { if activeSlotB { paramsB = newValue } else { paramsA = newValue } }
+    }
+
+    public mutating func selectSlotB(_ selected: Bool) {
+        if paramsB == nil { paramsB = paramsA }
+        activeSlotB = selected
+    }
+    public mutating func copyAToB() { paramsB = paramsA }
 
     public init(type: String, version: Int? = nil, id: String? = nil, fromCarve: Bool? = nil, fromPreset: String? = nil, label: String? = nil, fromEq: String? = nil,
                 fromLeveller: Bool? = nil, presetAmount: Double? = nil, enabled: Bool? = nil, params: FxParams? = nil) {
         self.type = type; self.version = version; self.id = id; self.fromCarve = fromCarve; self.fromPreset = fromPreset; self.label = label; self.fromEq = fromEq
-        self.fromLeveller = fromLeveller; self.presetAmount = presetAmount; self.enabled = enabled; self.params = params
+        self.fromLeveller = fromLeveller; self.presetAmount = presetAmount; self.enabled = enabled; self.paramsA = params
     }
 }
 
@@ -255,9 +275,13 @@ public struct FxChain: Equatable, Sendable {
         FxChain(nodes: nodes.map { node in
             var copy = node
             if (node.version ?? version) == 1 {
-                var p = AudioFx.normalize(node.type, node.params, version: 1)
-                if node.type == "compressor" || node.type == "gate" { p["knee"] = .number(20 * log10(max(1, p.num("knee")))) }
-                copy.params = AudioFx.normalize(node.type, p, version: 2)
+                func migrate(_ source: FxParams?) -> FxParams {
+                    var p = AudioFx.normalize(node.type, source, version: 1)
+                    if node.type == "compressor" || node.type == "gate" { p["knee"] = .number(20 * log10(max(1, p.num("knee")))) }
+                    return AudioFx.normalize(node.type, p, version: 2)
+                }
+                copy.paramsA = migrate(node.paramsA)
+                copy.paramsB = node.paramsB.map { migrate($0) }
             }
             copy.version = 2
             return copy
@@ -315,10 +339,15 @@ extension AudioFx {
         let nodeVersion = try soundVersion(o["version"], chainVersion: version, index: i)
         var params: [String: JSONValue]? = nil
         if case let .object(pp)? = o["params"] { params = Dictionary(pp, uniquingKeysWith: { _, b in b }) }
-        return FxNode(type: type, version: nodeVersion, id: nonEmpty(o["id"]), fromCarve: onlyTrue(o["fromCarve"]), fromPreset: nonEmpty(o["fromPreset"]),
+        var node = FxNode(type: type, version: nodeVersion, id: nonEmpty(o["id"]), fromCarve: onlyTrue(o["fromCarve"]), fromPreset: nonEmpty(o["fromPreset"]),
                       label: nonEmpty(o["label"]), fromEq: nonEmpty(o["fromEq"]), fromLeveller: onlyTrue(o["fromLeveller"]),
                       presetAmount: clampedAmount(o["presetAmount"]), enabled: o["enabled"] != .bool(false),
                       params: normalize(type, params, version: nodeVersion))
+        if case let .object(pp)? = o["paramsB"] {
+            node.paramsB = normalize(type, Dictionary(pp, uniquingKeysWith: { _, b in b }), version: nodeVersion)
+        }
+        if o["activeSlot"] == .string("B") { node.selectSlotB(true) }
+        return node
     }
 
     private static func soundVersion(_ value: JSONValue?, chainVersion: Int, index: Int) throws -> Int {
@@ -346,7 +375,9 @@ extension AudioFx {
         if node.fromLeveller == true { pairs.append(("fromLeveller", .bool(true))) }
         if let a = node.presetAmount, a != 1, a.isFinite { pairs.append(("presetAmount", .number(min(1, max(0, a))))) }
         if node.enabled == false { pairs.append(("enabled", .bool(false))) }
-        pairs.append(("params", normalize(node.type, node.params, version: node.version ?? version).json))
+        pairs.append(("params", normalize(node.type, node.paramsA, version: node.version ?? version).json))
+        if let b = node.paramsB { pairs.append(("paramsB", normalize(node.type, b, version: node.version ?? version).json)) }
+        if node.activeSlotB { pairs.append(("activeSlot", .string("B"))) }
         return .object(pairs)
     }
 

@@ -98,6 +98,7 @@ final class AudioFxLiveEditTests: XCTestCase {
         ("lowshelf", #"{"frequency":300,"gain":-9}"#), ("highshelf", #"{"frequency":3000,"gain":9}"#),
         ("highpass", #"{"frequency":800}"#), ("lowpass", #"{"frequency":600}"#),
         ("compressor", #"{"threshold":-30,"ratio":8}"#), ("limiter", #"{"limit":-6}"#), ("gate", #"{"threshold":-25,"range":-60}"#),
+        ("deesser", #"{"threshold":-50,"range":-18}"#),
         ("saturate", #"{"type":"hard","threshold":-12}"#), ("bitcrush", #"{"bits":4}"#), ("pitchshift", #"{"semitones":5}"#),
         ("delay", #"{"time":90,"feedback":0.5,"mix":0.5}"#), ("chorus", #"{"depth":5,"mix":0.6}"#), ("phaser", #"{"speed":1.5}"#),
         ("reverb", #"{"wet":0.6}"#), ("reverb-v2", #"{"wet":0.6}"#), ("denoise", #"{"amount":1,"learn":100}"#),

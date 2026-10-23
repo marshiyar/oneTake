@@ -13,6 +13,8 @@
 //===----------------------------------------------------------------------===//
 // What the desktop shell needs from the native runtime (projects, library, media import, publishing, shutdown).
 import Foundation
+import struct MpvfxAudioGraph.FxNode
+import struct MpvfxAudioGraph.AudioFxModulePreset
 
 /// An error with a name ("Error", "AbortError") and a message, shown to the user as is.
 public struct DesktopError: Error, Equatable, CustomStringConvertible, Sendable {
@@ -55,6 +57,8 @@ public struct DesktopError: Error, Equatable, CustomStringConvertible, Sendable 
 
 /// Library operations (LibraryService in MpvfxRuntime).
 public protocol LibraryService: Sendable {
+    func audioFxPresets(projectId: String) throws -> [AudioFxModulePreset]
+    func saveAudioFxPreset(projectId: String, name: String, node: FxNode) throws
     func views() async throws -> JSONValue
     func create(root: String) async throws -> String
     func open(root: String) async throws -> String
@@ -68,6 +72,13 @@ public protocol LibraryService: Sendable {
     func saveOutput(libraryId: String, jobId: String, destination: String, overwrite: Bool) async throws
     func renameEvent(libraryId: String, eventId: String, name: String) async throws
     func renameProject(libraryId: String, projectId: String, name: String) async throws
+}
+
+extension LibraryService {
+    public func audioFxPresets(projectId: String) throws -> [AudioFxModulePreset] { [] }
+    public func saveAudioFxPreset(projectId: String, name: String, node: FxNode) throws {
+        throw DesktopError.notImplemented("Audio effect presets")
+    }
 }
 
 /// An open project: its id, its directory, and the native document text as last read or saved.

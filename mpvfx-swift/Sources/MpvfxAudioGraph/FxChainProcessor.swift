@@ -241,6 +241,7 @@ func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, ela
     case "biquad-highpass": return BiquadUnit(.highpass, p, sr, version: version)
     case "biquad-lowpass": return BiquadUnit(.lowpass, p, sr, version: version)
     case "compressor": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: false) : CompressorProcessor(p, sampleRate: sr))
+    case "split-band-deesser": return ProcessorUnit(DeesserProcessor(p, sampleRate: sr))
     case "limiter": return version >= 2 ? LookaheadLimiterUnit(p, sr) : ProcessorUnit(LimiterProcessor(p, sampleRate: sr))
     case "gate": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: true) : GateProcessor(p, sampleRate: sr))
     case "bitcrusher": return ProcessorUnit(BitcrusherProcessor(p))
@@ -327,7 +328,9 @@ public final class FxChainProcessor {
         for i in a.indices {
             var x = a[i], y = b[i]
             let px = AudioFx.normalize(x.type, x.params, version: x.version ?? chain.version), py = AudioFx.normalize(y.type, y.params, version: y.version ?? next.version)
-            x.params = nil; y.params = nil
+            // Slot changes deliberately rebuild, taking the live graph's declick crossfade.
+            guard x.activeSlotB == y.activeSlotB else { return nil }
+            x.paramsA = nil; y.paramsA = nil; x.paramsB = nil; y.paramsB = nil
             guard x == y else { return nil }
             if px == py { continue }
             let keys = Set(px.entries.map(\.0)).union(py.entries.map(\.0)).filter { px[$0] != py[$0] }

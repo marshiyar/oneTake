@@ -146,7 +146,7 @@ let package = Package(
                     .linkedFramework("Speech", .when(platforms: [.macOS])),
                 ]),
         // Host-independent desktop shell logic (app paths, save barrier, lifecycle, single instance, menu); unit-tested.
-        .target(name: "MpvfxDesktopCore", dependencies: ["MpvfxTheme"]),
+        .target(name: "MpvfxDesktopCore", dependencies: ["MpvfxTheme", "MpvfxAudioGraph"]),
         // DesktopBackend on the runtime: projects, media import, library.
         .target(name: "MpvfxBackend", dependencies: ["MpvfxDesktopCore", "MpvfxRuntime", "MpvfxShared"]),
         // No target dependency on CMpvfxColorShared: its headers are included textually (header search path), because
@@ -219,7 +219,7 @@ let package = Package(
         .testTarget(name: "MpvfxAudioTests", dependencies: ["MpvfxAudio", "MpvfxAudioGraph", "MpvfxShared"]),
         .testTarget(name: "MpvfxAudioGraphTests", dependencies: ["MpvfxAudioGraph"], exclude: ["Fixtures"], swiftSettings: swift6),
         .testTarget(name: "MpvfxScopesTests", dependencies: ["MpvfxScopes"], swiftSettings: swift6),
-        .testTarget(name: "MpvfxPanelsTests", dependencies: ["MpvfxPanels", "MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", keyframeEngine, "MpvfxTheme",
+        .testTarget(name: "MpvfxPanelsTests", dependencies: ["MpvfxPanels", "MpvfxAudio", "MpvfxCanvas", "MpvfxShared", "MpvfxTimeline", "MpvfxAudioGraph", keyframeEngine, "MpvfxTheme",
                                                            "MpvfxScopes"]),
         // Inspector controls end to end: row edit -> preview composite / live audio graph inputs / export frame and mix.
         .testTarget(name: "MpvfxInspectorAuditTests", dependencies: ["MpvfxPanels", "MpvfxPlayer", "MpvfxTimeline", "MpvfxCanvas", "MpvfxShared",

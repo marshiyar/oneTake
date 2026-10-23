@@ -20,7 +20,7 @@ public enum AudioFxResponse {
     /// Node types with a frequency response.
     public static let filterTypes: Set<String> = ["peaking", "lowshelf", "highshelf", "highpass", "lowpass"]
     /// Node types with a static input/output level curve.
-    public static let dynamicsTypes: Set<String> = ["compressor", "limiter", "gate"]
+    public static let dynamicsTypes: Set<String> = ["compressor", "limiter", "gate", "deesser"]
 
     /// Gain in dB of one filter node at `frequency` Hz (nil: not a filter type).
     public static func gainDb(_ node: FxNode, at frequency: Double, sampleRate: Double = 48_000) -> Double? {
@@ -72,6 +72,8 @@ public enum AudioFxResponse {
                 ? currentKneeGain(x, p.num("threshold"), p.num("ratio"), p.num("knee"))
                 : kneeGain(x, p.num("threshold"), p.num("ratio"), knee)
             return x + reduction + p.num("makeup")
+        case "deesser":
+            return x + deesserReduction(x, threshold: p.num("threshold"), range: p.num("range"))
         case "limiter":
             return min(x, p.num("limit")) + p.num("level_out")
         case "gate":

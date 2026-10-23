@@ -36,7 +36,11 @@ final class LibraryImportRoutingTests: XCTestCase {
     override func tearDown() async throws {
         for backend in backends { try await backend.close() }
         backends.removeAll()
-        for root in roots { try FileManager.default.removeItem(atPath: root) }
+        // A background preset refresh may checkpoint the catalog (unlinking its
+        // -journal) while the tree is removed; an already-gone root is the goal.
+        for root in roots {
+            do { try FileManager.default.removeItem(atPath: root) } catch CocoaError.fileNoSuchFile { }
+        }
         roots.removeAll()
     }
 

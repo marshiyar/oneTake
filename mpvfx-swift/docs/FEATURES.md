@@ -139,7 +139,9 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Effects: amount per stylize effect (18), reset effects | done; renders in preview and export (Metal kernels on macOS, incl. blur/bloom/Kuwahara passes) (schema in `docs/EFFECTS.md`) | close |
 | Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | done: select lists with keyboard choice, per-effect bypass retaining settings in preview/export, clean removal and fresh add defaults, shader-order active list, validated shared Ink/Paper fields and palette reset (#184) | close |
 | Clip effects other than the grade (listed with enable toggle and remove) | partial: listed and toggleable; not rendered, and export refuses them | close |
+| Audio FX module presets and A/B (#210) | done: each module header offers factory settings, library user presets, A/B and Copy A to B; recall and compare commit once for undo. User settings are saved in the owning library Catalog.sqlite and recalled into the selected slot on any matching effect. Optional paramsB/activeSlot keys retain older chain serialization; live slot switches use the 20 ms rebuild crossfade. | close |
 | Audio FX: presets by family, EQ (Tone) bands, signal chain with bypass / remove / clear | done (edits `audioFxChain`, undoable; playback and export hear it) | close |
+| Audio FX: live slider and graph-handle drags, module header drag reorder, Alt+Up/Down | done on clip and bus racks; intermediate updates at most every 30 ms, one undo per completed gesture; Escape cancels | close |
 | One-step voice clean-up: noise reduction and dynamic levelling, strength, before/after | implemented (#461): Clean up voice, Strength (controls both stages), Listen before/after and Remove clean-up in the Audio FX rack; keyboard operable, undoable and saved in the existing project FX chain. Playback and export share the DSP; denoise learns from the first 500 ms (`VoiceCleanupTests`, `VoiceCleanupInspectorTests`) | close |
 | Audio FX: add menu with descriptions, per-node parameter editing, move up/down | missing (panels; coordinate with swift-audiofx-hang on these rows) | n/a |
 | Audio FX: voiceover carve, leveller ("even out its loud and quiet parts"), audition, preset run amount | missing UI (panels); DSP exists in `MpvfxAudioGraph` | n/a |
@@ -313,6 +315,10 @@ Every item of the owner's screenshot review, with its status now.
 | Attribute / style / source patching panels | Every edit is a native document command |
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
+
+### De-esser (#209)
+
+The Dynamics rack offers **De-ess**, a version-2 split-band processor with a stereo-linked 4–10 kHz detector (default center 6.5 kHz), frequency in Hz, threshold/range in dB, attack/release in ms, and a detector-listen choice. Its detector-level transfer curve uses the same gain law as processing; the unaffected low band is recombined with the attenuated high band. `DeesserTests` covers sibilant reduction, low-tone preservation, stereo linking and listening; `AudioFxLiveEditTests` covers registry and live/export parity. The gain-reduction meter remains dependent on #206.
 
 ### Design compositing and value alignment (#187)
 

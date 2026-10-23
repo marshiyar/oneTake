@@ -19,6 +19,7 @@ import MpvfxAudioGraph
 /// UI state of one Audio FX rack (per clip or bus).
 public struct AudioFxUIState: Equatable {
     public enum Menu: Equatable { case none, presets, add }
+    public var modulePreset: String?
     var owner: String?
     public var menu: Menu = .none
     /// The chain index whose module is open (`openNode`, 0 at mount).
@@ -76,6 +77,8 @@ extension InspectorPanel {
     /// Resets the rack state when the rack's owner changes, folding every preset run already there.
     func afxSeed(owner: String, _ chain: FxChain) {
         guard audioFxUI.owner != owner else { return }
+        cancelFxGesture()
+        fxHeaders.removeAll(keepingCapacity: true)
         audioFxUI = AudioFxUIState(owner: owner)
         audioFxUI.collapsedRuns = Set(Self.afxRuns(chain).filter { $0.preset != nil }.map(\.key))
     }
@@ -86,7 +89,11 @@ extension InspectorPanel {
         let ui = audioFxUI
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
-        let write: (FxChain) -> Void = { [weak self] next in self?.edited(commit(next)) }
+        let write: (FxChain) -> Void = { [weak self] next in
+            guard let self else { return }
+            if self.previewFxGesture(next) { return }
+            self.edited(commit(next))
+        }
         rows += voiceCleanupRows(chain, write: write)
         gap(Self.afxSectionGap)
 
@@ -96,30 +103,57 @@ extension InspectorPanel {
         }
         // Tone EQ modules lead the rack.
         let eqIds = AudioEq.ids(chain)
-        for (k, eqId) in eqIds.enumerated() {
-            if !rows.isEmpty { gap(Self.afxGap) }
-            rows.append(afxEqModule(chain, eqId: eqId, first: k == 0, open: ui.openEq == eqId, write: write))
-        }
         let runs = Self.afxRuns(chain)
+        var modules: [(slots: [Int], rows: [InspectorRow])] = []
+        fxHeaderButtons.removeAll(keepingCapacity: true)
+        for (k, eqId) in eqIds.enumerated() {
+            let slots = chain.nodes.indices.filter { chain.nodes[$0].fromEq == eqId }
+            if let first = slots.first { fxHeaderButtons["eq:\(eqId):open"] = first }
+            modules.append((slots, [afxEqModule(chain, eqId: eqId, first: k == 0, open: ui.openEq == eqId, write: write)]))
+        }
         var positions: [Int: Int] = [:]
         var at = eqIds.count
         for run in runs { for item in run.items { at += 1; positions[item.i] = at } }
-        if runs.isEmpty && eqIds.isEmpty && !VoiceCleanup.isApplied(chain) {
+        for run in runs {
+            if let presetId = run.preset, let preset = AudioFxPresets.preset(presetId) {
+                let slots = run.items.map(\.i)
+                if let first = slots.first { fxHeaderButtons["run:\(run.key):collapse"] = first }
+                modules.append((slots, afxPresetRun(chain, run, preset, positions: positions, ui: ui, write: write)))
+            } else {
+                for item in run.items {
+                    fxHeaderButtons["fx:\(item.i):open"] = item.i
+                    modules.append(([item.i], [afxNodeRow(chain, item.node, item.i, position: positions[item.i], inRun: nil, ui: ui, write: write)]))
+                }
+            }
+        }
+        modules.sort { ($0.slots.first ?? 0) < ($1.slots.first ?? 0) }
+        let moduleSlots = Dictionary(modules.compactMap { module in module.slots.first.map { ($0, module.slots) } }, uniquingKeysWith: { a, _ in a })
+        fxReorder = { [weak self] source, insertion in
+            guard let slots = moduleSlots[source], insertion >= 0 else { return }
+            let boundary = moduleSlots[insertion]?.first ?? chain.nodes.count
+            let moving = Set(slots)
+            let target = boundary - slots.filter { $0 < boundary }.count
+            var next = chain
+            next.nodes = chain.nodes.enumerated().filter { !moving.contains($0.offset) }.map(\.element)
+            next.nodes.insert(contentsOf: slots.map { chain.nodes[$0] }, at: min(target, next.nodes.count))
+            guard next != chain else { return }
+            self?.audioFxUI.openNode = target
+            self?.fxHeaderFocused = target
+            write(next)
+        }
+        if chain.needsSoundUpdate {
+            rows.append(.init(.buttons([.init(key: "fx:update-sound", label: "Update to current sound", style: .muted) { write(chain.updatedSound()) }])))
+            gap(Self.afxSectionGap)
+        }
+        if modules.isEmpty && !VoiceCleanup.isApplied(chain) {
             rows.append(.init(.custom(InspectorCustomRow(id: "afx:empty", height: 24.5, draw: { c, r, _ in
                 PanelDraw.text(c, "No effects on this \(subject).", in: CanvasRect(x: r.x, y: r.y + 4, width: r.width, height: 16.5),
                                font: PanelTheme.font(11), color: PanelTheme.text2)
             }))))
         }
-        for run in runs {
+        for module in modules {
             if !rows.isEmpty { gap(Self.afxGap) }
-            if let presetId = run.preset, let preset = AudioFxPresets.preset(presetId) {
-                rows += afxPresetRun(chain, run, preset, positions: positions, ui: ui, write: write)
-            } else {
-                for (k, item) in run.items.enumerated() {
-                    if k > 0 { gap(Self.afxGap) }
-                    rows.append(afxNodeRow(chain, item.node, item.i, position: positions[item.i], inRun: nil, ui: ui, write: write))
-                }
-            }
+            rows += module.rows
         }
         if ui.menu == .add { gap(Self.afxSectionGap); rows.append(afxAddMenu(chain, write: write)) }
         if ui.menu == .presets { gap(Self.afxSectionGap); rows.append(afxPresetMenu(chain, write: write)) }
@@ -260,6 +294,7 @@ extension InspectorPanel {
             PanelDraw.text(c, "Tone", in: CanvasRect(x: nameR.x, y: midY - 8.25, width: nameR.width, height: 16.5), font: PanelTheme.mono(11, .medium),
                            color: self.hovered == .button("eq:\(eqId):open") ? PanelTheme.text1 : PanelTheme.text0)
             self.addHit(nameR, .button("eq:\(eqId):open"))
+            self.afxReorderHeader(c, key: "eq:\(eqId):open", rect: r)
             let card = CanvasRect(x: r.x + 2 + 8, y: head.maxY, width: r.width - 3 - 16, height: r.maxY - 1 - head.maxY)
             guard open else {
                 PanelDraw.text(c, AudioEq.summary(bands), in: CanvasRect(x: card.x, y: card.y, width: card.width, height: 16.5),
@@ -385,6 +420,7 @@ extension InspectorPanel {
                                font: PanelTheme.mono(11), color: col.withAlpha(0.6))
             }
             self.addHit(lab, .button("run:\(key):collapse"))
+            self.afxReorderHeader(c, key: "run:\(key):collapse", rect: r)
             let ar = CanvasRect(x: inner.x, y: head.maxY + 4, width: inner.width, height: Self.runAmountH)
             self.afxParamRowDraw(c, ar, key: amountKey, label: "Amount", position: amount, display: fmt(amount), unit: "", atDefault: amount == 1,
                                  enabled: true, alpha: 1, format: fmt, min: 0, max: 1)
@@ -464,6 +500,30 @@ extension InspectorPanel {
                 },
             ])),
         ]
+        let menuOpen = ui.modulePreset == nodeId
+        let presets = AudioFxPresets.modulePresets(node.type, version: node.version ?? chain.version)
+            + audioFxUserPresets.filter { $0.type == node.type }
+        controls.append(.init(.buttons([
+            .init(key: "\(fxKey):ab", label: node.activeSlotB ? "B" : "A", style: .muted) {
+                var next = chain; next.nodes[i].selectSlotB(!node.activeSlotB); write(next)
+            },
+            .init(key: "\(fxKey):copy-ab", label: "Copy A to B", style: .muted) {
+                var next = chain; next.nodes[i].copyAToB(); write(next)
+            },
+            .init(key: "\(fxKey):presets", label: "Presets", style: .muted) { [weak self] in
+                self?.audioFxUI.modulePreset = menuOpen ? nil : nodeId; self?.onEdited?()
+            },
+            .init(key: "\(fxKey):save", label: "Save settings", style: .muted, action: { [weak self] in
+                guard let self else { return }
+                self.onSaveAudioFxPreset?("\(label) \(self.audioFxUserPresets.filter { $0.type == node.type }.count + 1)", node)
+            }, disabled: onSaveAudioFxPreset == nil),
+        ])))
+        for preset in presets {
+            controls.append(.init(.buttons([.init(key: "\(fxKey):preset:\(preset.id)", label: preset.label, style: .muted) { [weak self] in
+                var next = chain; next.nodes[i] = preset.applying(to: node)
+                self?.audioFxUI.modulePreset = nil; write(next)
+            }])))
+        }
         // The open face (FxNodeOpenBody): what it is for, the one knob and its ends, then Details.
         let copy = AudioFxCopy.effects[node.type]
         let profile = AudioFxProfiles.profiles[node.type]
@@ -490,7 +550,8 @@ extension InspectorPanel {
         let graphH = Self.afxGraphHeight(node.type)
         let openH = open ? doesH + graphH + paramsH(shownFace) + endsH + detailsH + paramsH(shownAll) : 0
         let graphPointer = afxNodeGraphPointer(node, i, update: update)
-        let cardH = 2 + Self.nodeHeadH + (summary != nil ? Self.nodeSummaryH : 0) + openH
+        let presetH = 28.0 + (menuOpen ? Double(presets.count + 1) * 24 : 0)
+        let cardH = 2 + Self.nodeHeadH + presetH + (summary != nil ? Self.nodeSummaryH : 0) + openH
         let topGap = inRun != nil ? 4.0 : 0
         let name = Self.afxLettered(label, family: family)
         return .init(.custom(InspectorCustomRow(id: "afx:node:\(i)", height: topGap + cardH, draw: { [weak self] c, r, _ in
@@ -503,6 +564,7 @@ extension InspectorPanel {
             let a = bypassed ? 0.5 : 1.0   // `opacity-50` on a bypassed module
             Self.afxModuleFrame(c, card, tint: tint, alpha: a)
             let head = CanvasRect(x: card.x + 2 + 6, y: card.y + 1, width: card.width - 3 - 12, height: Self.nodeHeadH)
+            if inRun == nil { self.afxReorderHeader(c, key: "fx:\(i):open", rect: card) }
             let midY = head.midY
             var right = self.afxGlyph(c, right: head.maxX, midY: midY, "×", size: 11, hit: .fxRemove(fxKey), danger: true, alpha: a) - 4
             right = self.afxGlyph(c, right: right, midY: midY, "↓", size: 10, hit: .button("\(fxKey):down"), alpha: a,
@@ -532,6 +594,22 @@ extension InspectorPanel {
             }
             self.addHit(nameR, .button("\(fxKey):open"))
             var y = head.maxY
+            let stripY = y + 14
+            var stripRight = self.afxSwitch(c, right: head.maxX, midY: stripY, "Presets ▾", hit: .button("\(fxKey):presets")) - 4
+            stripRight = self.afxSwitch(c, right: stripRight, midY: stripY, "Copy A to B", hit: .button("\(fxKey):copy-ab")) - 4
+            _ = self.afxSwitch(c, right: stripRight, midY: stripY, node.activeSlotB ? "A / [B]" : "[A] / B", hit: .button("\(fxKey):ab"))
+            y += 28
+            if menuOpen {
+                for preset in presets {
+                    let row = CanvasRect(x: head.x, y: y, width: head.width, height: 24)
+                    PanelDraw.text(c, preset.label, in: row, font: PanelTheme.font(11), color: PanelTheme.text1)
+                    self.addHit(row, .button("\(fxKey):preset:\(preset.id)")); y += 24
+                }
+                let row = CanvasRect(x: head.x, y: y, width: head.width, height: 24)
+                PanelDraw.text(c, "Save settings to library", in: row, font: PanelTheme.font(11), color: PanelTheme.text2)
+                if self.onSaveAudioFxPreset != nil { self.addHit(row, .button("\(fxKey):save")) }
+                y += 24
+            }
             if let summary {
                 PanelDraw.text(c, summary, in: CanvasRect(x: card.x + 2 + 6, y: y, width: card.width - 3 - 12, height: 15), font: PanelTheme.font(11),
                                color: PanelTheme.text2.withAlpha(a))
