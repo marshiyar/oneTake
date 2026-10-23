@@ -35,8 +35,7 @@ extension InspectorPanel {
 
     /// An effect as "Add effect" applies it: `base` with the effect at its `EffectSpecs.applyDefaults` values.
     static func effectDemo(_ spec: EffectSpecs.Spec, base: ColorGrading = ColorGrading(), clipId: String? = nil) -> TileDemo {
-        var g = base
-        for (k, v) in EffectSpecs.applyDefaults[spec.key] ?? [:] { g.effects[k] = v }
+        let g = EffectSpecs.adding(spec, to: base)
         return TileDemo(key: "fx:\(spec.key)", grade: g.json, clipId: clipId)
     }
 

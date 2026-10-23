@@ -48,11 +48,11 @@ extension InspectorPanel {
         let t = time, g = editor.gradeShown(clipId: s.id, time: t)
         let commit: (ColorGrading) -> Void = { [weak self] n in self?.edited(editor.commitGrade(clipId: s.id, time: t, shown: g, next: n)) }
         if effectsUI.clipId != s.id { effectsUI = EffectsUIState(clipId: s.id) }
-        let active = EffectSpecs.all.filter { EffectSpecs.isActive(g, $0.key) }
+        let active = EffectSpecs.ordered.filter { EffectSpecs.isActive(g, $0.key) }
         let catalogOpen = effectsUI.catalogOpen ?? active.isEmpty
         let selected = active.first { $0.key == effectsUI.selectedKey } ?? active.first
         func applying(_ spec: EffectSpecs.Spec) -> ColorGrading {
-            var n = g; for (k, v) in EffectSpecs.applyDefaults[spec.key] ?? [:] { n.effects[k] = v }; return n
+            EffectSpecs.adding(spec, to: g)
         }
         let apply: (EffectSpecs.Spec) -> Void = { [weak self] spec in
             self?.effectsUI.selectedKey = spec.key; self?.effectsUI.catalogOpen = false
@@ -62,16 +62,21 @@ extension InspectorPanel {
         var rows: [InspectorRow] = []   // `space-y-2`
         func gap(_ h: Double, rail: Bool = false) { rows.append(.init(.spacer(h), rail: rail)) }
         if !active.isEmpty {
+            rows.append(.init(.note("Effects apply in this order")))
             for (i, e) in active.enumerated() {
                 if i > 0 { gap(4) }
-                rows.append(.init(.custom(activeEffectRow(e, selected: e.key == selected?.key))))
+                rows.append(.init(.custom(activeEffectRow(e, selected: e.key == selected?.key, enabled: !g.bypassedEffects.contains(e.key), toggle: {
+                    var n = g
+                    if !n.bypassedEffects.insert(e.key).inserted { n.bypassedEffects.remove(e.key) }
+                    commit(n)
+                }))))
             }
             gap(8)
         }
         if let sel = selected {
             rows.append(.init(.custom(effectEditorHeader(sel, reapply: { apply(sel) }, remove: { [weak self] in
                 self?.effectsUI.selectedKey = nil
-                var n = g; n.effects[sel.key] = 0; commit(n)
+                self?.edited(editor.removeStylizeEffect(sel, clipId: s.id))
             })), rail: true))
             if sel.showMaster {
                 gap(4, rail: true)
@@ -80,6 +85,10 @@ extension InspectorPanel {
             for control in sel.settings {
                 gap(4, rail: true)
                 rows.append(effectControlRow(control, sel, g, commit: commit))
+            }
+            if sel.palette != nil {
+                gap(4, rail: true)
+                rows += effectPaletteRows(editor, s, g, sel)
             }
             gap(8)
         }
@@ -109,39 +118,55 @@ extension InspectorPanel {
         group.setEnabled = { v in var n = g; n.effectsEnabled = v; commit(n) }
         // FlatEffectsAccessory: reset every effect (and the palette) while any is active.
         if !active.isEmpty {
-            group.reset = { var n = g; for k in ColorGrading.activeEffectKeys { n.effects[k] = nil }; n.palette = nil; commit(n) }
+            group.reset = { [weak self] in self?.edited(editor.removeStylizeEffects(EffectSpecs.all, clipId: s.id, resetPalette: true)) }
         }
         return group
     }
 
-    /// An active effect: `min-h-[30px] border px-2 text-[10px]`, accent/10 on the accent border while it is the one
-    /// being edited ("Editing"), else bg-panel-bg-soft on the hairline ("Active", 9px text-5).
-    func activeEffectRow(_ e: EffectSpecs.Spec, selected: Bool) -> InspectorCustomRow {
+    private static func activeEffectColors(selected: Bool, hovered: Bool) -> (border: CanvasColor, label: CanvasColor) {
+        if selected { return (PanelTheme.accent, PanelTheme.text0) }
+        if hovered { return (PanelTheme.panelBorderInput, PanelTheme.text1) }
+        return (PanelTheme.panelHairline, PanelTheme.inspectorText)
+    }
+
+    /// An active effect: `min-h-[30px] border px-2 text-[11px]`, accent/10 on the accent border while it is the one
+    /// being edited ("Editing"), else bg-panel-bg-soft on the hairline ("Active", 11px secondary ink).
+    func activeEffectRow(_ e: EffectSpecs.Spec, selected: Bool, enabled: Bool, toggle: @escaping () -> Void) -> InspectorCustomRow {
         InspectorCustomRow(id: "fx:active:\(e.key)", height: 30, draw: { c, r, panel in
             let hot = panel.hovered == .custom("fx:active:\(e.key)", 0)
+            let colors = Self.activeEffectColors(selected: selected, hovered: hot)
             if selected { c.fillRect(r.snapped, PanelTheme.accent.withAlpha(0.1)) }   // bg-panel-bg-soft is not a theme colour: transparent
-            c.strokeRect(r.snapped.insetBy(0.5), selected ? PanelTheme.accent : (hot ? PanelTheme.panelBorderInput : PanelTheme.panelHairline), width: 1)
-            PanelDraw.text(c, e.label, in: CanvasRect(x: r.x + 9, y: r.midY - 7.5, width: r.width - 60, height: 15), font: PanelTheme.font(11),
-                           color: selected ? PanelTheme.text0 : (hot ? PanelTheme.text1 : PanelTheme.inspectorText))
-            PanelDraw.text(c, selected ? "Editing" : "Active", in: CanvasRect(x: r.x + 9, y: r.midY - 6.75, width: r.width - 18, height: 13.5),
+            c.strokeRect(r.snapped.insetBy(0.5), colors.border, width: 1)
+            PanelDraw.text(c, e.label, in: CanvasRect(x: r.x + 9, y: r.midY - 7.5, width: r.width - 100, height: 15), font: PanelTheme.font(11),
+                           color: colors.label)
+            PanelDraw.text(c, selected ? "Editing" : "Active", in: CanvasRect(x: r.x + 9, y: r.midY - 6.75, width: r.width - 54, height: 13.5),
                            font: PanelTheme.font(11), color: PanelTheme.inspectorText, align: .right)
-            panel.addHit(r, .custom("fx:active:\(e.key)", 0))
-        }, pointer: { [weak self] _, _, phase in
+            let switchTarget = CanvasRect(x: r.maxX - 30, y: r.midY - 12, width: 24, height: 24)
+            let track = CanvasRect(x: switchTarget.x, y: switchTarget.midY - 7, width: 24, height: 14)
+            c.fillRoundedRect(track, radius: 7, enabled ? PanelTheme.accent.withAlpha(0.35) : PanelTheme.panelHover)
+            let knob = CanvasRect(x: enabled ? track.maxX - 12 : track.x + 2, y: track.y + 2, width: 10, height: 10)
+            c.fillRoundedRect(knob, radius: 5, enabled ? PanelTheme.accent : PanelTheme.inspectorText)
+            panel.addHit(CanvasRect(x: r.x, y: r.y, width: r.width - 36, height: r.height), .custom("fx:active:\(e.key)", 0))
+            panel.addHit(switchTarget, .custom("fx:active:\(e.key)", 1))
+        }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
+            if part == 1 { toggle(); return }
             self.effectsUI.selectedKey = e.key; self.onEdited?()
         })
     }
 
-    /// The editor's head: `min-h-[26px]` 11px medium text-1 name, then reset ↺ and remove × at 11px (text-4, gap-2).
+    /// The editor's head: 11px glyphs in separate 24pt reset and remove cells, 4pt apart.
     func effectEditorHeader(_ e: EffectSpecs.Spec, reapply: @escaping () -> Void, remove: @escaping () -> Void) -> InspectorCustomRow {
         InspectorCustomRow(id: "fx:head", height: 26, draw: { c, r, panel in
-            PanelDraw.text(c, e.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width - 40, height: 16.5), font: PanelTheme.font(11, .medium), color: PanelTheme.text1)
-            let x = CanvasRect(x: r.maxX - 11, y: r.midY - 5.5, width: 11, height: 11)
-            let reset = CanvasRect(x: x.x - 8 - 11, y: x.y, width: 11, height: 11)
-            PanelIcon.reset.draw(c, in: reset, color: panel.hovered == .custom("fx:head", 0) ? PanelTheme.text1 : PanelTheme.inspectorText)
-            PanelIcon.close.draw(c, in: x, color: panel.hovered == .custom("fx:head", 1) ? CanvasColor(ThemeTokens.red300) : PanelTheme.inspectorText)
-            panel.addHit(reset.insetBy(-3), .custom("fx:head", 0))
-            panel.addHit(x.insetBy(-3), .custom("fx:head", 1))
+            PanelDraw.text(c, e.label, in: CanvasRect(x: r.x, y: r.midY - 8.25, width: r.width - 56, height: 16.5), font: PanelTheme.font(11, .medium), color: PanelTheme.text1)
+            let x = CanvasRect(x: r.maxX - 24, y: r.midY - 12, width: 24, height: 24)
+            let reset = CanvasRect(x: x.x - 4 - 24, y: x.y, width: 24, height: 24)
+            panel.targetHover(c, reset, .custom("fx:head", 0))
+            panel.targetHover(c, x, .custom("fx:head", 1))
+            PanelIcon.reset.draw(c, in: reset.insetBy(6.5), color: panel.hovered == .custom("fx:head", 0) ? PanelTheme.text1 : PanelTheme.inspectorText)
+            PanelIcon.close.draw(c, in: x.insetBy(6.5), color: panel.hovered == .custom("fx:head", 1) ? CanvasColor(ThemeTokens.red300) : PanelTheme.inspectorText)
+            panel.addHit(reset, .custom("fx:head", 0), label: "Reset " + e.label)
+            panel.addHit(x, .custom("fx:head", 1), label: "Remove " + e.label)
         }, pointer: { part, _, phase in
             guard phase == 0 else { return }
             if part == 0 { reapply() } else { remove() }
@@ -180,8 +205,43 @@ extension InspectorPanel {
                 let line = tier == .explicitCustom ? PanelTheme.accent : PanelTheme.inspectorControl
                 c.fillRect(CanvasRect(x: box.x, y: box.maxY - 1, width: box.width, height: 1).snapped, line)
                 panel.addHit(box.insetBy(-3), .custom("fx:sel:\(key)", 0))
-            }, pointer: { _, _, phase in if phase == 0 { set(Double((i + 1) % options.count)) } })), rail: true)
+            }, pointer: { [weak self] _, _, phase in
+                guard phase == 0, let self,
+                      let anchor = self.hits.rect(where: { $0 == .custom("fx:sel:\(key)", 0) }) else { return }
+                let choices = options.enumerated().map { PanelDropdown.Option(value: String($0.offset), label: $0.element) }
+                self.onOpenDropdown?("fx:sel:\(key)", choices, String(i), anchor) { choice in
+                    guard let index = Int(choice), options.indices.contains(index) else { return }
+                    set(Double(index))
+                }
+            })), rail: true)
         }
+    }
+
+    func effectPaletteRows(_ editor: TimelineEditor, _ selected: Selected, _ grade: ColorGrading, _ spec: EffectSpecs.Spec) -> [InspectorRow] {
+        let palette = EffectSpecs.palette(grade)
+        var rows: [InspectorRow] = []
+        // ASCII's glyph shader uses the final colour as ink; the print shaders use the first.
+        let inkLast = spec.key == "ascii"
+        for (label, index) in [("Ink", inkLast ? palette.count - 1 : 0), ("Paper", inkLast ? 0 : palette.count - 1)] {
+            let field = ColorFieldSpec(key: "fx:palette:\(label.lowercased())", label: label,
+                value: grade.palette == nil ? nil : palette[index], placeholder: palette[index], allowAlpha: false,
+                historyLabel: "Set effect palette", apply: { [weak self] hex in
+                    guard let self else { return false }
+                    var next = editor.gradeShown(clipId: selected.id, time: self.time)
+                    var colors = EffectSpecs.palette(next)
+                    let currentIndex = (label == "Ink") != inkLast ? 0 : colors.count - 1
+                    if let hex {
+                        guard let normalized = normalizedHexColor(hex), normalized.count == 7 else { return false }
+                        colors[currentIndex] = normalized
+                        next.palette = colors
+                    } else { next.palette = nil }
+                    return editor.commitGrade(clipId: selected.id, time: self.time,
+                                              shown: editor.gradeShown(clipId: selected.id, time: self.time), next: next)
+                })
+            rows += colorRows(field, clipId: selected.id).map { row in var row = row; row.rail = true; return row }
+        }
+        rows.append(.init(.note("Palette is shared by ink effects"), rail: true))
+        return rows
     }
 
     /// `flex min-h-[30px] gap-1 text-[10px] font-medium text-panel-accent`: an 11px plus and "Add effect".

@@ -150,6 +150,16 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertGreaterThan(maxAbsDiff(frames[1].2, plain), 20, "the curves grade differs from the exposure grade")
     }
 
+    func testBypassedEffectExportMatchesPreviewAndEffectFreePixels() throws {
+        let bypassed = try export(.mov, grade: #"{"effects":{"monoScreen":1,"monoScreenShape":3},"bypassedEffects":["monoScreen"]}"#, name: "bypassed-effect")
+        let frames = try pairs(bypassed, [0, 1.0, 1.9])
+        XCTAssertTrue(frames.allSatisfy { maxAbsDiff($0.1, $0.2) <= 1 })
+        let neutral = try export(.mov, grade: "{}", name: "effect-free")
+        let active = try export(.mov, grade: #"{"effects":{"monoScreen":1,"monoScreenShape":3}}"#, name: "active-effect")
+        XCTAssertEqual(maxAbsDiff(try previewExportFrame(bypassed.input, at: 1), try previewExportFrame(neutral.input, at: 1)), 0)
+        XCTAssertGreaterThan(maxAbsDiff(try previewExportFrame(active.input, at: 1), try previewExportFrame(neutral.input, at: 1)), 20)
+    }
+
     func testMp4ExportMatchesThePreviewWithinTheEncoderLoss() throws {
         let mp4 = try export(.mp4)
         try assertTimeline(mp4.file)

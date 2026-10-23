@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 #if os(Linux)
 import CGtk3
+import Foundation
 
 /// Cairo + Pango backend. Wraps a caller-owned cairo_t (e.g. GtkDrawingArea "draw").
 public final class CairoCanvas: CanvasContext {
@@ -85,6 +86,46 @@ public final class CairoCanvas: CanvasContext {
         pango_cairo_show_layout(cr, l)
     }
 
+    public func textUnits(_ text: String, font: CanvasFont) -> [TextUnit] {
+        let l = layout(text, font)
+        defer { g_object_unref(UnsafeMutableRawPointer(l)) }
+        guard let line = pango_layout_get_line_readonly(l, 0) else { return [] }
+        let utf16 = Array(text.utf16)
+        return TextUnits.graphemes(text).map { range in
+            let value = String(decoding: utf16[range], as: UTF16.self)
+            let prefix = String(decoding: utf16[..<range.lowerBound], as: UTF16.self)
+            let start = Int32(prefix.utf8.count)
+            var positions: UnsafeMutablePointer<Int32>?
+            var count: Int32 = 0
+            // Query the complete grapheme's UTF-8 boundaries. Per-scalar caret rectangles can
+            // include neighbouring positions inside combining marks and emoji ZWJ sequences.
+            pango_layout_line_get_x_ranges(line, start, start + Int32(value.utf8.count), &positions, &count)
+            guard let positions else {
+                return TextUnit(range: range, rect: CanvasRect(x: 0, y: 0, width: 0, height: font.size))
+            }
+            defer { g_free(UnsafeMutableRawPointer(positions)) }
+            let boxes = (0..<Int(count)).map { index in
+                let left = Double(positions[index * 2]) / Double(PANGO_SCALE)
+                let right = Double(positions[index * 2 + 1]) / Double(PANGO_SCALE)
+                return CanvasRect(x: min(left, right), y: 0, width: abs(right - left), height: font.size)
+            }
+            return TextUnit(range: range, rect: TextUnits.union(boxes))
+        }
+    }
+
+    public func textWordRanges(_ text: String) -> [Range<Int>] {
+        let l = layout(text, CanvasFont(size: 12))
+        defer { g_object_unref(UnsafeMutableRawPointer(l)) }
+        var offset = 0, start: Int?, result: [Range<Int>] = []
+        let scalars = Array(text.unicodeScalars)
+        for index in 0...scalars.count {
+            let flags = mpvfx_pango_word_boundary(l, Int32(index))
+            if flags & 2 != 0, let s = start { result.append(s..<offset); start = nil }
+            if flags & 1 != 0 { start = offset }
+            if index < scalars.count { offset += scalars[index].utf16.count }
+        }
+        return result
+    }
     public func measureText(_ text: String, font: CanvasFont) -> CanvasSize {
         let l = layout(text, font)
         defer { g_object_unref(UnsafeMutableRawPointer(l)) }

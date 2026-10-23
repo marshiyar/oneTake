@@ -302,6 +302,7 @@ extension InspectorPanel {
     /// The 11px reset ↺ centred in `cell`, full ink while hovered.
     func drawResetGlyph(_ c: CanvasContext, _ cell: CanvasRect, key: String, visible: Bool) {
         guard visible else { return }
+        targetHover(c, cell, .reset(key))
         let g = CanvasRect(x: cell.midX - 5.5, y: cell.midY - 5.5, width: 11, height: 11)
         PanelIcon.reset.draw(c, in: g, color: hovered == .reset(key) ? PanelTheme.text1 : PanelTheme.inspectorText)
     }
@@ -397,6 +398,7 @@ extension InspectorPanel {
     func drawGear(_ c: CanvasContext, line: CanvasRect, key: String, active: Bool) {
         let cell = CanvasRect(x: line.maxX - PanelGrid.minTarget, y: line.midY - PanelGrid.minTarget / 2, width: PanelGrid.minTarget, height: PanelGrid.minTarget)
         let hov = hovered == .keyframe(key)
+        targetHover(c, cell, .keyframe(key))
         PanelIcon.phosphor(.gear).draw(c, in: CanvasRect(x: cell.midX - 6, y: cell.midY - 6, width: 12, height: 12),
                                        color: hov || active ? PanelTheme.text1 : PanelTheme.inspectorText)
         addHit(cell, .keyframe(key))

@@ -136,7 +136,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma waveform, RGB overlay, RGB parade, vectorscope with targets, skin line and zoom, luma + RGB histogram and false colour work for the selected clip or the composited program (Clip / Program switch), up to four at once (`docs/SCOPES.md`); CIE diagram and a full-size view are missing | close |
 | Grade: hold to show original; captured-frame preset preview thumbnails | missing (panels) | n/a |
 | Effects: amount per stylize effect (18), reset effects | done; renders in preview and export (Metal kernels on macOS, incl. blur/bloom/Kuwahara passes) (schema in `docs/EFFECTS.md`) | close |
-| Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | missing (panels; the renderer already reads every setting and the palette) | n/a |
+| Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | done: select lists with keyboard choice, per-effect bypass retaining settings in preview/export, clean removal and fresh add defaults, shader-order active list, validated shared Ink/Paper fields and palette reset (#184) | close |
 | Clip effects other than the grade (listed with enable toggle and remove) | partial: listed and toggleable; not rendered, and export refuses them | close |
 | Audio FX: presets by family, EQ (Tone) bands, signal chain with bypass / remove / clear | done (edits `audioFxChain`, undoable; playback and export hear it) | close |
 | One-step voice clean-up: noise reduction and dynamic levelling, strength, before/after | implemented (#461): Clean up voice, Strength (controls both stages), Listen before/after and Remove clean-up in the Audio FX rack; keyboard operable, undoable and saved in the existing project FX chain. Playback and export share the DSP; denoise learns from the first 500 ms (`VoiceCleanupTests`, `VoiceCleanupInspectorTests`) | close |
@@ -316,6 +316,32 @@ Every item of the owner's screenshot review, with its status now.
 ### Design compositing and value alignment (#187)
 
 Style starts with a Compositing block: Opacity, Blend and the opacity easing shortcut, followed by appearance. Edit Easing remembers Style as the opacity property's home while opening the existing Easing tab. Stacked number fields, slider values, segmented rows and Blend reserve the same trailing accessory gutter as ordinary rows; the existing 24 pt keyframe targets remain. Record motion uses the toolbar's existing resting/hover fill and the shared text line layout. Blend persistence and preview/export rendering reuse the existing implementation.
+Grade and Effects small controls (#185): reset/remove/add/refresh cells and scope labels are at least 24 pt, with a full-target hover wash. Wheel resets, settings gears, group resets and effect/secondary icon actions record names on their hit regions. `TargetSizeTests.testGradeAndEffectsTargetsAndHover` audits authored Grade/Effects states at 409, 364 and 280 pt in both appearances, including selected curve points and open Vignette settings.
+### Text unit API (#276)
+
+`TextLayout.units(_:width:on:)` returns grapheme clusters, native words and wrapped line boxes.
+Each unit carries a half-open UTF-16 range into the original text and a typographic rectangle relative
+to the layout origin. Units stay in logical reading order on RTL lines. Empty lines keep a line box;
+wrapping delimiters and newlines carry no glyph box. Words contain letters or numbers; whitespace,
+punctuation-only spans and emoji stay available as clusters. Native word boundaries come from Pango
+log attributes, Foundation's platform word enumerator, and Windows Uniscribe `ScriptBreak`; Windows
+shaped boxes come from DirectWrite hit testing. Dictionary segmentation of contiguous CJK can differ
+between hosts; the shared expected-count corpus uses separated ideographs.
+
+`TextLayout.draw(_:in:on:selecting:opacity:)` accepts cluster, word or line selections. It paints each
+original shaped run once, clipping a partial reveal to its selected advance boxes. Full runs bypass
+clipping to preserve overhang and exact static pixels. This keeps Arabic joining and ligatures intact;
+a partial selection of a shared ligature reveals the selected typographic region. These are derived
+layout results with no persisted setting or editor command. macOS tests cover Latin, Persian/Arabic,
+CJK, combining marks, emoji ZWJ and skin-tone modifiers, transparent raster parity, RTL order, repeated
+words, wrapping, blank lines and letter spacing. Linux and Windows tests are compiled conditionally
+against their real raster backends and require their CI hosts; they were not executed locally.
+
+Text-unit advances include letter spacing, including trailing spacing. Justified separator spaces
+have grapheme boxes spanning the expanded word gap. Empty native text-unit queries return no units
+without recording a frame error. Pango queries the full grapheme's UTF-8 range, rather than unioning
+individual scalar caret rectangles. Windows helper tests cover zero-count and malformed inputs;
+those tests still require a Windows host.
 Audio: **Stereo room** (`reverb-v2`, #208) is available from the audio FX add menu,
 with room size, damping, stereo width, pre-delay, low cut, wet and dry controls.
 The original Room effect and presets retain the legacy reverb sound. The v2

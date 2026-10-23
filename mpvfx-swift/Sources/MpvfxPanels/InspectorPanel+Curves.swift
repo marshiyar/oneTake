@@ -62,6 +62,7 @@ extension InspectorPanel {
     }
 
     func drawCurveTab(_ c: CanvasContext, _ tr: CanvasRect, _ i: Int, _ panel: InspectorPanel, edited: Bool) {
+        panel.targetHover(c, tr, .custom("grade:curvetabs", i))
         let t = Self.curveTabs[i], on = openCurveTab.key == t.key
         let font = PanelTheme.font(11, on ? .medium : .regular)
         let tw = c.measureText(t.label, font: font).width, dot = edited ? 8.0 : 0
@@ -365,9 +366,10 @@ extension InspectorPanel {
     func drawCurveFooter(_ c: CanvasContext, _ r: CanvasRect, _ panel: InspectorPanel, _ g: ColorGrading) {
         var x = r.x
         for b in curveFooterButtons(g) {
-            let w = max(Self.curveMinTarget, c.measureText(b.label, font: PanelTheme.font(11)).width + 16)
+            let w = max(Self.curveMinTarget, c.measureText(b.label, font: PanelTheme.font(11)).width + (r.width < 300 ? 8 : 16))
             let br = CanvasRect(x: x, y: r.y + 2, width: w, height: Self.curveMinTarget)
             let hot = b.enabled && panel.hovered == .custom("grade:curvefoot", b.part)
+            if b.enabled { panel.targetHover(c, br, .custom("grade:curvefoot", b.part)) }
             c.strokeRoundedRect(br.insetBy(0.5), radius: PanelTheme.radius, b.enabled ? (hot ? PanelTheme.inspectorText : PanelTheme.panelBorderInput)
                                 : PanelTheme.inspectorControl, width: 1)
             PanelDraw.text(c, b.label, in: br, font: PanelTheme.font(11), color: b.enabled ? (hot ? PanelTheme.text0 : PanelTheme.text1) : PanelTheme.inspectorText,

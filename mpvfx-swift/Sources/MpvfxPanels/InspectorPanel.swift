@@ -95,12 +95,26 @@ public final class InspectorPanel {
 
     /// Header bypasses and named icon choices exposed after layout has populated `hits`.
     public var accessibilityControls: [CanvasAccessibilityControl] {
-        let headers: [CanvasAccessibilityControl] = buildGroups().compactMap { group in
+        let groups = buildGroups()
+        let headers: [CanvasAccessibilityControl] = groups.compactMap { group in
             guard let label = group.accessibilityLabel, let value = group.enabled,
                   let frame = hits.rect(where: { $0 == .groupEnabled(group.id) }) else { return nil }
             return CanvasAccessibilityControl(label: label, value: value, frame: frame) { group.setEnabled?(!value) }
         }
-        return headers + namedIconControls.map { item in
+        var controls = headers
+        if groups.contains(where: { $0.id == "effects" }), let editor, let selected = selected() {
+            let grade = editor.gradeShown(clipId: selected.id, time: time)
+            for effect in EffectSpecs.ordered where EffectSpecs.isActive(grade, effect.key) {
+                guard let frame = hits.rect(where: { $0 == .custom("fx:active:\(effect.key)", 1) }) else { continue }
+                let enabled = !grade.bypassedEffects.contains(effect.key)
+                controls.append(CanvasAccessibilityControl(label: "\(effect.label) enabled", value: enabled, frame: frame) { [weak self] in
+                    var next = grade
+                    if enabled { next.bypassedEffects.insert(effect.key) } else { next.bypassedEffects.remove(effect.key) }
+                    self?.edited(editor.commitGrade(clipId: selected.id, time: self?.time ?? 0, shown: grade, next: next))
+                })
+            }
+        }
+        return controls + namedIconControls.map { item in
             CanvasAccessibilityControl(label: item.label, value: item.active, frame: item.frame, press: item.press)
         }
     }
@@ -258,7 +272,29 @@ public final class InspectorPanel {
 
     public init() {}
 
-    func addHit(_ r: CanvasRect, _ h: Hit) { hits.add(r, h) }
+    func addHit(_ r: CanvasRect, _ h: Hit, label: String? = nil) { hits.add(r, h, label: label ?? targetLabel(h)) }
+
+    private static let targetActionLabels: [String: [Int: String]] = [
+        "sec:head": [0: "Add secondary color", 1: "Remove secondary color"],
+        "grade:scopes": [ScopePart.refresh: "Refresh scopes", ScopePart.gainDown: "Decrease scope gain",
+                         ScopePart.gainUp: "Increase scope gain"]
+    ]
+
+    /// Names travel with the exact pointer rectangle for the screen-reader tree.
+    func targetLabel(_ hit: Hit) -> String? {
+        switch hit {
+        case .reset(let key): return "Reset " + (slider(key)?.label ?? number(key)?.label ?? key)
+        case .keyframe(let key) where key.hasSuffix(Self.gearSuffix):
+            return (slider(String(key.dropLast(Self.gearSuffix.count)))?.label ?? key) + " settings"
+        case .custom(let section, let part): return Self.targetActionLabels[section]?[part]
+        default: return nil
+        }
+    }
+
+    /// Fill the entire target so hovering previews the clickable area.
+    func targetHover(_ c: CanvasContext, _ rect: CanvasRect, _ hit: Hit) {
+        if hovered == hit { c.fillRoundedRect(rect, radius: PanelTheme.radius, PanelTheme.panelHover) }
+    }
 
     /// Width of an open group's rows (`px-4` inside the panel), from the last layout; 375 before the first draw.
     var bodyContentWidth: Double { lastRect.width > 32 ? lastRect.width - 32 : 375 }
@@ -524,9 +560,12 @@ public final class InspectorPanel {
             PanelIcon.groupCaretDown.draw(c, in: CanvasRect(x: inner.maxX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12), color: PanelTheme.inspectorText)
             if g.reset != nil {
                 let rr = CanvasRect(x: accessoryX - 12, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
+                targetHover(c, Self.target(rr), .groupReset(g.id))
                 PanelIcon.reset.draw(c, in: rr, color: hovered == .groupReset(g.id) ? PanelTheme.text1 : PanelTheme.inspectorText)
-                hits.add(Self.target(rr), .groupReset(g.id))
-                accessoryX = rr.x - 10
+                hits.add(Self.target(rr), .groupReset(g.id), label: "Reset " + g.title)
+                // The reset target and the menu hit are each 24 pt wide: leave a full 12 pt
+                // glyph gap so the adjacent targets never overlap at any panel width.
+                accessoryX = rr.x - 12
             }
             if detachable { drawGroupMenuButton(c, r, g.id, rightEdge: accessoryX) }
         } else {
