@@ -333,11 +333,25 @@ final class InspectorPanelTests: XCTestCase {
 }
 
 final class ColorGradingTests: XCTestCase {
+    func testJsonRoundTripV2SaturationCurveFixture() throws {
+        let path = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/saturation-curves-v2.json")
+        let value = try JSONDecoder().decode(NativeJSONValue.self, from: Data(contentsOf: path))
+        guard case .object(let object) = value else { return XCTFail("grade fixture must be an object") }
+        let grade = ColorGrading(json: object)
+        XCTAssertEqual(grade.version, 2)
+        XCTAssertEqual(ColorGrading(json: grade.json), grade)
+        for key in ColorGrading.deltaCurveKeys { XCTAssertFalse(grade.curve(key).isEmpty) }
+        XCTAssertNil(ColorGrading(json: ["version": .number(2)]).json["curves"])
+    }
+
     func testJsonRoundTripAndPreset() throws {
         var g = ColorGrading()
         g.adjust["contrast"] = 0.2
         g.wheels["midtones"] = .init(hue: 187, amount: 1, level: 0)
         g.curves["master"] = [[0, 0], [0.4, 0.6], [1, 1]]
+        g.curves["lumaVsSaturation"] = [[0, 0], [0.7, -0.5], [1, -1]]
+        g.curves["saturationVsSaturation"] = [[0, 1], [0.3, 0.5], [1, 0]]
         g.hueCurves["hueVsSaturation"] = [[120, 0.5]]
         g.secondaries = [.init()]
         g.lut = .init(src: "luts/film.cube", intensity: 0.7)

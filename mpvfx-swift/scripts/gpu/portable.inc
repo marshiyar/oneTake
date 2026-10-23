@@ -205,11 +205,11 @@ void kernelResolve(int2 gid) {
 }
 
 // The grade: GL frag row gid.y is written to image row height - 1 - gid.y. Slots: 0 source (image-oriented),
-// 1 blur, 2 Kuwahara, 3 bloom; tables 5 curves, 6 hue curves, 7 secondaries, 8 LUT.
+// 1 blur, 2 Kuwahara, 3 bloom; tables 5 curves, 6 hue curves, 7 secondaries, 8 LUT, 9 Sat/Sat.
 void kernelGrade(int2 gid) {
     int w = int(hdr[0]), h = int(hdr[1]);
     if (gid.x >= w || gid.y >= h) { return; }
-    int src = 0, blurT = 1, kuwT = 2, bloomT = 3, curvesT = 5, hueT = 6, secT = 7, lutT = 8, uArg_ = 0;
+    int src = 0, blurT = 1, kuwT = 2, bloomT = 3, curvesT = 5, hueT = 6, satT = 9, secT = 7, lutT = 8, uArg_ = 0;
     float4 c = shade(V2(float(gid.x) + 0.5f, float(gid.y) + 0.5f), A_ALL);
     outPxWrite((h - 1 - gid.y) * w + gid.x, packQ(c));
 }

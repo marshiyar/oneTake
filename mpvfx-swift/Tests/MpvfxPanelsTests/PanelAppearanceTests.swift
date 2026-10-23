@@ -43,8 +43,10 @@ final class PanelAppearanceTests: XCTestCase {
     /// wash and selected-point fill are dark ink, so nothing on the graph is white on white.
     func testCurveLinesReadInLightMode() {
         let old = ["master": "#e5e7eb", "red": "#fb7185", "green": "#4ade80", "blue": "#60a5fa",
-                   "hueVsHue": "#f0abfc", "hueVsSaturation": "#facc15", "hueVsLuma": "#f8fafc"]
-        XCTAssertEqual(InspectorPanel.curveTabs.map(\.key), ["master", "red", "green", "blue", "hueVsHue", "hueVsSaturation", "hueVsLuma"])
+                   "hueVsHue": "#f0abfc", "hueVsSaturation": "#facc15", "hueVsLuma": "#f8fafc",
+                   "lumaVsSaturation": "#67e8f9", "saturationVsSaturation": "#fdba74"]
+        XCTAssertEqual(InspectorPanel.curveTabs.map(\.key), ["master", "red", "green", "blue", "hueVsHue", "hueVsSaturation", "hueVsLuma",
+                                                             "lumaVsSaturation", "saturationVsSaturation"])
         let inset = ThemeTokens.panelBgInsetPair.light, ink = ThemeTokens.stageScrim
         let graph = ThemeColor(r: inset.r * 0.95 + ink.r * 0.05, g: inset.g * 0.95 + ink.g * 0.05, b: inset.b * 0.95 + ink.b * 0.05)
         for t in InspectorPanel.curveTabs {

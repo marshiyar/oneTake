@@ -51,7 +51,7 @@ enum { VKG_K_BLUR = MPVFX_GPU_K_BLUR, VKG_K_MOMENTS = MPVFX_GPU_K_MOMENTS, VKG_K
 /// Descriptor bindings (scripts/gpu/glsl.inc).
 enum {
     VKG_B_HDR = 0, VKG_B_U, VKG_B_IN0, VKG_B_IN1, VKG_B_IN2, VKG_B_IN3, VKG_B_MOM_IN, VKG_B_CURVES, VKG_B_HUE, VKG_B_SEC,
-    VKG_B_LUT, VKG_B_OUT_PX, VKG_B_OUT_MOM, VKG_B_UNORM, VKG_BINDINGS
+    VKG_B_LUT, VKG_B_OUT_PX, VKG_B_OUT_MOM, VKG_B_UNORM, VKG_B_SATURATION, VKG_BINDINGS
 };
 /// Dispatches per frame (the plan's bound): 3 blur iterations x 2, bloom x 2, Kuwahara x 2, the grade.
 #define VKG_MAX_PASSES MPVFX_GPU_MAX_PASSES
@@ -83,7 +83,7 @@ typedef struct {
 typedef struct {
     char key[512];
     int valid;
-    VkgBuf curves, hue, sec, lut, staging;
+    VkgBuf curves, hue, sec, lut, saturation, staging;
 } VkgTables;
 
 struct MpvfxVk {

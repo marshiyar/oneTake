@@ -69,4 +69,39 @@ final class CurveRenderingTests: XCTestCase {
             XCTAssertEqual(table[i], Double(Float(GradeCurve.valueRGB(pts, at: Double(i) / 1023))), "entry \(i)")
         }
     }
+    func testDeltaTablesUseSharedMonotoneCubic() throws {
+        let raw: [[Double]] = [[0, 0.8], [0.3, -0.7], [0.6, 0.5], [1, -1]]
+        let table = try XCTUnwrap(ColorCurves.compileDelta(raw))
+        for i in 0..<table.count {
+            XCTAssertEqual(table[i], Double(Float(GradeCurve.valueDelta(raw, at: Double(i) / 1023))))
+        }
+        XCTAssertEqual(GradeCurve.normalizedDelta([[0, 1], [0, -1]]), GradeCurve.flatDelta)
+        XCTAssertEqual(GradeCurve.normalizedDelta([[0, .nan], [1, 0]]), GradeCurve.flatDelta)
+    }
+
+    func testV2MissingDeltaCurvesRemainBitIdentical() throws {
+        let old = try params(#"{"version":2,"hueCurves":{"hueVsSaturation":[[0,-0.5],[120,0.3],[240,0.1]]}}"#)
+        var neutral = old
+        for key in ColorGradeParams.deltaCurveKeys { neutral.curves[key] = GradeCurve.flatDelta }
+        for i in 0...255 {
+            let c = SIMD3<Float>(Float(i) / 255, 0.4, 0.8)
+            XCTAssertEqual(graded(old, c), graded(neutral, c))
+        }
+        XCTAssertFalse(old.hasDeltaCurves)
+    }
+
+    func testDeltaCurvesTargetTheirInputAndPreserveLuma() throws {
+        let luma = try params(#"{"curves":{"lumaVsSaturation":[[0,0],[0.5,0],[1,-1]]}}"#)
+        let sat = try params(#"{"curves":{"saturationVsSaturation":[[0,1],[0.4,1],[1,0]]}}"#)
+        XCTAssertTrue(luma.isActive)
+        XCTAssertTrue(sat.isActive)
+        let dark = SIMD3<Float>(0.3, 0.1, 0.1), bright = SIMD3<Float>(1, 0.8, 0.8)
+        let darkOut = graded(luma, dark), brightOut = graded(luma, bright)
+        XCTAssertEqual(darkOut.x - darkOut.y, dark.x - dark.y, accuracy: 0.003)
+        XCTAssertLessThan(brightOut.x - brightOut.y, bright.x - bright.y - 0.05)
+        let weak = SIMD3<Float>(0.6, 0.5, 0.5), weakOut = graded(sat, weak)
+        XCTAssertGreaterThan(weakOut.x - weakOut.y, 0.15)
+        XCTAssertEqual(lumaOf(weakOut), lumaOf(weak), accuracy: 0.00001)
+    }
+
 }
