@@ -93,7 +93,7 @@ final class KeyframeEasingPanelSnapshotTests: XCTestCase {
     func testEveryControlFitsTheTabAtItsMinimumWidth() throws {
         let p = try panel(), r = CanvasRect(x: 0, y: 0, width: PanelFit.minRight, height: 900)
         p.draw(PanelMeasureCanvas(), in: r)
-        for (rect, hit) in p.hits.regions where hit != .graph {
+        for (rect, hit, _) in p.hits.regions where hit != .graph {
             XCTAssertLessThanOrEqual(rect.maxX, r.maxX + 0.5, "\(hit) leaves the panel")
             XCTAssertGreaterThanOrEqual(rect.x, r.x - 0.5, "\(hit) leaves the panel")
         }

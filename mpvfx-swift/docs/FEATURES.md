@@ -136,7 +136,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: scopes (histogram, RGB parade, vectorscope, refresh) | partial: luma waveform, RGB overlay, RGB parade, vectorscope with targets, skin line and zoom, luma + RGB histogram and false colour work for the selected clip or the composited program (Clip / Program switch), up to four at once (`docs/SCOPES.md`); CIE diagram and a full-size view are missing | close |
 | Grade: hold to show original; captured-frame preset preview thumbnails | missing (panels) | n/a |
 | Effects: amount per stylize effect (18), reset effects | done; renders in preview and export (Metal kernels on macOS, incl. blur/bloom/Kuwahara passes) (schema in `docs/EFFECTS.md`) | close |
-| Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | missing (panels; the renderer already reads every setting and the palette) | n/a |
+| Effects: families with add-effect menu (apply defaults), per-effect settings (sizes, angles, glitch blocks…), palette picker and custom palette | done: select lists with keyboard choice, per-effect bypass retaining settings in preview/export, clean removal and fresh add defaults, shader-order active list, validated shared Ink/Paper fields and palette reset (#184) | close |
 | Clip effects other than the grade (listed with enable toggle and remove) | partial: listed and toggleable; not rendered, and export refuses them | close |
 | Audio FX module presets and A/B (#210) | done: each module header offers factory settings, library user presets, A/B and Copy A to B; recall and compare commit once for undo. User settings are saved in the owning library Catalog.sqlite and recalled into the selected slot on any matching effect. Optional paramsB/activeSlot keys retain older chain serialization; live slot switches use the 20 ms rebuild crossfade. | close |
 | Audio FX: presets by family, EQ (Tone) bands, signal chain with bypass / remove / clear | done (edits `audioFxChain`, undoable; playback and export hear it) | close |
@@ -319,6 +319,7 @@ Every item of the owner's screenshot review, with its status now.
 
 The Dynamics rack offers **De-ess**, a version-2 split-band processor with a stereo-linked 4–10 kHz detector (default center 6.5 kHz), frequency in Hz, threshold/range in dB, attack/release in ms, and a detector-listen choice. Its detector-level transfer curve uses the same gain law as processing; the unaffected low band is recombined with the attenuated high band. `DeesserTests` covers sibilant reduction, low-tone preservation, stereo linking and listening; `AudioFxLiveEditTests` covers registry and live/export parity. The gain-reduction meter remains dependent on #206.
 
+Grade and Effects small controls (#185): reset/remove/add/refresh cells and scope labels are at least 24 pt, with a full-target hover wash. Wheel resets, settings gears, group resets and effect/secondary icon actions record names on their hit regions. `TargetSizeTests.testGradeAndEffectsTargetsAndHover` audits authored Grade/Effects states at 409, 364 and 280 pt in both appearances, including selected curve points and open Vignette settings.
 ### Text unit API (#276)
 
 `TextLayout.units(_:width:on:)` returns grapheme clusters, native words and wrapped line boxes.

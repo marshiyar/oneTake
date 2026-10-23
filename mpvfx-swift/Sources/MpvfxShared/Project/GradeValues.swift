@@ -70,6 +70,11 @@ public enum GradeValues {
     public static func detailLimit(_ key: String) -> ClosedRange<Double> { key == "vignetteRoundness" ? -1...1 : 0...1 }
     public static let wheelAmountLimit: ClosedRange<Double> = 0...1
     public static let wheelLevelLimit: ClosedRange<Double> = -1...1
+    /// Default ink/paper palettes the stylize effects draw with when the grade names none
+    /// (the renderer accepts 2…6 colours). Kept here, outside the UI modules, so the
+    /// no-raw-colours ratchet keeps a single source both the panels and the renderer read.
+    public static let defaultPalette = ["#000000", "#ffffff"]
+    public static let printPalette = ["#1a1a1a", "#f5f5dc"]
 
     /// JavaScript `Number(value)` for the JSON values a grade holds; nil for objects and arrays.
     public static func number(_ v: NativeJSONValue?) -> Double? {
