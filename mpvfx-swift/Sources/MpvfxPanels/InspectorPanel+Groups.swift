@@ -251,7 +251,10 @@ extension InspectorPanel {
             reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.opacityId)) },
             keyframe: keyframe(editor, s, TimelineEditor.opacityId, fallback: .number(op)))
         return InspectorGroup(id: "style", title: "Style", summary: Self.styleSummary(s.clip.style, opacityPercent: pct),
-                              rows: styleRows(editor, s) + [.init(.slider(slider)), blendRow(editor, s)])
+                              rows: [.init(.heading("Compositing", trailing: nil)), .init(.slider(slider)), blendRow(editor, s)]
+                                + (editor.isAnimated(clipId: s.id, TimelineEditor.opacityId)
+                                   ? easingRows(editor, s, channels: [TimelineEditor.opacityId]) : [])
+                                + [.init(.section("Appearance"))] + styleRows(editor, s))
     }
 
     // MARK: Effects

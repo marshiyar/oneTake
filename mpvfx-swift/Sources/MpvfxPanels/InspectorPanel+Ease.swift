@@ -17,7 +17,7 @@ import MpvfxShared
 import MpvfxTimeline
 import MpvfxTheme
 
-/// The keyframe easing block of the Transform and Media groups: a heading with the key count and an "Easing…"
+/// The keyframe easing block of the Transform, Compositing and Media blocks: a heading with the key count and an "Easing…"
 /// button that opens the Keyframe Easing panel on those keys (the timeline's selected keys on this clip's eased
 /// channels, else the key at/before the playhead of each). The presets, curve and numbers live in the panel
 /// (KeyframeEasingPanel); this block replaced the segmented Ease row, whose options drew over its label (#154).

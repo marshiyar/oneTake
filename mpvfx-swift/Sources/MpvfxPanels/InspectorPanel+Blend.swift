@@ -21,6 +21,12 @@ import MpvfxTimeline
 /// is one undo step through TimelineEditor.setClipBlend, saved in project.json as `clip.style.blend`.
 extension InspectorPanel {
     static let blendRowId = "blend"
+    private static let blendLabelWidth: Double = 86
+    private static let blendLabelHeight: Double = 16.5
+    private static let blendResetGlyphSize: Double = 11
+    private static let blendFieldTop: Double = 32
+    private static let blendFieldHeight: Double = 28
+    private static let blendRowHeight: Double = 60
 
     /// The select's options, in the order the dropdown lists them.
     public static func blendOptions() -> [PanelDropdown.Option] {
@@ -28,7 +34,9 @@ extension InspectorPanel {
     }
 
     /// Default while the key is absent, custom for any other mode.
-    public static func blendTier(_ mode: NativeBlendMode) -> PropertyValueTier { mode == .normal ? .default : .explicitCustom }
+    public static func blendTier(_ mode: NativeBlendMode) -> PropertyValueTier {
+        mode == .normal ? .default : .explicitCustom
+    }
 
     func setBlend(_ editor: TimelineEditor, _ s: Selected, _ mode: NativeBlendMode) {
         edited(editor.setClipBlend(clipId: s.id, mode), label: "Set blend mode")
@@ -36,28 +44,59 @@ extension InspectorPanel {
 
     func blendRow(_ editor: TimelineEditor, _ s: Selected) -> InspectorRow {
         let mode = s.clip.style?.blendMode ?? .normal
-        return InspectorRow(.custom(InspectorCustomRow(id: Self.blendRowId, height: 30, draw: { c, r, panel in
-            panel.drawBlend(c, r, mode: mode)
-        }, pointer: { [weak self] part, _, phase in
-            guard phase == 0, let self else { return }
-            if part == 1 { self.setBlend(editor, s, .normal) } else { self.openBlendDropdown(editor, s) }
-        })))
+        return InspectorRow(
+            .custom(
+                InspectorCustomRow(
+                    id: Self.blendRowId,
+                    height: Self.blendRowHeight,
+                    draw: { canvas, rect, panel in
+                        panel.drawBlend(canvas, rect, mode: mode)
+                    },
+                    pointer: { [weak self] part, _, phase in
+                        guard phase == 0, let self else { return }
+                        if part == 1 { self.setBlend(editor, s, .normal) } else { self.openBlendDropdown(editor, s) }
+                    }
+                )
+            )
+        )
     }
 
-    func drawBlend(_ c: CanvasContext, _ r: CanvasRect, mode: NativeBlendMode) {
+    func drawBlend(_ canvas: CanvasContext, _ rect: CanvasRect, mode: NativeBlendMode) {
         let tier = Self.blendTier(mode)
-        PanelDraw.text(c, "Blend", in: CanvasRect(x: r.x, y: r.midY - 8.25, width: 86, height: 16.5),
-                       font: PanelTheme.font(11), color: tier.labelColor)
-        var right = r.maxX
+        PanelDraw.text(
+            canvas,
+            "Blend",
+            in: CanvasRect(x: rect.x, y: rect.y + 3, width: Self.blendLabelWidth, height: Self.blendLabelHeight),
+            font: PanelTheme.font(11),
+            color: tier.labelColor
+        )
+        let right = Self.valueEdge(rect)
         if tier != .default {
-            let reset = CanvasRect(x: right - 11, y: r.midY - 5.5, width: 11, height: 11)
+            let reset = CanvasRect(
+                x: right + PanelGrid.itemGap + (PanelGrid.minTarget - Self.blendResetGlyphSize) / 2,
+                y: rect.y + Self.blendFieldTop + (Self.blendFieldHeight - Self.blendResetGlyphSize) / 2,
+                width: Self.blendResetGlyphSize,
+                height: Self.blendResetGlyphSize
+            )
             let hot = hovered == .custom(Self.blendRowId, 1)
-            PanelIcon.reset.draw(c, in: reset, color: hot ? PanelTheme.text1 : PanelTheme.inspectorText)
-            addHit(reset.insetBy(-3), .custom(Self.blendRowId, 1))
-            right = reset.x - 6
+            PanelIcon.reset.draw(canvas, in: reset, color: hot ? PanelTheme.text1 : PanelTheme.inspectorText)
+            addHit(
+                CanvasRect(
+                    x: right + PanelGrid.itemGap,
+                    y: rect.y + Self.blendFieldTop + (Self.blendFieldHeight - PanelGrid.minTarget) / 2,
+                    width: PanelGrid.minTarget,
+                    height: PanelGrid.minTarget
+                ),
+                .custom(Self.blendRowId, 1)
+            )
         }
-        let field = CanvasRect(x: r.x + 96, y: r.midY - 14, width: max(0, right - r.x - 96), height: 28)
-        PanelSelect.draw(c, field, text: mode.label, hovered: hovered == .custom(Self.blendRowId, 0))
+        let field = CanvasRect(
+            x: rect.x,
+            y: rect.y + Self.blendFieldTop,
+            width: max(0, right - rect.x),
+            height: Self.blendFieldHeight
+        )
+        PanelSelect.draw(canvas, field, text: mode.label, hovered: hovered == .custom(Self.blendRowId, 0))
         addHit(field, .custom(Self.blendRowId, 0))
     }
 
