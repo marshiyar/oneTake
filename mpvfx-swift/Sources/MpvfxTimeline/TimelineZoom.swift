@@ -17,9 +17,8 @@ import Foundation
 public enum TimelineZoomMode: String, Codable, Equatable, Sendable { case fit, manual }
 
 public enum TimelineZoom {
-    /// Half the fit is the zoom-out limit (docs/TIMELINE.md "Zoom"): room to drag a clip past the end, never the
-    /// minutes of empty lanes a tenth of the fit showed.
-    public static let minPercent = 50.0
+    /// Fit is the zoom-out limit; its end margin leaves room to extend the last clip.
+    public static let minPercent = 100.0
     static let maxFrameWidthPx = 48.0
     public static let previewFPS = 30.0            // STUDIO_PREVIEW_FPS
     static let zoomOutFactor = 0.5, zoomInFactor = 2.0, pinchSensitivity = 0.014

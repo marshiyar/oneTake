@@ -26,9 +26,7 @@ Seen on a 41 s project at the default zoom (owner screenshots, 2026-10-21):
 ## Zoom
 
 - **Fit** shows the whole sequence: `[0, span]` fills the track area, where
-  `span = max(5 s, end + max(1 s, 5% of end))`. The ruler and horizontal scrolling stop at the same span. Half the fit
-  (50%) is the zoom-out limit: room to drag a clip past the end, never the minutes of empty lanes a tenth of the fit
-  showed. The zoom-in limit is unchanged: 48 px per frame at 30 fps.
+  `span = max(5 s, end + max(1 s, 5% of end))`. The ruler and horizontal scrolling stop at the same span. Fit (100%) is the zoom-out limit; the end margin leaves room to extend the last clip. The zoom-in limit is unchanged: 48 px per frame at 30 fps.
 - **Zoom to fit:** ⇧Z, ⌘0 (Ctrl+0), the Fit button, or a double-click on the zoom slider. It scrolls back to 0.
 - **Zoom in / out:** ⌘+ / ⌘− (Ctrl on Linux and Windows) and the + / − buttons double or halve the zoom about the
   playhead when it is in view, else about the middle of the visible lanes. Dragging the slider anchors the same way.
@@ -42,7 +40,7 @@ readout).
 
 ## Track height
 
-- Three presets in a segmented control after the track-height glyph: **S** (the minimum row height), **M** 48 px,
+- Three presets in a segmented control after the track-height glyph: **S** 32 px (the minimum row height), **M** 48 px,
   **L** 72 px. The preset matching the current height is drawn pressed; a height saved from the old slider stays
   as it was and no preset is pressed.
 - A 1 px divider and 8 px of space separate track height from zoom, so the two groups never read as one.
@@ -62,10 +60,10 @@ The hover bubble under each toolbar control gives its name and shortcut, for exa
   6 px flag in the ruler pointing back into the sequence.
 - After the end, the ruler and lanes are shaded with `timelineOutOfRange`, so the space reads as outside the
   sequence rather than as unfinished lanes.
-- **The sequence ends at its last clip.** Every edit sets `sequence.durationFrames` to the last clip end, so moving
+- **The sequence ends at its last clip.** Every edit updates an explicit `sequence.durationFrames` to the last clip end; an omitted duration continues to infer the last clip end, so moving
   or trimming the last clip back shortens playback and export with it. A sequence with no clips keeps its length.
 
-Tests: `TimelineSequenceEndTests`.
+Tests: `TimelineSequenceEndTests`, `TimelineZoomControlsTests.testMovingLastClipShortensDurationAndUndoRestoresBoth`.
 
 ## Track colour
 
@@ -82,12 +80,12 @@ Tests: `TimelineTrackColorTests`.
 
 ## Clip badges
 
-- **`fx N`** sits right-aligned in the clip's header strip as a 14 px pill (ink at 12% behind ink at 80%, 9 px
+- **`fx N`** sits right-aligned in the clip's header strip as a 14 px pill (ink at 12% behind ink at 92%, 9 px
   semibold), the same shape as an audio group's member count. N counts the clip's effects.
-- **Effect strips** under the clip are quiet: a `timelineEffectStrip` fill with a 3 px edge in the effect's
+- **Effect strips** under the clip are quiet: the lane background fill with a 3 px edge in the effect's
   identity colour, and the effect name in 10 px medium `textSecondary` (4.5:1 in both modes).
 
-Tests: `TimelineClipBadgeTests`, `ThemeTokensTests.testLightTextContrastIsAA`.
+Tests: `TimelineZoomControlsTests.testEffectsAndHintInkContrastInBothModes`, `TimelineControlsSnapshotTests`.
 
 ## Status line
 
@@ -96,7 +94,7 @@ the main keys: "Space play · S split · I / O in and out · ⇧Z fit".
 
 ## Captures
 
-Every change here is captured at 1440 × 900 and 1280 × 800 in dark and light (`TimelineControlsSnapshotTests`, PNGs
+Every change here is captured at 1440 × 900 and 1280 × 800 in dark and light (`TimelineControlsSnapshotTests` (native CoreGraphics timeline fixture on macOS), PNGs
 under `$MPVFX_SNAPSHOT_DIR`) and looked at before review.
 
 <!-- markdownlint-disable-file MD043 -- the required-headings rule has no heading list configured, so any heading fails it -->

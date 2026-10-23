@@ -213,7 +213,7 @@ public final class TimelineEditor {
         do {
             let r = try applyNativeProjectClipCommand(document, command, engine: engine)
             guard case .success(let doc, let inverse) = r else { lastFailure = r.failure; return false }
-            // Content past the composition end extends it (extendRootDurationIfNeeded); undo then restores both.
+            // The composition follows its last clip in both directions; undo restores both.
             if let extended = Self.extendingDuration(doc) { document = extended; pushHistory(.restoreDocument(before), defaultLabel: Self.label(for: command)) }
             else { document = doc; pushHistory(inverse, defaultLabel: Self.label(for: command)) }
             reportTransitionChanges(from: before)
@@ -224,7 +224,10 @@ public final class TimelineEditor {
 
     /// Commit a document produced outside the clip commands, with its undo inverse.
     public func replaceDocument(_ doc: NativeProjectDocument, inverse: NativeProjectClipCommand) {
-        document = Self.extendingDuration(doc) ?? doc; pushHistory(inverse, defaultLabel: "Edit"); onChange?()
+        let before = document
+        if let resized = Self.extendingDuration(doc) { document = resized; pushHistory(.restoreDocument(before), defaultLabel: "Edit") }
+        else { document = doc; pushHistory(inverse, defaultLabel: "Edit") }
+        onChange?()
     }
 
     /// Run `body` so every history entry it records carries `label` (an enclosing call's label wins) (and folds with neighbours
@@ -260,11 +263,12 @@ public final class TimelineEditor {
         onHistoryChange?()
     }
 
-    /// The document with sequence.durationFrames grown to its last clip end, or nil when it already fits / is unset.
+    /// The document with sequence.durationFrames set to its last clip end, or nil when unchanged, inferred or empty.
     static func extendingDuration(_ d: NativeProjectDocument) -> NativeProjectDocument? {
-        guard let dur = d.sequence.durationFrames, dur > 0 else { return nil }
-        let end = d.sequence.tracks.flatMap(\.clips).map { $0.startFrame + $0.durationFrames }.max() ?? 0
-        guard end > dur else { return nil }
+        let clips = d.sequence.tracks.flatMap(\.clips)
+        guard d.sequence.durationFrames != nil, !clips.isEmpty else { return nil }
+        let end = clips.map { $0.startFrame + $0.durationFrames }.max() ?? 0
+        guard end != d.sequence.durationFrames else { return nil }
         var out = d; out.sequence.durationFrames = end; return out
     }
 

@@ -4,6 +4,7 @@ Save frame (#293): File > Save frame… on macOS and ⇧⌘E (Ctrl+Shift+E on Li
 At `main` bfe862c (2026-10-21). One row per feature: when a change alters a row, edit that row in the same
 pull request instead of appending a new one.
 
+Timeline controls (#165): Fit button and ⇧Z; fit is the zoom-out limit; the zoom readout follows the ruler's major interval. S/M/L rows are 32/48/72 px with pressed state. Clip edits shorten an explicit sequence duration together with their undo step (omitted durations stay inferred). The pre-zero gutter has no identity fill; clips show `fx N` pills and quiet effect strips; toolbar hover names reach the status line in readable text. Native CoreGraphics timeline fixture captures cover 1440×900 and 1280×800 in both themes; full shell/GPU captures remain unverified.
 Text style model and commands (#282): project `textStyles` records and optional clip links share typography while
 keeping each layer's words. Save, apply to multiple layers, update from a layer and detach are validated atomic
 editor commands with undo/redo. Cross-project clip paste detaches a resolved typography snapshot so missing or

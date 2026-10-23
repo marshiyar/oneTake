@@ -200,7 +200,7 @@ final class EditorShellRouter: CanvasInput, CanvasAccessibilityProvider {
     // MARK: Status line
 
     static let regionHints: [Region: String] = [
-        .timeline: "Space play / pause · S split at the playhead · I / O set the in and out points",
+        .timeline: "Space play / pause · S split at the playhead · I / O set the in and out points · ⇧Z fit",
         .player: "Drag to move the selected element · ⇧ drag for a uniform resize · F fullscreen",
     ]
 

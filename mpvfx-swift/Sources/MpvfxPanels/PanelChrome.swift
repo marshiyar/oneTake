@@ -79,6 +79,6 @@ public enum ShellStatusLine {
         c.fillRect(r, PanelTheme.panelBg)
         guard let text = error ?? hint, !text.isEmpty else { return }
         PanelDraw.text(c, text, in: CanvasRect(x: r.x + 8, y: r.y, width: max(0, r.width - 16), height: r.height),
-                       font: PanelTheme.font(11), color: error == nil ? PanelTheme.text3 : PanelTheme.danger)
+                       font: PanelTheme.font(11), color: error == nil ? PanelTheme.text2 : PanelTheme.danger)
     }
 }

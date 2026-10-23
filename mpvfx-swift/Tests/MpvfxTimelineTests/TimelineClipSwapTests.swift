@@ -23,7 +23,7 @@ final class TimelineClipSwapTests: XCTestCase {
     func make(_ tracks: [[(String, Int, Int)]], audioTrack: Int? = nil) throws -> (TimelineController, TimelineEditor) {
         let e = try TimelineEditor(json: TimelineTrackMoveTests.json(tracks, audioTrack: audioTrack))
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
-        c.viewport = CanvasSize(1266, 400); c.setZoom(pixelsPerSecond: 100)
+        c.viewport = CanvasSize(TimelineLayout.contentOrigin + TimelineZoom.minFitSpan * 100 + 2, 400); c.setZoom(pixelsPerSecond: 100)
         c.snapEnabled = false
         return (c, e)
     }

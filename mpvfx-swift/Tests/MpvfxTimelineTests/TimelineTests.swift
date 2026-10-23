@@ -18,7 +18,7 @@ import MpvfxCanvas
 final class TimelineGeometryTests: XCTestCase {
     func testLayoutParity() {
         XCTAssertEqual(TimelineLayout.contentOrigin, 264)
-        XCTAssertEqual(TimelineLayout.rowTop(0), 40); XCTAssertEqual(TimelineLayout.rowTop(2), 96, "28 px rows (docs/DESIGN.md step 4)")
+        XCTAssertEqual(TimelineLayout.rowTop(0), 40); XCTAssertEqual(TimelineLayout.rowTop(2), 104, "32 px rows (docs/DESIGN.md step 4)")
         XCTAssertEqual(TimelineLayout.playheadLeft(time: 2, pps: 100), 264 + 200 - 4.5)
         XCTAssertEqual(TimelineLayout.playheadLeft(time: .nan, pps: 100), 259.5)
         XCTAssertEqual(TimelineLayout.playheadLeft(time: -1, pps: 100), 259.5)
