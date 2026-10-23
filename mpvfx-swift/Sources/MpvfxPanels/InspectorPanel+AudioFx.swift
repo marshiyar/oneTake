@@ -602,11 +602,11 @@ extension InspectorPanel {
             if menuOpen {
                 for preset in presets {
                     let row = CanvasRect(x: head.x, y: y, width: head.width, height: 24)
-                    PanelDraw.text(c, preset.label, in: row, font: PanelTheme.font(10), color: PanelTheme.text1)
+                    PanelDraw.text(c, preset.label, in: row, font: PanelTheme.font(11), color: PanelTheme.text1)
                     self.addHit(row, .button("\(fxKey):preset:\(preset.id)")); y += 24
                 }
                 let row = CanvasRect(x: head.x, y: y, width: head.width, height: 24)
-                PanelDraw.text(c, "Save settings to library", in: row, font: PanelTheme.font(10), color: PanelTheme.text2)
+                PanelDraw.text(c, "Save settings to library", in: row, font: PanelTheme.font(11), color: PanelTheme.text2)
                 if self.onSaveAudioFxPreset != nil { self.addHit(row, .button("\(fxKey):save")) }
                 y += 24
             }

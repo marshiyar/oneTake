@@ -472,7 +472,7 @@ final class SessionPanels {
                     try service.saveAudioFxPreset(projectId: project, name: name, node: node)
                     let presets = try service.audioFxPresets(projectId: project)
                     post { self?.right.inspector.audioFxUserPresets = presets; self?.redraw() }
-                } catch { post { self?.session.onError("Could not save effect preset", "\(error)") } }
+                } catch { post { self?.session.onError("Could not save effect preset", (error as? DesktopError)?.message ?? "The effect preset could not be saved. Check that the disk has free space and the library is writable, then try again.") } }
             }
         }
         inspector.onCopyGrade = { [weak self] in self?.session.timeline.copyGradeSelection() ?? false }
