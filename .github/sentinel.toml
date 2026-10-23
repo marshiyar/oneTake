@@ -57,6 +57,11 @@ path = "mpvfx-swift/Tests/MpvfxSharedTests/Export/Fixtures/exportParity.json"
 reason = "export parity fixture: text layer cases that contain a byte-order mark"
 
 [[repo.allow]]
+rule = "trojan-source"
+path = "mpvfx-swift/Tests/MpvfxCanvasTests/TextUnitsTests.swift"
+reason = "text-unit fixture: the corpus under test holds ZWJ emoji and RTL scripts"
+
+[[repo.allow]]
 rule = "surveillance"
 path = "mpvfx-swift/Sources/MpvfxAudio/CoreAudioInput.swift"
 match = "AVCaptureDevice"

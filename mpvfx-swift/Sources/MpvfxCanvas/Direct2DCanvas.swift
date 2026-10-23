@@ -159,6 +159,35 @@ public final class Direct2DCanvas: CanvasContext {
         record("DrawTextLayout", hr)
     }
 
+    public func textUnits(_ text: String, font: CanvasFont) -> [TextUnit] {
+        let ranges = TextUnits.graphemes(text)
+        guard !ranges.isEmpty else { return [] }
+        let starts = ranges.map { Int32($0.lowerBound) }, lengths = ranges.map { Int32($0.count) }
+        var rects = [MpvfxRect](repeating: MpvfxRect(x: 0, y: 0, w: 0, h: 0), count: ranges.count)
+        let hr = withDirectWriteText(text, font) { spec in
+            starts.withUnsafeBufferPointer { start in lengths.withUnsafeBufferPointer { length in
+                rects.withUnsafeMutableBufferPointer { rect in
+                    mpvfx_d2d_text_ranges(spec, start.baseAddress, length.baseAddress, rect.baseAddress, Int32(ranges.count))
+                }
+            } }
+        }
+        record("IDWriteTextLayout::HitTestTextRange", hr)
+        guard hr >= 0 else { return [] }
+        return zip(ranges, rects).map { range, r in
+            TextUnit(range: range, rect: CanvasRect(x: Double(r.x), y: Double(r.y), width: Double(r.w), height: Double(r.h)))
+        }
+    }
+    public func textWordRanges(_ text: String) -> [Range<Int>] {
+        var stops = [UInt8](repeating: 0, count: text.utf16.count + 1)
+        let hr = withDirectWriteText(text, CanvasFont(size: 12)) { spec in
+            stops.withUnsafeMutableBufferPointer { mpvfx_d2d_word_stops(spec, $0.baseAddress) }
+        }
+        record("ScriptBreak", hr)
+        guard hr >= 0 else { return [] }
+        let boundaries = stops.indices.filter { stops[$0] != 0 }
+        return zip(boundaries, boundaries.dropFirst()).map { $0..<$1 }
+    }
+
     /// A failed measurement is recorded like a failed draw (reported after the frame); the text then measures
     /// zero wide and one em tall.
     public func measureText(_ text: String, font: CanvasFont) -> CanvasSize {
