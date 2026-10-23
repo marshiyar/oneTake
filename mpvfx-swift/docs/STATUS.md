@@ -1,4 +1,5 @@
 # Status
+Save frame (#293): File > Save frame… on macOS and ⇧⌘E (Ctrl+Shift+E on Linux/Windows) save the composited playhead frame at composition size as quality-95 JPEG. Uses the export painter and durable exclusive publication; existing files are never replaced. PNG awaits a still-image encoder in the pinned media engine. Covered by `SaveFrameTests`.
 
 At `main` bfe862c (2026-10-21). One row per feature: when a change alters a row, edit that row in the same
 pull request instead of appending a new one.
