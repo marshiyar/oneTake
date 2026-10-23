@@ -313,6 +313,7 @@ Every item of the owner's screenshot review, with its status now.
 | Classic inspector | The flat inspector is the product |
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
 
+Grade and Effects small controls (#185): reset/remove/add/refresh cells and scope labels are at least 24 pt, with a full-target hover wash. Wheel resets, settings gears, group resets and effect/secondary icon actions record names on their hit regions. `TargetSizeTests.testGradeAndEffectsTargetsAndHover` audits authored Grade/Effects states at 409, 364 and 280 pt in both appearances, including selected curve points and open Vignette settings.
 ### Text unit API (#276)
 
 `TextLayout.units(_:width:on:)` returns grapheme clusters, native words and wrapped line boxes.
