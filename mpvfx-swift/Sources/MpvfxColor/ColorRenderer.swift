@@ -118,9 +118,9 @@ extension ColorGradeRenderer {
 struct GradeGPUFrame {
     var width: Int, height: Int
     var uniforms: [Float]
-    /// 1024 texels each (RGB curves r,g,b,master; hue curves), empty when the grade has none.
+    /// 1024 texels each (RGB curves r,g,b,master; hue curves plus Luma/Sat; Sat/Sat), empty when the grade has none.
     var curveRows: [SIMD4<Float>]
-    var hueRows: [SIMD4<Float>]
+    var hueRows: [SIMD4<Float>], saturationRows: [SIMD4<Float>]
     /// Five texels per enabled secondary.
     var secondaryTexels: [SIMD4<Float>]
     /// size³ entries, red fastest (the 3D texture's own layout), empty without a LUT.
@@ -183,7 +183,7 @@ extension ColorGradeRenderer {
 
         // Multipass plan: the same numbers `apply` hands prepareBlur / prepareBloom / prepareKuwahara.
         var f = GradeGPUFrame(width: width, height: height, uniforms: [], curveRows: p.curveRows,
-                              hueRows: p.hueRows, secondaryTexels: p.secondaryTexels, lutSize: lutSize, lut: lutTexels,
+                              hueRows: p.hueRows, saturationRows: p.saturationRows, secondaryTexels: p.secondaryTexels, lutSize: lutSize, lut: lutTexels,
                               blurRadius: 0, blurIterations: 0, bloomWidth: 0, bloomHeight: 0, bloomRadius: 0,
                               kuwaharaRadius: 0, kuwaharaExponent: 1, kuwaharaSaturation: 0, blurAmount: p.blurAmount)
         if p.blurAmount > 0 {

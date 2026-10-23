@@ -119,6 +119,18 @@ final class CurveEditorUXTests: XCTestCase {
         XCTAssertNotNil(e.colorGrading(clipId: "clip:a")?.curves["blue"]); XCTAssertNotNil(e.colorGrading(clipId: "clip:a")?.hueCurves["hueVsLuma"])
     }
 
+    func testResetSaturationCurvesReturnsToFlatDefault() throws {
+        for key in ColorGrading.deltaCurveKeys {
+            var g = ColorGrading(); g.curves[key] = [[0, 0.8], [0.5, -0.6], [1, -1]]
+            let (p, e, redraw) = try inspector(g)
+            p.grade.curveTab = key; redraw()
+            let reset = try XCTUnwrap(p.hits.rect { $0 == .custom("grade:curvefoot", 0) })
+            click(p, reset.curveCenter, redraw)
+            XCTAssertNil(e.colorGrading(clipId: "clip:a")?.curves[key])
+            XCTAssertEqual(p.currentCurvePoints(e.colorGrading(clipId: "clip:a") ?? ColorGrading()), GradeCurve.flatDelta)
+        }
+    }
+
     /// A4: Delete point is always drawn and takes a press only with a removable point selected; a double-click on a
     /// point deletes it, but not on an end point.
     func testDeletePointButtonAndDoubleClick() throws {
