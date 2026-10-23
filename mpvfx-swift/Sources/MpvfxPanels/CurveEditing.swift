@@ -40,18 +40,18 @@ public struct CurveEditing: Equatable, Sendable {
 
     /// The points as the renderer reads them: what the graph draws and every edit starts from.
     public func displayed(_ stored: [[Double]]) -> [[Double]] {
-        hue ? GradeCurve.normalizedHue(stored, limit: limit) : GradeCurve.normalizedRGB(stored)
+        hue ? GradeCurve.normalizedHue(stored, limit: limit) : (limit.lowerBound < 0 ? GradeCurve.normalizedDelta(stored) : GradeCurve.normalizedRGB(stored))
     }
 
     /// What the grade stores for edited points; nil is the default curve (identity, or a flat hue curve).
     public func stored(_ points: [[Double]]) -> [[Double]]? {
         if hue { return points.count >= 3 ? points : nil }
-        return points == GradeCurve.identity ? nil : points
+        return points == (limit.lowerBound < 0 ? GradeCurve.flatDelta : GradeCurve.identity) ? nil : points
     }
 
     /// The curve's output at `x`, as rendered.
     public func value(_ points: [[Double]], at x: Double) -> Double {
-        hue ? ColorCurveMath.sampleHue(points, at: x, limit: limit) : ColorCurveMath.sample(points, at: x)
+        hue ? ColorCurveMath.sampleHue(points, at: x, limit: limit) : (limit.lowerBound < 0 ? GradeCurve.valueDelta(GradeCurve.normalizedDelta(points), at: x) : ColorCurveMath.sample(points, at: x))
     }
 
     /// An RGB end point: its input stays on the edge and it cannot be removed.

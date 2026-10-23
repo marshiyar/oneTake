@@ -1,6 +1,6 @@
 // Vulkan GLSL prelude of the compute grade: the Metal dialect's types and math macros, the storage buffers (set 0)
 // and the slot accessors portable.inc reads through. Bindings: 0 hdr, 1 u, 2..5 packed RGBA8 slots 0..3, 6 moments
-// in, 7 curves, 8 hue curves, 9 secondaries, 10 LUT, 11 packed output, 12 moments output, 13 the 8-bit unorm table
+// in, 7 curves, 8 hue curves, 9 secondaries, 10 LUT, 11 packed output, 12 moments output, 13 the 8-bit unorm table, 14 Sat/Sat
 // (k / 255 for every byte, correctly rounded: the CPU reference's Float(k) / 255, whatever the device's division).
 #version 450
 #define float2 vec2
@@ -30,6 +30,7 @@ layout(std430, set = 0, binding = 5) readonly buffer In3 { uint in3[]; };
 layout(std430, set = 0, binding = 6) readonly buffer MomIn { vec4 momIn[]; };
 layout(std430, set = 0, binding = 7) readonly buffer CurvesTab { vec4 curvesTab[]; };
 layout(std430, set = 0, binding = 8) readonly buffer HueTab { vec4 hueTab[]; };
+layout(std430, set = 0, binding = 14) readonly buffer SaturationTab { vec4 saturationTab[]; };
 layout(std430, set = 0, binding = 9) readonly buffer SecTab { vec4 secTab[]; };
 layout(std430, set = 0, binding = 10) readonly buffer LutTab { vec4 lutTab[]; };
 layout(std430, set = 0, binding = 11) writeonly buffer OutPx { uint outPx[]; };
@@ -48,6 +49,7 @@ uint pxRead(int t, int i) {
 }
 vec4 momRead(int i) { return momIn[i]; }
 vec4 tex1Read(int t, int i) {
+    if (t == 9) { return saturationTab[i]; }
     if (t == 5) { return curvesTab[i]; }
     if (t == 6) { return hueTab[i]; }
     return secTab[i];

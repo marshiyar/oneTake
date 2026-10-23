@@ -217,8 +217,8 @@ final class PanelSnapshotTests: XCTestCase {
                 r.inspector.grade.curveTab = tab.key
                 let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 3000, scale: scale) { r.draw($0, size: CanvasSize(409, 3000)) }
                 let box = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:curve", 0) }).insetBy(6)
-                // Default curves: Master/R/G/B the identity diagonal, hue curves flat at 0 (mid-height).
-                let lineY = tab.hue ? box.midY : box.maxY - 0.375 * box.height
+                // Default curves: Master/R/G/B the identity diagonal; hue and delta curves flat at 0 (mid-height).
+                let lineY = (tab.hue || tab.min < 0) ? box.midY : box.maxY - 0.375 * box.height
                 let x = box.x + 0.375 * box.width, bgY = tab.hue ? box.maxY - 0.375 * box.height : box.maxY - 0.625 * box.height
                 let on = t.pixel(Int(x * scale), Int(lineY * scale)), off = t.pixel(Int(x * scale), Int(bgY * scale))
                 let lum = { (p: (r: UInt8, g: UInt8, b: UInt8, a: UInt8)) in 0.2126 * Double(p.r) + 0.7152 * Double(p.g) + 0.0722 * Double(p.b) }
@@ -450,23 +450,26 @@ final class PanelSnapshotTests: XCTestCase {
         for scale in [1.0, 2.0] {
             for v in ["done", "mixed", "empty", "error"] {
                 let r = Self.rendersFixture(v)
+                // The preset block above the controls is 112px tall, so the "mixed" rendering row sits
+                // below the 600px fold; scroll its list so the progress bar stays pinned.
+                if v == "mixed" { r.listScroll = 40 }
                 let t = snapshot("renders-\(v)", w: 409, h: 600, scale: scale) { r.draw($0, size: CanvasSize(409, 600)) }
                 switch v {
                 case "done":   // the tab's content starts under the 32px strip, flush with the panel's edges
-                    assertPixel(t, 100, 77, scale: scale, "#0e0e0e")     // Format select (12,63 188×28) bg-panel-input
-                    assertPixel(t, 30, 162, scale: scale, "#ffffff")     // Export (12,158 385×32) bg-white
-                    assertPixel(t, 200, 222, scale: scale, "#070707", tol: 10)  // settings border-b straddling 222 (221.5…222.5)
-                    assertPixel(t, 20, 272, scale: scale, "#fafafa", tol: 12)   // the 16:9 poster frame fills the 80×45 well at (12,262)
+                    assertPixel(t, 100, 189, scale: scale, "#0e0e0e")     // Format select (12,175 188×28) bg-panel-input
+                    assertPixel(t, 30, 274, scale: scale, "#ffffff")     // Export (12,270 385×32) bg-white
+                    assertPixel(t, 200, 333.5, scale: scale, "#070707", tol: 10)  // settings border-b straddling 333.5 (333…334)
+                    assertPixel(t, 20, 382.5, scale: scale, "#fafafa", tol: 12)   // the 16:9 poster frame fills the 80×45 well at (12,372.5)
                 case "mixed":
-                    assertPixel(t, 30, 162, scale: scale, "#8e8e8e", tol: 10)   // Rendering… (white/50 over bg-panel-bg)
-                    assertPixel(t, 52, 335, scale: scale, "#f87171", tol: 20)   // failed status dot at (48,331)
-                    assertPixel(t, 140, 501.5, scale: scale, "#4c8df0", tol: 12) // progress fill (102,499.5 84.4×4)
-                    assertPixel(t, 250, 501.5, scale: scale, "#000000", tol: 8)  // progress track
+                    assertPixel(t, 30, 274, scale: scale, "#8e8e8e", tol: 10)   // Rendering… (white/50 over bg-panel-bg)
+                    assertPixel(t, 52, 407, scale: scale, "#f87171", tol: 20)   // failed status dot at (48,403)
+                    assertPixel(t, 140, 573.5, scale: scale, "#4c8df0", tol: 12) // progress fill (102,571.5 84.4×4)
+                    assertPixel(t, 250, 573.5, scale: scale, "#000000", tol: 8)  // progress track
                 case "error":
-                    assertPixel(t, 30, 162, scale: scale, "#ffffff")             // Export enabled (12,158 385×32) bg-white
-                    assertPixel(t, 300, 238, scale: scale, "#322121", tol: 10)   // error strip bg-red-500/10
+                    assertPixel(t, 30, 274, scale: scale, "#ffffff")             // Export enabled (12,270 385×32) bg-white
+                    assertPixel(t, 300, 350, scale: scale, "#322121", tol: 10)   // error strip bg-red-500/10
                 default:
-                    assertPixel(t, 100, 400, scale: scale, "#1d1d1d")
+                    assertPixel(t, 100, 457.5, scale: scale, "#1d1d1d")
                 }
             }
         }

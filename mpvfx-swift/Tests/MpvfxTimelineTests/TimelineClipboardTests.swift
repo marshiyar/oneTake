@@ -183,7 +183,7 @@ final class TimelineClipboardTests: XCTestCase {
     func testClipMenuClipboardEntries() throws {
         let (c, e) = try make()
         c.openClipMenu("clip:a", x: 10, y: 10)
-        XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Copy grade", "Paste grade", "Duplicate", "—", "Reveal in media bin", "Show in file manager", "—", "Show thumbnails", "—",
+        XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Copy grade", "Paste grade", "Duplicate", "Rename…", "Disable", "—", "Reveal in media bin", "Show in file manager", "—", "Show thumbnails", "—",
                                                  "Mute", "Keep audio pitch", "—", "Detach audio", "—", "Delete"])
         func item(_ a: TimelineClipMenu.Action) -> TimelineClipMenu.Item? {
             c.view.clipMenu?.itemRects().map(\.0).first { $0.action == a }

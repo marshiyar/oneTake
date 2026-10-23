@@ -1,4 +1,5 @@
 # Feature inventory
+Save frame (#293): File > Save frame… on macOS and ⇧⌘E (Ctrl+Shift+E on Linux/Windows) save the composited playhead frame at composition size as quality-95 JPEG. Uses the export painter and durable exclusive publication; existing files are never replaced. PNG awaits a still-image encoder in the pinned media engine. Covered by `SaveFrameTests`.
 
 Text style model and commands (#282): project `textStyles` records and optional clip links share typography while
 keeping each layer's words. Save, apply to multiple layers, update from a layer and detach are validated atomic
@@ -124,7 +125,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Text: content, multiple fields, font picker, size, weight, color, align, letter spacing, line height, case/style | partial: native text layers (`clip.text` on a Text element asset; T adds one at the playhead). The Text group comes first, in this order: Content (`\n` breaks a line), Font (family name), Size, Weight (number or label), Letter spacing (px/em), Line height (multiple, %, px, normal), Align L/C/R/J, Case · Style, Color (hex). Preview and export draw one layout (`TextLayout`: wrap at the box width, half-leading line boxes, justify, per-character spacing); export rasterizes it with the preview's renderer into a still the clip renders like an image, so transform, crop, style and opacity apply. Missing: several text fields per layer, the font picker popover, the colour picker | close |
 | Import local font files | partial: fonts import into the media bin (Fonts category); a text layer uses an installed family by name, not an imported file yet | n/a |
 | Grade: presets, intensity, primary adjust, color wheels (shadows/midtones/highlights with hue/amount/level and reset) | done; renders in preview and export (color-engine, 3fe63d2 / 5dbd897), on the GPU (Metal) on macOS, graded off the main thread at display size in preview | close |
-| Grade: curves Master/R/G/B and Hue vs Hue/Sat/Luma; click or Enter adds a point; delete; reset | done; renders | close |
+| Grade: curves Master/R/G/B, Hue vs Hue/Sat/Luma, Luma/Sat and Sat/Sat; click or Enter adds a point; delete; reset | done; renders | close |
 | Grade: secondaries (add/delete selection, hue/sat/luma qualifier, correction) | done; renders. Eyedropper ("Click a color to initialize this selection") missing (panels) | close |
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
@@ -145,6 +146,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Audio group volume | done | exact |
 | Dockable Mixer (`mixer`): per audio track gain in dB, pan, mute/solo, and live peak/RMS | done: Window/Panels; persisted gain/pan and undo; same graph for playback/export | n/a |
 | Renders tab: format / output size / frame rate / quality, custom width, Export | done (settings in `preferences.json`; export through `RenderRun`, 38d06b3). Output size scales the composition with its aspect kept: "Composition" (its own size), 720p … 8K by the short edge (720p of a 9:16 composition is 720×1280), or a custom width with the height following (`CompositionRenderResolution.swift`); a fixed preset saved earlier reads as its short edge. Formats are the media engine's: MP4 and MOV (PNG, alpha); WebM is not offered (a saved WebM setting shows "WebM (not supported yet)" and Export refuses it) | close |
+| Renders tab: named export presets | implemented: save or update a name, apply all settings, and delete; per-user `render-presets.json` uses the durable writer. Unreadable or malformed files are reported with their path and preserved; unsupported formats remain visible with a reason and cannot be applied | close |
 | Render list: progress, stage, cancel, delete, reveal, retry, hide finished, history across launches, thumbnails | done (38d06b3; real-render test) | close |
 | Render list: ETA | missing (panels) | n/a |
 | Caption property panel (style, animation entrance/exit/highlight, transform) | missing (unowned) | n/a |
@@ -193,6 +195,7 @@ their shape (`PlayerView+Outlines.swift`).
 | Split at scene changes (#447) | implemented: selected constant-speed video, toolbar scissors or Cmd/Ctrl+Alt+S while timeline/player focused; RGB frame difference at 64×64, threshold 10–90% (click percentage to cycle, Cmd/Ctrl+Alt+[ / ] to adjust), progress, click again or Esc to cancel, one undo step. Speed ramps and held frames are refused. Threshold is a transient analysis option; resulting clips use the existing document format. Swift tests pending compilation. |
 | Slip (Y tool, ⌘/Ctrl+⌥ drag) and roll (roll tool, ⇧ drag on a shared edge) | done (one track; no two-up source monitor during the slip) |
 | Ripple edits, close gap / close all gaps, track add/remove/reorder, snapping, copy/paste | done |
+| Clip names and enable/disable (#445) | done: F2 / Rename… gives a clip its own saved label without changing its media filename; Shift+E / Enable/Disable skips the clip in preview and export (picture and sound), keeping its placement. Undoable; locked tracks refuse edits. The clip menu scrolls inside short panes and supports keyboard navigation (`ClipIdentityTests`, `DisabledClipAudioTests`, `TimelineClipMenuOverflowTests`) | close |
 | Toolbar: tools, snap, keyframe, auto-keyframe, split, remove silence, add beat, track height 32–96, zoom slider/in/out/percent (1e3a90f) | partial: everything works except Add beat, which stays disabled until beat analysis exists |
 | Remove silence (backend silence detection → one undo step, result toast) | done (de10f47) |
 | Add beat at playhead, beat strip (drag to move, ⌥-click delete), music beat analysis, beat edits persisted | missing (unowned: needs a native beat analysis and the beat file) |
@@ -289,7 +292,7 @@ Every item of the owner's screenshot review, with its status now.
 | Right panel collapse toggle; Design / Renders (N) tabs | done |
 | Selected clip header: name, reset, visibility, close | partial: name, reset and close work; visibility is missing (panels) |
 | Color wheels Shadows / Midtones / Highlights with wheel, slider, Hue / Amount / Level, per-wheel reset | done |
-| Curves Master, R, G, B, Hue/Hue, Hue/Sat, Hue/Luma; editable graph; reset | done |
+| Curves Master, R, G, B, Hue/Hue, Hue/Sat, Hue/Luma, Luma/Sat, Sat/Sat; editable graph; reset | done |
 | Secondary color: add / delete selection, eyedropper and Hue / Saturation / Luma qualifiers | done: gradient ranges with two 24 pt keyboard-adjustable handles, softness, live selection matte and one undo step per drag (#181) |
 | Custom LUT dropdown | done |
 | Finish section and the other sections (transform, crop, opacity) | done |
@@ -313,6 +316,21 @@ Every item of the owner's screenshot review, with its status now.
 ### Design compositing and value alignment (#187)
 
 Style starts with a Compositing block: Opacity, Blend and the opacity easing shortcut, followed by appearance. Edit Easing remembers Style as the opacity property's home while opening the existing Easing tab. Stacked number fields, slider values, segmented rows and Blend reserve the same trailing accessory gutter as ordinary rows; the existing 24 pt keyframe targets remain. Record motion uses the toolbar's existing resting/hover fill and the shared text line layout. Blend persistence and preview/export rendering reuse the existing implementation.
+Audio: **Stereo room** (`reverb-v2`, #208) is available from the audio FX add menu,
+with room size, damping, stereo width, pre-delay, low cut, wet and dry controls.
+The original Room effect and presets retain the legacy reverb sound. The v2
+convolver and regression tests are implemented; Swift test execution and the
+release benchmark target remain unverified in the contribution environment.
+### Vector shape layers
+
+Element clips can store an optional `shape` record (`v: 1`) for rectangles with corner radius,
+ellipses, triangles, diamonds, regular polygons, stars, lines and arrows. Fill and stroke use CSS hex;
+stroke widths, radii, arrow head lengths and dash lengths use canvas pixels. Line endpoints use
+normalized box coordinates. Preview and export use the same vector path painter, including scaled
+dashes and arrow heads aligned to the line's end tangent. `TimelineEditor.setClipShape` validates the
+whole edit, records one undo step, and persists it through the normal project save path. Unknown
+shape versions and kinds are kept unchanged, skipped in preview/export, and included in the existing
+single unsupported-element notice. Schema version stays 1; projects without shapes gain no field.
 - Design inspector legibility (#173): labels, hints, state tags and summaries use AA secondary ink in both appearances; text/values are at least 11 px, section headings 11.5 px below 12 px group titles, and essential slider/field edges reach 3:1.
 Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
 Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.
