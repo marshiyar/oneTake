@@ -1,6 +1,6 @@
 // Direct3D 11 HLSL (shader model 5.0) prelude of the compute grade: the Metal dialect's math macros, the buffers and
 // the slot accessors portable.inc reads through. Registers: t0 hdr, t1 u, t2..t5 packed RGBA8 slots 0..3, t6 moments
-// in, t7 curves, t8 hue curves, t9 secondaries, t10 LUT, t11 the 8-bit unorm table (k / 255, correctly rounded), u0
+// in, t7 curves, t8 hue curves, t9 secondaries, t10 LUT, t12 Sat/Sat, t11 the 8-bit unorm table (k / 255, correctly rounded), u0
 // packed output, u1 moments output. With MPVFX_VK defined
 // (glslang's HLSL front end, used by the Linux tests to run this exact source on Vulkan) the same resources carry the
 // Vulkan bindings of glsl.inc.
@@ -30,6 +30,7 @@ BIND(5) StructuredBuffer<uint> in3 : register(t5);
 BIND(6) StructuredBuffer<float4> momIn : register(t6);
 BIND(7) StructuredBuffer<float4> curvesTab : register(t7);
 BIND(8) StructuredBuffer<float4> hueTab : register(t8);
+BIND(14) StructuredBuffer<float4> saturationTab : register(t12);
 BIND(9) StructuredBuffer<float4> secTab : register(t9);
 BIND(10) StructuredBuffer<float4> lutTab : register(t10);
 BIND(11) RWStructuredBuffer<uint> outPx : register(u0);
@@ -48,6 +49,7 @@ uint pxRead(int t, int i) {
 }
 float4 momRead(int i) { return momIn[i]; }
 float4 tex1Read(int t, int i) {
+    if (t == 9) { return saturationTab[i]; }
     if (t == 5) { return curvesTab[i]; }
     if (t == 6) { return hueTab[i]; }
     return secTab[i];

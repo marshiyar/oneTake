@@ -22,9 +22,9 @@ typedef struct MpvfxGpuGradeJob {
     /// GU_COUNT + EK_COUNT floats (layout: MpvfxColorShared.h).
     const float *uniforms;
     int32_t uniformCount;
-    /// float4 texels: RGB curves (r, g, b, master) and hue curves, 1024 each or none; five per enabled secondary.
-    const float *curves, *hue, *secondaries;
-    int32_t curveTexels, hueTexels, secondaryTexels;
+    /// float4 texels: RGB curves (r, g, b, master), hue curves (hue, sat, luma, Luma/Sat), and Sat/Sat, 1024 each or none; five per enabled secondary.
+    const float *curves, *hue, *secondaries, *saturation;
+    int32_t curveTexels, hueTexels, secondaryTexels, saturationTexels;
     /// lutSize^3 float4 texels, red fastest; lutSize 0 = no LUT.
     const float *lut;
     int32_t lutSize;

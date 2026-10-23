@@ -41,6 +41,10 @@ public enum ColorCurves {
         return samples(periodic, size: size, inputAt: { Double($0) / Double(size) * 360 }, outputMin: outputMin, outputMax: outputMax)
     }
 
+    public static func compileDelta(_ points: [[Double]], size: Int = lutSize) -> [Double]? {
+        samples(GradeCurve.normalizedDelta(points), size: size, inputAt: { Double($0) / Double(size - 1) }, outputMin: -1, outputMax: 1)
+    }
+
     static func valid(_ points: [[Double]]) -> Bool {
         var previous = -Double.infinity
         for p in points {

@@ -48,7 +48,7 @@ public final class MetalColorRenderer: ColorRenderer, @unchecked Sendable {
     public func render(_ grade: ColorGradeRenderer, _ rgba: inout [UInt8], width: Int, height: Int, time: Double, sourceKey: String?) {
         guard grade.isActive, width > 0, height > 0, rgba.count >= width * height * 4 else { return }
         let f = grade.gpuFrame(width: width, height: height, time: time)
-        let job = MetalGradeJob(width: width, height: height, uniforms: f.uniforms, curveRows: f.curveRows, hueRows: f.hueRows,
+        let job = MetalGradeJob(width: width, height: height, uniforms: f.uniforms, curveRows: f.curveRows, hueRows: f.hueRows, saturationRows: f.saturationRows,
                                 secondaryTexels: f.secondaryTexels, lutSize: f.lutSize, lut: f.lut, blurRadius: f.blurRadius,
                                 blurIterations: f.blurIterations, blurAmount: f.blurAmount, bloomWidth: f.bloomWidth, bloomHeight: f.bloomHeight,
                                 bloomRadius: f.bloomRadius, kuwaharaRadius: f.kuwaharaRadius, kuwaharaExponent: f.kuwaharaExponent,
