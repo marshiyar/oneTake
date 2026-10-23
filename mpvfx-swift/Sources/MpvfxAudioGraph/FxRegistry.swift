@@ -148,6 +148,12 @@ public enum AudioFx {
             num("speed", "Rate", "Hz", 0.1, 2, 0.01, 0.5, automatable: true),
             .enumeration(key: "type", label: "Waveform", options: [("0", "Triangular"), ("1", "Sinusoidal")], defaultValue: "0"),
         ], implementation: "allpass-phaser"),
+        FxDef(id: "reverb-v2", label: "Stereo room", group: "time", params: [
+            num("size", "Room size", "", 0.05, 1, 0.01, 0.7), num("damping", "Damping", "", 0, 1, 0.01, 0.5),
+            num("width", "Width", "", 0, 1, 0.01, 1), num("preDelay", "Pre-delay", "ms", 0, 200, 1, 0),
+            num("lowCut", "Low cut", "Hz", 0, 1000, 1, 0),
+            num("wet", "Wet", "", 0, 1, 0.01, 0.35, automatable: true), num("dry", "Dry", "", 0, 1, 0.01, 0.7, automatable: true),
+        ], implementation: "convolver-v2"),
         FxDef(id: "reverb", label: "Reverb", group: "time", params: [
             num("size", "Room size", "", 0.05, 1, 0.01, 0.7), num("damping", "Damping", "", 0, 1, 0.01, 0.5),
             num("wet", "Wet", "", 0, 1, 0.01, 0.35, automatable: true), num("dry", "Dry", "", 0, 1, 0.01, 0.7, automatable: true),

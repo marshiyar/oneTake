@@ -123,3 +123,11 @@ static inline int mpvfx_snapshot_window(GtkWidget *w, const char *path) {
     cairo_surface_destroy(s);
     return status;
 }
+
+/* PangoLogAttr bit fields are not imported by Swift. */
+static inline int mpvfx_pango_word_boundary(PangoLayout *layout, int index) {
+    int count = 0;
+    const PangoLogAttr *attrs = pango_layout_get_log_attrs_readonly(layout, &count);
+    if (index < 0 || index >= count) return 0;
+    return (attrs[index].is_word_start ? 1 : 0) | (attrs[index].is_word_end ? 2 : 0);
+}

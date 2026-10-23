@@ -13,8 +13,22 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
 import MpvfxTheme
 import MpvfxTimeline
+
+/// A frame request belongs to the clip, document and playhead that the user asked to balance. Keeping the editor
+/// weak avoids extending the lifetime of a closed project while an asynchronous frame is still rendering.
+final class AutoBalanceRequest {
+    weak var editor: TimelineEditor?
+    let document: NativeProjectDocument
+    let clipId: String
+    let time: Double
+
+    init(editor: TimelineEditor, clipId: String, time: Double) {
+        self.editor = editor; document = editor.document; self.clipId = clipId; self.time = time
+    }
+}
 
 /// The Grade group's "Auto balance" button: measures the clip's current frame (`AutoBalance`) and writes Exposure,
 /// Warmth and Tint as one undoable edit. Tab reaches it and Enter or Space presses it.
@@ -22,7 +36,7 @@ extension InspectorPanel {
     func autoBalanceRow(_ clipId: String) -> InspectorRow {
         .init(.custom(InspectorCustomRow(id: "grade:autobalance", height: 28, draw: { [weak self] c, r, panel in
             guard let self else { return }
-            if self.grade.autoBalancePending { self.runAutoBalance(clipId) }   // a frame still rendering
+            if self.grade.autoBalancePending { self.resumeAutoBalance(clipId) }   // a frame still rendering
             let pending = self.grade.autoBalancePending, failed = self.grade.autoBalanceFailed
             let button = CanvasRect(x: r.x, y: r.y + 2, width: min(r.width, 120), height: 24)
             PanelDraw.smallButton(c, button, label: pending ? "Balancing" : "Auto balance",
@@ -41,17 +55,41 @@ extension InspectorPanel {
         })))
     }
 
-    /// Balances `clipId` from its frame at the playhead; a frame still rendering is asked for again on the next draw.
+    /// Starts a balance request for this selection. Retries must keep its original context rather than silently
+    /// balancing whichever clip happens to be selected when the frame finishes.
     func runAutoBalance(_ clipId: String) {
-        guard let editor else { return }
-        switch scopeFrame?(clipId, Self.sampleFrameSize, Self.sampleFrameSize) ?? .unavailable {
-        case .rendering: grade.autoBalancePending = true
-        case .unavailable, .failed: grade.autoBalancePending = false; grade.autoBalanceFailed = true
+        guard let editor, selection == [clipId] else { return }
+        grade.autoBalanceRequest = AutoBalanceRequest(editor: editor, clipId: clipId, time: time)
+        resumeAutoBalance(clipId)
+    }
+
+    func cancelAutoBalance() { grade.autoBalanceRequest = nil; grade.autoBalanceFailed = false }
+
+    /// Runs even while Grade is collapsed, so a stale request cannot survive until its row is visible again.
+    func validateAutoBalanceContext() {
+        guard let request = grade.autoBalanceRequest else { return }
+        guard let editor, request.editor === editor, editor.document == request.document,
+              selection == [request.clipId], time == request.time else {
+            cancelAutoBalance(); return
+        }
+    }
+
+    /// An intervening selection, project, document edit or seek cancels the pending operation without an undo entry.
+    func resumeAutoBalance(_ clipId: String) {
+        guard let request = grade.autoBalanceRequest else { return }
+        guard let editor, request.editor === editor, editor.document == request.document,
+              selection == [request.clipId], clipId == request.clipId, time == request.time else {
+            cancelAutoBalance()
+            return
+        }
+        switch scopeFrame?(request.clipId, Self.sampleFrameSize, Self.sampleFrameSize) ?? .unavailable {
+        case .rendering: break
+        case .unavailable, .failed: grade.autoBalanceRequest = nil; grade.autoBalanceFailed = true
         case .ready(let frame):
-            grade.autoBalancePending = false
-            let shown = editor.gradeShown(clipId: clipId, time: time)
+            grade.autoBalanceRequest = nil
+            let shown = editor.gradeShown(clipId: request.clipId, time: request.time)
             guard let next = AutoBalance.balanced(shown, frame: frame) else { grade.autoBalanceFailed = true; return }
-            edited(editor.commitGrade(clipId: clipId, time: time, shown: shown, next: next))
+            edited(editor.commitGrade(clipId: request.clipId, time: request.time, shown: shown, next: next))
         }
     }
 }

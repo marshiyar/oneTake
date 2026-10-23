@@ -30,7 +30,7 @@ public final class InspectorPanel {
         case groupMenu(String)
     }
 
-    public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch() } } }
+    public var editor: TimelineEditor? { didSet { if editor !== oldValue { cancelLookMatch(); cancelAutoBalance() } } }
     /// Selected clip ids (the timeline/stage selection).
     public var selection: [String] = [] {
         willSet { if newValue != selection { cancelFxGesture() } }
@@ -38,13 +38,14 @@ public final class InspectorPanel {
             if selection != oldValue {
                 endWheelKeyHold()
                 cancelLookMatch()
+                cancelAutoBalance()
             }
         }
     }
     /// Presentation choice; the resulting positions are ordinary saved document parameters.
     public var alignmentReference = TimelineAlignmentReference.frame
     /// Playhead (composition seconds).
-    public var time = 0.0 { didSet { if time != oldValue { cancelLookMatch() } } }
+    public var time = 0.0 { didSet { if time != oldValue { cancelLookMatch(); cancelAutoBalance() } } }
     /// The open accordion group ("" when all are closed). Every change, from a header click or a host reveal, is saved
     /// as `PanelPreferences.openInspectorGroup` so the next launch reopens it.
     public var openGroupId: String = "layout" {
@@ -333,6 +334,7 @@ public final class InspectorPanel {
 
     public func draw(_ c: CanvasContext, in r: CanvasRect) {
         validateLookMatchContext()
+        validateAutoBalanceContext()
         lastRect = r
         fxHeaders.removeAll(keepingCapacity: true)
         hits.reset(); tabBars = [:]

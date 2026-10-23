@@ -38,6 +38,9 @@ public enum FxTail {
     static func nodeTail(_ node: FxNode, _ a: Automation?) -> Double {
         if node.enabled == false { return 0 }
         switch node.type {
+        case "reverb-v2":
+            return knobMax(node, "wet", a) > 0
+                ? 0.6 + max(0, min(1, knobMax(node, "size", a))) * 2.6 + knobMax(node, "preDelay", a) / 1000 : 0
         case "reverb": return knobMax(node, "wet", a) > 0 ? 0.6 + max(0, min(1, knobMax(node, "size", a))) * 2.6 : 0
         case "delay": return knobMax(node, "mix", a) > 0 ? delayTail(knobMax(node, "time", a), knobMax(node, "feedback", a)) : 0
         case "chorus": return knobMax(node, "mix", a) > 0 ? knobMax(node, "delay", a) / 1000 : 0

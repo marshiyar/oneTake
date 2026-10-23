@@ -109,6 +109,14 @@ final class PreviewCompositorTests: XCTestCase {
         XCTAssertEqual(Self.composition(doc).entries.map(\.clip.id), ["G", "B", "img"], "G (gone.mp4) stays as an offline entry")
     }
 
+    func testDisabledClipStateRoundTripsAndPreviewSkipsIt() throws {
+        var doc = try Self.document()
+        doc.sequence.tracks[2].clips[0].hidden = true
+        let saved = try serializeNativeProjectDocument(doc)
+        let reopened = try parseNativeProjectDocument(try NativeJSONValue.parse(saved))
+        XCTAssertFalse(Self.composition(reopened).layers(at: 0.5).contains { $0.clipId == "A" })
+    }
+
     func testZIndexOverridesTrackOrder() throws {
         let doc = try Self.document(clipB: #","staticParameters":{"layout.zIndex":0}"#)
         XCTAssertEqual(Self.composition(doc).layers(at: 0).map(\.clipId), ["B", "A"])

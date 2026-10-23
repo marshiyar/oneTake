@@ -101,7 +101,7 @@ final class AudioFxLiveEditTests: XCTestCase {
         ("deesser", #"{"threshold":-50,"range":-18}"#),
         ("saturate", #"{"type":"hard","threshold":-12}"#), ("bitcrush", #"{"bits":4}"#), ("pitchshift", #"{"semitones":5}"#),
         ("delay", #"{"time":90,"feedback":0.5,"mix":0.5}"#), ("chorus", #"{"depth":5,"mix":0.6}"#), ("phaser", #"{"speed":1.5}"#),
-        ("reverb", #"{"wet":0.6}"#), ("denoise", #"{"amount":1,"learn":100}"#),
+        ("reverb", #"{"wet":0.6}"#), ("reverb-v2", #"{"wet":0.6}"#), ("denoise", #"{"amount":1,"learn":100}"#),
     ]
     static func chain(_ type: String, _ params: String, version: Int = 1) -> String {
         #"{"version":"# + String(version) + #","nodes":[{"type":""# + type + #"","id":"x","params":"# + params + "}]}"

@@ -153,7 +153,7 @@ let package = Package(
         // Windows compiles C++ with explicit clang modules and does not hand a C target's module to a C++ compile.
         .target(name: "CMpvfxWin32", cxxSettings: [.headerSearchPath("../CMpvfxColorShared/include")],
                 linkerSettings: ["d2d1", "dwrite", "windowscodecs", "ole32", "uuid", "shell32", "user32", "advapi32", "dwmapi",
-                                 "d3d11", "dxgi", "sapi"].map {
+                                 "d3d11", "dxgi", "sapi", "usp10"].map {
             .linkedLibrary($0, .when(platforms: [.windows]))
         }),
         // Backend-neutral 2D drawing (Cairo/Pango on Linux, Core Graphics on macOS, Direct2D/DirectWrite on Windows).
