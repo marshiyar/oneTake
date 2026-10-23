@@ -95,12 +95,26 @@ public final class InspectorPanel {
 
     /// Header bypasses and named icon choices exposed after layout has populated `hits`.
     public var accessibilityControls: [CanvasAccessibilityControl] {
-        let headers: [CanvasAccessibilityControl] = buildGroups().compactMap { group in
+        let groups = buildGroups()
+        let headers: [CanvasAccessibilityControl] = groups.compactMap { group in
             guard let label = group.accessibilityLabel, let value = group.enabled,
                   let frame = hits.rect(where: { $0 == .groupEnabled(group.id) }) else { return nil }
             return CanvasAccessibilityControl(label: label, value: value, frame: frame) { group.setEnabled?(!value) }
         }
-        return headers + namedIconControls.map { item in
+        var controls = headers
+        if groups.contains(where: { $0.id == "effects" }), let editor, let selected = selected() {
+            let grade = editor.gradeShown(clipId: selected.id, time: time)
+            for effect in EffectSpecs.ordered where EffectSpecs.isActive(grade, effect.key) {
+                guard let frame = hits.rect(where: { $0 == .custom("fx:active:\(effect.key)", 1) }) else { continue }
+                let enabled = !grade.bypassedEffects.contains(effect.key)
+                controls.append(CanvasAccessibilityControl(label: "\(effect.label) enabled", value: enabled, frame: frame) { [weak self] in
+                    var next = grade
+                    if enabled { next.bypassedEffects.insert(effect.key) } else { next.bypassedEffects.remove(effect.key) }
+                    self?.edited(editor.commitGrade(clipId: selected.id, time: self?.time ?? 0, shown: grade, next: next))
+                })
+            }
+        }
+        return controls + namedIconControls.map { item in
             CanvasAccessibilityControl(label: item.label, value: item.active, frame: item.frame, press: item.press)
         }
     }

@@ -120,9 +120,7 @@ public struct ColorGradeParams: Equatable, Sendable {
     public static let curveIdentity: [[Double]] = [[0, 0], [1, 1]]
     public static let maxCurvePoints = 16, maxSecondaries = 4
 
-    /// Default ink/paper palettes the shader uses when the grade names none.
-    public static let defaultPalette = ["#000000", "#ffffff"]
-    public static let printPalette = ["#1a1a1a", "#f5f5dc"]
+    /// Default ink/paper palettes the shader uses when the grade names none (see GradeValues).
 
     // MARK: Presets (HF_COLOR_GRADING_PRESETS: each preset is the contract defaults overlaid with its values)
 
@@ -183,6 +181,10 @@ public struct ColorGradeParams: Equatable, Sendable {
         for k in Self.detailKeys { details[k] = Self.limited(rawDetails?[k], fallback: p?.details[k] ?? Self.detailDefaults[k], GradeValues.detailLimit(k)) }
         for k in Self.effectKeys { effects[k] = Self.limited(rawEffects?[k], fallback: p?.effects[k] ?? Self.effectDefaults[k], Self.effectLimit(k)) }
         if o["effectsEnabled"] == .bool(false) { for k in Self.effectKeys { effects[k] = Self.effectDefaults[k] ?? 0 } }
+        // Mask only master amounts after preset fallback; bypass never changes authored settings.
+        if case .array(let keys)? = o["bypassedEffects"] {
+            for case .string(let key) in keys where Self.activeEffectKeys.contains(key) { effects[key] = 0 }
+        }
         intensity = GradeValues.intensity(o["intensity"], fallback: p?.intensity ?? 1)
         // wheels
         let w = Self.object(o["wheels"])
@@ -303,7 +305,7 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     /// The ink/paper palette the stylize effects draw with.
     public var resolvedPalette: [String] {
-        palette ?? (effect("engraving") > 0 || effect("crosshatch") > 0 ? Self.printPalette : Self.defaultPalette)
+        palette ?? (effect("engraving") > 0 || effect("crosshatch") > 0 ? GradeValues.printPalette : GradeValues.defaultPalette)
     }
 
     // MARK: Helpers

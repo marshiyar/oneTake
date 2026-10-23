@@ -51,6 +51,8 @@ public struct ColorGrading: Equatable, Sendable {
     public var enabled = true
     /// Bypasses stylize effects without discarding their authored amounts.
     public var effectsEnabled = true
+    /// Effect master keys bypassed at render time; authored settings remain intact.
+    public var bypassedEffects: Set<String> = []
     /// The contract this grade is written under (see `contractVersion`).
     public var version = ColorGrading.contractVersion
     public var preset: String? = nil
@@ -107,6 +109,7 @@ public struct ColorGrading: Equatable, Sendable {
     public func applying(_ p: Preset) -> ColorGrading {
         var g = self
         g.preset = p.id; g.intensity = p.intensity; g.adjust = p.adjust; g.details = p.details
+        g.bypassedEffects = []
         g.effects = g.effects.filter { !Self.activeEffectKeys.contains($0.key) }.merging(p.effects) { _, b in b }
         return g
     }
@@ -149,6 +152,7 @@ public struct ColorGrading: Equatable, Sendable {
         o["details"] = num(details, keys: Self.detailKeys)
         if !effects.isEmpty { var e = NativeJSONObject(); for (k, v) in effects.sorted(by: { $0.key < $1.key }) { e[k] = .number(v) }; o["effects"] = .object(e) }
         if !effectsEnabled { o["effectsEnabled"] = .bool(false) }
+        if !bypassedEffects.isEmpty { o["bypassedEffects"] = .array(bypassedEffects.sorted().map { .string($0) }) }
         o["palette"] = palette.map { .array($0.map { .string($0) }) } ?? .null
         o["lut"] = lut.map { .object(["src": .string($0.src), "intensity": .number($0.intensity)]) } ?? .null
         o["colorSpace"] = .string("rec709")
@@ -199,6 +203,9 @@ public struct ColorGrading: Equatable, Sendable {
                                      GradeValues.effectLimit)
             .merging(nums(o["effects"]).filter { !GradeValues.effectKeys.contains($0.key) }) { a, _ in a }   // keep keys this build does not know
         if case .bool(false)? = o["effectsEnabled"] { effectsEnabled = false }
+        if case .array(let a)? = o["bypassedEffects"] {
+            bypassedEffects = Set(a.compactMap { if case .string(let k) = $0 { return k }; return nil })
+        }
         if case .array(let a)? = o["palette"] { palette = a.compactMap { if case .string(let s) = $0 { return s }; return nil } }
         // A blank source is no LUT; the strength is clamped to 0…1 and a non-number reads as 1, as the renderer does.
         func source(_ s: String) -> String? { let t = s.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t }
