@@ -139,7 +139,7 @@ public final class ColorGradeRenderer: Equatable, Sendable {
 
         // Advanced texture rows (uploaded only when curves, hue curves or a correcting secondary are present).
         u.rgbCurvesEnabled = g.hasRgbCurves
-        u.hueCurvesEnabled = g.hasHueCurves
+        u.hueCurvesEnabled = g.hasHueCurves || g.hasDeltaCurves
         u.secondaryCount = g.hasSecondaryCorrections ? g.secondaries.filter(\.enabled).count : 0
         if u.rgbCurvesEnabled || u.hueCurvesEnabled || u.secondaryCount > 0 {
             let n = ColorCurves.lutSize
@@ -154,7 +154,10 @@ public final class ColorGradeRenderer: Equatable, Sendable {
             let r = rgb("red"), gr = rgb("green"), b = rgb("blue"), m = rgb("master")
             let hh = hue("hueVsHue", -180, 180), hs = hue("hueVsSaturation", -1, 1), hl = hue("hueVsLuma", -1, 1)
             p.curveRows = (0..<n).map { V4(byte(r[$0]), byte(gr[$0]), byte(b[$0]), byte(m[$0])) }
-            p.hueRows = (0..<n).map { V4(signedByte(hh[$0], 180), signedByte(hs[$0], 1), signedByte(hl[$0], 1), 1) }
+            let ls = ColorCurves.compileDelta(g.curves["lumaVsSaturation"] ?? []) ?? zero
+            let ss = ColorCurves.compileDelta(g.curves["saturationVsSaturation"] ?? []) ?? zero
+            p.saturationRows = ss.map { V4(signedByte($0, 1), 0, 0, 0) }
+            p.hueRows = (0..<n).map { V4(signedByte(hh[$0], 180), signedByte(hs[$0], 1), signedByte(hl[$0], 1), signedByte(ls[$0], 1)) }
             var texels: [V4] = []
             for s in g.secondaries where s.enabled {
                 texels.append(V4(byte(s.hueCenter / 360), byte(s.hueRange / 180), byte(s.hueSoftness / 180), 1))
@@ -197,7 +200,7 @@ extension GradeProgram {
     /// A program sharing the read-only tables, with its own per-frame state.
     func copy() -> GradeProgram {
         var p = GradeProgram()
-        p.u = u; p.curveRows = curveRows; p.hueRows = hueRows; p.secondaryTexels = secondaryTexels
+        p.u = u; p.curveRows = curveRows; p.hueRows = hueRows; p.saturationRows = saturationRows; p.secondaryTexels = secondaryTexels
         p.lut = lut; p.interpolation = interpolation
         p.readAmounts()
         return p
@@ -209,7 +212,7 @@ extension ColorGradeParams {
     var hashValueKey: String {
         func d(_ m: [String: Double]) -> String { m.keys.sorted().map { "\($0)=\(m[$0]!)" }.joined(separator: ",") }
         let w = ColorGradeParams.wheelKeys.map { k in let x = wheels[k] ?? .init(); return "\(x.hue),\(x.amount),\(x.level)" }.joined(separator: ";")
-        let c = ColorGradeParams.curveKeys.map { "\(curves[$0] ?? [])" }.joined(separator: ";")
+        let c = (ColorGradeParams.curveKeys + ColorGradeParams.deltaCurveKeys).map { "\(curves[$0] ?? [])" }.joined(separator: ";")
         let h = ColorGradeParams.hueCurveKeys.map { "\(hueCurves[$0] ?? [])" }.joined(separator: ";")
         let s = secondaries.map { "\($0)" }.joined(separator: ";")
         let b = GradeValues.balanceKeys.map { k in let x = balance[k] ?? .init(); return "\(x.hue),\(x.amount),\(x.level)" }.joined(separator: ";")

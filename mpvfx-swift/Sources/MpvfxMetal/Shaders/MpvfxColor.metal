@@ -59,8 +59,8 @@ inline uint3 U3(int x, int y, int z) { return uint3(uint(x), uint(y), uint(z)); 
 #define PI 3.14159265359f
 
 // Every shading helper gets the same textures and uniforms.
-#define P_ALL Tex2 src, Tex2 blurT, Tex2 kuwT, Tex2 bloomT, Tex1 curvesT, Tex1 hueT, Tex1 secT, Tex3 lutT, constant float* u
-#define A_ALL src, blurT, kuwT, bloomT, curvesT, hueT, secT, lutT, u
+#define P_ALL Tex2 src, Tex2 blurT, Tex2 kuwT, Tex2 bloomT, Tex1 curvesT, Tex1 hueT, Tex1 satT, Tex1 secT, Tex3 lutT, constant float* u
+#define A_ALL src, blurT, kuwT, bloomT, curvesT, hueT, satT, secT, lutT, u
 
 inline float fractf(float x) { return x - FLOOR(x); }
 inline float glMod(float x, float y) { return x - y * FLOOR(x / y); }
@@ -371,13 +371,13 @@ inline float3 applyRgbCurves(float3 color, Tex1 curvesT, constant float* u) {
 
 inline float decodeSigned(float v) { return (v * 255.0f - 128.0f) / 127.0f; }
 
-float3 applyHueCurves(float3 color, Tex1 hueT, constant float* u) {
+float3 applyHueCurves(float3 color, Tex1 hueT, Tex1 satT, constant float* u) {
     if (!(U(hueCurves) > 0.0f)) { return color; }
     float3 hsv = rgbToHsv(clamp3(color, 0.0f, 1.0f));
     float4 c = curveAt(hueT, hsv.x);
     float originalLuma = lumaOf(color);
     hsv.x = fractf(hsv.x + decodeSigned(c.x) * 0.5f);
-    hsv.y = clampf(hsv.y * FMAX(0.0f, 1.0f + decodeSigned(c.y)), 0.0f, 1.0f);
+    hsv.y = clampf(hsv.y * FMAX(0.0f, 1.0f + decodeSigned(c.y) + decodeSigned(curveAt(hueT, originalLuma).w) + decodeSigned(curveAt(satT, hsv.y).x)), 0.0f, 1.0f);
     float3 shifted = hsvToRgb(hsv);
     shifted += V3S(originalLuma - lumaOf(shifted) + decodeSigned(c.z));
     return shifted;
@@ -451,7 +451,7 @@ float3 applyBalance(float3 input, constant float* u) {
 float3 applyAdvancedGrade(float3 input, P_ALL) {
     float3 color = applyTonalWheels(applyBalance(input, u), u);
     color = applyRgbCurves(color, curvesT, u);
-    color = applyHueCurves(color, hueT, u);
+    color = applyHueCurves(color, hueT, satT, u);
     int n = int(U(secondaryCount));
     if (n > 4) { n = 4; }
     for (int i = 0; i < n; i++) { color = applySecondary(color, i, secT); }
@@ -1044,7 +1044,7 @@ kernel void mpvfx_kuwahara_resolve(Tex2 m [[texture(0)]], Tex2W out [[texture(1)
 // The grade: GL frag row gid.y is written to image row height - 1 - gid.y.
 kernel void mpvfx_grade(Tex2 src [[texture(GRADE_TEX_SOURCE)]], Tex2 blurT [[texture(GRADE_TEX_BLUR)]],
                         Tex2 kuwT [[texture(GRADE_TEX_KUWAHARA)]], Tex2 bloomT [[texture(GRADE_TEX_BLOOM)]],
-                        Tex1 curvesT [[texture(GRADE_TEX_CURVES)]], Tex1 hueT [[texture(GRADE_TEX_HUE)]],
+                        Tex1 curvesT [[texture(GRADE_TEX_CURVES)]], Tex1 hueT [[texture(GRADE_TEX_HUE)]], Tex1 satT [[texture(GRADE_TEX_SATURATION)]],
                         Tex1 secT [[texture(GRADE_TEX_SECONDARIES)]], Tex3 lutT [[texture(GRADE_TEX_LUT)]],
                         Tex2W out [[texture(GRADE_TEX_OUTPUT)]], constant float* u [[buffer(0)]], uint2 gid [[thread_position_in_grid]]) {
     int w = int(out.get_width()), h = int(out.get_height());

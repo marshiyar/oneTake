@@ -18,7 +18,7 @@ import MpvfxTheme
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
-        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
+        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -30,16 +30,36 @@ public struct TimelineClipMenu: Equatable, Sendable {
     public var x: Double, y: Double, clipId: String
     public var entries: [Entry]
     public var hovered: Action?
+    /// The popup stays inside its timeline pane; overflowing rows scroll within this height.
+    public var maximumHeight: Double?
+    public private(set) var scrollOffset = 0.0
 
-    public var height: Double {
+    public var contentHeight: Double {
         var h: Double = 2.0 * Self.padY + 2.0
         for e in entries { if case .divider = e { h += Self.dividerHeight } else { h += Self.itemHeight } }
         return h
     }
+    public var height: Double { min(contentHeight, max(1, maximumHeight ?? contentHeight)) }
+    public var maximumScroll: Double { max(0, contentHeight - height) }
     public var rect: CanvasRect { CanvasRect(x: x, y: y, width: Self.width, height: height) }
 
+    public mutating func scroll(by delta: Double) {
+        guard delta.isFinite else { return }
+        scrollOffset = min(maximumScroll, max(0, scrollOffset + delta))
+        hovered = nil
+    }
+
+    /// Keyboard navigation brings the complete highlighted row inside the popup's padded viewport.
+    public mutating func reveal(_ action: Action) {
+        guard let row = itemRects().first(where: { $0.0.action == action })?.1 else { return }
+        let top = y + 1 + Self.padY, bottom = rect.maxY - 1 - Self.padY
+        if row.y < top { scrollOffset -= top - row.y }
+        else if row.maxY > bottom { scrollOffset += row.maxY - bottom }
+        scrollOffset = min(maximumScroll, max(0, scrollOffset))
+    }
+
     public func itemRects() -> [(Item, CanvasRect)] {
-        var cy = y + 1 + Self.padY; var out: [(Item, CanvasRect)] = []
+        var cy = y + 1 + Self.padY - scrollOffset; var out: [(Item, CanvasRect)] = []
         for e in entries {
             switch e {
             case .divider: cy += Self.dividerHeight
@@ -50,7 +70,8 @@ public struct TimelineClipMenu: Equatable, Sendable {
         return out
     }
     public func item(atX px: Double, y py: Double) -> Item? {
-        itemRects().first { px >= $0.1.x && px <= $0.1.maxX && py >= $0.1.y && py < $0.1.maxY }?.0
+        guard px >= rect.x + 1, px < rect.maxX - 1, py >= rect.y + 1, py < rect.maxY - 1 else { return nil }
+        return itemRects().first { px >= $0.1.x && px <= $0.1.maxX && py >= $0.1.y && py < $0.1.maxY }?.0
     }
 
     /// Entries for a clip of `kind`: split, the clipboard group, thumbnails, mute and pitch, the audio link, delete.
@@ -58,7 +79,7 @@ public struct TimelineClipMenu: Equatable, Sendable {
     public static func entries(kind: TimelineClipKind, splitEnabled: Bool, thumbnails: Bool, muted: Bool,
                                canReattach: Bool, canDetach: Bool, canMute: Bool = true,
                                canPaste: Bool = false, canPasteGrade: Bool = false, gradePasteReason: String? = nil,
-                               keepsPitch: Bool? = nil) -> [Entry] {
+                               keepsPitch: Bool? = nil, disabled: Bool = false) -> [Entry] {
         var e: [Entry] = []
         let hasSplit = kind == .video || kind == .audio || kind == .image
         if hasSplit { e.append(.item(Item(action: .split, label: "Split", hint: "S", enabled: splitEnabled))); e.append(.divider) }
@@ -70,6 +91,8 @@ public struct TimelineClipMenu: Equatable, Sendable {
             e.append(.item(Item(action: .pasteGrade, label: "Paste grade", hint: canPasteGrade ? "⌥⌘V" : gradePasteReason, enabled: canPasteGrade)))
         }
         e.append(.item(Item(action: .duplicate, label: "Duplicate", hint: "⌘D")))
+        e.append(.item(Item(action: .rename, label: "Rename…", hint: "F2")))
+        e.append(.item(Item(action: .disable, label: disabled ? "Enable" : "Disable", hint: "⇧E", checked: disabled)))
         e.append(.divider)
         if kind == .video || kind == .audio || kind == .image {
             e.append(.item(Item(action: .revealSource, label: "Reveal in media bin")))
@@ -102,7 +125,18 @@ extension TimelineView {
             return MenuRow(label: it.label, hint: it.hint, enabled: it.enabled, checked: it.checked == true,
                            destructive: it.destructive, hovered: m.hovered == it.action)
         }
-        drawMenu(c, m.rect, rows)
+        guard m.maximumScroll > 0 else { drawMenu(c, m.rect, rows); return }
+        c.fillRoundedRect(m.rect, radius: 6, CanvasColor(ThemeTokens.neutral900))
+        c.withState {
+            c.clip(m.rect.insetBy(1))
+            drawMenu(c, CanvasRect(x: m.x, y: m.y - m.scrollOffset, width: m.rect.width, height: m.contentHeight), rows)
+        }
+        c.strokeRoundedRect(m.rect.insetBy(0.5), radius: 6, CanvasColor(ThemeTokens.neutral700), width: 1)
+        let trackHeight = max(1, m.height - 8)
+        let thumbHeight = min(trackHeight, max(16, trackHeight * m.height / m.contentHeight))
+        let thumbY = m.y + 4 + (trackHeight - thumbHeight) * m.scrollOffset / m.maximumScroll
+        c.fillRoundedRect(CanvasRect(x: m.rect.maxX - 4, y: thumbY, width: 2, height: thumbHeight), radius: 1,
+                          CanvasColor(ThemeTokens.neutral500))
     }
 
     /// The clip menu's look, shared by the timeline's drawn menus.

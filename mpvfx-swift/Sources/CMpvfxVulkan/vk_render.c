@@ -33,6 +33,7 @@ static void freeTargets(MpvfxVk *vk, VkgTargets *t) {
 static void freeTables(MpvfxVk *vk, VkgTables *t) {
     vkg_buffer_free(vk, &t->curves);
     vkg_buffer_free(vk, &t->hue);
+    vkg_buffer_free(vk, &t->saturation);
     vkg_buffer_free(vk, &t->sec);
     vkg_buffer_free(vk, &t->lut);
     vkg_buffer_free(vk, &t->staging);
@@ -107,14 +108,16 @@ static int ensureTables(MpvfxVk *vk, const MpvfxGpuGradeJob *j) {
     if (t->valid && strcmp(t->key, key) == 0) return 0;
     freeTables(vk, t);
     VkDeviceSize c = (VkDeviceSize)j->curveTexels * 16, h = (VkDeviceSize)j->hueTexels * 16, s = (VkDeviceSize)j->secondaryTexels * 16;
+    VkDeviceSize sat = (VkDeviceSize)j->saturationTexels * 16;
     VkDeviceSize l = (VkDeviceSize)j->lutSize * (VkDeviceSize)j->lutSize * (VkDeviceSize)j->lutSize * 16;
     if (vkg_buffer(vk, &t->curves, c, VKG_DEVICE) || vkg_buffer(vk, &t->hue, h, VKG_DEVICE) || vkg_buffer(vk, &t->sec, s, VKG_DEVICE) ||
-        vkg_buffer(vk, &t->lut, l, VKG_DEVICE) || vkg_buffer(vk, &t->staging, c + h + s + l, VKG_UPLOAD)) { freeTables(vk, t); return -1; }
+        vkg_buffer(vk, &t->saturation, sat, VKG_DEVICE) || vkg_buffer(vk, &t->lut, l, VKG_DEVICE) || vkg_buffer(vk, &t->staging, c + h + s + l + sat, VKG_UPLOAD)) { freeTables(vk, t); return -1; }
     uint8_t *m = t->staging.map;
     if (c) memcpy(m, j->curves, (size_t)c);
     if (h) memcpy(m + c, j->hue, (size_t)h);
     if (s) memcpy(m + c + h, j->secondaries, (size_t)s);
     if (l) memcpy(m + c + h + s, j->lut, (size_t)l);
+    if (sat) memcpy(m + c + h + s + l, j->saturation, (size_t)sat);
     snprintf(t->key, sizeof t->key, "%s", key);
     t->valid = 1;
     return 1;
@@ -122,11 +125,11 @@ static int ensureTables(MpvfxVk *vk, const MpvfxGpuGradeJob *j) {
 
 static void recordTableCopies(MpvfxVk *vk, const MpvfxGpuGradeJob *j) {
     VkgTables *t = &vk->tables;
-    VkDeviceSize sizes[4] = {(VkDeviceSize)j->curveTexels * 16, (VkDeviceSize)j->hueTexels * 16, (VkDeviceSize)j->secondaryTexels * 16,
-                             (VkDeviceSize)j->lutSize * (VkDeviceSize)j->lutSize * (VkDeviceSize)j->lutSize * 16};
-    VkBuffer dst[4] = {t->curves.buf, t->hue.buf, t->sec.buf, t->lut.buf};
+    VkDeviceSize sizes[5] = {(VkDeviceSize)j->curveTexels * 16, (VkDeviceSize)j->hueTexels * 16, (VkDeviceSize)j->secondaryTexels * 16,
+                             (VkDeviceSize)j->lutSize * (VkDeviceSize)j->lutSize * (VkDeviceSize)j->lutSize * 16, (VkDeviceSize)j->saturationTexels * 16};
+    VkBuffer dst[5] = {t->curves.buf, t->hue.buf, t->sec.buf, t->lut.buf, t->saturation.buf};
     VkDeviceSize at = 0;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         if (sizes[i] == 0) continue;
         VkBufferCopy region = {at, 0, sizes[i]};
         vk->f.vkCmdCopyBuffer(vk->cmd, t->staging.buf, dst[i], 1, &region);
@@ -154,7 +157,7 @@ static void writeSet(MpvfxVk *vk, int i, const MpvfxGpuPass *p, const MpvfxGpuGr
                                 roleBuffer(vk, p->in[2]), roleBuffer(vk, p->in[3]), roleBuffer(vk, p->momIn),
                                 tableOr(vk, &t->curves, j->curveTexels), tableOr(vk, &t->hue, j->hueTexels),
                                 tableOr(vk, &t->sec, j->secondaryTexels), tableOr(vk, &t->lut, j->lutSize), roleBuffer(vk, p->outPx),
-                                roleBuffer(vk, p->outMom), vk->params.buf};
+                                roleBuffer(vk, p->outMom), vk->params.buf, tableOr(vk, &t->saturation, j->saturationTexels)};
     VkDescriptorBufferInfo info[VKG_BINDINGS];
     VkWriteDescriptorSet w[VKG_BINDINGS];
     for (int k = 0; k < VKG_BINDINGS; k++) {

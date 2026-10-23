@@ -127,6 +127,17 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertTrue(stride(from: 24, to: 44, by: 1).contains { y in (4..<64).contains { x in f.rgba[(y * 96 + x) * 4] > 240 } }, "white text ink")
     }
 
+    /// Contract 3 Warmth and Tint (channel gains, issue #172) on the graded video: export is the preview at the first,
+    /// a middle and the last frame, and the warm grade shows.
+    func testContract3WarmthExportIsThePreviewFrameForFrame() throws {
+        let mov = try export(.mov, grade: #"{"version":3,"adjust":{"temperature":0.8,"tint":-0.3,"exposure":0.2}}"#, name: "warm")
+        let diffs = try pairs(mov, [0, 1.0, 1.9]).map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        let f = try mov.file.rgba(1.0)
+        let video = Array(f.rgba[(36 * 96 + 80) * 4..<(36 * 96 + 80) * 4 + 3])
+        XCTAssertGreaterThan(Int(video[0]) - Int(video[2]), 20, "Warmth +80 warms the video: \(video)")
+    }
+
     /// Curves on every tab: the exported frames are the preview's, first and last frame included, and the curves
     /// really change the picture (the same project with the exposure grade gives other pixels).
     func testCurvesGradeExportIsThePreviewFrameForFrame() throws {
@@ -137,17 +148,6 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
         let plain = try previewExportFrame(try export(.mov).input, at: 0.7)
         XCTAssertGreaterThan(maxAbsDiff(frames[1].2, plain), 20, "the curves grade differs from the exposure grade")
-    }
-
-    /// Contract 3 Warmth and Tint (channel gains, issue #172) on the graded video: export is the preview at the first,
-    /// a middle and the last frame, and the warm grade shows.
-    func testContract3WarmthExportIsThePreviewFrameForFrame() throws {
-        let mov = try export(.mov, grade: #"{"version":3,"adjust":{"temperature":0.8,"tint":-0.3,"exposure":0.2}}"#, name: "warm")
-        let diffs = try pairs(mov, [0, 1.0, 1.9]).map { maxAbsDiff($0.1, $0.2) }
-        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
-        let f = try mov.file.rgba(1.0)
-        let video = Array(f.rgba[(36 * 96 + 80) * 4..<(36 * 96 + 80) * 4 + 3])
-        XCTAssertGreaterThan(Int(video[0]) - Int(video[2]), 20, "Warmth +80 warms the video: \(video)")
     }
 
     func testMp4ExportMatchesThePreviewWithinTheEncoderLoss() throws {
@@ -218,4 +218,16 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: "\(root)/cancelled.mp4"))
         XCTAssertEqual(try leftovers(root), [])
     }
+    func testLumaAndSaturationCurvesExportMatchesAtThreeTimes() throws {
+        for key in ["lumaVsSaturation", "saturationVsSaturation"] {
+            let points = key == "lumaVsSaturation" ? "[[0,0],[0.25,0],[0.5,-1],[1,-1]]" : "[[0,1],[0.3,1],[1,0]]"
+            let grade = "{\"version\":2,\"curves\":{\"\(key)\":\(points)}}"
+            let mov = try export(.mov, grade: grade, name: key)
+            let frames = try pairs(mov, [0, 0.9, 1.9])
+            XCTAssertEqual(frames.map { maxAbsDiff($0.1, $0.2) }.filter { $0 > 1 }, [], key)
+            let plain = try previewExportFrame(try export(.mov, grade: "{}", name: "plain-" + key).input, at: 0.9)
+            XCTAssertGreaterThan(maxAbsDiff(frames[1].2, plain), 1, "\(key) must actually change the frame")
+        }
+    }
+
 }

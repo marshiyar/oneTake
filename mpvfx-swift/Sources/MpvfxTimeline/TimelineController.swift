@@ -406,6 +406,7 @@ public final class TimelineController {
     /// zooms at the pointer, Shift = horizontal scroll, else vertical scroll (horizontal deltas from touchpads scroll
     /// horizontally).
     public func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) {
+        if view.clipMenu != nil { view.clipMenu?.scroll(by: dy); needsDisplay?(); return }
         if ctrl {
             setZoom(percent: TimelineZoom.pinch(deltaY: dy, mode: zoomMode, manual: manualZoomPercent, fit: fitPixelsPerSecond), anchorX: max(x, TimelineLayout.contentOrigin))
             return
@@ -417,6 +418,9 @@ public final class TimelineController {
     // MARK: Keyboard (timeline-owned edit shortcuts; playback keys fall through to PlaybackState)
 
     @discardableResult public func keyDown(_ k: EditorKey) -> Bool {
+        if view.clipRename != nil { return renameClipKey(k) }
+        if view.clipMenu != nil { return clipMenuKeyDown(k) }
+        if case .function(2) = k.code { return requestRenameSelection() }
         if case .function(9) = k.code { return easyEaseSelectedKeyframes(k) }
         if k.command, case .char(let ch) = k.code {
             switch Character(ch.lowercased()) {
@@ -446,6 +450,8 @@ public final class TimelineController {
         }
         if !k.command && !k.alt {
             switch k.code {
+            case .char(let ch) where k.shift && (ch == "e" || ch == "E"):
+                if !k.isRepeat { _ = toggleSelectionHidden() }; return true
             case .delete where !view.selectedKeyframes.isEmpty, .backspace where !view.selectedKeyframes.isEmpty:
                 return deleteSelectedKeyframes()
             case .char(let ch) where (ch == "," || ch == "." || ch == "<" || ch == ">") && !view.selectedKeyframes.isEmpty:

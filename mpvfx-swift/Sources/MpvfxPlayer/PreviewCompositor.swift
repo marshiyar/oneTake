@@ -151,7 +151,7 @@ public final class PreviewCompositor: FrameSource {
                 PreviewPainter.drawOffline(layer, on: target, frame: area, scale: areaScale)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
-            if layer.isProcedural {   // text layers are laid out, not decoded
+            if layer.isProcedural {   // generated layers draw without media decoding
                 PreviewPainter.drawText(layer, on: target, frame: area, scale: areaScale)
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }

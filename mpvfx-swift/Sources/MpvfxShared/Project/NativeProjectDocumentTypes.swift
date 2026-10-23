@@ -160,6 +160,8 @@ public struct NativeCropPivotSegment: Codable, Equatable, Sendable {
 
 public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var id: String; public var assetId: String
+    /// Optional timeline label, independent of the source asset name.
+    public var name: String? = nil
     public var audioGroupId: String?; public var audioFxChain: String?; public var audioAutomation: String?
     public var audioDetachedFrom: String?
     public var binding: NativeClipDomBinding?
@@ -184,6 +186,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.
     public var text: NativeClipText? = nil
+    /// Optional versioned vector layer; absent keeps legacy documents unchanged.
+    public var shape: NativeClipShape? = nil
     /// Optional project style link with explicit per-field overrides.
     public var textStyle: NativeTextStyleLink? = nil
     /// In, Out and Loop moves over the clip's own values (NativeClipMoves.swift); absent means none.
@@ -315,7 +319,9 @@ public extension NativeProjectDocument {
     /// renderer cannot draw. It stays in the document unchanged (never lose the user's edit); preview and export
     /// skip it, and `undrawnElementLayersNotice` tells the user.
     func isUndrawnElementClip(_ clip: NativeProjectClip) -> Bool {
-        clip.text == nil && assets.first(where: { $0.id == clip.assetId })?.kind == .element
+        guard assets.first(where: { $0.id == clip.assetId })?.kind == .element else { return false }
+        if let shape = clip.shape { return !shape.isSupported }
+        return clip.text == nil
     }
 
     /// How many clips `isUndrawnElementClip` skips.
@@ -376,6 +382,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidPlaybackRate = "invalid-playback-rate", invalidBinding = "invalid-binding", duplicateBinding = "duplicate-binding"
     case invalidEffect = "invalid-effect", invalidStaticParameters = "invalid-static-parameters", missingReference = "missing-reference"
     case mediaTypeMismatch = "media-type-mismatch", sourceOutOfBounds = "source-out-of-bounds", invalidParameterTrack = "invalid-parameter-track"
+    case invalidShape = "invalid-shape"
     case invalidCaption = "invalid-caption"
     case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
     case duplicateTransition = "duplicate-transition"
