@@ -61,7 +61,7 @@ extension EditorSession {
                     keyframeEngine: engine
                 )
             } catch {
-                await dialogs.showError(title: "Could not save frame", message: "\(error)")
+                await dialogs.showError(title: "Could not save frame", message: (error as? DesktopError)?.message ?? "The frame could not be saved. Check that the disk has free space and the folder is writable, then try again.")
             }
         }
         return true
