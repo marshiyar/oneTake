@@ -28,16 +28,18 @@ extension InspectorPanel {
         ("hueVsHue", "Hue/Hue", ThemeTokens.curveHueHuePair, true, -180, 180),
         ("hueVsSaturation", "Hue/Sat", ThemeTokens.curveHueSatPair, true, -1, 1),
         ("hueVsLuma", "Hue/Luma", ThemeTokens.curveHueLumaPair, true, -1, 1),
+        ("lumaVsSaturation", "Luma/Sat", ThemeTokens.curveLumaSatPair, false, -1, 1),
+        ("saturationVsSaturation", "Sat/Sat", ThemeTokens.curveSatSatPair, false, -1, 1),
     ]
 
     // MARK: Curves (the curve modes and the curve graph)
 
     /// The height of one line of curve tabs (a pointer target tall).
     static let curveTabHeight = 24.0
-    /// The tabs in their two lines: Master, R, G, B, then the hue-keyed curves.
-    static let curveTabLines: [[Int]] = [[0, 1, 2, 3], [4, 5, 6]]
+    /// The tabs in three lines: RGB, hue-keyed, then luma/saturation-keyed curves.
+    static let curveTabLines: [[Int]] = [[0, 1, 2, 3], [4, 5, 6], [7, 8]]
 
-    /// Curve tabs: two lines of equal-width tabs, 11px text-2 (text-0 medium when open, text-1 on hover) over a
+    /// Curve tabs: three lines of equal-width tabs, 11px text-2 (text-0 medium when open, text-1 on hover) over a
     /// 2pt accent bar when open, with a dot in the tab's curve colour when its curve is edited. Every tab is a
     /// pointer target the full line tall, and the text stays 4.5:1 on the panel in both modes (text-2).
     func curveTabsRow(_ g: ColorGrading) -> InspectorCustomRow {
@@ -82,6 +84,7 @@ extension InspectorPanel {
     static func isCurveEdited(_ g: ColorGrading, _ t: CurveTab) -> Bool {
         let edit = CurveEditing(hue: t.hue, limit: t.min...t.max)
         if t.hue { return edit.displayed(g.hueCurve(t.key)).contains { abs($0[1]) > 1e-9 } }
+        if t.min < 0 { return edit.displayed(g.curve(t.key)).contains { abs($0[1]) > 1e-9 } }
         return edit.displayed(g.curve(t.key)) != GradeCurve.identity
     }
 
@@ -190,6 +193,7 @@ extension InspectorPanel {
         c.strokeRoundedRect(frame.insetBy(0.5), radius: 3.5, PanelTheme.panelBorderInput, width: 1)
         Self.drawCurveGrid(c, frame: frame, u: u)
         if tab.hue { Self.drawHueAxis(c, frame: frame, u: u) }
+        else if tab.min < 0 { Self.drawDeltaAxis(c, frame: frame, u: u, saturation: tab.key == "saturationVsSaturation") }
         let pts = currentCurvePoints(g)
         let color = CanvasColor(tab.color.now)
         c.save()
@@ -218,9 +222,9 @@ extension InspectorPanel {
     /// every other edited RGB curve, faint (40%) in its own colour, under the open one (issue #177 A5).
     func drawCurveReferences(_ c: CanvasContext, _ g: ColorGrading, _ tab: CurveTab, u: Double) {
         var guide = CanvasPath()
-        guide.move(to: curveToView([0, 0])); guide.line(to: curveToView(tab.hue ? [360, 0] : [1, 1]))
+        guide.move(to: curveToView([0, 0])); guide.line(to: curveToView(tab.hue ? [360, 0] : [1, tab.min < 0 ? 0 : 1]))
         c.stroke(guide, PanelTheme.white.withAlpha(0.16), StrokeStyle(width: 0.5 * u))
-        guard !tab.hue else { return }
+        guard !tab.hue && tab.min == 0 else { return }
         for other in Self.curveTabs.prefix(4) where other.key != tab.key && Self.isCurveEdited(g, other) {
             var path = CanvasPath()
             for (k, s) in ColorCurveMath.samples(g.curve(other.key), hue: false, limit: 0...1, count: 144).enumerated() {
@@ -239,6 +243,16 @@ extension InspectorPanel {
             var w = CanvasPath(); w.move(to: v(8 + ratio * 144, 8)); w.line(to: v(8 + ratio * 144, 152))
             c.stroke(h, PanelTheme.white.withAlpha(0.08), StrokeStyle(width: 0.5 * u))
             c.stroke(w, PanelTheme.white.withAlpha(0.08), StrokeStyle(width: 0.5 * u))
+        }
+    }
+
+    static func drawDeltaAxis(_ c: CanvasContext, frame: CanvasRect, u: Double, saturation: Bool) {
+        for k in 0..<72 {
+            let t = (Double(k) + 0.5) / 72
+            let color = saturation ? CanvasColor(ThemeTokens.curveRedPair.now).over(PanelTheme.white, opacity: t)
+                : PanelTheme.white.over(PanelTheme.black, opacity: t)
+            c.fillRect(CanvasRect(x: frame.x + 1 + (8 + Double(k) * 2) * u, y: frame.y + 1 + 155.5 * u,
+                                  width: 2 * u + 0.3, height: 3 * u), color)
         }
     }
 
@@ -336,7 +350,7 @@ extension InspectorPanel {
         }, pointer: { [weak self] part, _, phase in
             guard let self, phase == 0 else { return }
             switch part {
-            case 0: self.grade.selectedPoint = nil; commit(self.writeCurve(g, self.openCurveTab.hue ? [] : GradeCurve.identity))
+            case 0: self.grade.selectedPoint = nil; commit(self.writeCurve(g, self.openCurveTab.hue ? [] : (self.openCurveTab.min < 0 ? GradeCurve.flatDelta : GradeCurve.identity)))
             case 1: self.deleteSelectedCurvePoint(g, commit: commit)
             default: var n = g; n.curves = [:]; n.hueCurves = [:]; self.grade.selectedPoint = nil; commit(n)
             }

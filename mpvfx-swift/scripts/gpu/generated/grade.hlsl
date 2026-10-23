@@ -25,6 +25,7 @@ BIND(5) StructuredBuffer<uint> in3 : register(t5);
 BIND(6) StructuredBuffer<float4> momIn : register(t6);
 BIND(7) StructuredBuffer<float4> curvesTab : register(t7);
 BIND(8) StructuredBuffer<float4> hueTab : register(t8);
+BIND(14) StructuredBuffer<float4> saturationTab : register(t12);
 BIND(9) StructuredBuffer<float4> secTab : register(t9);
 BIND(10) StructuredBuffer<float4> lutTab : register(t10);
 BIND(11) RWStructuredBuffer<uint> outPx : register(u0);
@@ -43,6 +44,7 @@ uint pxRead(int t, int i) {
 }
 float4 momRead(int i) { return momIn[i]; }
 float4 tex1Read(int t, int i) {
+    if (t == 9) { return saturationTab[i]; }
     if (t == 5) { return curvesTab[i]; }
     if (t == 6) { return hueTab[i]; }
     return secTab[i];
@@ -236,7 +238,8 @@ void outMomWrite(int i, float4 v) { outMom[i] = v; }
 #define GRADE_TEX_SECONDARIES 6
 #define GRADE_TEX_LUT 7
 #define GRADE_TEX_OUTPUT 8
-#define GRADE_TEX_COUNT 9
+#define GRADE_TEX_SATURATION 9
+#define GRADE_TEX_COUNT 10
 #define PIO2_1 1.570796371e+00f
 #define PIO2_2 -4.371138829e-08f
 #define PIO2_3 -1.776356839e-15f
@@ -311,8 +314,8 @@ inline float4 roundHalfAway4(float4 v) { return V4(roundHalfAway(v.x), roundHalf
 #define U(k) u[GU_##k]
 #define E(k) u[GU_COUNT + EK_##k]
 #define PI 3.14159265359f
-#define P_ALL int src, int blurT, int kuwT, int bloomT, int curvesT, int hueT, int secT, int lutT, int uArg_
-#define A_ALL src, blurT, kuwT, bloomT, curvesT, hueT, secT, lutT, uArg_
+#define P_ALL int src, int blurT, int kuwT, int bloomT, int curvesT, int hueT, int satT, int secT, int lutT, int uArg_
+#define A_ALL src, blurT, kuwT, bloomT, curvesT, hueT, satT, secT, lutT, uArg_
 inline float fractf(float x) { return x - FLOOR(x); }
 inline float glMod(float x, float y) {
     float r = x - y * FLOOR(x / y);
@@ -624,13 +627,13 @@ inline float3 applyRgbCurves(float3 color, int curvesT, int uArg_) {
     return V3(curveAt(curvesT, master.x).x, curveAt(curvesT, master.y).y, curveAt(curvesT, master.z).z);
 }
 inline float decodeSigned(float v) { return (v * 255.0f - 128.0f) / 127.0f; }
-float3 applyHueCurves(float3 color, int hueT, int uArg_) {
+float3 applyHueCurves(float3 color, int hueT, int satT, int uArg_) {
     if (!(U(hueCurves) > 0.0f)) { return color; }
     float3 hsv = rgbToHsv(clamp3(color, 0.0f, 1.0f));
     float4 c = curveAt(hueT, hsv.x);
     float originalLuma = lumaOf(color);
     hsv.x = fractf(hsv.x + decodeSigned(c.x) * 0.5f);
-    hsv.y = clampf(hsv.y * FMAX(0.0f, 1.0f + decodeSigned(c.y)), 0.0f, 1.0f);
+    hsv.y = clampf(hsv.y * FMAX(0.0f, 1.0f + decodeSigned(c.y) + decodeSigned(curveAt(hueT, originalLuma).w) + decodeSigned(curveAt(satT, hsv.y).x)), 0.0f, 1.0f);
     float3 shifted = hsvToRgb(hsv);
     shifted += V3S(originalLuma - lumaOf(shifted) + decodeSigned(c.z));
     return shifted;
@@ -696,7 +699,7 @@ float3 applyBalance(float3 inColor, int uArg_) {
 float3 applyAdvancedGrade(float3 inColor, P_ALL) {
     float3 color = applyTonalWheels(applyBalance(inColor, uArg_), uArg_);
     color = applyRgbCurves(color, curvesT, uArg_);
-    color = applyHueCurves(color, hueT, uArg_);
+    color = applyHueCurves(color, hueT, satT, uArg_);
     int n = int(U(secondaryCount));
     if (n > 4) { n = 4; }
     for (int i = 0; i < n; i++) { color = applySecondary(color, i, secT); }
@@ -1242,7 +1245,7 @@ void kernelResolve(int2 gid) {
 void kernelGrade(int2 gid) {
     int w = int(hdr[0]), h = int(hdr[1]);
     if (gid.x >= w || gid.y >= h) { return; }
-    int src = 0, blurT = 1, kuwT = 2, bloomT = 3, curvesT = 5, hueT = 6, secT = 7, lutT = 8, uArg_ = 0;
+    int src = 0, blurT = 1, kuwT = 2, bloomT = 3, curvesT = 5, hueT = 6, satT = 9, secT = 7, lutT = 8, uArg_ = 0;
     float4 c = shade(V2(float(gid.x) + 0.5f, float(gid.y) + 0.5f), A_ALL);
     outPxWrite((h - 1 - gid.y) * w + gid.x, packQ(c));
 }

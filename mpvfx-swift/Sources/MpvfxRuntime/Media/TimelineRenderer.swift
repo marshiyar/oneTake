@@ -183,7 +183,15 @@ public func nativeExportVisibleProject(_ project: NativeProjectDocument) -> Nati
     guard tracks.contains(where: { $0.hidden == true || $0.clips.contains(where: skipped) }) else { return project }
     var out = project
     out.sequence.durationFrames = sequenceEndFrame(project)
-    out.sequence.tracks = tracks.filter { $0.hidden != true }.map { var t = $0; t.clips.removeAll(where: skipped); return t }
+    // Keep detached ownership after hidden audio clips/tracks are removed: losing their link must never
+    // make the original video's sound return in ExportAudioMix's filtered document.
+    let detached = Set(tracks.flatMap(\.clips).compactMap { $0.audioDetachedFrom?.isEmpty == false ? $0.audioDetachedFrom : nil })
+    out.sequence.tracks = tracks.filter { $0.hidden != true }.map { track in
+        var t = track
+        t.clips.removeAll(where: skipped)
+        for index in t.clips.indices where detached.contains(t.clips[index].id) { t.clips[index].muted = true }
+        return t
+    }
     // A transition to a clip left out is a hard cut, as the preview draws it.
     out = reconcileNativeCutTransitions(out)
     return out

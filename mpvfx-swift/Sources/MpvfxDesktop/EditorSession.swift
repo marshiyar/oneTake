@@ -388,6 +388,7 @@ final class EditorSession {
     /// Cmd+S / Ctrl+S saves now; Cmd+I / Ctrl+I imports media (when the shell offers a chooser); Cmd+O / Ctrl+O opens
     /// a project folder (EditorSession+OpenProject); Cmd+, / Ctrl+, opens and closes Settings (EditorSession+Settings).
     func commandKey(_ k: EditorKey) -> Bool {
+        if k.command, k.shift, !k.alt, case .char(let c) = k.code, c.lowercased() == "e" { return requestSaveFrame() }
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
         case "s":
