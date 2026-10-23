@@ -57,6 +57,7 @@ public final class RightPanel {
     public enum Hit: Equatable {
         case hide, show, design, easing, renders, showRenders, panelMenu, tabOverflow
         case format, resolution, fps, quality, customW, customH, export, formatInfo
+        case preset, presetName, savePreset, deletePreset
         case job(String), cancel(String), delete(String), reveal(String), retry(String), hideFinished, dismissError
         case confirmDelete(String), keep(String), thumb(String), listScrollbar
         case content
@@ -74,6 +75,10 @@ public final class RightPanel {
     public let dropdown = PanelDropdown()
     public var jobs: [RenderJobView] = []
     public var settings = RenderSettingsModel()
+    public var renderPresets: [RenderPreset] = []
+    public var presetName = ""
+    public var onSavePreset: ((String, RenderSettingsModel) -> Void)?
+    public var onDeletePreset: ((String) -> Void)?
     public var canvasSize = CanvasSize(1920, 1080)
     public var lastRenderSeconds: Double?
     public var actionError: String?
@@ -296,7 +301,7 @@ public final class RightPanel {
     /// error strip, then the job list (`flex-1 overflow-y-auto`) with its "N renders · Hide finished" header.
     func drawRenders(_ c: CanvasContext, _ r: CanvasRect) {
         c.fillRect(r, PanelTheme.panelBg)
-        var y = r.y + 12
+        var y = drawRenderPresets(c, r) + 12
         let x = r.x + 12, w = r.width - 24
         let gap = 8.0, colW = (w - gap) / 2
         let label = PanelTheme.font(10), lc = PanelTheme.text4
@@ -566,6 +571,7 @@ public final class RightPanel {
     func commitField() {
         guard let f = field else { return }
         field = nil
+        if f.key == "preset-name" { presetName = f.draft; return }
         // The other side follows the composition's aspect; the width is what is stored (CompositionRenderResolution).
         if let v = Double(f.draft.trimmingCharacters(in: .whitespaces)), v > 0 {
             let w = canvasSize.width, h = canvasSize.height
@@ -590,7 +596,9 @@ public final class RightPanel {
                 apply(v); self.onSettingsChanged?(self.settings); self.onChange?()
             }
         }
+        if handlePresetHit(hit) { onChange?(); return true }
         switch hit {
+        case .preset, .presetName, .savePreset, .deletePreset: break
         case .hide: layout.setRightCollapsed(true)
         case .show: layout.setRightCollapsed(false)
         case .panelMenu, .tabOverflow: openMenu(for: hit)

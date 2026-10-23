@@ -98,6 +98,12 @@ void mpvfx_d2d_pop_clip(MpvfxD2DTarget *t);
 mpvfx_hresult mpvfx_d2d_draw_text(MpvfxD2DTarget *t, const MpvfxText *text, MpvfxPoint origin, MpvfxColor color);
 /// Layout size of the text (advance width including trailing spaces, line height). Needs no target.
 mpvfx_hresult mpvfx_d2d_measure_text(const MpvfxText *text, float *width, float *height);
+/// Shaped range advance box (UTF-16), with the same em-box origin as draw_text.
+mpvfx_hresult mpvfx_d2d_text_ranges(const MpvfxText *text, const int32_t *starts,
+                                   const int32_t *lengths, MpvfxRect *rects, int32_t count);
+/// Uniscribe word-stop flags at each UTF-16 offset; capacity must be text.length + 1.
+mpvfx_hresult mpvfx_d2d_word_stops(const MpvfxText *text, uint8_t *stops);
+
 
 /// The pixels as a premultiplied BGRA Direct2D bitmap of the render target that made it (a bitmap draws only on
 /// that target). It keeps a reference to that target, so the target's address is never reused while it lives.

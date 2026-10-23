@@ -146,6 +146,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Audio group volume | done | exact |
 | Dockable Mixer (`mixer`): per audio track gain in dB, pan, mute/solo, and live peak/RMS | done: Window/Panels; persisted gain/pan and undo; same graph for playback/export | n/a |
 | Renders tab: format / output size / frame rate / quality, custom width, Export | done (settings in `preferences.json`; export through `RenderRun`, 38d06b3). Output size scales the composition with its aspect kept: "Composition" (its own size), 720p … 8K by the short edge (720p of a 9:16 composition is 720×1280), or a custom width with the height following (`CompositionRenderResolution.swift`); a fixed preset saved earlier reads as its short edge. Formats are the media engine's: MP4 and MOV (PNG, alpha); WebM is not offered (a saved WebM setting shows "WebM (not supported yet)" and Export refuses it) | close |
+| Renders tab: named export presets | implemented: save or update a name, apply all settings, and delete; per-user `render-presets.json` uses the durable writer. Unreadable or malformed files are reported with their path and preserved; unsupported formats remain visible with a reason and cannot be applied | close |
 | Render list: progress, stage, cancel, delete, reveal, retry, hide finished, history across launches, thumbnails | done (38d06b3; real-render test) | close |
 | Render list: ETA | missing (panels) | n/a |
 | Caption property panel (style, animation entrance/exit/highlight, transform) | missing (unowned) | n/a |
@@ -313,6 +314,36 @@ Every item of the owner's screenshot review, with its status now.
 | Inspector Clip timing group (start / end / duration fields) | Removed 2026-10-13 at the user's request: unnecessary and confusing next to the timeline thumbnail rows, which already move, trim and split clips. The document model and the timeline trim/split/move commands are unchanged; playback speed stays in the Media group (Rate). Timing coverage moved to timeline-gesture tests (InspectorRenderAuditTests `testTimeline*`). |
 
 Grade and Effects small controls (#185): reset/remove/add/refresh cells and scope labels are at least 24 pt, with a full-target hover wash. Wheel resets, settings gears, group resets and effect/secondary icon actions record names on their hit regions. `TargetSizeTests.testGradeAndEffectsTargetsAndHover` audits authored Grade/Effects states at 409, 364 and 280 pt in both appearances, including selected curve points and open Vignette settings.
+### Text unit API (#276)
+
+`TextLayout.units(_:width:on:)` returns grapheme clusters, native words and wrapped line boxes.
+Each unit carries a half-open UTF-16 range into the original text and a typographic rectangle relative
+to the layout origin. Units stay in logical reading order on RTL lines. Empty lines keep a line box;
+wrapping delimiters and newlines carry no glyph box. Words contain letters or numbers; whitespace,
+punctuation-only spans and emoji stay available as clusters. Native word boundaries come from Pango
+log attributes, Foundation's platform word enumerator, and Windows Uniscribe `ScriptBreak`; Windows
+shaped boxes come from DirectWrite hit testing. Dictionary segmentation of contiguous CJK can differ
+between hosts; the shared expected-count corpus uses separated ideographs.
+
+`TextLayout.draw(_:in:on:selecting:opacity:)` accepts cluster, word or line selections. It paints each
+original shaped run once, clipping a partial reveal to its selected advance boxes. Full runs bypass
+clipping to preserve overhang and exact static pixels. This keeps Arabic joining and ligatures intact;
+a partial selection of a shared ligature reveals the selected typographic region. These are derived
+layout results with no persisted setting or editor command. macOS tests cover Latin, Persian/Arabic,
+CJK, combining marks, emoji ZWJ and skin-tone modifiers, transparent raster parity, RTL order, repeated
+words, wrapping, blank lines and letter spacing. Linux and Windows tests are compiled conditionally
+against their real raster backends and require their CI hosts; they were not executed locally.
+
+Text-unit advances include letter spacing, including trailing spacing. Justified separator spaces
+have grapheme boxes spanning the expanded word gap. Empty native text-unit queries return no units
+without recording a frame error. Pango queries the full grapheme's UTF-8 range, rather than unioning
+individual scalar caret rectangles. Windows helper tests cover zero-count and malformed inputs;
+those tests still require a Windows host.
+Audio: **Stereo room** (`reverb-v2`, #208) is available from the audio FX add menu,
+with room size, damping, stereo width, pre-delay, low cut, wet and dry controls.
+The original Room effect and presets retain the legacy reverb sound. The v2
+convolver and regression tests are implemented; Swift test execution and the
+release benchmark target remain unverified in the contribution environment.
 ### Vector shape layers
 
 Element clips can store an optional `shape` record (`v: 1`) for rectangles with corner radius,
