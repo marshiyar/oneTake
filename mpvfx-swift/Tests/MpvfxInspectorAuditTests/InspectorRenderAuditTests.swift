@@ -284,7 +284,10 @@ final class InspectorRenderAuditTests: XCTestCase {
 
     func testTimelineMoveMovesTheClip() {
         let c = timeline()
-        assertVisualEdit("Move", at: 0.5, { drag(c, from: tx(1.5), to: tx(2.5)) }) { c in XCTAssertTrue(c.images.isEmpty, "nothing at 0.5 s once the clip starts at 1 s") }
+        // The drag spans one second at the actual zoom: fit is the zoom-out limit, so the requested
+        // 100 px/s may have clamped up and a fixed 100 px drop would move less than a second.
+        let drop = tx(1.5) + c.view.pixelsPerSecond
+        assertVisualEdit("Move", at: 0.5, { drag(c, from: tx(1.5), to: drop) }) { c in XCTAssertTrue(c.images.isEmpty, "nothing at 0.5 s once the clip starts at 1 s") }
         XCTAssertEqual(editor.clip("V")?.clip.startFrame, 10)
         XCTAssertEqual(audioTrack("V")?.start ?? 0, 1, accuracy: 1e-9, "its sound moves too")
     }
