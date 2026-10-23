@@ -343,7 +343,7 @@ final class TargetSizeTests: XCTestCase {
                             XCTAssertFalse(target.accessibilityLabel?.isEmpty ?? true, context)
                         }
                         panel.hovered = target.action
-                        canvas.reset(); right.draw(canvas, size: size)
+                        canvas.reset(); right.draw(canvas, size: tall)
                         XCTAssertTrue(canvas.fills.contains { path, color in
                             path == .roundedRect(target.rect, radius: PanelTheme.radius) && color == PanelTheme.panelHover
                         }, "whole target hover: " + context)
