@@ -214,7 +214,9 @@ extension InspectorPanel {
                            reserveResetKey: String? = nil) {
         c.fillRoundedRect(r.snapped, radius: PanelTheme.radius, PanelTheme.panelBg)
         let pad = Self.compactPad
-        var right = r.maxX - pad
+        // The field runs flush to the rect edge so compact values end on the same x as flat rows
+        // (the pad stays on the label side); a personal reset then sits inside that edge.
+        var right = r.maxX
         if n.reset != nil, n.tier == .explicitCustom || reserveReset {
             if reserveReset {
                 // The pair's shared reset, in the row's reserved cell past the value edge (like every
