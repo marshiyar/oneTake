@@ -119,9 +119,7 @@ public struct ColorGradeParams: Equatable, Sendable {
     public static let curveIdentity: [[Double]] = [[0, 0], [1, 1]]
     public static let maxCurvePoints = 16, maxSecondaries = 4
 
-    /// Default ink/paper palettes the shader uses when the grade names none.
-    public static let defaultPalette = ["#000000", "#ffffff"]
-    public static let printPalette = ["#1a1a1a", "#f5f5dc"]
+    /// Default ink/paper palettes the shader uses when the grade names none (see GradeValues).
 
     // MARK: Presets (HF_COLOR_GRADING_PRESETS: each preset is the contract defaults overlaid with its values)
 
@@ -304,7 +302,7 @@ public struct ColorGradeParams: Equatable, Sendable {
 
     /// The ink/paper palette the stylize effects draw with.
     public var resolvedPalette: [String] {
-        palette ?? (effect("engraving") > 0 || effect("crosshatch") > 0 ? Self.printPalette : Self.defaultPalette)
+        palette ?? (effect("engraving") > 0 || effect("crosshatch") > 0 ? GradeValues.printPalette : GradeValues.defaultPalette)
     }
 
     // MARK: Helpers

@@ -39,8 +39,9 @@ extension InspectorPanel {
         rows.append(.init(.segmented(.init(key: "strokeStyle", label: "Stroke style",
             options: NativeClipStyle.strokeStyles.map { (key: $0, label: $0.prefix(1).uppercased() + $0.dropFirst(), active: $0 == styleNow) },
             select: { [weak self] k in self?.edited(editor.setClipStrokeStyle(clipId: id, k), label: "Edit style") }))))
+        // Stroke color: the renderer reads an alpha byte here (half-transparent strokes), so the picker offers alpha.
         rows += colorRows(ColorFieldSpec(key: "strokeColor", label: "Stroke color", value: st.strokeColor,
-                                         placeholder: NativeClipStyle.defaultStrokeColor, allowAlpha: false,
+                                         placeholder: NativeClipStyle.defaultStrokeColor, allowAlpha: true,
                                          historyLabel: "Edit style") { editor.setClipStrokeColor(clipId: id, $0) }, clipId: id)
         // Shadow (presets; a shadow list that is no preset shows none active, "custom")
         let preset = NativeClipShadowPreset.infer(st.shadows)

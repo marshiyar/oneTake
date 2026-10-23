@@ -143,7 +143,7 @@ public enum EffectSpecs {
     public static func palette(_ grade: ColorGrading) -> [String] {
         if let palette = grade.palette, (2...6).contains(palette.count) { return palette }
         return ["engraving", "crosshatch"].contains { isActive(grade, $0) && !grade.bypassedEffects.contains($0) }
-            ? ["#1a1a1a", "#f5f5dc"] : ["#000000", "#ffffff"]
+            ? GradeValues.printPalette : GradeValues.defaultPalette
     }
 
     public static func spec(_ key: String) -> Spec? { all.first { $0.key == key } }
