@@ -17,6 +17,7 @@ import Foundation
 extension TimelineController {
     /// An open menu takes the press (a click on an item, or outside it to close it).
     func menuPointerDown(x: Double, y: Double) -> Bool {
+        if view.clipRename != nil { renameClipPointerDown(x: x, y: y); return true }
         if view.gapMenu != nil { gapMenuClick(x: x, y: y); return true }
         if view.clipMenu != nil { clipMenuClick(x: x, y: y); return true }
         if view.keyframeMenu != nil { keyframeMenuClick(x: x, y: y); return true }

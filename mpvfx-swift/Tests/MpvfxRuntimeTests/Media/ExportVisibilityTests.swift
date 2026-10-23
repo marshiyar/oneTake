@@ -14,6 +14,8 @@
 import XCTest
 @testable import MpvfxRuntime
 import MpvfxShared
+import MpvfxAudio
+import MpvfxAudioGraph
 
 /// Export leaves out what the timeline eye hides (clip.hidden, track.hidden) and keeps the sequence length.
 final class ExportVisibilityTests: XCTestCase {
@@ -41,6 +43,40 @@ final class ExportVisibilityTests: XCTestCase {
         XCTAssertEqual(out.sequence.durationFrames, 120)
         // A muted track stays in; its clips carry muted, which the mix silences.
         XCTAssertEqual(out.sequence.tracks[1].clips.map(\.muted), [true])
+    }
+
+    func testDisabledClipStateRoundTripsAndExportSkipsItsPictureAndSoundWithoutShortening() throws {
+        let doc = try parseNativeProjectDocument(try NativeJSONValue.parse(Self.json))
+        let saved = try serializeNativeProjectDocument(doc)
+        let reopened = try parseNativeProjectDocument(try NativeJSONValue.parse(saved))
+        XCTAssertEqual(reopened.sequence.tracks[0].clips[1].hidden, true)
+        let visible = nativeExportVisibleProject(reopened)
+        XCTAssertFalse(visible.sequence.tracks.flatMap(\.clips).contains { $0.id == "clip:hidden" })
+        XCTAssertEqual(visible.sequence.durationFrames, 120)
+    }
+
+    func testDisabledDetachedAudioStaysSilentAfterExportVisibilityFiltering() throws {
+        var doc = try parseNativeProjectDocument(try NativeJSONValue.parse(Self.json))
+        doc.sequence.tracks[1].clips[0].audioDetachedFrom = "clip:shown"
+        func samples(_ project: NativeProjectDocument) throws -> [Float] {
+            let visible = nativeExportVisibleProject(project)
+            let inputs = DocumentAudioGraph.inputs(visible, duration: 4, projectDir: nil, fileExists: { _ in true })
+            var issues: [String] = []
+            let graph = DocumentAudioGraph.project(inputs, loadStem: { stem in
+                [[Float](repeating: 0.25, count: Int(stem.duration * 48_000)),
+                 [Float](repeating: 0.25, count: Int(stem.duration * 48_000))]
+            }, issues: &issues)
+            XCTAssertEqual(issues, [])
+            return AudioGraphRenderer.renderOffline(graph)
+        }
+        XCTAssertTrue(try samples(doc).allSatisfy { $0 == 0 }, "hidden detached-audio track stays silent")
+        XCTAssertFalse(doc.sequence.tracks[0].clips[0].muted, "export filtering never changes the saved source")
+        doc.sequence.tracks[1].hidden = nil
+        doc.sequence.tracks[1].clips[0].hidden = true
+        XCTAssertTrue(try samples(doc).allSatisfy { $0 == 0 }, "disabled detached clip stays silent")
+        doc.sequence.tracks[1].clips[0].hidden = nil
+        XCTAssertTrue(try samples(doc).contains { $0 > 0 }, "enabling restores the detached sound")
+        XCTAssertTrue(nativeExportVisibleProject(doc).sequence.tracks[2].clips[0].muted, "intentional mute stays set")
     }
 
     func testLeavesAFullyVisibleDocumentUntouched() throws {
