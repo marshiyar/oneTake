@@ -254,6 +254,9 @@ final class PanelLayoutAuditTests: XCTestCase {
             // A colour field's value starts after its 24 pt swatch target (the two partition the row so they do
             // not overlap): the value, not the row edge, is the control's start.
             case .number(let n): return n.key == k && n.swatch != nil
+            // A stacked slider's value is right-anchored to the value edge on the full-width control line
+            // below the label (like compact fields, it does not start at the control column).
+            case .slider(let s): return s.key == k && row.stacked
             default: return false
             }
         }

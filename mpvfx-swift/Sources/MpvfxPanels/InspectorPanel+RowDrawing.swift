@@ -223,7 +223,8 @@ extension InspectorPanel {
                 // property row): an exact 24 pt hit that never covers the field. The field itself runs
                 // flush to the value edge so stacked and unstacked values align.
                 let resetKey = reserveResetKey ?? n.key
-                let cell = CanvasRect(x: right + 10, y: r.midY - 12, width: 24, height: 24)
+                // Anchored to the padded edge, not the flush field: the cell must not slide into the stopwatch.
+                let cell = CanvasRect(x: right - pad + 10, y: r.midY - 12, width: 24, height: 24)
                 drawResetGlyph(c, cell, key: resetKey, visible: isHovering(resetKey))
                 addHit(cell, .reset(resetKey))
                 right = r.maxX
