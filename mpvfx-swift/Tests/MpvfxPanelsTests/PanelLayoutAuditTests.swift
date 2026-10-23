@@ -256,7 +256,13 @@ final class PanelLayoutAuditTests: XCTestCase {
             case .number(let n): return n.key == k && n.swatch != nil
             // A stacked slider's value is right-anchored to the value edge on the full-width control line
             // below the label (like compact fields, it does not start at the control column).
-            case .slider(let s): return s.key == k && row.stacked
+            case .slider(let s):
+                guard s.key == k,
+                      let g = r.inspector.layoutForAudit(width: r.inspector.lastRect.width) else { return false }
+                return g.rows.contains { row in
+                    if case .slider(let rs) = row.kind, rs.key == k { return row.stacked }
+                    return false
+                }
             default: return false
             }
         }
