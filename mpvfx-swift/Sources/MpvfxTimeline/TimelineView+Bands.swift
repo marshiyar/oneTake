@@ -97,13 +97,14 @@ extension TimelineView {
     func drawTrackExtras(_ c: CanvasContext, track i: Int, _ clip: TimelineClipModel) {
         let r = clipRect(track: i, clip)
         let base = r.y - BL.clipY + trackHeight
-        // Effect strips: edge colour, #09110E 10px bold text, padding-inline 6, ellipsis.
-        let ef = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .bold)
+        // Quiet lane fill, identity-colour edge and readable secondary ink.
+        let ef = CanvasFont(family: Self.uiFontFamily, size: 10, weight: .medium)
         for (k, e) in clip.effects.enumerated() {
             let sr = CanvasRect(x: r.x, y: base + Double(k) * BL.effectStripHeight, width: r.width, height: BL.effectStripHeight)
-            c.fillRect(sr, TimelineStripColor.color(e.id))
+            c.fillRect(sr, theme.rowBackground)
+            c.fillRect(CanvasRect(x: sr.x, y: sr.y, width: min(3, sr.width), height: sr.height), TimelineStripColor.color(e.id))
             if let label = Self.ellipsize(c, e.label, font: ef, maxWidth: sr.width - 12) {
-                c.drawText(label, at: .init(sr.x + 6, sr.y + 4), font: ef, color: CanvasColor(ThemeTokens.onMint))
+                c.drawText(label, at: .init(sr.x + 6, sr.y + 4), font: ef, color: theme.textSecondary)
             }
         }
         let laneTop = base + Double(effectLaneCount(track: i)) * BL.effectStripHeight

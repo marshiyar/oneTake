@@ -4,6 +4,7 @@ Save frame (#293): File > Save frame… on macOS and ⇧⌘E (Ctrl+Shift+E on Li
 At `main` bfe862c (2026-10-21). One row per feature: when a change alters a row, edit that row in the same
 pull request instead of appending a new one.
 
+Timeline controls (#165): Fit button and ⇧Z; fit is the zoom-out limit; the zoom readout follows the ruler's major interval. S/M/L rows are 32/48/72 px with pressed state. Clip edits shorten an explicit sequence duration together with their undo step (omitted durations stay inferred). The pre-zero gutter has no identity fill; clips show `fx N` pills and quiet effect strips; toolbar hover names reach the status line in readable text. Native CoreGraphics timeline fixture captures cover 1440×900 and 1280×800 in both themes; full shell/GPU captures remain unverified.
 Text style model and commands (#282): project `textStyles` records and optional clip links share typography while
 keeping each layer's words. Save, apply to multiple layers, update from a layer and detach are validated atomic
 editor commands with undo/redo. Cross-project clip paste detaches a resolved typography snapshot so missing or
@@ -138,6 +139,9 @@ Implementation: `Sources/MpvfxPanels/Docked/MixerPanel.swift`, `Sources/MpvfxAud
 ### De-esser (#209)
 
 The Dynamics rack offers **De-ess**, a version-2 split-band processor with a stereo-linked 4–10 kHz detector (default center 6.5 kHz), frequency in Hz, threshold/range in dB, attack/release in ms, and a detector-listen choice. Its detector-level transfer curve uses the same gain law as processing; the unaffected low band is recombined with the attenuated high band. `DeesserTests` covers sibilant reduction, low-tone preservation, stereo linking and listening; `AudioFxLiveEditTests` covers registry and live/export parity. The gain-reduction meter remains dependent on #206.
+### Design compositing and value alignment (#187)
+
+Style starts with a Compositing block: Opacity, Blend and the opacity easing shortcut, followed by appearance. Edit Easing remembers Style as the opacity property's home while opening the existing Easing tab. Stacked number fields, slider values, segmented rows and Blend reserve the same trailing accessory gutter as ordinary rows; the existing 24 pt keyframe targets remain. Record motion uses the toolbar's existing resting/hover fill and the shared text line layout. Blend persistence and preview/export rendering reuse the existing implementation.
 Grade and Effects small controls (#185): reset/remove/add/refresh cells and scope labels are at least 24 pt, with a full-target hover wash. Wheel resets, settings gears, group resets and effect/secondary icon actions record names on their hit regions. `TargetSizeTests.testGradeAndEffectsTargetsAndHover` audits authored Grade/Effects states at 409, 364 and 280 pt in both appearances, including selected curve points and open Vignette settings.
 - Design inspector legibility (#173): labels, hints, state tags and summaries use AA secondary ink in both appearances; text/values are at least 11 px, section headings 11.5 px below 12 px group titles, and essential slider/field edges reach 3:1.
 ### Hand-placed beat marks (#289)

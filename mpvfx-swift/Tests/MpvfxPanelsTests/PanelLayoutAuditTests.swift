@@ -211,7 +211,7 @@ final class PanelLayoutAuditTests: XCTestCase {
         func hit(_ h: InspectorPanel.Hit) -> CanvasRect? { p.hits.rect { $0 == h } }
         switch row.kind {
         case .number(let n): return hit(.field(n.key)).map { [(n.key, $0.maxX)] } ?? []
-        case .pair(_, _, let b): return hit(.field(b.key)).map { [(b.key, $0.maxX + InspectorPanel.compactPad)] } ?? []
+        case .pair(_, _, let b): return hit(.field(b.key)).map { [(b.key, $0.maxX)] } ?? []
         case .slider(let s): return hit(.slider(s.key)).map { [(s.key, $0.maxX + 8 + InspectorPanel.sliderValueWidth)] } ?? []
         case .segmented(let s): return s.options.last.flatMap { o in hit(.segment(s.key, o.key)).map { [(s.key, $0.maxX)] } } ?? []
         case .toggle(let t): return hit(.toggle(t.key)).map { [(t.key, $0.maxX)] } ?? []
@@ -254,6 +254,15 @@ final class PanelLayoutAuditTests: XCTestCase {
             // A colour field's value starts after its 24 pt swatch target (the two partition the row so they do
             // not overlap): the value, not the row edge, is the control's start.
             case .number(let n): return n.key == k && n.swatch != nil
+            // A stacked slider's value is right-anchored to the value edge on the full-width control line
+            // below the label (like compact fields, it does not start at the control column).
+            case .slider(let s):
+                guard s.key == k,
+                      let g = r.inspector.layoutForAudit(width: r.inspector.lastRect.width) else { return false }
+                return g.rows.contains { row in
+                    if case .slider(let rs) = row.kind, rs.key == k { return row.stacked }
+                    return false
+                }
             default: return false
             }
         }

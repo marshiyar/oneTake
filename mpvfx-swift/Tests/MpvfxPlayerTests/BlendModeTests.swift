@@ -47,16 +47,16 @@ final class BlendModeTests: XCTestCase {
         return Array(img.rgba[i..<i + 4])
     }
 
-    func exported(_ comp: PreviewComposition) throws -> CanvasImage {
-        try ExportFramePainter(composition: comp, width: 100, height: 50, pad: .transparent).paint(time: 0) { layer, _, _, _ in Self.image(for: layer) }
+    func exported(_ comp: PreviewComposition, time: Double = 0) throws -> CanvasImage {
+        try ExportFramePainter(composition: comp, width: 100, height: 50, pad: .transparent).paint(time: time) { layer, _, _, _ in Self.image(for: layer) }
     }
 
-    func stage(_ comp: PreviewComposition) throws -> CanvasImage {
+    func stage(_ comp: PreviewComposition, time: Double = 0) throws -> CanvasImage {
         let cx = PreviewCompositor(decodesMedia: false)
         cx.composition = comp
-        for layer in comp.layers(at: 0) { cx.cache.store(Self.image(for: layer), lane: layer.laneKey, frame: PreviewDecodeLane.stillFrame) }
+        for layer in comp.layers(at: time) { cx.cache.store(Self.image(for: layer), lane: layer.laneKey, frame: PreviewDecodeLane.stillFrame) }
         let canvas = try RasterCanvas(width: 100, height: 50)
-        cx.draw(canvas, in: CanvasRect(x: 0, y: 0, width: 100, height: 50), time: 0, elements: [], context: FrameDrawContext())
+        cx.draw(canvas, in: CanvasRect(x: 0, y: 0, width: 100, height: 50), time: time, elements: [], context: FrameDrawContext())
         return canvas.image()
     }
 
@@ -82,7 +82,9 @@ final class BlendModeTests: XCTestCase {
     func testPreviewAndExportDrawTheSameFrameForEveryMode() throws {
         for mode in NativeBlendMode.allCases {
             let comp = try Self.composition(blend: mode.rawValue)
-            XCTAssertEqual(try stage(comp).rgba, try exported(comp).rgba, "\(mode)")
+            for time in [0.0, 0.4, 0.9] {
+                XCTAssertEqual(try stage(comp, time: time).rgba, try exported(comp, time: time).rgba, "\(mode) at \(time)")
+            }
         }
     }
 

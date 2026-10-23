@@ -209,6 +209,6 @@ final class AutosaveFailureTests: XCTestCase {
         canvas.reset()
         ShellStatusLine.draw(canvas, rect, hint: "Drag to resize the panels", error: s.saveFailureStatus)
         XCTAssertEqual(canvas.drawnStrings, ["Drag to resize the panels"])
-        XCTAssertEqual(canvas.texts.first?.3, PanelTheme.text3)
+        XCTAssertEqual(canvas.texts.first?.3, PanelTheme.text2)
     }
 }

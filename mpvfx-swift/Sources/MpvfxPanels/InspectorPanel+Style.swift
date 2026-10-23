@@ -17,7 +17,7 @@ import MpvfxTimeline
 
 /// The Style group's Fill, Stroke and Shadow rows (FlatFillFields, FlatStrokeRow,
 /// FlatShadowBlendRows). Values live on the clip (`clip.style`) and render in preview and export. Not drawn yet:
-/// gradient / image fill, the dashed-and-other stroke styles, corner radius, blend, blur and overflow.
+/// gradient / image fill, the dashed-and-other stroke styles, corner radius, blur and overflow.
 extension InspectorPanel {
     func styleRows(_ editor: TimelineEditor, _ s: Selected) -> [InspectorRow] {
         let st = s.clip.style ?? NativeClipStyle()

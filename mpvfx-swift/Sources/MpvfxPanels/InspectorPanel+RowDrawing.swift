@@ -20,7 +20,7 @@ import MpvfxTimeline
 /// and segmented control from the control column's left edge to one shared value edge, then the reset cell and the
 /// keyframe gutter, reserved on every property row whether or not it has them, so values end on one x (issue #187).
 /// A row whose controls do not fit beside its label at this width is stacked: the label line on top (with the row's
-/// reset and keyframe controls at its right end), the control across the full width below.
+/// reset and keyframe controls at its right end), the control below, ending at the same reserved value edge.
 extension InspectorPanel {
     /// Space between two segmented options, and each option's padding around its label.
     static let segmentGap = 2.0, segmentPad = 12.0
@@ -155,12 +155,14 @@ extension InspectorPanel {
         let edge = Self.valueEdge(line), fh = PanelGrid.rowHeight - 4
         if stacked {
             drawNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: edge - r.x, height: fh), a0, compact: true)
-            drawNumber(c, CanvasRect(x: r.x, y: line.maxY + 2, width: edge - r.x, height: fh), b0, compact: true, reserveReset: pairCustom)
+            drawNumber(c, CanvasRect(x: r.x, y: line.maxY + 2, width: edge - r.x, height: fh), b0, compact: true,
+                       reserveReset: pairCustom, reserveResetKey: a0.key)
             return
         }
         let colW = (edge - r.x - PanelGrid.columnGap) / 2
         drawNumber(c, CanvasRect(x: r.x, y: line.y + 2, width: colW, height: fh), a0, compact: true)
-        drawNumber(c, CanvasRect(x: r.x + colW + PanelGrid.columnGap, y: line.y + 2, width: colW, height: fh), b0, compact: true, reserveReset: pairCustom)
+        drawNumber(c, CanvasRect(x: r.x + colW + PanelGrid.columnGap, y: line.y + 2, width: colW, height: fh), b0, compact: true,
+                   reserveReset: pairCustom, reserveResetKey: a0.key)
     }
 
     func drawQuad(_ c: CanvasContext, _ r: CanvasRect, _ ns: [InspectorRow.Number]) {
@@ -195,8 +197,8 @@ extension InspectorPanel {
     /// font-mono`, its value right-aligned in the tier colour) from the control column to the accessories. Compact
     /// (`rounded bg-panel-bg px-1.5 gap-1`, the pair and quad fields): the label, then the field filling the rest.
     func drawNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, compact: Bool, stacked: Bool = false,
-                    reserveReset: Bool = false) {
-        if compact { drawCompactNumber(c, r, n, reserveReset: reserveReset); return }
+                    reserveReset: Bool = false, reserveResetKey: String? = nil) {
+        if compact { drawCompactNumber(c, r, n, reserveReset: reserveReset, reserveResetKey: reserveResetKey); return }
         let lines = stacked ? Self.stackedLines(r) : (r, r)
         let acc = Self.numberAccessories(n, hovering: isHovering(n.key))
         let accLeft = drawAccessories(c, line: lines.0, acc)
@@ -204,21 +206,28 @@ extension InspectorPanel {
         let labelW = stacked ? max(0, accLeft - lines.0.x - PanelGrid.columnGap) : cols.label.width
         drawNumberLabel(c, n, line: lines.0, width: labelW)
         let fieldX = stacked ? lines.1.x : cols.control.x
-        let fieldRight = stacked ? lines.1.maxX : accLeft
+        let fieldRight = accLeft
         drawNumberField(c, CanvasRect(x: fieldX, y: lines.1.y, width: max(0, fieldRight - fieldX), height: lines.1.height), n)
     }
 
-    func drawCompactNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, reserveReset: Bool = false) {
+    func drawCompactNumber(_ c: CanvasContext, _ r: CanvasRect, _ n: InspectorRow.Number, reserveReset: Bool = false,
+                           reserveResetKey: String? = nil) {
         c.fillRoundedRect(r.snapped, radius: PanelTheme.radius, PanelTheme.panelBg)
         let pad = Self.compactPad
-        var right = r.maxX - pad
+        // The field runs flush to the rect edge so compact values end on the same x as flat rows
+        // (the pad stays on the label side); a personal reset then sits inside that edge.
+        var right = r.maxX
         if n.reset != nil, n.tier == .explicitCustom || reserveReset {
             if reserveReset {
                 // The pair's shared reset, in the row's reserved cell past the value edge (like every
-                // property row): an exact 24 pt hit that never covers the field.
-                let cell = CanvasRect(x: right + 10, y: r.midY - 12, width: 24, height: 24)
-                drawResetGlyph(c, cell, key: n.key, visible: isHovering(n.key))
-                addHit(cell, .reset(n.key))
+                // property row): an exact 24 pt hit that never covers the field. The field itself runs
+                // flush to the value edge so stacked and unstacked values align.
+                let resetKey = reserveResetKey ?? n.key
+                // Anchored to the padded edge, not the flush field: the cell must not slide into the stopwatch.
+                let cell = CanvasRect(x: right - pad + 10, y: r.midY - 12, width: 24, height: 24)
+                drawResetGlyph(c, cell, key: resetKey, visible: isHovering(resetKey))
+                addHit(cell, .reset(resetKey))
+                right = r.maxX
             } else {
                 let cell = CanvasRect(x: right - 11, y: r.y, width: 11, height: r.height)
                 drawResetGlyph(c, cell, key: n.key, visible: isHovering(n.key))
@@ -382,7 +391,7 @@ extension InspectorPanel {
         let labelW = stacked ? max(0, edge - lines.0.x - PanelGrid.columnGap) : cols.label.width
         let label = sliderInputError == s.key ? "Enter \(s.format(s.min))…\(s.format(s.max))" : s.label
         PanelDraw.text(c, label, in: CanvasRect(x: lines.0.x, y: lines.0.midY - 8.25, width: labelW, height: 16.5), font: Self.rowFont, color: s.tier.labelColor)
-        drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: stacked ? lines.1.maxX : edge)
+        drawSliderControl(c, line: lines.1, s, trackX: stacked ? lines.1.x : cols.control.x, valueRight: edge)
     }
 
     /// The settings gear in the gutter's last cell.
@@ -469,7 +478,8 @@ extension InspectorPanel {
         let cols = PanelGrid.columns(lines.0)
         PanelDraw.text(c, s.label, in: CanvasRect(x: r.x, y: lines.0.midY - 8.25, width: stacked ? r.width : cols.label.width, height: 16.5),
                        font: Self.rowFont, color: PanelTheme.rowLabel)
-        let area = stacked ? lines.1 : CanvasRect(x: cols.control.x, y: r.y, width: max(0, Self.valueEdge(r) - cols.control.x), height: r.height)
+        let controlX = stacked ? lines.1.x : cols.control.x
+        let area = CanvasRect(x: controlX, y: lines.1.y, width: max(0, Self.valueEdge(r) - controlX), height: lines.1.height)
         for (o, or) in zip(s.options, Self.segmentRects(Self.segmentWidths(c, s), in: area)) {
             let hov = hovered == .segment(s.key, o.key)
             let color = o.active ? PanelTheme.text0 : (hov ? PanelTheme.text2 : PanelTheme.inspectorText)
