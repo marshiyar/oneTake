@@ -78,12 +78,13 @@ public enum DocumentAudioGraph {
                               fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> Inputs {
         let fps = doc.frameRate.numerator / max(doc.frameRate.denominator, 1e-9)
         let assets = Dictionary(doc.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        let clips = doc.sequence.tracks.flatMap(\.clips)
+        let allClips = doc.sequence.tracks.flatMap(\.clips)
+        let clips = doc.sequence.tracks.filter { $0.hidden != true }.flatMap(\.clips).filter { $0.hidden != true }
         let owners = Dictionary(doc.sequence.tracks.flatMap { t in t.clips.map { ($0.id, t) } }, uniquingKeysWith: { a, _ in a })
         let silenced = soloSilencedClipIds(doc)
-        let detached = Set(clips.compactMap { $0.audioDetachedFrom?.isEmpty == false ? $0.audioDetachedFrom : nil })
+        let detached = Set(allClips.compactMap { $0.audioDetachedFrom?.isEmpty == false ? $0.audioDetachedFrom : nil })
         var tracks: [Inputs.Track] = []
-        let transitions = audioTransitions(doc, clips: clips)
+        let transitions = audioTransitions(doc, clips: allClips)
         for c in clips where !silenced.contains(c.id) {   // solo: the stems of unheard tracks are never decoded
             guard c.speedRamp?.isSupported != false else { continue }
             guard let a = assets[c.assetId], a.kind == .audio || a.kind == .video, let src = a.source else { continue }

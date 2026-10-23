@@ -52,7 +52,8 @@ public struct GradeUIState: Equatable {
     var samplePending = false
     public internal(set) var sampleError = false
     /// Auto balance is waiting for the clip's frame / found none to measure.
-    var autoBalancePending = false
+    var autoBalanceRequest: AutoBalanceRequest?
+    var autoBalancePending: Bool { autoBalanceRequest != nil }
     var autoBalanceFailed = false
     public var showMatte = false
     var sampleRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)

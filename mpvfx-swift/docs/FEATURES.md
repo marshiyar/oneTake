@@ -146,6 +146,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Audio group volume | done | exact |
 | Dockable Mixer (`mixer`): per audio track gain in dB, pan, mute/solo, and live peak/RMS | done: Window/Panels; persisted gain/pan and undo; same graph for playback/export | n/a |
 | Renders tab: format / output size / frame rate / quality, custom width, Export | done (settings in `preferences.json`; export through `RenderRun`, 38d06b3). Output size scales the composition with its aspect kept: "Composition" (its own size), 720p … 8K by the short edge (720p of a 9:16 composition is 720×1280), or a custom width with the height following (`CompositionRenderResolution.swift`); a fixed preset saved earlier reads as its short edge. Formats are the media engine's: MP4 and MOV (PNG, alpha); WebM is not offered (a saved WebM setting shows "WebM (not supported yet)" and Export refuses it) | close |
+| Renders tab: named export presets | implemented: save or update a name, apply all settings, and delete; per-user `render-presets.json` uses the durable writer. Unreadable or malformed files are reported with their path and preserved; unsupported formats remain visible with a reason and cannot be applied | close |
 | Render list: progress, stage, cancel, delete, reveal, retry, hide finished, history across launches, thumbnails | done (38d06b3; real-render test) | close |
 | Render list: ETA | missing (panels) | n/a |
 | Caption property panel (style, animation entrance/exit/highlight, transform) | missing (unowned) | n/a |
@@ -194,6 +195,7 @@ their shape (`PlayerView+Outlines.swift`).
 | Split at scene changes (#447) | implemented: selected constant-speed video, toolbar scissors or Cmd/Ctrl+Alt+S while timeline/player focused; RGB frame difference at 64×64, threshold 10–90% (click percentage to cycle, Cmd/Ctrl+Alt+[ / ] to adjust), progress, click again or Esc to cancel, one undo step. Speed ramps and held frames are refused. Threshold is a transient analysis option; resulting clips use the existing document format. Swift tests pending compilation. |
 | Slip (Y tool, ⌘/Ctrl+⌥ drag) and roll (roll tool, ⇧ drag on a shared edge) | done (one track; no two-up source monitor during the slip) |
 | Ripple edits, close gap / close all gaps, track add/remove/reorder, snapping, copy/paste | done |
+| Clip names and enable/disable (#445) | done: F2 / Rename… gives a clip its own saved label without changing its media filename; Shift+E / Enable/Disable skips the clip in preview and export (picture and sound), keeping its placement. Undoable; locked tracks refuse edits. The clip menu scrolls inside short panes and supports keyboard navigation (`ClipIdentityTests`, `DisabledClipAudioTests`, `TimelineClipMenuOverflowTests`) | close |
 | Toolbar: tools, snap, keyframe, auto-keyframe, split, remove silence, add beat, track height 32–96, zoom slider/in/out/percent (1e3a90f) | partial: everything works except Add beat, which stays disabled until beat analysis exists |
 | Remove silence (backend silence detection → one undo step, result toast) | done (de10f47) |
 | Add beat at playhead, beat strip (drag to move, ⌥-click delete), music beat analysis, beat edits persisted | missing (unowned: needs a native beat analysis and the beat file) |
@@ -336,6 +338,11 @@ have grapheme boxes spanning the expanded word gap. Empty native text-unit queri
 without recording a frame error. Pango queries the full grapheme's UTF-8 range, rather than unioning
 individual scalar caret rectangles. Windows helper tests cover zero-count and malformed inputs;
 those tests still require a Windows host.
+Audio: **Stereo room** (`reverb-v2`, #208) is available from the audio FX add menu,
+with room size, damping, stereo width, pre-delay, low cut, wet and dry controls.
+The original Room effect and presets retain the legacy reverb sound. The v2
+convolver and regression tests are implemented; Swift test execution and the
+release benchmark target remain unverified in the contribution environment.
 ### Vector shape layers
 
 Element clips can store an optional `shape` record (`v: 1`) for rectangles with corner radius,
