@@ -276,6 +276,9 @@ final class InspectorRenderAuditTests: XCTestCase {
         return c
     }
     func tx(_ t: Double) -> Double { 264 + 100 * t }
+    /// x for time `t` at the controller's actual zoom (fit clamps the zoom-out limit, so pixels per second
+    /// is not always the 100 `tx` assumes).
+    func txx(_ c: TimelineController, _ t: Double) -> Double { 264 + c.view.pixelsPerSecond * t }
     var videoRowY: Double { TimelineLayout.rowTop(0) + 20 }
     func drag(_ c: TimelineController, from x0: Double, to x1: Double) {
         c.pointerDown(x: x0, y: videoRowY); c.pointerMove(x: x0 + (x1 - x0) / 2, y: videoRowY)
@@ -294,14 +297,14 @@ final class InspectorRenderAuditTests: XCTestCase {
 
     func testTimelineTrimEndShortensTheClip() {
         let c = timeline()
-        assertVisualEdit("Trim end", at: 2.5, { drag(c, from: tx(3) - 3, to: tx(2)) }) { c in XCTAssertTrue(c.images.isEmpty) }
+        assertVisualEdit("Trim end", at: 2.5, { drag(c, from: txx(c, 3) - 3, to: txx(c, 2)) }) { c in XCTAssertTrue(c.images.isEmpty) }
         XCTAssertEqual(editor.clip("V")?.clip.durationFrames, 20)
         XCTAssertEqual(audioTrack("V")?.end ?? 0, 2, accuracy: 1e-9)
     }
 
     func testTimelineTrimStartMovesTheInPoint() {
         let c = timeline()
-        assertVisualEdit("Trim start", at: 0.5, { drag(c, from: tx(0) + 3, to: tx(1)) }) { c in XCTAssertTrue(c.images.isEmpty) }
+        assertVisualEdit("Trim start", at: 0.5, { drag(c, from: txx(c, 0) + 3, to: txx(c, 1)) }) { c in XCTAssertTrue(c.images.isEmpty) }
         XCTAssertEqual(editor.clip("V")?.clip.startFrame, 10)
         XCTAssertEqual(editor.clip("V")?.clip.sourceInFrame, 10, "the in point follows the trimmed start")
     }
@@ -310,7 +313,8 @@ final class InspectorRenderAuditTests: XCTestCase {
         let c = timeline()
         let export0 = exportRender(at: 2)
         c.tool = .razor
-        c.pointerMove(x: tx(1.5), y: videoRowY); c.pointerDown(x: tx(1.5), y: videoRowY); c.pointerUp(x: tx(1.5), y: videoRowY)
+        let rx = txx(c, 1.5)
+        c.pointerMove(x: rx, y: videoRowY); c.pointerDown(x: rx, y: videoRowY); c.pointerUp(x: rx, y: videoRowY)
         let clips = editor.document.sequence.tracks.first { $0.id == "tv" }?.clips ?? []
         XCTAssertEqual(clips.map(\.startFrame).sorted(), [0, 15])
         XCTAssertEqual(PreviewComposition(document: editor.document, projectDir: nil, engine: engine, fileExists: { _ in true }).layers(at: 2).count, 1,
