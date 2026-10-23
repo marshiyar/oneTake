@@ -225,6 +225,14 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             validateNativeClipFades(clip, clipPath, &issues)
             validateNativeClipMoves(clip["moves"], clipDuration: clip["durationFrames"]?.numberValue, "\(clipPath).moves", &issues)
             validateNativeClipPresentation(clip, clipPath, &issues)
+            validateNativeClipShape(clip["shape"], assetKind: assetKind,
+                                    boxWidth: clip["staticParameters"]?["layout.width"]?.numberValue ?? input["canvas"]?["width"]?.numberValue,
+                                    boxHeight: clip["staticParameters"]?["layout.height"]?.numberValue ?? input["canvas"]?["height"]?.numberValue,
+                                    "\(clipPath).shape", &issues)
+            if let shape = clip["shape"], shape["v"] == .number(1),
+               NativeClipShape.kinds.contains(shape["kind"]?.stringValue ?? ""), clip["text"] != nil {
+                pushIssue(&issues, .invalidShape, "\(clipPath).shape", "A clip cannot carry both text and a shape")
+            }
             validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
             if let generator = clip["generator"] {
                 let path = "\(clipPath).generator"
