@@ -175,4 +175,20 @@ final class GPUPlanTests: XCTestCase {
         guard !blurs.isEmpty, blurs.allSatisfy({ $0.params.2 > 0 }) else { return "\(name): a blur pass without a radius" }
         return passes.last?.kernel == grade ? "blur passes with a radius, the grade last" : "\(name): the grade is not last"
     }
+    func testSaturationCurveTableReachesSharedGPUJob() throws {
+        var params = ColorGradeParams()
+        params.curves["saturationVsSaturation"] = [[0, 1], [1, -1]]
+        let renderer = ColorGradeRenderer(params: params)
+        let frame = renderer.gpuFrame(width: 8, height: 4, time: 0)
+        XCTAssertEqual(frame.saturationRows.count, 1024)
+        XCTAssertEqual(frame.saturationRows.first?.x, 1)
+        frame.withJob(tableKey: renderer.signature) { ptr in
+            let job = ptr.pointee
+            XCTAssertEqual(job.saturationTexels, 1024)
+            XCTAssertEqual(job.hueTexels, 1024)
+            XCTAssertEqual(job.saturation?[0], 1)
+            XCTAssertEqual(job.saturation?[1023 * 4], 1 / 255)
+        }
+    }
+
 }

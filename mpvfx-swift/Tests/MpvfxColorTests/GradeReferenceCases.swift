@@ -98,6 +98,9 @@ enum GradeReferenceCases {
         cases.append(Case(name: "hue.hueVsSaturation", json: #"{"hueCurves":{"hueVsSaturation":[[0,-0.8],[120,0.5],[240,-0.2]]}}"#))
         cases.append(Case(name: "hue.hueVsLuma", json: #"{"hueCurves":{"hueVsLuma":[[0,0.3],[120,-0.2],[240,0.1]]}}"#))
         // Curve shapes the editor makes: a steep rise after a flat floor, end points without (0,0)/(1,1), the
+        cases.append(Case(name: "curve.lumaVsSaturation", json: #"{"curves":{"lumaVsSaturation":[[0,0],[0.4,0.2],[0.7,-0.4],[1,-1]]}}"#))
+        cases.append(Case(name: "curve.saturationVsSaturation", json: #"{"curves":{"saturationVsSaturation":[[0,0.8],[0.3,0.6],[0.6,-0.3],[1,0]]}}"#))
+        cases.append(Case(name: "curve.combinedSaturation", json: #"{"curves":{"lumaVsSaturation":[[0,0.2],[1,-0.6]],"saturationVsSaturation":[[0,0.7],[1,-0.2]]},"hueCurves":{"hueVsSaturation":[[0,0.2],[120,-0.3],[240,0.1]]}}"#))
         // 16-point maximum, and a local hue bump between two flat anchors (the first point on an empty hue curve).
         cases.append(Case(name: "curve.steep", json: #"{"curves":{"red":[[0,0],[0.58,0],[0.62,0.65],[1,1]],"master":[[0.2,0.1],[0.8,0.9]]}}"#))
         let sixteen = (0..<16).map { i in "[\(Double(i) / 15),\(i % 2 == 0 ? Double(i) / 15 : min(1, Double(i) / 15 + 0.08))]" }.joined(separator: ",")

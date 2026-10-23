@@ -217,8 +217,8 @@ final class PanelSnapshotTests: XCTestCase {
                 r.inspector.grade.curveTab = tab.key
                 let t = snapshot("inspector-grade-curve-light-\(tab.key)", w: 409, h: 3000, scale: scale) { r.draw($0, size: CanvasSize(409, 3000)) }
                 let box = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:curve", 0) }).insetBy(6)
-                // Default curves: Master/R/G/B the identity diagonal, hue curves flat at 0 (mid-height).
-                let lineY = tab.hue ? box.midY : box.maxY - 0.375 * box.height
+                // Default curves: Master/R/G/B the identity diagonal; hue and delta curves flat at 0 (mid-height).
+                let lineY = (tab.hue || tab.min < 0) ? box.midY : box.maxY - 0.375 * box.height
                 let x = box.x + 0.375 * box.width, bgY = tab.hue ? box.maxY - 0.375 * box.height : box.maxY - 0.625 * box.height
                 let on = t.pixel(Int(x * scale), Int(lineY * scale)), off = t.pixel(Int(x * scale), Int(bgY * scale))
                 let lum = { (p: (r: UInt8, g: UInt8, b: UInt8, a: UInt8)) in 0.2126 * Double(p.r) + 0.7152 * Double(p.g) + 0.0722 * Double(p.b) }
