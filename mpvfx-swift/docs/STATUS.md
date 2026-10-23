@@ -96,7 +96,6 @@ through the real runtime. Only publishing is refused on purpose ("Publishing is 
 | macOS | partial: the AppKit shell runs the same editor as Linux (Core Graphics canvas, Core Audio output); built, tested and signed on the owner's Mac — no macOS in CI (owner ruling 2026-10-22), little hands-on use yet | `Sources/MpvfxDesktop/MacShell.swift`, `MacCanvasHost.swift`, `Sources/MpvfxCanvas/CoreGraphicsCanvas.swift`, `Sources/MpvfxAudio/CoreAudioOutput.swift` |
 | Windows | partial: builds and passes its tests on Windows in CI; the green `windows` job builds both packages and installs, launches and uninstalls setup.exe. What is written: Win32 shell with a full-window Direct2D canvas (`WindowsCanvasHost`: DPI, mouse, wheel, keys, cursors, dropped files), item dialogs, clipboard, Explorer, system light/dark; Direct2D/DirectWrite canvas, WASAPI output; the project, library, import and durable-write filesystem layer on Win32 (`NativeFileWin32.swift`, drive-letter and UNC roots in `PosixPath`). On Linux the shared code builds and its tests pass, including the Windows path arithmetic (`WindowsPathTests`) | `Sources/MpvfxDesktop/WindowsShell.swift`, `WindowsCanvasHost.swift`, `Sources/MpvfxCanvas/Direct2DCanvas.swift`, `Sources/CMpvfxWin32`, `Sources/MpvfxRuntime/Projects/NativeFileWin32.swift`, `docs/PACKAGING.md` |
 
-<<<<<<< HEAD
 Stereo room (#208): the separate `reverb-v2` audio effect adds independent channel
 impulses, Width, Pre-delay (0–200 ms) and Low cut. `reverb` and the existing presets
 retain their version-1 DSP. Both playback and export build `ReverbV2Unit` through
@@ -105,13 +104,11 @@ successively doubled FFT tail partitions with preallocated processing buffers.
 `ReverbV2Tests` covers stereo correlation, width, delay, low cut, exact convolution
 and persistence. `MpvfxAudioBench` reports size-1 v2 speed; the >=20x release target
 has not been measured in the contribution environment (no Swift toolchain).
-=======
 - #323 Shapes 1: optional versioned shape records, typed shape validation, a pure edit plan and
   single-step undo/save support; shared preview/export vector painting for rectangle, ellipse,
   triangle, diamond, polygon, star, line and arrow. Focused tests cover legacy save stability,
   opaque future contracts, invalid values, analytic rounded corners, diagonal arrow tangents,
   and preview/export pixels with dashes at 1× and 2× output scale.
->>>>>>> origin/main
 Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
 Reference-look matching waits for exact source/reference frames, cancels pending work on selection/editor/playhead changes even with Grade closed, reports terminal decode failures, preserves alpha-weighted colour when reducing frames, and accounts for existing pivoted Contrast and Offset during primary correction. No-op completion refreshes the action without adding undo history.
 Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.
