@@ -73,6 +73,9 @@ extension EditorSession {
         feed.panel.onCopy = { [weak self] text in self?.panels?.copyToClipboard?(text) }
         installDockedPanel(router, id: DockPanels.info, panel: feed.panel) { [weak feed] in feed?.refresh() }
         clipInfoFeed = feed
+        clipLoudnessFeed = ClipLoudnessFeed(projectDir: { [weak self] in self?.projectDir?.path ?? "" },
+                                            postToUI: { [weak self] body in self?.postToUI(body) },
+                                            redraw: { [weak self] in self?.redraw() })
         installEffectsPanel(router)
         let scopes = ScopesPanel(layout: router.layout)
         let program = ProgramScopeRenderer(compositor: compositor)

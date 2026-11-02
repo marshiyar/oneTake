@@ -24,6 +24,10 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Layer moves (in, out, loop) evaluated the same in preview and export.
 - Voice-over punch-in: with the I and O points set, Record voice plays from a pre-roll before I (Settings > Voice
   pre-roll, default 2 s), records exactly I to O and stops at O, landing as one clip covering that range.
+- Even Out: a new effect in the audio rack's Dynamics family that lifts quiet passages and holds loud ones down with a
+  single Amount (default 65 %), the same in preview and export.
+- Each clip with sound shows its integrated loudness in the Media group, measured in the background and updated when the
+  clip volume changes.
 - Export loudness: the Renders tab takes a Loudness target (Off, −14, −16, −18, −23, −24 LUFS) and a true-peak ceiling
   (−0.5 to −3 dBTP, default −1). Export measures the exported span (only the range for a range export), applies one gain
   to reach the target, and the limiter with a 4x true-peak check keeps the mix under the ceiling; if the ceiling stops it
