@@ -67,6 +67,11 @@ public final class InspectorPanel {
     public var onCopyGrade: (() -> Bool)?
     /// Durable user-data look catalogue, supplied by the host; ordinary effects remain in the project.
     public var userLookStore: UserLookStore?
+    /// The user's text styles (`<userData>/text-styles.json`), supplied by the host; the project copies a style on first use.
+    public var textStyleLibrary: TextStyleLibrary?
+    var textStyleMenuOpen = false
+    var textStyleNameDraft: String?
+    var textStyleError: String?
     public var resolveUserLookLut: (String) -> String = { $0 }
     public var userLookLutExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     var selectedUserLook: String?

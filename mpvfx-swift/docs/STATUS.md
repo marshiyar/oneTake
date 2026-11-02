@@ -11,9 +11,33 @@ editor commands with undo/redo. Cross-project clip paste detaches a resolved typ
 colliding style IDs cannot change the appearance; same-project paste keeps the live style link. Inspector edits
 override only the changed fields; nil can explicitly restore a field's default, and Reset removes the override to
 follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
-style/link versions and kinds remain serialized and undrawn with an open notice. The style browser is a later UI
-slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
-and `TextStyleRenderingTests`.
+style/link versions and kinds remain serialized and undrawn with an open notice. Covered by `NativeTextStyleTests`,
+`TextStyleEditTests` and `TextStyleRenderingTests`.
+Look section in the Text group (#281): up to two outlines (width, colour, outside or centre), a drop shadow (offset x and y, blur,
+colour), a glow (radius, strength, colour), a plate (per line or whole block, padding, corner radius, opacity, colour) and a two-colour
+gradient fill (colours, angle). Every row is a slider or hex field reached by Tab; sliders nudge with the arrow keys (Shift for ten),
+take typed values and reset. Outline widths, shadow offset and blur, glow strength, plate opacity and the gradient angle carry the keyframe
+gutter: a value is stored in the look until it is animated, then in a clip parameter track (`text.look.outline.0.width`,
+`text.look.shadow.x`, `text.look.glow.strength`, `text.look.plate.opacity`, `text.look.fill.angle` and so on); preview and export read the
+track at each frame through the same composition and the exporter accepts these ids. Stopping the stopwatch keeps the value at the
+playhead in the look as one undo step; removing a part removes its keys; only the last outline can be removed. A linked text style keeps its
+link and the look becomes a local override. Values that overshoot their range between keys are held to it when drawn. Covered by
+`TextLookRowsTests`, `NativeTextLookParameterTests`, `TextLookAnimationRenderingTests` and `TextLookExportAuditTests`.
+Starter text styles (#284): eight styles ship with the app (Lower third, Bold title, Subtitle plate, Quote, Label, Outline title,
+Soft shadow, Mono caption) as a JSON document with the copyright block (`TextStarterStyles`). They use the generic Sans and Monospace
+families only, so no font file is added, and each sets its text against an outline or a plate that keeps a 4.5:1 contrast on a white, a
+black and a mid-grey frame. They follow the user's own styles in the Style menu (and in ⌥⌘1…9), and a project copies one on first use.
+The JSON is embedded in the source rather than a Swift Package resource, because the resource bundle is unverified on Windows and Linux.
+Covered by `TextStarterStylesTests` and `TextStarterStylesRenderingTests`; Swift tests pending compilation.
+Text style library and Style menu (#283): `<userData>/text-styles.json` (written through the durable writer) keeps the user's
+styles for every project. The Text group's Style button opens a menu of those styles, each drawn as a sample with the text
+painter, then the project's own styles the library lacks; picking one applies it to the selected text layers and copies it
+into the project on first use (the project's copy of the same id wins afterwards), as one undo step. Save current as style
+(named by the Style name field, else "Text style N"), Update style, Detach and Delete from my styles (the project keeps its
+copy and layers keep their look) complete the menu. A corrupt or newer file is reported with its path, left untouched, and
+the menu still opens. ⌥⌘S saves the selected text layer as a style (with no text layer selected it still splits scenes) and
+⌥⌘1…9 apply the first nine styles; all are listed in the shortcuts card. Covered by `TextStyleLibraryTests` and
+`NativeTextStyleTests`; Swift tests pending compilation.
 
 What the app does at this revision, feature by feature. "Works" means wired into the running Linux, macOS and Windows app
 and covered by tests; "partial" means some of it is there; "stub" means the call exists but throws or does nothing;

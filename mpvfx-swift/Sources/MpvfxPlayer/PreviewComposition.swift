@@ -451,7 +451,7 @@ public struct PreviewComposition {
         out.blend = c.style?.blendMode ?? .normal
         out.shape = e.kind == .shape ? c.shape : nil
         out.generator = e.kind == .generator ? c.generator : nil
-        out.text = e.kind == .text ? c.text : nil
+        out.text = e.kind == .text ? c.text.map { NativeTextLookParameter.applying(values, to: $0) } : nil
         if out.text?.reveal?.isSupported == true || out.text?.unreveal?.isSupported == true {
             out.textFrame = TextRevealFrame(frame: local, clipFrames: c.durationFrames, fps: fps)
         }
