@@ -133,7 +133,7 @@ extension NativeEdgeMove {
         case .grow: return NativeMoveOffsets(scale: 1 - towardIn * a / 100 * w)
         case .shrink: return NativeMoveOffsets(scale: 1 + towardIn * a / 100 * w)
         case .spin: return NativeMoveOffsets(rotation: -towardIn * a * w)
-        case .draw: return NativeMoveOffsets(drawProgress: 1 - w)
+        case .draw: return edge == .in ? NativeMoveOffsets(drawProgress: 1 - w) : .identity   // In only; the validator refuses an Out
         }
     }
 

@@ -50,4 +50,10 @@ final class NativeDrawOnMoveTests: XCTestCase {
         XCTAssertFalse(NativeEdgeMoveKind.draw.accepts(amount: 50))
         XCTAssertEqual(NativeMoveOffsets(drawProgress: 0.5).combined(with: NativeMoveOffsets(drawProgress: 0.5)).drawProgress, 0.25)
     }
+
+    func testADrawOnOutOfAHandEditedProjectDrawsNothingAwayInsteadOfErasingTheStroke() throws {
+        let engine = try KeyframeRuntime()
+        let moves = NativeClipMoves(out: NativeEdgeMove(kind: .draw, frames: 10, ease: .linear))
+        for frame in [0, 30, 35, 40] { XCTAssertEqual(try offsets(moves, frame, engine), .identity, "frame \(frame)") }
+    }
 }
