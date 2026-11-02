@@ -507,6 +507,11 @@ public final class TimelineController {
                 snapEnabled.toggle(); needsDisplay?(); return true
             case .char(let ch) where (ch == "t" || ch == "T") && !k.shift && onAddText != nil:
                 onAddText?(playback.currentTime); return true
+            case .char(let ch) where (ch == "r" || ch == "R") && k.shift:
+                // ⇧R: the selected clip's speed ramp on or off (the Media group's Speed row does the same).
+                guard let editor, let id = view.selection.first, view.selection.count == 1 else { return false }
+                if !k.isRepeat, !editor.toggleSpeedRamp(clipId: id), let why = editor.lastFailure?.message { editor.onNotice?(why) }
+                return true
             case .char(let ch) where (ch == "u" || ch == "U") && !k.shift:
                 return toggleExpandSelection()
             case .char(let ch) where ch == "s" || ch == "S":

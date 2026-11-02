@@ -54,7 +54,7 @@ public extension TimelineEditor {
         applySpeedRamp(clipId: clipId, isRamped(clipId) ? .clear : .setShape(.slowMiddle))
     }
 
-    internal static func speedRampLabel(_ command: NativeSpeedRampCommand) -> String {
+    static func speedRampLabel(_ command: NativeSpeedRampCommand) -> String {
         switch command {
         case .setShape: "Set speed shape"
         case .addPoint: "Add speed point"
