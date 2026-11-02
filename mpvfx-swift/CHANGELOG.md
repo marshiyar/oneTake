@@ -25,6 +25,10 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.
+- The Grade group opens on its controls: Looks, Primary, Color wheels, Curves, Secondary color, Custom LUT and Finish fold
+  from their headers (mouse, or Tab then Enter / Space) and remember it between launches; Looks start folded and name the
+  active look. A look shows as active only while the grade still matches it ("Custom" after any edit), and its tile
+  previews what a click applies on top of the clip's own grade.
 - Auto balance and reference-clip look matching fit exposure, warmth, tint, contrast and offset from frame
   statistics in one undo step.
 - Clip blend modes, a colour key with hue-following spill, and spill/GPU parity coverage.

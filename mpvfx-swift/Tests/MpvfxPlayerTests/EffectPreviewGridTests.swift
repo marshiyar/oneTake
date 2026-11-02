@@ -91,6 +91,7 @@ final class EffectPreviewGridTests: XCTestCase {
         Theme.setMode(mode); defer { Theme.setMode(.dark) }
         let renderer = EffectPreviewRenderer(budgetBytes: 32 << 20)
         let r = try fixture(open: "grade", renderer: renderer)
+        r.inspector.gradeSectionOpen["looks"] = true
         r.inspector.presetPreview = { _ in .unavailable }
         let t = drawSettled(r, renderer, h: 1400)
         write(t, "grade-presets-sample-\(mode)")

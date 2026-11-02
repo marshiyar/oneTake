@@ -89,6 +89,8 @@ public struct PanelPreferences: Codable, Equatable, Sendable {
     public var scopeSource: ColorScopes.Source?
     /// The dockable Scopes panel's selected scope; unknown future names fall back without discarding the layout.
     public var scopePanelKind: String?
+    /// The Grade group's sections the user opened (true) or collapsed (false), by section id; a missing id follows its default.
+    public var gradeSections: [String: Bool]?
     public init() {}
 }
 

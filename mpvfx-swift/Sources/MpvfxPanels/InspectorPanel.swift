@@ -276,6 +276,11 @@ public final class InspectorPanel {
     public var scopeSource: ColorScopes.Source = .clip {
         didSet { if scopeSource != oldValue, let layout { layout.update { $0.scopeSource = scopeSource } } }
     }
+    /// The Grade sections the user opened (true) or collapsed (false), by id (InspectorPanel+GradeSections.swift). Every change
+    /// is saved as `PanelPreferences.gradeSections`; `RightPanel.init` restores it.
+    public var gradeSectionOpen: [String: Bool] = [:] {
+        didSet { if gradeSectionOpen != oldValue, let layout { layout.update { $0.gradeSections = gradeSectionOpen } } }
+    }
     /// Analyses scope frames off the draw thread; the host sets its `onReady` to redraw.
     public let scopeWorker = ScopeWorker()
     public var lutAssets: () -> [String] = { [] }
@@ -305,7 +310,7 @@ public final class InspectorPanel {
         case .reset(let key): return "Reset " + (slider(key)?.label ?? number(key)?.label ?? key)
         case .keyframe(let key) where key.hasSuffix(Self.gearSuffix):
             return (slider(String(key.dropLast(Self.gearSuffix.count)))?.label ?? key) + " settings"
-        case .custom(let section, let part): return Self.targetActionLabels[section]?[part]
+        case .custom(let section, let part): return Self.targetActionLabels[section]?[part] ?? gradeSectionLabel(section)
         default: return nil
         }
     }
