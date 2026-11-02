@@ -37,6 +37,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   control of a side panel moves on to the next panel instead of stopping.
 - Export versions (⇧⌘R): tick several export presets and render them one after another, each saved as
   "<project> – <preset>" without replacing an existing file; a preset can render at its own composition size.
+- Voice-over punch-in: with the I and O points set, Record voice plays from a pre-roll before I (Settings > Voice
+  pre-roll, default 2 s), records exactly I to O and stops at O, landing as one clip covering that range.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.
