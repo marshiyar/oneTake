@@ -190,6 +190,7 @@ public final class PlayerController {
         }
         if let b = view.button(at: p, in: size) { press(b); return }
         guard vp.contains(p), !recordTakesPress(p, shift: shift) else { return }   // armed Record owns stage presses
+        if eyedropperPress(at: p) { needsDisplay?(); return }   // the stage eyedropper owns the next press
 
         if let e = selected {
             let ve = view.chromeElement(e, in: size)

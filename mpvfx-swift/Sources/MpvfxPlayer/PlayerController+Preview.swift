@@ -121,6 +121,7 @@ extension PlayerController {
 
     /// Esc, innermost first: a take, a drag, the menu, the grid popover, the crop tool, armed Record, fullscreen.
     func escapeKey() -> Bool {
+        if eyedropperEscape() { return true }
         if recorder != nil { return recordEscape() }
         if cancelGesture() { return true }
         if maskEscape() { return true }
