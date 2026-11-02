@@ -10,6 +10,8 @@ Unreleased; nightly builds of `main` are published as pre-releases named `nightl
 Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binaries.lock`); no version tag yet.
 
 ### Editing
+- A clip can be set to play backwards in the project file (`reversed`, and `reverseAudio: false` to mute it): preview and
+  export show it from its out point to its in point and the sound plays backwards. The Reverse switch comes next (#295).
 - Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels
   and dock beside the preview; Design groups can be dragged out into their own panels.
 - Sequence markers: M drops a named marker at the playhead; the Markers panel jumps, renames, recolours and deletes
