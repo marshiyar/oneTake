@@ -157,7 +157,7 @@ public final class TransitionsPanel: DockedPanelView {
         c.save()
         c.clip(viewport)
         let cut = selectedCuts.first
-        let sides = cut.map { cutPictures(for: $0, thumb: tiles.first?.thumb ?? .init(x: 0, y: 0, width: 160, height: 90), scale: c.deviceScale) }
+        let sides = cut.flatMap { cutPictures(for: $0, thumb: tiles.first?.thumb ?? .init(x: 0, y: 0, width: 160, height: 90), scale: c.deviceScale) }
         let playing = hoveredId ?? highlighted
         for h in headers where h.rect.maxY - scrollY > viewport.y && h.rect.y - scrollY < viewport.maxY {
             PanelDraw.tracked(c, h.title.uppercased(), in: h.rect.shifted(dy: -scrollY), font: PanelTheme.mono(9), tracking: 0.225, color: PanelTheme.text2)

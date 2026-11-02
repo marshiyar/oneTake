@@ -75,8 +75,8 @@ final class TimelineTransitionApplyTests: XCTestCase {
     func testChoosingAnotherKindForACutReplacesItsTransitionInOneStepKeepingTheLength() throws {
         let e = try editor()
         let ab = try cut(e, "A")
-        XCTAssertTrue(e.applyTransition(.dissolve, to: ab, lengthFrames: 20).first?.applied == true)
-        XCTAssertTrue(e.applyTransition(.push, direction: .right, to: ab).first?.applied == true)
+        XCTAssertTrue(e.applyTransition(.dissolve, to: ab, lengthFrames: 20).applied)
+        XCTAssertTrue(e.applyTransition(.push, direction: .right, to: ab).applied)
         let all = transitions(e)
         XCTAssertEqual(all.count, 1, "one transition per cut")
         XCTAssertEqual(all[0].kind, .push)
@@ -103,12 +103,12 @@ final class TimelineTransitionApplyTests: XCTestCase {
 
     func testAShortHandleShortensTheTransitionAndSaysSo() throws {
         let e = try editor(cSourceIn: 5)   // 5 frames before C's in point: a centred dissolve into it holds at most 11
+        XCTAssertEqual(e.transitionFit(.dip, on: try cut(e, "B"))?.length, 15, "a dip borrows no media")
         let outcome = e.applyTransition(.dissolve, to: try cut(e, "B"))
         XCTAssertEqual(outcome, .applied(lengthFrames: 11, shortenedFrom: 15))
         XCTAssertEqual(outcome.shortenedLength, 11)
         XCTAssertEqual(transitions(e).first?.durationFrames, 11)
         XCTAssertEqual(e.transitionFit(.dissolve, on: try cut(e, "B"))?.length, 11)
-        XCTAssertEqual(e.transitionFit(.dip, on: try cut(e, "B"))?.length, 15, "a dip borrows no media")
     }
 
     func testNoHandleRefusesADissolveButNotADipAndChangesNothing() throws {
@@ -158,5 +158,7 @@ final class TimelineTransitionApplyTests: XCTestCase {
         XCTAssertEqual(e.cut(nearFrame: 118, toleranceFrames: 6, trackId: "v1")?.fromClipId, "B")
         XCTAssertNil(e.cut(nearFrame: 90, toleranceFrames: 6, trackId: "v1"), "mid clip: no cut")
         XCTAssertNil(e.cut(nearFrame: 60, toleranceFrames: 6, trackId: "other"), "another track")
+        XCTAssertNil(e.cut(nearFrame: 90, toleranceFrames: 6), "any track: still limited by the tolerance")
+        XCTAssertEqual(e.cut(nearFrame: 100, toleranceFrames: 30)?.fromClipId, "B", "the nearest of two cuts in reach")
     }
 }
