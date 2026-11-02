@@ -323,6 +323,8 @@ extension InspectorPanel {
         if s.kind == .video || s.kind == .image {
             rows.append(contentsOf: mediaFitRows(editor, s))
             rows.append(contentsOf: cropRows(editor, s))
+            rows.append(InspectorRow(.section("Canvas fill")))
+            rows.append(contentsOf: canvasFillRows(clipCanvasFillScope(editor, s)))
         }
         if s.hasAudio {
             let vol = AudioGainFader.clamp(editor.numberValue(clipId: s.id, TimelineEditor.volumeId, time: t) ?? 1)

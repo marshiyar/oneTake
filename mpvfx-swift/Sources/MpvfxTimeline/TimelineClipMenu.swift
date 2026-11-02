@@ -18,7 +18,7 @@ import MpvfxTheme
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
-        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
+        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, canvasFill, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -75,11 +75,12 @@ public struct TimelineClipMenu: Equatable, Sendable {
     }
 
     /// Entries for a clip of `kind`: split, the clipboard group, thumbnails, mute and pitch, the audio link, delete.
-    /// `keepsPitch` is the clip's pitch option, nil for a clip without sound (no row).
+    /// `keepsPitch` is the clip's pitch option, nil for a clip without sound (no row). `canvasFill` is whether the
+    /// selected visual clips all show a canvas fill (#320), nil for a clip that draws none (no row).
     public static func entries(kind: TimelineClipKind, splitEnabled: Bool, thumbnails: Bool, muted: Bool,
                                canReattach: Bool, canDetach: Bool, canMute: Bool = true,
                                canPaste: Bool = false, canPasteGrade: Bool = false, gradePasteReason: String? = nil,
-                               keepsPitch: Bool? = nil, disabled: Bool = false) -> [Entry] {
+                               keepsPitch: Bool? = nil, disabled: Bool = false, canvasFill: Bool? = nil) -> [Entry] {
         var e: [Entry] = []
         let hasSplit = kind == .video || kind == .audio || kind == .image
         if hasSplit { e.append(.item(Item(action: .split, label: "Split", hint: "S", enabled: splitEnabled))); e.append(.divider) }
@@ -101,6 +102,7 @@ public struct TimelineClipMenu: Equatable, Sendable {
         }
         if kind == .video || kind == .image {
             e.append(.item(Item(action: .thumbnails, label: "Show thumbnails", checked: thumbnails)))
+            if let canvasFill { e.append(.item(Item(action: .canvasFill, label: "Fill empty area", checked: canvasFill))) }
             e.append(.divider)
         }
         if (kind == .video || kind == .audio) && canMute {

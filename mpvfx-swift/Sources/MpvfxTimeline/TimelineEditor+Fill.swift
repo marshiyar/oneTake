@@ -38,4 +38,42 @@ public extension TimelineEditor {
         }
         return found && commitPresets(d, label: "Set clip fill")
     }
+
+    /// Whether the clip draws a fill behind it: its own, or the project's when it has none or says `inherit`. A fill
+    /// this version cannot read is not drawn, so it is off.
+    func canvasFillIsOn(clipId: String) -> Bool {
+        guard let clip = clip(clipId)?.clip else { return false }
+        let own = clip.fill.flatMap { $0.kind == "inherit" ? nil : $0 }
+        guard let shown = own ?? document.compositionFill, shown.isSupported else { return false }
+        return shown.kind != "none"
+    }
+
+    /// True when every one of the existing clips shows a fill; false for none.
+    func canvasFillIsOn(clipIds: Set<String>) -> Bool {
+        let existing = clipIds.filter { clip($0) != nil }
+        return !existing.isEmpty && existing.allSatisfy { canvasFillIsOn(clipId: $0) }
+    }
+
+    /// The clip menu's "Fill empty area" for the selected clips, in one undo step. When every clip shows a fill it turns
+    /// them all off (`none`); otherwise it turns the others on: back to the project's fill when the project has one,
+    /// else a blurred, darkened copy. Clips on a locked track are left alone; false, with nothing recorded, when
+    /// there is no clip to change.
+    @discardableResult
+    func toggleCanvasFill(clipIds: Set<String>) -> Bool {
+        let targets = clipIds.filter { clip($0) != nil && !isClipLocked($0) }
+        guard !targets.isEmpty else { return false }
+        let turnOff = targets.allSatisfy { canvasFillIsOn(clipId: $0) }
+        let projectShows = document.compositionFill.map { $0.isSupported && $0.kind != "none" } ?? false
+        var d = document
+        for t in d.sequence.tracks.indices {
+            for i in d.sequence.tracks[t].clips.indices where targets.contains(d.sequence.tracks[t].clips[i].id) {
+                if turnOff {
+                    d.sequence.tracks[t].clips[i].fill = NativeFill(kind: "none")
+                } else if !canvasFillIsOn(clipId: d.sequence.tracks[t].clips[i].id) {
+                    d.sequence.tracks[t].clips[i].fill = projectShows ? nil : NativeFill(kind: "blur")
+                }
+            }
+        }
+        return commitPresets(d, label: "Set canvas fill")
+    }
 }

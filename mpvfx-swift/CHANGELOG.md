@@ -23,6 +23,7 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
 - Draw-on: a line, arrow or closed shape can draw itself along its path as an In move, the same in preview and export.
+- Canvas fill controls: set what fills the empty frame area for the project (Composition) or a clip (Media), and switch it for the selected clips from the clip menu.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.
