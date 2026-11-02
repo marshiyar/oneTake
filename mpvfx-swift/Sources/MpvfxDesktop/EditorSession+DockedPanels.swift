@@ -60,6 +60,15 @@ extension EditorSession {
         }
         installDockedPanel(router, id: DockPanels.markers, panel: markers)
 
+        let captions = CaptionsPanel()
+        captions.editor = editor
+        captions.onJump = { [weak self] time in
+            guard let self else { return }
+            self.timeline.playback.seek(time); self.timeline.syncFromPlayback()
+        }
+        captions.playheadMs = { [weak self] in Int(((self?.timeline.playback.currentTime ?? 0) * 1000).rounded()) }
+        installDockedPanel(router, id: DockPanels.captions, panel: captions)
+
         let mixer = MixerPanel()
         mixer.editor = editor
         installDockedPanel(router, id: DockPanels.mixer, panel: mixer) { [weak self, weak mixer] in

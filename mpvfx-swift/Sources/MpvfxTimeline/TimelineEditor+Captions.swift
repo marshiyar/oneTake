@@ -76,11 +76,14 @@ public extension TimelineEditor {
         return commitCaptions(label: "Nudge caption") { try planCaptionNudge($0, cueId: id, edge: edge, byFrames: frames, frameRate: rate) }
     }
 
-    /// Splits a cue at the playhead time `atMs` and the text caret; the two halves stay contiguous. Returns the new cue's id.
+    /// Splits a cue at the playhead time `atMs` and the text caret; the two halves stay contiguous. `text` is the cue's text
+    /// as being edited (the caret is an offset in it); it replaces the stored text in the same single undo step.
+    /// Returns the new cue's id.
     @discardableResult
-    func splitCaptionCue(_ id: String, atMs: Int, caret: Int) -> String? {
-        guard let track = document.sequence.captions,
-              let planned = try? planCaptionSplit(track, cueId: id, atMs: atMs, caret: caret, frameRate: fps) else { return nil }
+    func splitCaptionCue(_ id: String, atMs: Int, caret: Int, text: String? = nil) -> String? {
+        guard var track = document.sequence.captions else { return nil }
+        if let text { guard let retyped = try? planCaptionRetext(track, cueId: id, text: text) else { return nil }; track = retyped }
+        guard let planned = try? planCaptionSplit(track, cueId: id, atMs: atMs, caret: caret, frameRate: fps) else { return nil }
         var d = document
         d.sequence.captions = planned.track
         return commitPresets(d, label: "Split caption") ? planned.newCueId : nil
