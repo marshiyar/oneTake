@@ -91,7 +91,7 @@ extension LeftSidebarPanel {
     func isFocusable(_ h: Hit) -> Bool {
         switch h {
         case .tab(let t): return t == tab   // the tab bar is one stop: the selected tab
-        case .hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .clearFilters, .clearSearch, .createCancel, .createConfirm, .deleteConfirm, .deleteCancel: return true
+        case .hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .clearFilters, .clearSearch, .createCancel, .createConfirm, .libraryDeleteConfirm, .libraryDeleteCancel: return true
         case .tile(let ref): return ref == (selected.flatMap { s in tileFrames.contains { $0.0 == s } ? s : nil } ?? tileFrames.first?.0)
         default: return false
         }

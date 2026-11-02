@@ -293,8 +293,8 @@ final class LibraryServiceTests: XCTestCase {
     /// project, the library's media and the attached copy in the other project stay, also after a reopen.
     func testDeletesAProjectWithItsFilesAndExportsOnly() async throws {
         let f = try await fixture()
-        let files = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: f.eventId, projectId: f.first), [f.source], .managed).files
-        let assetId = files[0]
+        let assetId = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: f.eventId), [f.source], .managed).files[0]
+        _ = try await f.engine.attach(f.libraryId, f.first, assetId)
         let attached = try await f.engine.attach(f.libraryId, f.second, assetId)
         let first = try XCTUnwrap(f.engine.resolveProject(f.first)).dir, second = try XCTUnwrap(f.engine.resolveProject(f.second)).dir
         let snapshot = try await f.engine.snapshot(f.first)!
@@ -327,7 +327,8 @@ final class LibraryServiceTests: XCTestCase {
         let events = await f.engine.views()[0].events
         let day2 = try XCTUnwrap(events.first { $0.id != f.eventId }?.id)
         let doomed = try await f.engine.createProject(f.libraryId, day2, "Day 2 cut")
-        let managed = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: day2, projectId: doomed), [f.source], .managed).files[0]
+        let managed = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: day2), [f.source], .managed).files[0]
+        _ = try await f.engine.attach(f.libraryId, doomed, managed)
         let linked = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: day2), [f.source], .linked).files[0]
         _ = try await f.engine.attach(f.libraryId, f.first, managed)   // a project of the other event holds a copy
         let keptMedia = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: f.eventId), [f.source], .managed).files[0]

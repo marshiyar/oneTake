@@ -14,6 +14,8 @@
 // The library navigator's "Delete event…" and "Delete project…" (issue #40): they ask first, say what goes, and send
 // the command only when confirmed.
 import XCTest
+import MpvfxCanvas
+import MpvfxTimeline
 @testable import MpvfxPanels
 
 final class LibraryDeleteNavigatorTests: XCTestCase {
@@ -50,10 +52,10 @@ final class LibraryDeleteNavigatorTests: XCTestCase {
         s.draw(c, size: size)
         XCTAssertTrue(c.drawnStrings.contains { $0.contains("Delete project") || $0.contains("Main") }, "the row names the project")
         XCTAssertTrue(c.drawnStrings.contains("Delete") && c.drawnStrings.contains("Cancel"))
-        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .deleteConfirm })))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .libraryDeleteConfirm })))
         XCTAssertEqual(cmds, [.deleteProject(libraryId: "L", projectId: "P")])
         s.draw(PanelMeasureCanvas(), size: size)
-        XCTAssertNil(s.hits.rect { $0 == .deleteConfirm }, "the row closes once confirmed")
+        XCTAssertNil(s.hits.rect { $0 == .libraryDeleteConfirm }, "the row closes once confirmed")
     }
 
     /// Delete event… names the shown event with its project and media counts and sends its id when confirmed.
@@ -64,7 +66,7 @@ final class LibraryDeleteNavigatorTests: XCTestCase {
         let message = try XCTUnwrap(s.deleting?.message)
         XCTAssertTrue(message.contains("2 projects") && message.contains("2 media items"), message)
         XCTAssertEqual(cmds, [])
-        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .deleteConfirm })))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .libraryDeleteConfirm })))
         XCTAssertEqual(cmds, [.deleteEvent(libraryId: "L", eventId: "E")])
     }
 
@@ -73,7 +75,7 @@ final class LibraryDeleteNavigatorTests: XCTestCase {
         var cmds: [LibraryNavCommand] = []
         let s = navigator { cmds.append($0) }
         try pick(s, "deleteProject")
-        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .deleteCancel })))
+        _ = s.pointerDown(center(try XCTUnwrap(s.hits.rect { $0 == .libraryDeleteCancel })))
         XCTAssertNil(s.deleting)
         try pick(s, "deleteEvent")
         XCTAssertNotNil(s.deleting)
@@ -91,8 +93,8 @@ final class LibraryDeleteNavigatorTests: XCTestCase {
         var cmds: [LibraryNavCommand] = []
         let s = navigator { cmds.append($0) }
         try pick(s, "deleteProject")
-        XCTAssertTrue(s.isFocusable(.deleteConfirm) && s.isFocusable(.deleteCancel))
-        s.focus.current = .deleteConfirm; s.focus.visible = true
+        XCTAssertTrue(s.isFocusable(.libraryDeleteConfirm) && s.isFocusable(.libraryDeleteCancel))
+        s.focus.current = .libraryDeleteConfirm; s.focus.visible = true
         XCTAssertTrue(s.keyDown(EditorKey(.enter)))
         XCTAssertEqual(cmds, [.deleteProject(libraryId: "L", projectId: "P")])
     }

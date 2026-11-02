@@ -101,7 +101,7 @@ public final class LeftSidebarPanel {
         case switcher, importMedia, more
         case search, clearSearch, filter, clearFilters
         case createField, createConfirm, createCancel
-        case deleteConfirm, deleteCancel
+        case libraryDeleteConfirm, libraryDeleteCancel
         case tile(MediaTileRef), tileAction(MediaTileRef)
         /// The play / stop button of a tile that can be auditioned, and the progress bar of the one that is.
         case tileAudition(MediaTileRef), auditionBar(MediaTileRef)

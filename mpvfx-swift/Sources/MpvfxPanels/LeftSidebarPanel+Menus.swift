@@ -316,8 +316,8 @@ extension LeftSidebarPanel {
         switch hit {
         case .createConfirm: confirmCreate()
         case .createCancel: creating = nil
-        case .deleteConfirm: confirmDelete()
-        case .deleteCancel: deleting = nil
+        case .libraryDeleteConfirm: confirmDelete()
+        case .libraryDeleteCancel: deleting = nil
         default: break
         }
         return false

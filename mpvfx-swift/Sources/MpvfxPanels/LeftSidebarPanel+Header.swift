@@ -155,9 +155,9 @@ extension LeftSidebarPanel {
         let delete = CanvasRect(x: cancel.x - M.controlGap - deleteW, y: y, width: deleteW, height: M.control)
         c.fillRoundedRect(delete, radius: PanelTheme.radiusMd, library.busy ? PanelTheme.panelInput : PanelTheme.panelHover)
         PanelDraw.text(c, "Delete", in: delete, font: font, color: library.busy ? PanelTheme.text5 : PanelTheme.red400, align: .center)
-        if !library.busy { hits.add(delete, .deleteConfirm) }
-        PanelDraw.text(c, "Cancel", in: cancel, font: font, color: hovered == .deleteCancel ? PanelTheme.text0 : PanelTheme.text2, align: .center)
-        hits.add(cancel, .deleteCancel)
+        if !library.busy { hits.add(delete, .libraryDeleteConfirm) }
+        PanelDraw.text(c, "Cancel", in: cancel, font: font, color: hovered == .libraryDeleteCancel ? PanelTheme.text0 : PanelTheme.text2, align: .center)
+        hits.add(cancel, .libraryDeleteCancel)
         return y + M.control + M.rowGap
     }
 
