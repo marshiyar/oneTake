@@ -141,10 +141,12 @@ public final class SettingsPanel {
     /// Appearance, interface size, audio output, preview cache, export folder, hold length, microphone, count-in, pre-roll, caption reading rate.
     static let rowCount = 10
 
-    private var rowStride: Double { size.height > 0 && size.height < 500 ? 32 : Self.rowH + Self.rowGap }
+    /// Row pitch in a short window: ten rows still fit the 400 pt a 1280 × 800 window leaves at 200 %.
+    static let compactStride = 29.0
+    private var rowStride: Double { size.height > 0 && size.height < 500 ? Self.compactStride : Self.rowH + Self.rowGap }
 
     public func cardRect(in size: CanvasSize) -> CanvasRect {
-        let h = Self.header + 12 + Double(Self.rowCount) * (size.height < 500 ? 32 : Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
+        let h = Self.header + 12 + Double(Self.rowCount) * (size.height < 500 ? Self.compactStride : Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
         let w = min(Self.width, max(0, size.width - 32))
         return CanvasRect(x: ((size.width - w) / 2).rounded(), y: max(16, ((size.height - h) / 2).rounded()), width: w, height: h)
     }

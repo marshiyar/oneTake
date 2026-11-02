@@ -37,7 +37,7 @@ final class ExportLoudnessTests: XCTestCase {
         engine = try KeyframeRuntime(); installKeyframeEngine(engine)
         installAppExportFrames()
         guard !FileManager.default.fileExists(atPath: "\(root)/quiet.mov") else { return }
-        // 6 s of a 440 Hz tone at -26 dBFS on both channels: well under -23 LUFS, so the gain is positive.
+        // 6 s of a 440 Hz tone at -26 dBFS on both channels (about -26.7 LUFS): under -23 LUFS, so the gain is positive.
         try TestMedia.write(TestVideo(seconds: 6, tone: 440, amplitude: 0.05), to: "\(root)/quiet.mov")
     }
 
@@ -69,7 +69,7 @@ final class ExportLoudnessTests: XCTestCase {
 
     func testA1ExportAtMinus23LUFSMeasuresMinus23AndStaysUnderTheCeiling() throws {
         let before = try measure(try export("off-reference", nil))
-        XCTAssertEqual(before.loudness, -26, accuracy: 0.5, "the premise: the source sits well under the target")
+        XCTAssertEqual(before.loudness, -26.7, accuracy: 0.3, "the premise: the source sits under the target")
         let out = try measure(try export("lufs23", MasterLoudnessTarget(target: -23, truePeak: -1)))
         XCTAssertEqual(out.loudness, -23, accuracy: 0.5)
         XCTAssertLessThanOrEqual(out.truePeak, -1 + 0.05, "16-bit rounding is the only slack")
@@ -87,7 +87,7 @@ final class ExportLoudnessTests: XCTestCase {
         let a = try export("off-a", nil), b = try export("off-b", nil)
         XCTAssertEqual(try Exported(path: a).audio(), try Exported(path: b).audio())
         let tone = try measure(a)
-        XCTAssertEqual(tone.loudness, -26, accuracy: 0.5, "no gain was applied")
+        XCTAssertEqual(tone.loudness, -26.7, accuracy: 0.3, "no gain was applied")
         let meta = try String(contentsOfFile: "\(root)/off-a.meta.json", encoding: .utf8)
         XCTAssertNotNil(meta.range(of: #"^\{"status":"complete","durationMs":\d+\}$"#, options: .regularExpression), meta)
     }
