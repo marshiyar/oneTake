@@ -16,6 +16,7 @@ import MpvfxCanvas
 import MpvfxShared
 import MpvfxTimeline
 import struct MpvfxAudioGraph.FxNode
+import struct MpvfxAudioGraph.FxMeterSnapshot
 import struct MpvfxAudioGraph.AudioFxModulePreset
 
 /// The Design tab: the flat inspector drawn natively. One accordion group is open at a time; closed groups
@@ -60,6 +61,9 @@ public final class InspectorPanel {
     }
     public var audioFxUserPresets: [AudioFxModulePreset] = []
     public var onSaveAudioFxPreset: ((String, FxNode) -> Void)?
+    /// The Audio FX rack's live meters for an owner (`clip:<id>` or `bus:<id>`), for the sound heard now. Nil: the rack
+    /// shows no meters. Set by the app, which refreshes it at 30 Hz while playing and returns nothing when stopped.
+    public var fxMeterProvider: ((String) -> FxMeterSnapshot?)?
     public var onEdited: (() -> Void)?
     /// The Media group's speed graph and whether a ramp edit keeps the clip's length (the Keep length switch).
     let speedGraph = SpeedGraph()
@@ -226,7 +230,7 @@ public final class InspectorPanel {
     /// Each EQ graph's plot and its wheel step, rebuilt on every draw.
     var fxGraphWheel: [String: (box: CanvasRect, step: (CanvasPoint, Double) -> Bool)] = [:]
     /// The latest spectrum behind an EQ module's curve, from the owner's id (`clip:<id>` or `bus:<id>`) and the module's
-    /// chain index: one level in dBFS per equal log-spaced band from 20 Hz to 20 kHz (band k is centred at (k + 0.5) / count), or nil when nothing is playing.
+    /// place among the chain's enabled modules (what the engine numbers its meters by): one level in dBFS per equal log-spaced band from 20 Hz to 20 kHz (band k is centred at (k + 0.5) / count), or nil when nothing is playing.
     public var audioFxSpectrumProvider: ((_ owner: String, _ node: Int) -> [Float]?)?
     /// The last press on a graph's plot, for the double-click that adds an EQ band.
     var fxGraphClick: (row: String, at: CanvasPoint, time: Double)?

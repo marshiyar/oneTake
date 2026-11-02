@@ -12,8 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 import XCTest
 import MpvfxCanvas
+import MpvfxTheme
 import MpvfxAudioGraph
 @testable import MpvfxTimeline
 @testable import MpvfxPanels
@@ -196,6 +200,37 @@ final class AudioFxEqRackTests: XCTestCase {
                        ["bands", "band2.type", "band2.freq", "band2.bypass", "band2.q", "band2.slope"])
     }
 
+    /// The open EQ module in both palettes, at 1x and 2x: every band's point is on the graph, in the module's own colours,
+    /// and a spectrum behind the curve changes what is drawn. Writes the pictures when MPVFX_SNAPSHOT_DIR is set.
+    func testEqModuleDarkAndLightSnapshots() throws {
+        let previous = Theme.mode
+        defer { Theme.setMode(previous) }
+        for mode in [ThemeMode.dark, .light] {
+            Theme.setMode(mode)
+            let (_, p) = try open(eqChain(["bands": 4]))
+            for part in 1...4 { XCTAssertNotNil(p.hits.rect { $0 == .custom(self.row, part) }, "\(mode) band \(part)") }
+            let plain = draw(p).fills.count
+            p.audioFxSpectrumProvider = { _, _ in (0..<60).map { Float(-30 - $0) } }
+            XCTAssertGreaterThan(draw(p).fills.count, plain, "\(mode): the spectrum is drawn behind the curve")
+            #if os(macOS)
+            for scale in [1.0, 2.0] {
+                let w = Int(AudioFxRackTests.width * scale), h = Int(800 * scale)
+                let target = try XCTUnwrap(CoreGraphicsCanvas.offscreen(width: w, height: h))
+                target.scale(scale, scale)
+                target.fillRect(CanvasRect(x: 0, y: 0, width: AudioFxRackTests.width, height: 800), PanelTheme.studioBg)
+                p.draw(target, in: CanvasRect(x: 0, y: 0, width: AudioFxRackTests.width, height: 800))
+                let image = try XCTUnwrap(target.ctx.makeImage())
+                let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+                XCTAssertGreaterThan(png.count, 1000)
+                if let output = ProcessInfo.processInfo.environment["MPVFX_SNAPSHOT_DIR"] {
+                    try FileManager.default.createDirectory(atPath: output, withIntermediateDirectories: true)
+                    try png.write(to: URL(fileURLWithPath: output).appendingPathComponent("audio-fx-eq-\(mode.rawValue)-\(Int(scale))x.png"))
+                }
+            }
+            #endif
+        }
+    }
+
     func testEveryBandIsReachableAndMovableFromTheKeyboard() throws {
         let (editor, p) = try open(eqChain(["bands": 4, "band3.freq": 2000, "band3.gain": 0, "band3.q": 1]))
         for part in 1...4 { XCTAssertNotNil(p.hits.rect { $0 == .custom(self.row, part) }, "band \(part) has a focusable point") }
@@ -239,6 +274,6 @@ final class AudioFxEqRackTests: XCTestCase {
         XCTAssertTrue(asked.isEmpty, "a closed module draws no graph: \(asked)")
         p.audioFxUI.openNode = 0
         draw(p)
-        XCTAssertTrue(asked.contains("clip:music/0"), "\(asked)")
+        XCTAssertTrue(asked.contains("clip:clip:music/0"), "\(asked)")
     }
 }

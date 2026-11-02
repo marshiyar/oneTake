@@ -583,6 +583,10 @@ final class EditorSession: @unchecked Sendable {
     // document and pulled in 128-frame blocks; master volume and mute come from the transport.
     var audio: AudioPlayback?
     var graph: GraphAudioSource?
+    /// The Audio FX rack's last meter reading, so it is taken at 30 Hz however often the rack draws (`fxMeterSnapshot`).
+    var fxMeterCache: (owner: String, at: Double, snapshot: FxMeterSnapshot?)?
+    /// The module spectrum last read for the rack, taken at 30 Hz like the meters (`fxSpectrumBands`).
+    var fxSpectrumCache: (owner: String, node: Int, at: Double, bands: [Float]?)?
     var graphInputs: DocumentAudioGraph.Inputs?
     var graphDocument: NativeProjectDocument?
     /// Builds and swaps the graph off the UI thread (decode, FX parse, pre-roll); edits only hand it inputs.

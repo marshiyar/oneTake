@@ -392,6 +392,20 @@ public final class AudioGraphRenderer {
         public var peak: Double, rms: Double
     }
     public private(set) var meters: [String: Meter] = [:]
+
+    /// The FX meters of one rack and the composition frame its chain's frame 0 sits at.
+    public struct FxMeterOwner: Sendable {
+        public let meters: FxChainMeters
+        public let startFrame: Int
+    }
+    /// Every FX chain's meters by rack owner, `clip:<id>` for a clip's chain and `bus:<id>` for a bus's, in the names
+    /// the Audio FX rack uses. A clip chain counts frames from the start of its sound, a bus chain from frame 0.
+    public var fxMeterOwners: [String: FxMeterOwner] {
+        var owners: [String: FxMeterOwner] = [:]
+        for (id, stage) in trackStages { if let proc = stage.proc { owners["clip:\(id)"] = FxMeterOwner(meters: proc.meters, startFrame: stage.startFrame) } }
+        for (id, stage) in groupStages { if let proc = stage.proc { owners["bus:\(id)"] = FxMeterOwner(meters: proc.meters, startFrame: 0) } }
+        return owners
+    }
     public var totalFrames: Int { project.totalFrames }
 
     public init(_ project: AudioGraphProject) {

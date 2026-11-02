@@ -19,6 +19,7 @@ import MpvfxPlayer
 import MpvfxPanels
 import MpvfxDesktopCore
 import MpvfxAudio
+import struct MpvfxAudioGraph.FxMeterSnapshot
 
 /// Host-side wiring of the side panels:
 /// the left sidebar (the Media panel) gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms
@@ -721,5 +722,33 @@ extension EditorSession {
             playback.seek(0); timeline.syncFromPlayback()
             panels?.projectSwitched()
         } catch { onError("Could not open the project", "\(error)") }
+    }
+}
+
+extension EditorSession {
+    /// The Audio FX rack's levels and gain reduction for the sound being heard now (`AudioPlayback.currentTime`, not the
+    /// newest block the feeder has queued), refreshed at most 30 times a second. Nothing while stopped. Asking is what
+    /// switches the graph's meters on, so an export and a closed rack publish nothing.
+    func fxMeterSnapshot(owner: String) -> FxMeterSnapshot? {
+        guard let audio, audio.isPlaying, let graph else { fxMeterCache = nil; return nil }
+        graph.collectsFxMeters = true
+        let now = ProcessInfo.processInfo.systemUptime
+        if let cache = fxMeterCache, cache.owner == owner, now - cache.at < 1.0 / 30 { return cache.snapshot }
+        let snapshot = graph.fxMeters(owner: owner, at: audio.currentTime)
+        fxMeterCache = (owner, now, snapshot)
+        return snapshot
+    }
+
+    /// The output spectrum (`SpectrumAnalyzer.bandCount` bands, dBFS) of one module for the sound being heard now, which
+    /// is also what starts the analysis of that module; refreshed at most 30 times a second, nothing while stopped.
+    func fxSpectrumBands(owner: String, nodeIndex: Int) -> [Float]? {
+        guard let audio, audio.isPlaying, let graph else { fxSpectrumCache = nil; return nil }
+        graph.collectsFxMeters = true
+        let now = ProcessInfo.processInfo.systemUptime
+        if let cache = fxSpectrumCache, cache.owner == owner, cache.node == nodeIndex, now - cache.at < 1.0 / 30 { return cache.bands }
+        graph.watchSpectrum(owner: owner, nodeIndex: nodeIndex)
+        let bands = graph.fxSpectrum(owner: owner, at: audio.currentTime)?.output?.bands
+        fxSpectrumCache = (owner, nodeIndex, now, bands)
+        return bands
     }
 }

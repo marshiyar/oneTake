@@ -21,6 +21,8 @@ public struct AudioFxUIState: Equatable {
     public enum Menu: Equatable { case none, presets, add }
     public var modulePreset: String?
     var owner: String?
+    /// The gain-reduction bars' held peaks, by module row.
+    var reductionHolds: [String: AfxPeakHold] = [:]
     public var menu: Menu = .none
     /// The chain index whose module is open (`openNode`, 0 at mount).
     public var openNode: Int? = 0
@@ -558,7 +560,9 @@ extension InspectorPanel {
         let graphKey = node.type == "eq" ? afxEqKey(node, i, update: update) : nil
         let graphWheel = node.type == "eq" ? afxEqWheel(node, i, update: update) : nil
         let presetH = 28.0 + (menuOpen ? Double(presets.count + 1) * 24 : 0)
-        let cardH = 2 + Self.nodeHeadH + presetH + (summary != nil ? Self.nodeSummaryH : 0) + openH
+        let meterIndex = Self.afxMeterIndex(chain, i)
+        let meterH = fxMeterProvider != nil ? Self.afxMeterStripH : 0
+        let cardH = 2 + Self.nodeHeadH + presetH + (summary != nil ? Self.nodeSummaryH : 0) + meterH + openH
         let topGap = inRun != nil ? 4.0 : 0
         let name = Self.afxLettered(label, family: family)
         return .init(.custom(InspectorCustomRow(id: "afx:node:\(i)", height: topGap + cardH, draw: { [weak self] c, r, _ in
@@ -622,6 +626,8 @@ extension InspectorPanel {
                                color: PanelTheme.text2.withAlpha(a))
                 y += Self.nodeSummaryH
             }
+            let reading = self.afxMeterReading(meterIndex)
+            if meterH > 0 { y = self.afxDrawMeterStrip(c, card, y: y, reading, alpha: a) }
             guard open else { return }
             let bx = card.x + 2, bw = card.width - 3
             func rule() { c.fillRect(CanvasRect(x: bx, y: y, width: bw, height: 1), PanelTheme.inspectorControl) }
@@ -636,7 +642,7 @@ extension InspectorPanel {
             }
             if graphH > 0 {
                 rule()
-                self.afxDrawModuleGraph(c, CanvasRect(x: bx + 6, y: y + 1 + 6, width: bw - 12, height: Self.afxGraphH), (i: i, node: node), alpha: a)
+                self.afxDrawModuleGraph(c, CanvasRect(x: bx + 6, y: y + 1 + 6, width: bw - 12, height: Self.afxGraphH), (i: i, node: node), alpha: a, reading: reading)
                 if node.type == "eq" {
                     self.afxEqStrip(c, CanvasRect(x: bx + 6, y: y + Self.afxGraphBlockH, width: bw - 12, height: Self.afxEqStripH), node, i,
                                     fxKey: fxKey, alpha: a, enabled: !bypassed)

@@ -131,8 +131,9 @@ extension InspectorPanel {
         let g = AfxGraphFrame(spec: spec, box: box, range: drag?.range ?? AfxGraphScale.range(spec.handles.map(\.gain) + [0]))
         audioFxUI.graphBoxes[spec.row] = AfxGraphBox(box: box, range: g.range)
         Self.afxGraphGrid(c, rect, g)
-        if spec.nodes.count == 1, spec.nodes[0].node.type == "eq", let owner = audioFxUI.owner,
-           let levels = audioFxSpectrumProvider?(owner, spec.nodes[0].i) {
+        if spec.nodes.count == 1, spec.nodes[0].node.type == "eq", let owner = audioFxUI.owner, let editor,
+           let chain = auditionOwner(editor)?.chain, let place = Self.afxMeterIndex(chain, spec.nodes[0].i),
+           let levels = audioFxSpectrumProvider?(owner, place) {
             Self.afxGraphSpectrum(c, g, levels: levels)
         }
         Self.afxGraphCurve(c, g, nodes: drawn)
@@ -275,8 +276,15 @@ extension InspectorPanel {
     }
 
     /// An open module's picture: its response with one draggable point, or its static curve.
-    func afxDrawModuleGraph(_ c: CanvasContext, _ r: CanvasRect, _ item: (i: Int, node: FxNode), alpha: Double) {
-        guard AudioFxResponse.filterTypes.contains(item.node.type) else { Self.afxDrawTransfer(c, r, item.node, alpha: alpha); return }
+    func afxDrawModuleGraph(_ c: CanvasContext, _ r: CanvasRect, _ item: (i: Int, node: FxNode), alpha: Double, reading: FxMeterReading? = nil) {
+        guard AudioFxResponse.filterTypes.contains(item.node.type) else {
+            guard fxMeterProvider != nil else { Self.afxDrawTransfer(c, r, item.node, alpha: alpha); return }
+            // The curve leaves a strip on the right for its gain-reduction bar.
+            Self.afxDrawTransfer(c, CanvasRect(x: r.x, y: r.y, width: Swift.max(0, r.width - Self.afxReductionBarW), height: r.height),
+                                 item.node, alpha: alpha)
+            afxDrawReductionBar(c, r, key: "afx:node:\(item.i)", reading, alpha: alpha)
+            return
+        }
         let handles = item.node.type == "eq" ? Self.afxEqHandles(item.node, item.i) : [Self.afxFilterHandle(item.node, item.i)]
         afxDrawResponse(c, r, AfxGraphSpec(row: "afx:node:\(item.i)", nodes: [item], handles: handles, alpha: alpha))
     }

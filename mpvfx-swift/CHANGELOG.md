@@ -39,6 +39,11 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - A per-user text style library: the Text group's Style menu shows each saved style as a sample, applies it to the
   selected text layers (⌥⌘1…9), and saves the current layer as a style (⌥⌘S).
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Audio FX rack meters: input and output level bars on every module and a gain-reduction bar on the compressor,
+  limiter, gate and de-esser, following the sound you hear while playing. The audio engine can also analyse a
+  module's input and output spectrum for the parametric EQ's live display.
+- Every audio effect's preset menu offers factory settings beyond its defaults (gain, de-esser, noise reduction and
+  phaser gained theirs).
 - Parametric EQ in the audio rack: up to eight bands (bell, shelves, low and high cut at 12, 24 or 48 dB per octave,
   notch), each with its own frequency, gain and Q; drag a band's point on the graph, Alt-drag it for Q, double-click
   the graph to add a band, Delete to remove one.
