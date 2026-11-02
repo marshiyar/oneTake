@@ -12,7 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 // Render history for the Renders tab: finished exports live in the
-// project's renders folder as `<jobId>.<mp4|webm|mov>` with an optional `<jobId>.meta.json` sidecar
+// project's renders folder as `<jobId>.<mp4|webm|mov>` (or `<name>.<ext>` when the export has a file name of its own,
+// as the versions of one export run do) with an optional `<id>.meta.json` sidecar
 // ({"status":"complete"|"failed","durationMs":n}); the list is newest first and deleting a render removes
 // the file and its sidecar.
 import Foundation
@@ -29,16 +30,60 @@ public struct ProjectRender: Equatable, Sendable {
     public var createdAt: Double
     public var status: Status
     public var durationMs: Double?
+    /// Loudness the export was brought to (LUFS) and its true-peak ceiling (dBTP); nil without a loudness target.
+    public var loudnessTarget: Double?
+    public var loudnessCeiling: Double?
+    /// What the output measured (LUFS, dBTP); nil when the sidecar has no measurement.
+    public var loudnessMeasured: Double?
+    public var loudnessMeasuredTruePeak: Double?
 }
 
 public enum ProjectRenders {
     static let extensions = ["mp4", "webm", "mov"]
 
-    /// Where a new render with this job id and format goes (the folder is created).
-    public static func outputPath(_ rendersDir: String, jobId: String, format: String) throws -> String {
+    /// Where a new render with this job id and format goes (the folder is created). With a `fileStem` the file is
+    /// named after it (see `safeFileStem`) and never shares a name with a render already in the folder: a taken
+    /// name gets " 2", " 3" and so on.
+    public static func outputPath(_ rendersDir: String, jobId: String, fileStem: String? = nil, format: String) throws -> String {
         guard isTransactionId(jobId), extensions.contains(format) else { throw MediaToolError("Invalid render job") }
         try ProjectFS.mkdirRecursive(rendersDir)
-        return PosixPath.join(rendersDir, "\(jobId).\(format)")
+        guard let stem = fileStem.flatMap(safeFileStem) else { return PosixPath.join(rendersDir, "\(jobId).\(format)") }
+        for n in 1...maxNumberedName {
+            let candidate = n == 1 ? stem : "\(stem) \(n)"
+            if !isTaken(rendersDir, candidate) { return PosixPath.join(rendersDir, "\(candidate).\(format)") }
+        }
+        throw MediaToolError("Too many renders named \"\(stem)\"; delete some or rename them")
+    }
+
+    static let maxNumberedName = 999
+    /// Leaves room for " 999" and the extension inside the 255-byte file name limit.
+    static let maxStemBytes = 200
+
+    private static func isTaken(_ rendersDir: String, _ stem: String) -> Bool {
+        (extensions + ["meta.json"]).contains { FileManager.default.fileExists(atPath: PosixPath.join(rendersDir, "\(stem).\($0)")) }
+    }
+
+    /// A file name (without extension) made from free text such as "Instagram: 9/16": separators, colons and control
+    /// characters become "-", the ends are trimmed, a leading dot is dropped (no hidden file) and the length is
+    /// capped to what a file name holds. Nil when nothing is left.
+    public static func safeFileStem(_ text: String) -> String? {
+        var scalars = String.UnicodeScalarView()
+        for u in text.unicodeScalars {
+            let bad = u.value < 0x20 || u.value == 0x7F || u == "/" || u == "\\" || u == ":"
+            scalars.append(bad ? "-" : u)
+        }
+        var stem = String(scalars).trimmingCharacters(in: .whitespaces)
+        while stem.hasPrefix(".") { stem.removeFirst() }
+        while stem.utf8.count > maxStemBytes { stem.removeLast() }
+        stem = stem.trimmingCharacters(in: .whitespaces)
+        return stem.isEmpty ? nil : stem
+    }
+
+    /// Whether `id` can name a render file inside the renders folder: no path separators or control characters and not
+    /// hidden (it is either a job id or a name made by `safeFileStem`, with room for its number).
+    static func isSafeRenderId(_ id: String) -> Bool {
+        !id.isEmpty && id.utf8.count <= maxStemBytes + 8 && !id.hasPrefix(".")
+            && !id.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F || $0 == "/" || $0 == "\\" }
     }
 
     /// Writes the sidecar the history reads (how long the render took and whether it failed).
@@ -60,13 +105,23 @@ public enum ProjectRenders {
             let id = String(name.dropLast(ext.count + 1))
             var status = ProjectRender.Status.complete
             var durationMs: Double?
+            var loudness: NativeJSONObject?
             if let text = try? ProjectFS.readUTF8(PosixPath.join(rendersDir, "\(id).meta.json")),
                let meta = (try? NativeJSONValue.parse(text))?.objectValue {
                 if case .number(let d)? = meta["durationMs"], d != 0 { durationMs = d }
                 if meta["status"]?.stringValue == "failed" && !FileManager.default.fileExists(atPath: path) { status = .failed }
+                // Only version 1 is read; any other version lists without loudness.
+                if meta["loudness"]?.objectValue?["v"]?.numberValue == 1 { loudness = meta["loudness"]?.objectValue }
+            }
+            // A value that is not a finite number reads as nil.
+            func finite(_ key: String) -> Double? {
+                guard let v = loudness?[key]?.numberValue, v.isFinite else { return nil }
+                return v
             }
             return ProjectRender(id: id, filename: name, path: path, size: info.size, createdAt: Double(info.mtimeNs) / 1e9,
-                                 status: status, durationMs: durationMs)
+                                 status: status, durationMs: durationMs,
+                                 loudnessTarget: finite("target"), loudnessCeiling: finite("truePeak"),
+                                 loudnessMeasured: finite("measured"), loudnessMeasuredTruePeak: finite("measuredTruePeak"))
         }.sorted { $0.createdAt != $1.createdAt ? $0.createdAt > $1.createdAt : $0.id < $1.id }
     }
 
@@ -80,7 +135,7 @@ public enum ProjectRenders {
     /// Removes the render's file(s) and sidecar. Returns whether anything was removed.
     @discardableResult
     public static func delete(_ rendersDir: String, id: String) throws -> Bool {
-        guard isTransactionId(id) else { throw MediaToolError("Invalid render job") }
+        guard isSafeRenderId(id) else { throw MediaToolError("Invalid render job") }
         var removed = false
         for ext in extensions + ["meta.json"] {
             let p = PosixPath.join(rendersDir, "\(id).\(ext)")
