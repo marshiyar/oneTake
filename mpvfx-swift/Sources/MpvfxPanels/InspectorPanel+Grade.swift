@@ -128,13 +128,14 @@ extension InspectorPanel {
         gap(8)
         rows.append(.init(.custom(curveGraph(g, commit: commit))))
         gap(8)
-        rows.append(contentsOf: curvePointRows(g, set: { editor.setColorGrading(clipId: s.id, $0) }))
+        rows.append(contentsOf: curveKeyframeRows(editor, s, shown: g))
+        rows.append(contentsOf: curvePointRows(g, commit: commit))
         gap(6)
         rows.append(.init(.custom(curveFooter(g, commit: commit))))
         gap(2)
         rows.append(.init(.custom(curveHintRow())))
         gap(6)
-        rows.append(contentsOf: secondaryRows(g, commit: commit))
+        rows.append(contentsOf: secondaryRows(editor, s, g, commit: commit))
         gap(6)
         rows.append(contentsOf: lutRows(g, commit: commit))
         gap(6)
@@ -362,14 +363,16 @@ extension InspectorPanel {
 
     // MARK: Secondary color
 
-    func secondaryRows(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> [InspectorRow] {
+    func secondaryRows(_ editor: TimelineEditor, _ s: Selected, _ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> [InspectorRow] {
         var rows: [InspectorRow] = []
-        let canAdd = g.secondaries.count < ColorGrading.maxSecondaries
+        let animated = editor.clip(s.id)?.clip.map { NativeGradeParameter.hasAnimatedSecondaries($0) } ?? false
+        let canAdd = g.secondaries.count < ColorGrading.maxSecondaries && !animated
         let add: () -> Void = { [weak self] in
+            guard !animated else { return }
             var n = g; n.secondaries.append(.init()); self?.grade.selectedSecondary = n.secondaries.count - 1; commit(n)
         }
         let remove: () -> Void = { [weak self] in
-            guard let self, g.secondaries.indices.contains(self.grade.selectedSecondary) else { return }
+            guard !animated, let self, g.secondaries.indices.contains(self.grade.selectedSecondary) else { return }
             var n = g; n.secondaries.remove(at: self.grade.selectedSecondary); self.grade.selectedSecondary = max(0, self.grade.selectedSecondary - 1); commit(n)
         }
         rows.append(.init(.section("Secondary color")))
@@ -390,7 +393,7 @@ extension InspectorPanel {
                 panel.addHit(cr, .custom("sec:head", 10 + i))
                 x = cr.maxX + 4
             }
-            let canRemove = !g.secondaries.isEmpty
+            let canRemove = !g.secondaries.isEmpty && !animated
             let trash = CanvasRect(x: r.maxX - 24, y: r.midY - 12, width: 24, height: 24)
             let plus = CanvasRect(x: trash.x - 4 - 24, y: trash.y, width: 24, height: 24)
             let off = PanelTheme.inspectorText.over(PanelTheme.panelBgInset, opacity: 0.35)
@@ -404,6 +407,10 @@ extension InspectorPanel {
             guard phase == 0 else { return }
             if part == 0 { add() } else if part == 1 { remove() } else { self?.grade.selectedSecondary = part - 10; self?.onEdited?() }
         }))))
+        if animated {
+            rows.append(.init(.spacer(6)))
+            rows.append(.init(.note("Animated: turn the stopwatch off to add or remove secondaries.")))
+        }
         if g.secondaries.isEmpty {
             rows.append(.init(.spacer(6)))
             // `w-full border border-dashed border-panel-border-input px-2 py-2 text-[10px] text-panel-text-4`.
@@ -429,29 +436,47 @@ extension InspectorPanel {
             c.fillRoundedRect(CanvasRect(x: r.x, y: r.y + 2, width: r.width, height: 10), radius: 3, CanvasColor(r: rr, g: gg, b: bb))
         }))))
         func slider(_ key: String, _ label: String, _ v: Double, _ lo: Double, _ hi: Double, _ fmt: @escaping (Double) -> String, def: Double, center: Bool,
-                    _ apply: @escaping (inout ColorGrading.Secondary, Double) -> Void) -> InspectorRow {
+                    field: String, _ apply: @escaping (inout ColorGrading.Secondary, Double) -> Void) -> InspectorRow {
             .init(.slider(.init(key: key, label: label, position: v, min: lo, max: hi, display: fmt(v), format: fmt,
                                 tier: abs(v - def) > 1e-6 ? .explicitCustom : .default, centerTick: center, commit: set(apply),
-                                reset: { var n = g; apply(&n.secondaries[sel], def); commit(n) }, step: 1)))
+                                reset: { var n = g; apply(&n.secondaries[sel], def); commit(n) }, step: 1,
+                                keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.secondaryId(sel, field)], shown: g))))
         }
         let deg: (Double) -> String = { "\(Int($0.rounded()))°" }, pct: (Double) -> String = { "\(Int($0.rounded()))%" }
         rows.append(.init(.heading("Qualifier", trailing: nil)))
         for channel in SecondaryQualifier.allCases {
-            rows.append(qualifierRow(channel, secondary: s) { next in
+            let rangeFields: [String]
+            switch channel {
+            case .hue: rangeFields = ["hueCenter", "hueRange"]
+            case .saturation: rangeFields = ["satMin", "satMax"]
+            case .luma: rangeFields = ["lumaMin", "lumaMax"]
+            }
+            var qrow = qualifierRow(channel, secondary: s) { next in
                 var n = g; n.secondaries[sel] = next; commit(n)
-            })
+            }
+            qrow.controls = [InspectorRow(.number(.init(key: "sec:qualifier:\(channel.rawValue):keys", label: "", text: "",
+                tier: .default, commit: { _ in },
+                keyframe: gradeKeyframe(editor, s, rangeFields.map { NativeGradeParameter.secondaryId(sel, $0) }, shown: g))))]
+            rows.append(qrow)
             let softness = channel.softness(s)
+            let softField: String
+            switch channel {
+            case .hue: softField = "hueSoftness"
+            case .saturation: softField = "satSoftness"
+            case .luma: softField = "lumaSoftness"
+            }
             rows.append(slider("sec:\(channel.rawValue):soft", "Softness", softness, 0, channel == .hue ? 180 : 1,
-                               channel == .hue ? deg : { pct($0 * 100) }, def: channel == .hue ? 20 : 0.1, center: false) {
+                               channel == .hue ? deg : { pct($0 * 100) }, def: channel == .hue ? 20 : 0.1, center: false,
+                               field: softField) {
                 channel.setSoftness(&$0, $1)
             })
         }
         rows.append(.init(.heading("Correction", trailing: nil)))
-        rows.append(slider("sec:shift", "Hue shift", s.hueShift, -180, 180, deg, def: 0, center: true) { $0.hueShift = $1.rounded() })
-        rows.append(slider("sec:sat", "Saturation", s.saturation * 100, -100, 100, pct, def: 0, center: true) { $0.saturation = ($1 / 100 * 100).rounded() / 100 })
-        rows.append(slider("sec:luma", "Luma", s.luma * 100, -100, 100, pct, def: 0, center: true) { $0.luma = ($1 / 100 * 100).rounded() / 100 })
-        rows.append(slider("sec:temp", "Temperature", s.temperature * 100, -100, 100, pct, def: 0, center: true) { $0.temperature = ($1 / 100 * 100).rounded() / 100 })
-        rows.append(slider("sec:tint", "Tint", s.tint * 100, -100, 100, pct, def: 0, center: true) { $0.tint = ($1 / 100 * 100).rounded() / 100 })
+        rows.append(slider("sec:shift", "Hue shift", s.hueShift, -180, 180, deg, def: 0, center: true, field: "hueShift") { $0.hueShift = $1.rounded() })
+        rows.append(slider("sec:sat", "Saturation", s.saturation * 100, -100, 100, pct, def: 0, center: true, field: "saturation") { $0.saturation = ($1 / 100 * 100).rounded() / 100 })
+        rows.append(slider("sec:luma", "Luma", s.luma * 100, -100, 100, pct, def: 0, center: true, field: "luma") { $0.luma = ($1 / 100 * 100).rounded() / 100 })
+        rows.append(slider("sec:temp", "Temperature", s.temperature * 100, -100, 100, pct, def: 0, center: true, field: "temperature") { $0.temperature = ($1 / 100 * 100).rounded() / 100 })
+        rows.append(slider("sec:tint", "Tint", s.tint * 100, -100, 100, pct, def: 0, center: true, field: "tint") { $0.tint = ($1 / 100 * 100).rounded() / 100 })
         // The selection's controls sit `space-y-1.5` under the header.
         let tail = rows[headCount...].flatMap { [InspectorRow(.spacer(6)), $0] }
         return Array(rows[..<headCount]) + tail
