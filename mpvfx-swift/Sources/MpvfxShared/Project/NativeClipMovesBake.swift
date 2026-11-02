@@ -66,7 +66,8 @@ public func bakeNativeClipMoves(_ clip: NativeProjectClip, canvas: NativeCanvas,
         if let i = result.parameterTracks.firstIndex(where: { $0.parameterId == id }) { result.parameterTracks[i] = track }
         else { result.parameterTracks.append(track) }
     }
-    result.moves = nil
+    // A draw-on moves no keyed property, so it stays as a move.
+    if let draw = moves.inMove, draw.kind == .draw { result.moves = NativeClipMoves(in: draw) } else { result.moves = nil }
     return result
 }
 

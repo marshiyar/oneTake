@@ -64,6 +64,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var style: NativeClipStyle?
     /// Vector geometry (kind .shape), painted directly in the layer box.
     public var shape: NativeClipShape?
+    /// How much of the shape's stroke is drawn, from its start (the draw-on move; 1: all of it).
+    public var drawProgress = 1.0
     /// A text layer's words and typography (kind .text): laid out in the box instead of a decoded picture.
     public var generator: NativeFill?
     public var isProcedural: Bool { kind == .text || kind == .shape || kind == .generator }
@@ -657,7 +659,7 @@ public enum PreviewPainter {
                 }
                 covered = picture
             } else if let shape = layer.shape {
-                NativeShapeRendering.draw(shape, box: box, scale: s, opacity: layer.opacity, on: c)
+                NativeShapeRendering.draw(shape, box: box, scale: s, opacity: layer.opacity, drawProgress: layer.drawProgress, on: c)
             } else if let text = layer.text {
                 if layer.masks.isEmpty {
                     if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale) {
