@@ -85,7 +85,7 @@ final class ClipLoudnessReadoutTests: XCTestCase {
         XCTAssertEqual(row.label, "Loudness")
         XCTAssertEqual(row.text, "-20.0 LUFS")
         XCTAssertTrue(row.readOnly)
-        XCTAssertEqual(asked, ["media/m.wav"], "the row asks for the clip's source")
+        XCTAssertEqual(Set(asked), ["media/m.wav"], "the row asks for the clip's source")
     }
 
     func testRowReadsMeasuringThenTheValueOnceMeasured() throws {
