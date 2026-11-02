@@ -32,7 +32,9 @@ final class TransitionKindsExportMatchTests: XCTestCase {
     override func setUpWithError() throws {
         try XCTSkipIf(Self.root.isEmpty)
         installAppExportFrames()
-        guard !FileManager.default.fileExists(atPath: "\(root)/blue.mov") else { return }
+        // Both clips are checked: a stale or half-written pair must not be reused.
+        let fm = FileManager.default
+        guard !(fm.fileExists(atPath: "\(root)/red.mov") && fm.fileExists(atPath: "\(root)/blue.mov")) else { return }
         // 6 s at 10 fps: 60 frames of media, so each 30-frame clip has 15 frames of handle on either side.
         try TestMedia.write(TestVideo(width: 64, height: 32, seconds: 6, color: { _ in [255, 0, 0] }), to: "\(root)/red.mov")
         try TestMedia.write(TestVideo(width: 64, height: 32, seconds: 6, color: { _ in [0, 0, 255] }), to: "\(root)/blue.mov")
@@ -62,7 +64,8 @@ final class TransitionKindsExportMatchTests: XCTestCase {
         cx.composition = comp
         let time = (Double(frame) + 0.5) / 10
         for layer in comp.layers(at: time) {
-            _ = cx.decodeRawNow(layer, time: time, fps: 10, size: PreviewDecodeSize(width: 64, height: 32))
+            let decoded = cx.decodeRawNow(layer, time: time, fps: 10, size: PreviewDecodeSize(width: 64, height: 32))
+            XCTAssertNotNil(decoded, "frame \(frame): a layer failed to decode")
         }
         let canvas = try RasterCanvas(width: 64, height: 32)
         cx.draw(canvas, in: CanvasRect(x: 0, y: 0, width: 64, height: 32), time: time, elements: [], context: FrameDrawContext())
@@ -75,6 +78,10 @@ final class TransitionKindsExportMatchTests: XCTestCase {
         try renderNativeTimeline(NativeTimelineRenderInput(project: doc, projectDir: root, outputPath: output, format: .mov, quality: .high))
         return Exported(path: output)
     }
+
+    /// Worst per-channel difference allowed. Both sides read the same lossless-for-flat-colour 64x32 MOV through
+    /// `installAppExportFrames`, so only the 8-bit rounding of the blend may differ: one level.
+    static let tolerance = 1
 
     /// Frames at 25%, 50% and 75% of the range 15…45.
     static let frames = [(23, "25%"), (30, "50%"), (38, "75%")]
@@ -91,13 +98,25 @@ final class TransitionKindsExportMatchTests: XCTestCase {
                 let d = abs(Int(preview[i]) - Int(exported[i]))
                 if d > worst { worst = d; at = i / 4 }
             }
-            XCTAssertLessThanOrEqual(worst, 1, "\(name) \(label) (frame \(frame)): preview and export differ by \(worst) at pixel \(at % 64),\(at / 64)", line: line)
+            XCTAssertLessThanOrEqual(worst, Self.tolerance, "\(name) \(label) (frame \(frame)): preview and export differ by \(worst) at pixel \(at % 64),\(at / 64)", line: line)
         }
     }
 
     func testWipeAt45DegreesMatches() throws { try assertMatches(kind: "wipe", fields: #","angle":45"#, name: "wipe") }
     func testPushMatches() throws { try assertMatches(kind: "push", fields: #","direction":"left""#, name: "push") }
     func testSlideMatches() throws { try assertMatches(kind: "slide", fields: #","direction":"right""#, name: "slide") }
+    private static let bezier = #","ease":{"type":"cubic-bezier","controlPoints":{"x1":0.42,"y1":0,"x2":1,"y2":1}}"#
+    func testIrisRectangleOffCentreSoftMatches() throws {
+        try assertMatches(kind: "iris", fields: #","shape":"rectangle","centreX":0.25,"centreY":0.75,"softness":0.4"#, name: "iris-rect")
+    }
+    func testIrisCircleOffCentreEasedMatches() throws {
+        try assertMatches(kind: "iris", fields: #","centreX":0.8,"centreY":0.2,"softness":0.3"# + Self.bezier, name: "iris-circle")
+    }
+    func testZoomThroughStrengthMatches() throws { try assertMatches(kind: "zoomThrough", fields: #","strength":3.5"#, name: "zoom-strong") }
+    func testZoomThroughEasedMatches() throws { try assertMatches(kind: "zoomThrough", fields: Self.bezier, name: "zoom-eased") }
+    func testSlideEasedMatches() throws { try assertMatches(kind: "slide", fields: #","direction":"up""# + Self.bezier, name: "slide-eased") }
+    func testPushEasedMatches() throws { try assertMatches(kind: "push", fields: #","direction":"down""# + Self.bezier, name: "push-eased") }
+    func testWipeSoftMatches() throws { try assertMatches(kind: "wipe", fields: #","angle":200,"softness":0.5"#, name: "wipe-soft") }
     func testIrisMatches() throws { try assertMatches(kind: "iris", name: "iris") }
     func testZoomThroughMatches() throws { try assertMatches(kind: "zoomThrough", name: "zoom") }
 }
