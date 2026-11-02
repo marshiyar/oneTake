@@ -48,27 +48,43 @@ extension EditorSession {
             playback.pause()
             voice.onStart = { [weak self] in
                 guard let self else { return }
-                self.playback.seek(self.voiceStart)
+                self.playback.seek(self.voice.playbackStartSeconds)
                 self.playback.setPlaybackRate(1)
                 self.playback.play()
                 self.ensurePlayTimer?()
             }
             voiceStart = playback.currentTime
+            if let a = playback.inPoint, let b = playback.outPoint, (a * editor.fps).rounded() >= (b * editor.fps).rounded() {
+                onError("Cannot record voice", "The in and out points are less than a frame apart. Move one of them to record over that range.")
+                return
+            }
+            // With both I and O set the take punches in over that range only, after a pre-roll that is heard, not recorded.
+            let punch = Self.voicePunch(inPoint: playback.inPoint, outPoint: playback.outPoint,
+                                        preRoll: Double(desktopPreferences?.voicePreRoll ?? 2))
             try voice.arm(input: input, destination: destination.path, playhead: voiceStart,
-                          countIn: desktopPreferences?.voiceCountIn ?? 3, now: ProcessInfo.processInfo.systemUptime, fps: editor.fps)
+                          countIn: desktopPreferences?.voiceCountIn ?? 3, now: ProcessInfo.processInfo.systemUptime, fps: editor.fps,
+                          punch: punch)
             voiceGeneration += 1
             pollVoice(voiceGeneration)
         } catch { cancelVoice(); onError("Cannot record voice", (error as? DesktopError)?.message ?? "The voice could not be recorded. Check the microphone, then try again.") }
         redraw()
     }
 
-    /// Count-in and meter continue when playback is paused or reaches the end.
+    /// The punch-in range: both points set and apart. One point alone records from the playhead as usual.
+    static func voicePunch(inPoint: Double?, outPoint: Double?, preRoll: Double) -> VoiceTransport.Punch? {
+        guard let start = inPoint, let end = outPoint, end > start else { return nil }
+        return VoiceTransport.Punch(start: start, end: end, preRoll: preRoll)
+    }
+
+    /// Count-in and meter continue when playback is paused or reaches the end. A punch-in ends itself at its out point.
     func pollVoice(_ generation: Int) {
         guard generation == voiceGeneration, voice.state != .idle else { return }
         do { try voice.tick(now: ProcessInfo.processInfo.systemUptime) }
         catch { cancelVoice(); onError("Cannot record voice", (error as? DesktopError)?.message ?? "The voice could not be recorded. Check the microphone, then try again."); return }
+        if voice.isComplete { finishVoice(); return }
         redraw()
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [weak self] in
+        // The pre-roll ends on a poll, so it polls often enough for capture to start within a few milliseconds of the in point.
+        DispatchQueue.global().asyncAfter(deadline: .now() + (voice.state == .preRoll ? 0.005 : 0.05)) { [weak self] in
             self?.postToUI { [weak self] in self?.pollVoice(generation) }
         }
     }
@@ -140,6 +156,7 @@ extension EditorSession {
         switch voice.state {
         case .idle: label = voiceImporting ? "Keeping take…" : "Record voice"
         case .counting: label = "Voice in \(voice.countdown)…"
+        case .preRoll: label = "Pre-roll…"
         case .recording: label = "Stop voice"
         }
         PanelDraw.smallButton(c, r, label: label, fill: active ? PanelTheme.danger : PanelTheme.panelSurface,

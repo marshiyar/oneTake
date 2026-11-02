@@ -105,18 +105,8 @@ sh scripts/doctor.sh         # what a full run needs that is missing, with fixes
 A full run starts with [`scripts/doctor.sh`](mpvfx-swift/scripts/doctor.sh): with a prerequisite missing it stops at
 once with `check: UNAVAILABLE` (exit 2), neither passed nor failed.
 
-CI ([`.github/workflows/mpvfx-ci.yml`](.github/workflows/mpvfx-ci.yml)) builds, tests, packages and install-smokes
-the app on Linux, Windows and macOS with the engine libraries pinned in [`binaries.lock`](mpvfx-swift/binaries.lock);
-`ci-ok` is the only required check, and a green `main` publishes the installers. Two more workflows report on each
-build: [`strip-check.yml`](.github/workflows/strip-check.yml) verifies every published binary is stripped
-([`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md), "Symbols"), and
-[`bench.yml`](.github/workflows/bench.yml) benchmarks startup, the audio graph (`MpvfxAudioBench`), the colour grade
-on the CPU and the GPU (`MpvfxColorBench`) and preview playback (`MpvfxPreviewBench`) on all three platforms from a
-release build after every green run on `main`, weekly, and by hand. Every sample is reported with p50, p95, max and
-peak memory, as a table in the run summary and `bench-<os>.json` in the `bench-<os>` artifact
-([`.github/ci/bench.py`](.github/ci/bench.py)). How the installers are built and signed:
-[`docs/PACKAGING.md`](mpvfx-swift/docs/PACKAGING.md). Every check is listed in
-[`.github/CHECKS.md`](.github/CHECKS.md). Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same checks on Linux. [`windows.yml`](.github/workflows/windows.yml) runs
+the build and tests on Windows nightly, and macOS runs them locally.
 
 ## Repository layout
 
