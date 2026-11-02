@@ -387,6 +387,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
     case duplicateTransition = "duplicate-transition"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
+    case invalidMaskPath = "invalid-mask-path"
     case invalidSpeedRamp = "invalid-speed-ramp", invalidMove = "invalid-move"
     case invalidNarration = "invalid-narration", invalidFill = "invalid-fill"
 }
