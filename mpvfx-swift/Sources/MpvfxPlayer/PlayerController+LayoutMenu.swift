@@ -39,7 +39,8 @@ extension PlayerController {
 
     /// While the menu is open it owns the keys it understands; nil when it is closed or the key is not its.
     public func layoutMenuKey(_ k: EditorKey) -> Bool? {
-        guard var menu = view.layoutMenu, !k.command, !k.alt else { return nil }
+        guard var menu = view.layoutMenu else { return nil }
+        if k.command || k.alt { closeLayoutMenu(); return nil }   // a shortcut leaves the menu and goes on
         let result = menu.key(k.code, shift: k.shift)
         view.layoutMenu = menu
         switch result {

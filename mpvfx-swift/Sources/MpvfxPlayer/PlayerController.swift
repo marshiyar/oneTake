@@ -191,7 +191,7 @@ public final class PlayerController {
             view.zoom = .fit; view.zoomChanged(); zoomTouched(); needsDisplay?(); return
         }
         if let b = view.button(at: p, in: size) { press(b); return }
-        if view.shapeTool != nil, shapePress(p, viewport: vp) { return }
+        if view.shapeTool != nil, !view.cropActive, recorder == nil, shapePress(p, viewport: vp) { return }
         guard vp.contains(p), !recordTakesPress(p, shift: shift) else { return }   // armed Record owns stage presses
 
         if let e = selected {

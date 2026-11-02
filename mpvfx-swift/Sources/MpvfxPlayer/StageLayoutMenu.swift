@@ -82,7 +82,7 @@ public struct StageLayoutMenu: Equatable {
     public mutating func key(_ code: EditorKey.Code, shift: Bool) -> KeyResult {
         switch code {
         case .escape: return .close
-        case .enter, .space:
+        case .enter:
             return isEnabled(layout) ? .apply(layout, options) : .handled
         case .up, .down:
             let enabled = Self.layouts.indices.filter { isEnabled(Self.layouts[$0]) }
