@@ -57,7 +57,7 @@ extension InspectorPanel {
         ("ease-in-out", "Ease in-out", NativeMoveEase.easeInOut), ("linear", "Linear", .linear),
     ]
 
-    /// A length typed as frames ("15", "15f"), seconds ("0.5s") or timecode ("1:05" is 1 s 5 f, "0:1:05" is 1 min 1 s 5 f)
+    /// A length typed as frames ("15", "15f"), seconds ("0.5s") or timecode ("1:05" is 1 s 5 f, "1:1:05" is 1 min 1 s 5 f)
     /// at `fps`; nil when it is not one of those or is shorter than a frame.
     public static func parseMoveFrames(_ text: String, fps: Double) -> Int? {
         let t = text.trimmingCharacters(in: .whitespaces).lowercased()

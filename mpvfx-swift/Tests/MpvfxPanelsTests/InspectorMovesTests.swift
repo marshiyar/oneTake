@@ -133,7 +133,7 @@ internal final class InspectorMovesTests: XCTestCase {
         let parse = { InspectorPanel.parseMoveFrames($0, fps: 30) }
         XCTAssertEqual(parse("15"), 15); XCTAssertEqual(parse("15f"), 15); XCTAssertEqual(parse(" 15 "), 15)
         XCTAssertEqual(parse("0.5s"), 15); XCTAssertEqual(parse("1s"), 30)
-        XCTAssertEqual(parse("1:05"), 35); XCTAssertEqual(parse("0:1:05"), 95)
+        XCTAssertEqual(parse("1:05"), 35); XCTAssertEqual(parse("0:1:05"), 35); XCTAssertEqual(parse("1:1:05"), 1835)
         XCTAssertNil(parse("0")); XCTAssertNil(parse("-3")); XCTAssertNil(parse("2.5")); XCTAssertNil(parse("abc")); XCTAssertNil(parse(""))
         XCTAssertNil(parse("1:2:3:4")); XCTAssertNil(parse("0.001s"))
     }

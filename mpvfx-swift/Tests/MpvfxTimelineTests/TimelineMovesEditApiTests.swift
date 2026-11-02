@@ -42,7 +42,8 @@ internal final class TimelineMovesEditApiTests: XCTestCase {
 
     internal func testALoopAndAnOutShareTheClipAndSurviveReopening() throws {
         let e = try editor()
-        let out = NativeEdgeMove(kind: .grow, frames: 8, direction: nil, amount: 30, ease: .linear)
+        var out = NativeEdgeMove(kind: .grow, frames: 8)
+        out.amount = 30; out.ease = .linear
         XCTAssertTrue(e.setEdgeMove(clipIds: ["natural"], .out, out))
         XCTAssertTrue(e.setLoopMove(clipIds: ["natural"], NativeLoopMove(kind: .pulse, periodFrames: 10)))
         let reopened = try TimelineEditor(json: serializeNativeProjectDocument(e.document, engine: e.engine), engine: e.engine)

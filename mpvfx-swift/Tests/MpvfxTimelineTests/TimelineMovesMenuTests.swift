@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 // Issue #274 A4: Copy moves, Paste moves and Remove moves in the clip menu; paste onto three selected clips is one undo step.
+import MpvfxCanvas
 import MpvfxShared
 import OneTakeKeyframes
 import XCTest
@@ -46,7 +47,8 @@ internal final class TimelineMovesMenuTests: XCTestCase {
 
     internal func testPasteMovesOnThreeSelectedClipsIsOneUndoStepAndRemoveToo() throws {
         let (c, e) = try make()
-        let source = NativeEdgeMove(kind: .grow, frames: 9, direction: nil, amount: 25, ease: nil)
+        var source = NativeEdgeMove(kind: .grow, frames: 9)
+        source.amount = 25
         XCTAssertTrue(e.setEdgeMove(clipIds: ["full"], .in, source))
         XCTAssertTrue(c.runClipMenu(.copyMoves, clipId: "full"))
         XCTAssertEqual(c.movesClipboard?.inMove, source)

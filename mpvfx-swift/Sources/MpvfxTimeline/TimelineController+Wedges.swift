@@ -19,13 +19,14 @@ import MpvfxShared
 
 extension TimelineController {
     func wedgePointerDown(x: Double, y: Double) -> Bool {
-        guard editor != nil, x >= TimelineLayout.contentOrigin else { return false }
+        guard let editor, x >= TimelineLayout.contentOrigin else { return false }
+        let fps = max(editor.fps, 1)
         for (row, track) in view.tracks.enumerated() where !track.locked {
             for clip in track.clips {
                 for edge in [NativeMoveEdge.in, .out] {
                     guard let grab = view.wedgeHandle(track: row, clip, edge), grab.contains(x: x, y: y) else { continue }
-                    let frames = Int((view.wedgeSeconds(clip, edge) * playback.fps).rounded())
-                    view.wedgeDrag = TimelineWedgeDrag(clipId: clip.id, edge: edge, frames: frames, seconds: Double(frames) / playback.fps)
+                    let frames = Int((view.wedgeSeconds(clip, edge) * fps).rounded())
+                    view.wedgeDrag = TimelineWedgeDrag(clipId: clip.id, edge: edge, frames: frames, seconds: Double(frames) / fps)
                     view.selection = [clip.id]
                     return true
                 }
@@ -35,8 +36,8 @@ extension TimelineController {
     }
 
     func wedgeMove(x: Double) {
-        guard var drag = view.wedgeDrag, let (_, clip) = clip(drag.clipId) else { return }
-        let fps = max(playback.fps, 1)
+        guard var drag = view.wedgeDrag, let (_, clip) = clip(drag.clipId), let editor else { return }
+        let fps = max(editor.fps, 1)
         let time = view.time(forX: x)
         let seconds = drag.edge == .in ? time - clip.start : clip.end - time
         let total = Int((clip.duration * fps).rounded())
