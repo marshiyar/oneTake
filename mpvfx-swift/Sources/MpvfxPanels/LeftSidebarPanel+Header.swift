@@ -35,6 +35,7 @@ extension LeftSidebarPanel {
         if showsLibrary { drawIconButton(c, more, icon: .panelMenu, hit: .more) }
         var y = top + M.control + M.rowGap
         if let cr = creating { y = drawNameRow(c, cr, top: y) }
+        if let request = deleting { y = drawDeleteRow(c, request, top: y) }
         if let err = library.error { y = drawError(c, err, top: y) }
         return y
     }
@@ -138,6 +139,26 @@ extension LeftSidebarPanel {
         PanelDraw.text(c, "Cancel", in: cancel, font: font, color: hovered == .createCancel ? PanelTheme.text0 : PanelTheme.text2, align: .center)
         hits.add(cancel, .createCancel)
         return top + M.control + M.rowGap
+    }
+
+    /// Delete event / Delete project: what goes, wrapped in the danger colour, then Delete and Cancel on the header's grid.
+    func drawDeleteRow(_ c: CanvasContext, _ request: DeleteRequest, top: Double) -> Double {
+        let x0 = M.inset, x1 = size.width - M.inset, w = x1 - x0, font = PanelTheme.font(PanelTheme.textXs)
+        var y = top
+        for line in InspectorPanel.wrap(request.message, perLine: max(20, Int(w / 6.5))) {
+            PanelDraw.text(c, line, in: CanvasRect(x: x0, y: y, width: w, height: 16), font: PanelTheme.font(11), color: PanelTheme.red400)
+            y += 16
+        }
+        y += 4
+        let cancelW = c.measureText("Cancel", font: font).width + 20, deleteW = c.measureText("Delete", font: font).width + 20
+        let cancel = CanvasRect(x: x1 - cancelW, y: y, width: cancelW, height: M.control)
+        let delete = CanvasRect(x: cancel.x - M.controlGap - deleteW, y: y, width: deleteW, height: M.control)
+        c.fillRoundedRect(delete, radius: PanelTheme.radiusMd, library.busy ? PanelTheme.panelInput : PanelTheme.panelHover)
+        PanelDraw.text(c, "Delete", in: delete, font: font, color: library.busy ? PanelTheme.text5 : PanelTheme.red400, align: .center)
+        if !library.busy { hits.add(delete, .deleteConfirm) }
+        PanelDraw.text(c, "Cancel", in: cancel, font: font, color: hovered == .deleteCancel ? PanelTheme.text0 : PanelTheme.text2, align: .center)
+        hits.add(cancel, .deleteCancel)
+        return y + M.control + M.rowGap
     }
 
     /// The last library command's error, wrapped, in the danger colour.

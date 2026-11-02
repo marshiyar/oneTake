@@ -367,6 +367,12 @@ final class SessionPanels {
         case .createLibrary: command = ["type": .string("create")]
         case .openLibrary: command = ["type": .string("open")]
         case .createEvent, .createProject, .renameEvent, .renameProject: command = Self.namedItemCommand(cmd)
+        case .deleteProject(let l, let p):
+            guard leaveProject(libraryId: l, doomed: { $0.id == p }) else { return }
+            command = ["type": .string("deleteProject"), "libraryId": .string(l), "projectId": .string(p)]
+        case .deleteEvent(let l, let e):
+            guard leaveProject(libraryId: l, doomed: { $0.eventId == e }) else { return }
+            command = ["type": .string("deleteEvent"), "libraryId": .string(l), "eventId": .string(e)]
         case .importIntoEvent(let l, let e, let linked):
             command = ["type": .string("import"), "libraryId": .string(l), "eventId": .string(e), "mode": .string(linked ? "linked" : "managed")]
             if left.library.currentProjectId != nil, let id = projectId,

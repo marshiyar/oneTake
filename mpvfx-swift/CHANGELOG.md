@@ -56,6 +56,8 @@ Debian 13), with a clean-room media engine and no FFmpeg.
 - Imports stay in the selected library when another project is open (#70); preview decoding stays within its cache
   (#69).
 - A getting started guide and a sample project (#59).
+- Delete a library project or event from the Media panel's "…" menu, after a confirmation that says what goes with it; the
+  library's media and linked originals are kept when a project goes, and a library always keeps one event (#40).
 
 ### Look
 - Studio palette with clips coloured by kind (#30), flat panels with tab strips and a status line (#64), and a light

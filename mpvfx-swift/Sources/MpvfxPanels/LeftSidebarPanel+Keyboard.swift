@@ -24,6 +24,7 @@ extension LeftSidebarPanel {
         if dropdown.key(k) { onChange?(); return true }
         if let handled = keyIntoField(k) { if handled { onChange?() }; return handled }
         if menu != nil, k.code == .escape { menu = nil; onChange?(); return true }
+        if deleting != nil, k.code == .escape { deleting = nil; onChange?(); return true }
         let handled = keyNavigate(k)
         if handled { onChange?() }
         return handled
@@ -90,7 +91,7 @@ extension LeftSidebarPanel {
     func isFocusable(_ h: Hit) -> Bool {
         switch h {
         case .tab(let t): return t == tab   // the tab bar is one stop: the selected tab
-        case .hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .clearFilters, .clearSearch, .createCancel, .createConfirm: return true
+        case .hideSidebar, .panelMenu, .switcher, .importMedia, .more, .search, .filter, .clearFilters, .clearSearch, .createCancel, .createConfirm, .deleteConfirm, .deleteCancel: return true
         case .tile(let ref): return ref == (selected.flatMap { s in tileFrames.contains { $0.0 == s } ? s : nil } ?? tileFrames.first?.0)
         default: return false
         }

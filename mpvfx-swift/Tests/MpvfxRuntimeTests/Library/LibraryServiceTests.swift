@@ -289,6 +289,100 @@ final class LibraryServiceTests: XCTestCase {
         XCTAssertEqual(after, before)
     }
 
+    /// Delete project (#40): the catalog row, the project's folder, its export snapshot and its renders go; the other
+    /// project, the library's media and the attached copy in the other project stay, also after a reopen.
+    func testDeletesAProjectWithItsFilesAndExportsOnly() async throws {
+        let f = try await fixture()
+        let files = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: f.eventId, projectId: f.first), [f.source], .managed).files
+        let assetId = files[0]
+        let attached = try await f.engine.attach(f.libraryId, f.second, assetId)
+        let first = try XCTUnwrap(f.engine.resolveProject(f.first)).dir, second = try XCTUnwrap(f.engine.resolveProject(f.second)).dir
+        let snapshot = try await f.engine.snapshot(f.first)!
+        try await f.engine.failSnapshot(snapshot, "stopped")
+        let renders = PosixPath.join(f.library, "renders", f.first)
+        try FileManager.default.createDirectory(atPath: renders, withIntermediateDirectories: true)
+        try write(PosixPath.join(renders, "out.mp4"), "render")
+        let original = PosixPath.join(f.library, "Media/Originals", assetId)
+        try await f.engine.deleteProject(f.libraryId, f.first)
+        let view = await f.engine.views()[0]
+        XCTAssertEqual(view.projects.map(\.id), [f.second])
+        XCTAssertEqual(view.assets.map(\.id), [assetId])
+        XCTAssertEqual(view.jobs, [])
+        XCTAssertNil(f.engine.resolveProject(f.first))
+        for gone in [first, renders, snapshot.dir] { XCTAssertFalse(FileManager.default.fileExists(atPath: gone), gone) }
+        for kept in [second, PosixPath.join(second, attached), original, f.source] { XCTAssertTrue(FileManager.default.fileExists(atPath: kept), kept) }
+        await f.engine.close()
+        let reopened = service(f.root)
+        try await reopened.open(f.library)
+        let after = await reopened.views()[0]
+        XCTAssertEqual(after.projects.map(\.id), [f.second])
+        await assertThrows({ try await reopened.deleteProject(f.libraryId, f.first) }, "Library project not found")
+    }
+
+    /// Delete event (#40): the event's projects, media records and managed copies go, with every placement of that media
+    /// (also one in another event's project); a linked original is never touched, and the other event is unchanged.
+    func testDeletesAnEventWithItsProjectsMediaAndPlacements() async throws {
+        let f = try await fixture()
+        try await f.engine.createEvent(f.libraryId, "Day 2")
+        let events = await f.engine.views()[0].events
+        let day2 = try XCTUnwrap(events.first { $0.id != f.eventId }?.id)
+        let doomed = try await f.engine.createProject(f.libraryId, day2, "Day 2 cut")
+        let managed = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: day2, projectId: doomed), [f.source], .managed).files[0]
+        let linked = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: day2), [f.source], .linked).files[0]
+        _ = try await f.engine.attach(f.libraryId, f.first, managed)   // a project of the other event holds a copy
+        let keptMedia = try await f.engine.import(f.libraryId, LibraryImportTarget(eventId: f.eventId), [f.source], .managed).files[0]
+        let doomedDir = try XCTUnwrap(f.engine.resolveProject(doomed)).dir
+        let managedDir = PosixPath.join(f.library, "Media/Originals", managed)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: managedDir))
+        try await f.engine.deleteEvent(f.libraryId, day2)
+        let view = await f.engine.views()[0]
+        XCTAssertEqual(view.events.map(\.id), [f.eventId])
+        XCTAssertEqual(Set(view.projects.map(\.id)), [f.first, f.second])
+        XCTAssertEqual(view.assets.map(\.id), [keptMedia])
+        XCTAssertFalse(view.assets.contains { [managed, linked].contains($0.id) })
+        for gone in [doomedDir, managedDir] { XCTAssertFalse(FileManager.default.fileExists(atPath: gone), gone) }
+        for kept in [f.source, try XCTUnwrap(f.engine.resolveProject(f.first)).dir, PosixPath.join(f.library, "Media/Originals", keptMedia)] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: kept), kept)
+        }
+        await f.engine.close()
+        let reopened = service(f.root)
+        try await reopened.open(f.library)
+        let after = await reopened.views()[0]
+        XCTAssertEqual(after.events.map(\.id), [f.eventId])
+        XCTAssertEqual(after.assets.map(\.id), [keptMedia])
+    }
+
+    /// Delete refuses an unknown id, an id from another library, the library's last event and anything with a running
+    /// export, and changes nothing when it does; once the export has ended the delete goes through.
+    func testDeleteRefusesUnknownIdsTheLastEventAndARunningExport() async throws {
+        let f = try await fixture()
+        let otherId = try await f.engine.create(PosixPath.join(f.root, "Other.mpvfxlibrary"))
+        let others = await f.engine.views()
+        let otherEvent = try XCTUnwrap(others.first { $0.id == otherId }?.events.first?.id)
+        let otherProject = try await f.engine.createProject(otherId, otherEvent, "Other")
+        let before = await f.engine.views().first { $0.id == f.libraryId }
+        await assertThrows({ try await f.engine.deleteProject(f.libraryId, "not-an-id") }, "Invalid library identity")
+        await assertThrows({ try await f.engine.deleteProject(f.libraryId, UUID().uuidString.lowercased()) }, "Library project not found")
+        await assertThrows({ try await f.engine.deleteProject(f.libraryId, otherProject) }, "Library project not found")
+        await assertThrows({ try await f.engine.deleteEvent(f.libraryId, UUID().uuidString.lowercased()) }, "Library event not found")
+        await assertThrows({ try await f.engine.deleteEvent(f.libraryId, otherEvent) }, "Library event not found")
+        await assertThrows({ try await f.engine.deleteEvent(f.libraryId, f.eventId) }, "at least one event")
+        try await f.engine.createEvent(f.libraryId, "Day 2")
+        let snapshot = try await f.engine.snapshot(f.first)!
+        await assertThrows({ try await f.engine.deleteProject(f.libraryId, f.first) }, "export is still running")
+        await assertThrows({ try await f.engine.deleteEvent(f.libraryId, f.eventId) }, "export is still running")
+        let during = await f.engine.views().first { $0.id == f.libraryId }
+        XCTAssertEqual(during?.projects, before?.projects)
+        XCTAssertEqual(during?.events.count, 2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: snapshot.dir))
+        try await f.engine.failSnapshot(snapshot, "stopped")
+        try await f.engine.deleteProject(f.libraryId, f.first)
+        let after = await f.engine.views().first { $0.id == f.libraryId }
+        XCTAssertEqual(after?.projects.map(\.id), [f.second])
+        let untouched = await f.engine.views().first { $0.id == otherId }
+        XCTAssertEqual(untouched?.projects.map(\.id), [otherProject])
+    }
+
     func testRejectsProjectAndAssetIdentitiesFromAnotherLibrary() async throws {
         let f = try await fixture()
         let otherId = try await f.engine.create(PosixPath.join(f.root, "Other.mpvfxlibrary"))

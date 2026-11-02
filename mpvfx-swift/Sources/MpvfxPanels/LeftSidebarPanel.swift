@@ -76,6 +76,9 @@ public enum LibraryNavCommand: Equatable {
     case createProject(libraryId: String, eventId: String, name: String)
     case renameProject(libraryId: String, projectId: String, name: String)
     case renameEvent(libraryId: String, eventId: String, name: String)
+    /// Sent only after the user confirmed in the panel. The host moves the editor off the project first.
+    case deleteProject(libraryId: String, projectId: String)
+    case deleteEvent(libraryId: String, eventId: String)
     case switchProject(String)
     case importIntoEvent(libraryId: String, eventId: String, linked: Bool)
     case attach(libraryId: String, assetId: String)
@@ -98,6 +101,7 @@ public final class LeftSidebarPanel {
         case switcher, importMedia, more
         case search, clearSearch, filter, clearFilters
         case createField, createConfirm, createCancel
+        case deleteConfirm, deleteCancel
         case tile(MediaTileRef), tileAction(MediaTileRef)
         /// The play / stop button of a tile that can be auditioned, and the progress bar of the one that is.
         case tileAudition(MediaTileRef), auditionBar(MediaTileRef)
@@ -162,9 +166,15 @@ public final class LeftSidebarPanel {
     var selectedLibraryId: String?
     var selectedEventId: String?
     var linkedImport = false
-    var creating: (kind: String, field: PanelTextField)?
+    var creating: (kind: String, field: PanelTextField)? { didSet { if creating != nil { deleting = nil } } }
     /// The rename target stays fixed while its name row is open.
     var renameTarget: (libraryId: String, id: String)?
+    /// A delete the user has asked for and not yet confirmed: what it removes, shown in the confirmation row.
+    var deleting: DeleteRequest?
+    struct DeleteRequest: Equatable {
+        var command: LibraryNavCommand
+        var message: String
+    }
     public struct Menu: Equatable {
         public var target: MediaTileRef; public var at: CanvasPoint; public var mode: Int = 0; public var removePlacements = false
         public var rename: PanelTextField?
@@ -466,6 +476,35 @@ public final class LeftSidebarPanel {
     func canRename(_ kind: String) -> Bool {
         guard !library.busy else { return false }
         return kind == "renameEvent" ? activeEvent != nil : currentProject != nil
+    }
+
+    /// A delete needs the same target as a rename (the shown event, the current project) and no library command running.
+    func canDelete(_ kind: String) -> Bool {
+        guard canRename(kind == "deleteEvent" ? "renameEvent" : "renameProject") else { return false }
+        // A library keeps at least one event.
+        return kind != "deleteEvent" || (activeLibrary?.events.count ?? 0) > 1
+    }
+
+    /// Opens the confirmation row for deleting the shown event or the current project, saying what goes with it.
+    func startDelete(_ kind: String) {
+        guard canDelete(kind), let l = activeLibrary else { return }
+        creating = nil
+        if kind == "deleteEvent", let e = activeEvent {
+            let projects = l.projects.filter { $0.eventId == e.id }.count, media = l.assets.filter { $0.eventId == e.id }.count
+            deleting = DeleteRequest(command: .deleteEvent(libraryId: l.id, eventId: e.id),
+                message: "Delete event \(e.name)? Its \(Self.count(projects, "project")) and \(Self.count(media, "media item")) go with it; linked originals stay.")
+        } else if let p = currentProject {
+            deleting = DeleteRequest(command: .deleteProject(libraryId: l.id, projectId: p.id),
+                message: "Delete project \(p.name)? Its edits and exports are removed; the library's media stays.")
+        }
+    }
+
+    private static func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
+
+    func confirmDelete() {
+        guard let request = deleting, !library.busy else { return }
+        deleting = nil
+        onLibrary?(request.command)
     }
 
     /// Opens the name row on the current name of the shown event or current project.

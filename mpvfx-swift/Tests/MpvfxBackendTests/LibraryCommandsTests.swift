@@ -200,4 +200,49 @@ final class LibraryCommandsTests: XCTestCase {
         XCTAssertEqual(views.first?.projects.first { $0.id == projectId }?.name, "Final cut")
         try await b.close()
     }
+
+    /// Delete (#40): deleteProject and deleteEvent remove what the library lists, open no dialog, leave the other
+    /// project openable, and refuse a missing field and the last event.
+    func testDeleteEventAndProjectThroughTheNavigatorCommands() async throws {
+        let b = RuntimeDesktopBackend(userData: root + "/userData")
+        let dialogs = ScriptedDialogs()
+        dialogs.saves = [root + "/Films"]
+        let created = try await run(b, dialogs, ["type": .string("create")])
+        let first = try XCTUnwrap(created["projectId"]?.string)
+        func current() async throws -> DesktopLibraryView { let views = try await b.libraryViews(); return try XCTUnwrap(views.first) }
+        var library = try await current()
+        let eventId = try XCTUnwrap(library.events.first?.id)
+        _ = try await run(b, dialogs, ["type": .string("project"), "libraryId": .string(library.id),
+                                       "eventId": .string(eventId), "name": .string("Second")])
+        _ = try await run(b, dialogs, ["type": .string("event"), "libraryId": .string(library.id), "name": .string("Day 2")])
+        library = try await current()
+        let second = try XCTUnwrap(library.projects.first { $0.id != first }), day2 = try XCTUnwrap(library.events.first { $0.id != eventId })
+        _ = try await run(b, dialogs, ["type": .string("project"), "libraryId": .string(library.id),
+                                       "eventId": .string(day2.id), "name": .string("Day 2 cut")])
+        library = try await current()
+        XCTAssertEqual(library.projects.count, 3)
+        let firstDirectory = try XCTUnwrap(library.projects.first { $0.id == first }).directory
+
+        let deleted = try await run(b, dialogs, ["type": .string("deleteProject"), "libraryId": .string(library.id),
+                                                 "projectId": .string(first)])
+        XCTAssertEqual(deleted["errors"], .array([]))
+        library = try await current()
+        XCTAssertEqual(Set(library.projects.map(\.name)), ["Second", "Day 2 cut"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstDirectory))
+        XCTAssertNoThrow(try b.openProject(path: second.directory))
+
+        _ = try await run(b, dialogs, ["type": .string("deleteEvent"), "libraryId": .string(library.id), "eventId": .string(day2.id)])
+        library = try await current()
+        XCTAssertEqual(library.events.map(\.id), [eventId])
+        XCTAssertEqual(library.projects.map(\.name), ["Second"])
+        XCTAssertEqual(dialogs.saveRequests.count, 1, "only the Create Library dialog")
+        XCTAssertEqual(dialogs.openRequests, [])
+
+        await assertRefused(b, ["type": .string("deleteEvent"), "libraryId": .string(library.id), "eventId": .string(eventId)],
+                            "A library keeps at least one event")
+        await assertRefused(b, ["type": .string("deleteProject"), "libraryId": .string(library.id)], "Invalid library command")
+        library = try await current()
+        XCTAssertEqual(library.projects.map(\.name), ["Second"])
+        try await b.close()
+    }
 }

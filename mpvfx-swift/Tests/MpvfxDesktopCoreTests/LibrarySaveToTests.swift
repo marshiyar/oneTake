@@ -40,6 +40,8 @@ private final class OneExportLibrary: LibraryService, @unchecked Sendable {
     func renameProject(libraryId: String, projectId: String, name: String) async throws {
         throw DesktopError.notImplemented("renameProject")
     }
+    func deleteEvent(libraryId: String, eventId: String) async throws { throw DesktopError.notImplemented("deleteEvent") }
+    func deleteProject(libraryId: String, projectId: String) async throws { throw DesktopError.notImplemented("deleteProject") }
     func saveOutput(libraryId: String, jobId: String, destination: String, overwrite: Bool) async throws {
         saves.append(Save(libraryId: libraryId, jobId: jobId, destination: destination, overwrite: overwrite))
     }

@@ -72,6 +72,8 @@ public protocol LibraryService: Sendable {
     func saveOutput(libraryId: String, jobId: String, destination: String, overwrite: Bool) async throws
     func renameEvent(libraryId: String, eventId: String, name: String) async throws
     func renameProject(libraryId: String, projectId: String, name: String) async throws
+    func deleteEvent(libraryId: String, eventId: String) async throws
+    func deleteProject(libraryId: String, projectId: String) async throws
 }
 
 extension LibraryService {

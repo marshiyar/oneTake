@@ -107,6 +107,24 @@ let LIBRARY_CATALOG_STATEMENTS: [String: String] = [
     "job": "INSERT INTO jobs(id,projectId,snapshot,status) VALUES(?1,?2,?3,'rendering')",
     "jobFinish": "UPDATE jobs SET status=?2,output=?3,error=?4 WHERE id=?1",
 ]
+/// The delete commands: several statements run in order inside the command's one transaction, each with the caller's
+/// single id argument. A foreign key has no `ON DELETE`, so each command removes the rows that point at what it deletes
+/// first: a project's placements and export jobs; an event's projects (with theirs), its assets, and every placement of
+/// those assets, whichever project holds it.
+let LIBRARY_CATALOG_SCRIPTS: [String: [String]] = [
+    "deleteProject": [
+        "DELETE FROM placements WHERE projectId=?1",
+        "DELETE FROM jobs WHERE projectId=?1",
+        "DELETE FROM projects WHERE id=?1",
+    ],
+    "deleteEvent": [
+        "DELETE FROM placements WHERE projectId IN (SELECT id FROM projects WHERE eventId=?1) OR assetId IN (SELECT id FROM assets WHERE eventId=?1)",
+        "DELETE FROM jobs WHERE projectId IN (SELECT id FROM projects WHERE eventId=?1)",
+        "DELETE FROM projects WHERE eventId=?1",
+        "DELETE FROM assets WHERE eventId=?1",
+        "DELETE FROM events WHERE id=?1",
+    ],
+]
 let LIBRARY_CATALOG_RECOVER =
     "UPDATE jobs SET status='interrupted',error='Application closed before export completion; export again from the saved snapshot' WHERE status='rendering';"
 
@@ -128,6 +146,7 @@ public enum LibraryCatalog {
             if try d.query("PRAGMA user_version") != "1" { throw LibraryCatalogError("Unsupported library catalog version") }
             try d.exec("BEGIN IMMEDIATE;")
             if let statement = LIBRARY_CATALOG_STATEMENTS[action] { try d.query(statement, args) }
+            else if let script = LIBRARY_CATALOG_SCRIPTS[action] { for statement in script { try d.query(statement, args) } }
             else if action == "recover" { try d.exec(LIBRARY_CATALOG_RECOVER) }
             else if action != "read" { throw LibraryCatalogError("Unknown library command") }
             else if !args.isEmpty { throw LibraryCatalogError("Invalid read arguments") }
