@@ -186,7 +186,7 @@ final class TransitionBrowserTests: XCTestCase {
         let (p, e) = try make()
         var t = 100.0
         p.now = { t }
-        _ = draw(p)
+        _ = draw(p, CanvasSize(320, 2400))   // tall enough to show every tile
         let tile = try XCTUnwrap(p.tiles.first(where: { $0.entry.id == "push:left" })).rect
         let at = CanvasPoint(tile.x + 6, tile.y + 6)
         XCTAssertTrue(p.pointerDown(at, shift: false))
@@ -295,8 +295,8 @@ final class TransitionBrowserTests: XCTestCase {
 
     func testATileForARedToBlueCutContainsBothColours() throws {
         let dissolve = px(try tile("dissolve", 0.5), 16, 9)
-        XCTAssertEqual(dissolve.r, 128, accuracy: 3)
-        XCTAssertEqual(dissolve.b, 128, accuracy: 3, "half red, half blue")
+        XCTAssertLessThanOrEqual(abs(dissolve.r - 128), 3)
+        XCTAssertLessThanOrEqual(abs(dissolve.b - 128), 3, "half red, half blue")
         let start = px(try tile("dissolve", 0), 16, 9), end = px(try tile("dissolve", 1), 16, 9)
         XCTAssertEqual([start.r, start.b], [255, 0], "the outgoing clip before the transition")
         XCTAssertEqual([end.r, end.b], [0, 255], "the incoming clip after it")

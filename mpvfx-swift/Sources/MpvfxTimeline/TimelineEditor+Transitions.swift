@@ -124,7 +124,7 @@ public extension TimelineEditor {
 
     /// The cut of `trackId` (any track when nil) within `toleranceFrames` of `frame`, the nearest one.
     func cut(nearFrame frame: Double, toleranceFrames: Double, trackId: String? = nil) -> TimelineCut? {
-        allCuts.filter { trackId == nil || $0.trackId == trackId && abs($0.frame - frame) <= toleranceFrames }
+        allCuts.filter { (trackId == nil || $0.trackId == trackId) && abs($0.frame - frame) <= toleranceFrames }
             .min { abs($0.frame - frame) < abs($1.frame - frame) }
     }
 
@@ -149,6 +149,7 @@ public extension TimelineEditor {
     func applyTransition(_ kind: NativeCutTransitionKind, direction: NativeTransitionDirection? = nil, color: String? = nil,
                          to cuts: [TimelineCut], lengthFrames: Double? = nil) -> [TransitionApplyOutcome] {
         var doc = document
+        var undoToOriginal: NativeProjectClipCommand?
         var outcomes: [TransitionApplyOutcome] = []
         for cut in cuts {
             if isTrackLocked(cut.trackId) { outcomes.append(.refused("Track is locked")); continue }
@@ -157,24 +158,20 @@ public extension TimelineEditor {
             case .success(let plan):
                 do {
                     let r = try applyNativeCutTransitionCommand(doc, .replace(trackId: cut.trackId, transition: plan.transition), engine: engine)
-                    guard case .success(let next, _) = r else { outcomes.append(.refused(r.failure?.message ?? "The transition could not be applied.")); continue }
+                    guard case .success(let next, let inverse) = r else { outcomes.append(.refused(r.failure?.message ?? "The transition could not be applied.")); continue }
+                    // The first edit's inverse restores the document as it was before any of them.
+                    if undoToOriginal == nil { undoToOriginal = inverse }
                     doc = next
                     outcomes.append(.applied(lengthFrames: plan.length, shortenedFrom: plan.length < plan.wanted ? plan.wanted : nil))
                 } catch { outcomes.append(.refused("The transition could not be applied.")) }
             }
         }
-        guard outcomes.contains(where: \.applied) else {
+        guard let inverse = undoToOriginal else {
             if case .refused(let message)? = outcomes.first { lastFailure = NativeProjectClipFailure(code: .insufficientHandles, message: message) }
             return outcomes
         }
-        do {
-            let inverse = NativeProjectClipCommand.restoreDocument(try cloneNativeDocument(document, engine))
-            lastFailure = nil
-            withHistory("Add transition") { replaceDocument(doc, inverse: inverse) }
-        } catch {
-            lastFailure = NativeProjectClipFailure(code: .documentMismatch, message: "The transition could not be applied")
-            return cuts.map { _ in .refused("The transition could not be applied.") }
-        }
+        lastFailure = nil
+        withHistory("Add transition") { replaceDocument(doc, inverse: inverse) }
         return outcomes
     }
 
