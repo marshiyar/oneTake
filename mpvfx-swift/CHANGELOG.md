@@ -39,6 +39,10 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   "<project> – <preset>" without replacing an existing file; a preset can render at its own composition size.
 - Voice-over punch-in: with the I and O points set, Record voice plays from a pre-roll before I (Settings > Voice
   pre-roll, default 2 s), records exactly I to O and stops at O, landing as one clip covering that range.
+- Export loudness: the Renders tab takes a Loudness target (Off, −14, −16, −18, −23, −24 LUFS) and a true-peak ceiling
+  (−0.5 to −3 dBTP, default −1). Export measures the exported span (only the range for a range export), applies one gain
+  to reach the target, and the limiter with a 4x true-peak check keeps the mix under the ceiling; if the ceiling stops it
+  reaching the target, the file is quieter than asked. Off leaves the mix and its history record unchanged.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.
