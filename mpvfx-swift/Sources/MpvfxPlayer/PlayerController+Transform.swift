@@ -271,7 +271,8 @@ extension PlayerController {
         case let .resize(_, h, start, _): return .resize(degrees: h.cursorAngle + start.rotation)
         case .rotate: return .rotate
         case .anchor: return .anchor
-        case .pan, .marquee, .crop, .compare: return .arrow
+        case .maskHandle: return .move
+        case .pan, .marquee, .crop, .compare, .shape: return .arrow
         }
     }
 

@@ -459,6 +459,13 @@ final class SessionPanels: @unchecked Sendable {
             self.session.playback.duration = self.session.editor.duration
             self.session.syncStage(); self.redraw()
         }
+        inspector.onPickKeyColor = { [weak self] in self?.session.pickKeyColorFromStage() }
+        inspector.onPickSecondaryColor = { [weak self] in self?.session.pickSecondaryColorFromStage() }
+        inspector.onColorKeyViewChange = { [weak self] mode in
+            guard let self else { return }
+            self.session.player.setColorKeyView(mode); self.right.inspector.colorKeyView = mode; self.redraw()
+        }
+        inspector.onEditMaskOnStage = { [weak self] clip, mask in self?.session.editMaskOnStage(clipId: clip, maskId: mask) }
         inspector.onSeek = { [weak self] t in
             guard let self else { return }
             self.session.playback.seek(t); self.session.timeline.syncFromPlayback(); self.session.syncStage(); self.redraw()
@@ -710,6 +717,7 @@ extension EditorSession {
             try adoptProject(opened)
             watchOpenProject()
             timeline.view.selection = []
+            lastLayout = nil   // clip ids repeat from project to project
             playback.seek(0); timeline.syncFromPlayback()
             panels?.projectSwitched()
         } catch { onError("Could not open the project", "\(error)") }

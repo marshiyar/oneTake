@@ -253,7 +253,7 @@ public final class PreviewCompositor: FrameSource {
     func draw(_ layer: PreviewLayer, raw: CanvasImage, shown: CanvasImage, shownIsCurrent: Bool = true,
               on c: CanvasContext, frame: CanvasRect, scale: Double, context: FrameDrawContext) {
         guard context.compareClipId == layer.clipId else {
-            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+            drawColorKey(layer, raw: raw, shown: shown, on: c, frame: frame, scale: scale, context: context); return
         }
         let split = frame.x + frame.width * max(0, min(1, context.comparePosition))
         // A completed grade from a previous request is useful during normal playback, but must never be paired
@@ -268,6 +268,31 @@ public final class PreviewCompositor: FrameSource {
         c.withState {
             c.clip(CanvasRect(x: split, y: frame.y, width: max(0, frame.maxX - split), height: frame.height))
             PreviewPainter.draw(plain, image: after, on: c, frame: frame, scale: scale)
+        }
+    }
+
+    /// The colour-key preview for one layer (issue #300): `.source` shows the raw frame, `.matte` the key's matte
+    /// (white kept, black keyed out), `.result` the graded picture as usual. Other clips draw unchanged, and
+    /// `.result` returns after one comparison, so the normal path costs nothing extra.
+    func drawColorKey(_ layer: PreviewLayer, raw: CanvasImage, shown: CanvasImage,
+                      on c: CanvasContext, frame: CanvasRect, scale: Double, context: FrameDrawContext) {
+        guard context.colorKeyClipId == layer.clipId else {
+            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+        }
+        switch context.colorKeyView {
+        case .result:
+            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale)
+        case .source:
+            var plain = layer; plain.blend = .normal
+            PreviewPainter.draw(plain, image: raw, on: c, frame: frame, scale: scale)
+        case .matte:
+            guard let key = layer.grade?.params.colorKey else {
+                PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+            }
+            var plain = layer; plain.blend = .normal
+            let matte = ColorKeyMatte.image(rgba: raw.rgba, width: raw.width, height: raw.height, key: key)
+            PreviewPainter.draw(plain, image: CanvasImage(width: raw.width, height: raw.height, rgba: matte),
+                                on: c, frame: frame, scale: scale)
         }
     }
 

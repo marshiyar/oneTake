@@ -42,4 +42,26 @@ internal final class ShapeEditTests: XCTestCase {
         _ = editor.redo()
         XCTAssertEqual(editor.clip("title")?.clip.shape, shape)
     }
+
+    internal func testAddShapeClipIsOneUndoStepWithItsBoxAndSurvivesRestart() throws {
+        let editor = try TimelineEditor(json: CompositionSizeTests.json, engine: KeyframeRuntime())
+        let depth = editor.undoStack.count
+        let shape = NativeClipShape(kind: "ellipse")
+        let id = try XCTUnwrap(editor.addShapeClip(shape, left: 100, top: 50, width: 300, height: 200, at: 4))
+        XCTAssertEqual(editor.undoStack.count, depth + 1, "one undo step")
+        XCTAssertEqual(editor.undoLabel, "Add shape")
+        let clip = try XCTUnwrap(editor.clip(id)?.clip)
+        XCTAssertEqual(clip.shape, shape)
+        XCTAssertEqual(clip.startFrame, 4 * editor.fps)
+        XCTAssertEqual(clip.durationFrames, 5 * editor.fps, "five seconds")
+        XCTAssertEqual(clip.staticParameters?["layout.left"], .number(100))
+        XCTAssertEqual(clip.staticParameters?["layout.height"], .number(200))
+        let reopened = try TimelineEditor(
+            json: serializeNativeProjectDocument(editor.document, engine: editor.engine), engine: editor.engine)
+        XCTAssertEqual(reopened.clip(id)?.clip.shape, shape)
+        XCTAssertTrue(editor.undo())
+        XCTAssertNil(editor.clip(id), "one undo removes the clip")
+        XCTAssertNil(editor.addShapeClip(NativeClipShape(kind: "rectangle", radius: -1), left: 0, top: 0, width: 10, height: 10, at: 0),
+                     "the document refuses a bad shape")
+    }
 }

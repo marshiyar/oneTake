@@ -19,6 +19,27 @@ import MpvfxTheme
 /// frame, click a colour on it to key the selection (SecondaryColorKey.sample), then check the Selection matte.
 /// The key is written to the clip's grade, which preview and export both grade with.
 extension InspectorPanel {
+    /// "Pick on stage": the host starts the stage eyedropper and, on a click, hands the clip's ungraded frame to
+    /// `applyPickedSecondaryColor`.
+    public var onPickSecondaryColor: (() -> Void)? {
+        get { grade.onPickSecondaryColor }
+        set { grade.onPickSecondaryColor = newValue }
+    }
+
+    /// Keys the selected secondary of `clipId`'s grade from the ungraded `frame` at pixel (x, y), as the click on the
+    /// captured frame does: one undo step. False when the clip has no such secondary or the patch is transparent.
+    @discardableResult
+    public func applyPickedSecondaryColor(clipId: String, frame: CanvasImage, x: Double, y: Double) -> Bool {
+        guard let editor else { return false }
+        let g = editor.gradeShown(clipId: clipId, time: time), sel = grade.selectedSecondary
+        guard g.secondaries.indices.contains(sel) else { return false }
+        var n = g
+        guard SecondaryColorKey.sample(frame, x: x, y: y, into: &n.secondaries[sel]) else { return false }
+        grade.showMatte = false
+        edited(editor.commitGrade(clipId: clipId, time: time, shown: g, next: n))
+        return true
+    }
+
     /// Longest side of the captured frame (the host renders the clip's graded frame at most this big).
     static let sampleFrameSize = 320
 
@@ -39,6 +60,17 @@ extension InspectorPanel {
             self.grade.sampleFrame = nil; self.grade.sampleError = false; self.grade.showMatte = false; self.grade.matteMemo = nil
             self.captureSampleFrame(clipId)
         })))]
+        if onPickSecondaryColor != nil, g.secondaries.indices.contains(sel) {
+            rows.append(.init(.custom(InspectorCustomRow(id: "sec:pickStage", height: 28, draw: { c, r, panel in
+                let color = PanelTheme.accent, label = "Pick on stage"
+                PanelIcon.phosphor(.eyedropper).draw(c, in: CanvasRect(x: r.x, y: r.y + 8, width: 12, height: 12), color: color)
+                let w = c.measureText(label, font: PanelTheme.font(11, .medium)).width
+                PanelDraw.text(c, label, in: CanvasRect(x: r.x + 18, y: r.y + 6.5, width: r.width - 18, height: 15), font: PanelTheme.font(11, .medium), color: color)
+                panel.addHit(CanvasRect(x: r.x, y: r.y, width: 18 + w, height: r.height), .custom("sec:pickStage", 0))
+            }, pointer: { [weak self] _, _, phase in
+                if phase == 0 { self?.onPickSecondaryColor?() }
+            }))))
+        }
         if grade.sampleError {
             rows.append(.init(.custom(InspectorCustomRow(id: "sec:sampleError", height: 16, draw: { c, r, _ in
                 PanelDraw.text(c, "Preview frame unavailable. Try again after the media loads.", in: r, font: PanelTheme.font(11), color: PanelTheme.red400)

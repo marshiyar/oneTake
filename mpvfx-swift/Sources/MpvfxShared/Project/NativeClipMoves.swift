@@ -40,6 +40,9 @@
 //   shrink (as grow) shrinks while it plays: In: scale = 1 + a/100·w    Out: scale = 1 - a/100·w    opacity = 1 - w
 //   spin   (a degrees, default 90, a ≠ 0, |a| ≤ 3600; positive turns clockwise while it plays), with a fade:
 //          In: rotation = -a·w    Out: rotation = +a·w    opacity = 1 - w
+//   draw   (In only; no amount, direction or fade) a stroke reveals along its path: drawProgress = 1 - w, the fraction
+//          of the path's arc length drawn from its start. Only shape layers (lines, arrows, outlines) use it; the
+//          other offsets stay at rest. The painter trims the stroke (NativeShapeDrawOn in MpvfxPlayer).
 //
 // Loop kinds, u the loop phase:
 //   float  (a % of the frame height, default 2, 0 < a ≤ 100)   dy = -a/100·H·u                  (bobs up)
@@ -50,10 +53,10 @@ import Foundation
 
 /// The In and Out kinds.
 public enum NativeEdgeMoveKind: String, CaseIterable, Sendable {
-    case slide, rise, drop, grow, shrink, spin
+    case slide, rise, drop, grow, shrink, spin, draw
 
     public var defaultAmount: Double {
-        switch self { case .slide: 100; case .rise, .drop: 10; case .grow, .shrink: 40; case .spin: 90 }
+        switch self { case .slide: 100; case .rise, .drop: 10; case .grow, .shrink: 40; case .spin: 90; case .draw: 0 }
     }
     /// Accepted amounts: slide 0 < a ≤ 200, rise/drop/grow/shrink 0 < a ≤ 100, spin a ≠ 0 and |a| ≤ 3600.
     public func accepts(amount a: Double) -> Bool {
@@ -62,12 +65,13 @@ public enum NativeEdgeMoveKind: String, CaseIterable, Sendable {
         case .slide: return a > 0 && a <= 200
         case .rise, .drop, .grow, .shrink: return a > 0 && a <= 100
         case .spin: return a != 0 && abs(a) <= 3600
+        case .draw: return false   // a draw-on has no amount
         }
     }
     /// A direction picks the edge a Slide enters from or leaves by; the other kinds move on a fixed axis.
     public var takesDirection: Bool { self == .slide }
     /// Every kind but Slide fades in or out with its motion.
-    public var fades: Bool { self != .slide }
+    public var fades: Bool { self != .slide && self != .draw }
 }
 
 /// The Loop kinds.
@@ -93,6 +97,8 @@ public struct NativeMoveOffsets: Equatable, Sendable {
     /// Degrees, clockwise.
     public var rotation = 0.0
     public var opacity = 1.0
+    /// The fraction of a shape's stroke drawn from its start (1: all of it); the draw-on move lowers it.
+    public var drawProgress = 1.0
     public static let identity = NativeMoveOffsets()
     public var isIdentity: Bool { self == .identity }
     /// What undoes these offsets (a scale of 0 cannot be undone and stays 1).
@@ -102,7 +108,8 @@ public struct NativeMoveOffsets: Equatable, Sendable {
 
     /// Both offsets applied: position and rotation add, scale and opacity multiply.
     public func combined(with o: NativeMoveOffsets) -> NativeMoveOffsets {
-        NativeMoveOffsets(dx: dx + o.dx, dy: dy + o.dy, scale: scale * o.scale, rotation: rotation + o.rotation, opacity: opacity * o.opacity)
+        NativeMoveOffsets(dx: dx + o.dx, dy: dy + o.dy, scale: scale * o.scale, rotation: rotation + o.rotation, opacity: opacity * o.opacity,
+                          drawProgress: drawProgress * o.drawProgress)
     }
 }
 
@@ -126,6 +133,7 @@ extension NativeEdgeMove {
         case .grow: return NativeMoveOffsets(scale: 1 - towardIn * a / 100 * w)
         case .shrink: return NativeMoveOffsets(scale: 1 + towardIn * a / 100 * w)
         case .spin: return NativeMoveOffsets(rotation: -towardIn * a * w)
+        case .draw: return edge == .in ? NativeMoveOffsets(drawProgress: 1 - w) : .identity   // In only; the validator refuses an Out
         }
     }
 

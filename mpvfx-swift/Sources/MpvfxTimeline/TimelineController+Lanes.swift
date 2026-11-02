@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
 
 public extension TimelineController {
     /// U: expand/collapse property lanes of the selected clips (ShortcutsPanel "Expand / collapse properties").
@@ -58,12 +59,25 @@ public extension TimelineController {
                                                canPaste: clipboard != nil, canPasteGrade: gradeClipboard != nil,
                                                gradePasteReason: gradeClipboard == nil ? "Copy a grade before pasting" : nil,
                                                keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil,
-                                               disabled: c.hidden)
+                                               disabled: c.hidden, canvasFill: canvasFillState(for: c),
+                                               hasMoves: editor?.clipMoves(clipId: id) != nil, canPasteMoves: movesClipboard != nil)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
         if viewport.height > 0 { m.maximumHeight = viewport.height }
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
         if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }
         view.clipMenu = m
+    }
+
+    /// The clip menu's "Fill empty area" check for a video or image clip: whether every selected visual clip shows a
+    /// fill. Nil for any other clip (no row).
+    private func canvasFillState(for c: TimelineClipModel) -> Bool? {
+        guard c.kind == .video || c.kind == .image else { return nil }
+        return editor?.canvasFillIsOn(clipIds: selectedVisualClipIds)
+    }
+
+    /// The selected clips that can show a canvas fill (video and image).
+    private var selectedVisualClipIds: Set<String> {
+        view.selection.filter { id in clip(id).map { $0.1.kind == .video || $0.1.kind == .image } ?? false }
     }
 
     internal func clipMenuClick(x: Double, y: Double) {
@@ -105,11 +119,23 @@ public extension TimelineController {
             view.selection = [id]
             return duplicateSelection()
         case .rename: return requestRenameClip(id)
+        case .copyMoves:
+            guard let moves = editor.copyMoves(clipId: id) else { return false }
+            movesClipboard = moves
+            return true
+        case .pasteMoves:
+            guard let moves = movesClipboard else { return false }
+            return editor.setClipMoves(clipIds: view.selection.contains(id) ? view.selection : [id], moves)
+        case .removeMoves:
+            return editor.setClipMoves(clipIds: view.selection.contains(id) ? view.selection : [id], nil)
         case .disable: return editor.setClipsHidden([id], !editor.isClipHidden(id))
         case .keepPitch: return editor.setPreservesPitch(clipId: id, !editor.preservesPitch(clipId: id))
         case .thumbnails:
             setThumbnailsEnabled(!view.thumbnailsEnabled)   // thumbnailMode is timeline-wide (adaptive / hidden)
             return true
+        case .canvasFill:
+            if !view.selection.contains(id) { view.selection = [id] }
+            return editor.toggleCanvasFill(clipIds: selectedVisualClipIds)
         case .mute: return editor.setMuted(clipId: id, !c.muted)
         case .detachAudio, .reattachAudio:
             // useNativeAudioActions: the host probes the file for an audio stream and reports failures.

@@ -70,6 +70,9 @@ final class EditorSession: @unchecked Sendable {
     private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir; clipLoudnessFeed?.reset() } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
+    /// The clip's ungraded frame for the stage eyedropper pick (id, time, largest width, largest height); nil uses the
+    /// preview renderer (EditorSession+ColorKeyPick.swift). Tests set it.
+    var rawFrameProvider: ((String, Double, Int, Int) -> PresetPreviewRenderer.State)?
     /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
     var clipInfoFeed: ClipInfoFeed?
     /// The Loudness row's readings (EditorSession+Loudness.swift); set by installShell.
@@ -141,6 +144,8 @@ final class EditorSession: @unchecked Sendable {
         player.onSelectionChange = { [weak self] ids in self?.timeline.view.selection = Set(ids); self?.redraw() }
         player.onCommit = { [weak self] e in self?.stageCommitted(e) }
         installStageTransform()
+        installMaskStage()
+        installColorKeyView()
         player.onDelete = { [weak self] ids in self?.deleteClips(ids) }
         player.onZOrder = { [weak self] ids, action in self?.applyZOrder(ids, action) }
         player.zOrderEnabled = { [weak self] id in self?.zOrderActions(id) ?? [] }
@@ -391,6 +396,8 @@ final class EditorSession: @unchecked Sendable {
 
     /// Set by the shell: show a file chooser and call importMedia(paths:).
     var onImportRequested: (() -> Void)?
+    /// The last layout the Layout menu applied (EditorSession+Layout.swift): ⌥ arrows and ⌥⌘[ ⌥⌘] re-apply it.
+    var lastLayout: (layout: NativeGridLayout, ids: [String], options: NativeGridOptions)?
 
     /// Cmd+S / Ctrl+S saves now; Cmd+I / Ctrl+I imports media (when the shell offers a chooser); Cmd+O / Ctrl+O opens
     /// a project folder (EditorSession+OpenProject); Cmd+, / Ctrl+, opens and closes Settings (EditorSession+Settings).

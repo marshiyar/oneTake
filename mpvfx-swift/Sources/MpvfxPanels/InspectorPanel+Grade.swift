@@ -58,6 +58,8 @@ public struct GradeUIState: Equatable {
     public var showMatte = false
     var sampleRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     var matteMemo: (key: ColorGrading.Secondary, image: CanvasImage)?
+    /// "Pick on stage": the host starts the stage eyedropper for the selected secondary (InspectorPanel+Eyedropper.swift).
+    public var onPickSecondaryColor: (() -> Void)?
     public static func == (a: GradeUIState, b: GradeUIState) -> Bool {
         a.curveTab == b.curveTab && a.selectedPoint == b.selectedPoint && a.selectedSecondary == b.selectedSecondary && a.lutOpen == b.lutOpen
             && a.finishSettings == b.finishSettings && a.copyToProject == b.copyToProject
