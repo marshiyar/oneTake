@@ -70,6 +70,8 @@ public final class PlayerController {
     var transformSession = TransformSession()
     /// The mask being edited on the stage, if any (PlayerController+Mask.swift).
     var maskStage = MaskStageSession()
+    /// The stage eyedropper waiting for a click (PlayerController+Eyedropper.swift).
+    var eyedropper: StageEyedropperSession?
 
     // Gesture recording (wired by `enableGestureRecording`).
     public var recordingDocument: (() -> NativeProjectDocument?)?
