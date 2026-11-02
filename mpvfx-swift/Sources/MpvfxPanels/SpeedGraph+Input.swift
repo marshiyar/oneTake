@@ -50,6 +50,9 @@ extension SpeedGraph {
             return [.focusPoint(i)]
         }
         let t = clampedFrame(frame(forX: p.x))
+        if let existing = points.firstIndex(where: { $0.t == t }) {
+            return [.focusPoint(existing)]
+        }
         let speed = clampedSpeed(speed(forY: p.y))
         return [.addPoint(t: t, speed: speed)]
     }
@@ -93,7 +96,11 @@ extension SpeedGraph {
             }
             return [.focusPoint(k.shift ? points.count - 1 : 0)]
         case .enter:
-            return [.addPoint(t: clampedFrame(playheadFrame), speed: clampedSpeed(rampSpeed(atFrame: playheadFrame)))]
+            let t = clampedFrame(playheadFrame)
+            if let existing = points.firstIndex(where: { $0.t == t }) {
+                return [.focusPoint(existing)]
+            }
+            return [.addPoint(t: t, speed: clampedSpeed(rampSpeed(atFrame: playheadFrame)))]
         case .left, .right, .up, .down:
             guard let f = focused, points.indices.contains(f) else { return [] }
             let pt = points[f]
