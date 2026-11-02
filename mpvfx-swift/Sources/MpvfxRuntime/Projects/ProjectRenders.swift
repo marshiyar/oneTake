@@ -14,8 +14,8 @@
 // Render history for the Renders tab: finished exports live in the
 // project's renders folder as `<jobId>.<mp4|webm|mov>` (or `<name>.<ext>` when the export has a file name of its own,
 // as the versions of one export run do) with an optional `<id>.meta.json` sidecar
-// ({"status":"complete"|"failed","durationMs":n}); the list is newest first and deleting a render removes
-// the file and its sidecar.
+// ({"status":"complete"|"failed","durationMs":n}, plus "loudness":{"v":1,...} when the export had a loudness target);
+// the list is newest first and deleting a render removes the file and its sidecar.
 import Foundation
 import MpvfxShared
 
@@ -30,6 +30,12 @@ public struct ProjectRender: Equatable, Sendable {
     public var createdAt: Double
     public var status: Status
     public var durationMs: Double?
+    /// Loudness the export was brought to (LUFS) and its true-peak ceiling (dBTP); nil without a loudness target.
+    public var loudnessTarget: Double?
+    public var loudnessCeiling: Double?
+    /// What the output measured (LUFS, dBTP); nil when the sidecar has no measurement.
+    public var loudnessMeasured: Double?
+    public var loudnessMeasuredTruePeak: Double?
 }
 
 public enum ProjectRenders {
@@ -99,13 +105,23 @@ public enum ProjectRenders {
             let id = String(name.dropLast(ext.count + 1))
             var status = ProjectRender.Status.complete
             var durationMs: Double?
+            var loudness: NativeJSONObject?
             if let text = try? ProjectFS.readUTF8(PosixPath.join(rendersDir, "\(id).meta.json")),
                let meta = (try? NativeJSONValue.parse(text))?.objectValue {
                 if case .number(let d)? = meta["durationMs"], d != 0 { durationMs = d }
                 if meta["status"]?.stringValue == "failed" && !FileManager.default.fileExists(atPath: path) { status = .failed }
+                // Only version 1 is read; any other version lists without loudness.
+                if meta["loudness"]?.objectValue?["v"]?.numberValue == 1 { loudness = meta["loudness"]?.objectValue }
+            }
+            // A value that is not a finite number reads as nil.
+            func finite(_ key: String) -> Double? {
+                guard let v = loudness?[key]?.numberValue, v.isFinite else { return nil }
+                return v
             }
             return ProjectRender(id: id, filename: name, path: path, size: info.size, createdAt: Double(info.mtimeNs) / 1e9,
-                                 status: status, durationMs: durationMs)
+                                 status: status, durationMs: durationMs,
+                                 loudnessTarget: finite("target"), loudnessCeiling: finite("truePeak"),
+                                 loudnessMeasured: finite("measured"), loudnessMeasuredTruePeak: finite("measuredTruePeak"))
         }.sorted { $0.createdAt != $1.createdAt ? $0.createdAt > $1.createdAt : $0.id < $1.id }
     }
 

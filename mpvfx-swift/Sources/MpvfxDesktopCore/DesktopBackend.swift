@@ -304,8 +304,15 @@ public struct DesktopRender: Equatable, Sendable {
     /// "complete" or "failed".
     public var status: String
     public var durationMs: Double?
-    public init(id: String, filename: String, path: String, size: Int64, createdAt: Double, status: String, durationMs: Double?) {
+    /// Loudness target and true-peak ceiling (LUFS, dBTP), and what the output measured; nil without a target.
+    public var loudnessTarget: Double?
+    public var loudnessCeiling: Double?
+    public var loudnessMeasured: Double?
+    public var loudnessMeasuredTruePeak: Double?
+    public init(id: String, filename: String, path: String, size: Int64, createdAt: Double, status: String, durationMs: Double?,
+                loudnessTarget: Double? = nil, loudnessCeiling: Double? = nil, loudnessMeasured: Double? = nil, loudnessMeasuredTruePeak: Double? = nil) {
         self.id = id; self.filename = filename; self.path = path; self.size = size; self.createdAt = createdAt; self.status = status; self.durationMs = durationMs
+        self.loudnessTarget = loudnessTarget; self.loudnessCeiling = loudnessCeiling; self.loudnessMeasured = loudnessMeasured; self.loudnessMeasuredTruePeak = loudnessMeasuredTruePeak
     }
 }
 
