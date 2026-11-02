@@ -141,11 +141,13 @@ public final class SettingsPanel {
     static let rowH = 28.0, rowGap = 18.0, pad = 20.0, labelW = 132.0, header = 48.0
     /// Appearance, interface size, audio output, preview cache, export folder, hold length.
     static let rowCount = 9
+    /// Row spacing in a window under 500 pt tall (the editor at 200 %): nine rows and a save error still fit 400 pt.
+    static let compactRowStride = 32.0
 
-    private var rowStride: Double { size.height > 0 && size.height < 500 ? 34 : Self.rowH + Self.rowGap }
+    private var rowStride: Double { size.height > 0 && size.height < 500 ? Self.compactRowStride : Self.rowH + Self.rowGap }
 
     public func cardRect(in size: CanvasSize) -> CanvasRect {
-        let h = Self.header + 12 + Double(Self.rowCount) * (size.height < 500 ? 34 : Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
+        let h = Self.header + 12 + Double(Self.rowCount) * (size.height < 500 ? Self.compactRowStride : Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
         let w = min(Self.width, max(0, size.width - 32))
         return CanvasRect(x: ((size.width - w) / 2).rounded(), y: max(16, ((size.height - h) / 2).rounded()), width: w, height: h)
     }
