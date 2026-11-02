@@ -61,6 +61,9 @@ public final class SettingsPanel {
     public static func interfaceSizeLabel(_ percent: Int) -> String { "\(percent)%" }
     /// The hold lengths offered, in seconds.
     public static let holdChoicesSeconds: [Double] = [0.5, 1, 2, 3, 5, 10]
+    /// The cut transition lengths offered, in frames (the stored value can be any of 1...120).
+    public static let transitionFrameChoices = [5, 8, 10, 12, 15, 20, 24, 30, 45, 60, 90, 120]
+    public static func transitionFramesLabel(_ frames: Int) -> String { frames == 1 ? "1 frame" : "\(frames) frames" }
     public static let width = 520.0
 
     public private(set) var isOpen = false

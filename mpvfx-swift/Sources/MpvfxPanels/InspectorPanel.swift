@@ -61,6 +61,9 @@ public final class InspectorPanel {
     public var audioFxUserPresets: [AudioFxModulePreset] = []
     public var onSaveAudioFxPreset: ((String, FxNode) -> Void)?
     public var onEdited: (() -> Void)?
+    /// The Media group's speed graph and whether a ramp edit keeps the clip's length (the Keep length switch).
+    let speedGraph = SpeedGraph()
+    var speedKeepLength = true
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
     /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
