@@ -22,6 +22,9 @@ public extension TimelineEditor {
     static let defaultOutlineWidth = 2.0
     static let defaultOutlineColor = "#000000"
     static let defaultShadow = NativeTextLook.Shadow(x: 2, y: 2, blur: 4, color: "#000000b3")
+    static let defaultGlow = NativeTextLook.Glow(color: "#ffffff")
+    static let defaultPlate = NativeTextLook.Plate(paddingX: 12, paddingY: 6, radius: 8, color: "#000000b3")
+    static let defaultFill = NativeTextLook.Fill(from: "#ffffff", to: "#ff7a00")
 
     /// The look value at `time`: the keyed value when it is animated, otherwise the stored one.
     func textLookValue(clipId: String, _ id: String, time: Double) -> Double? {
@@ -125,6 +128,123 @@ public extension TimelineEditor {
             guard var next = look, next.isSupported, var shadow = next.shadow, isNativeHexColor(color) else { return false }
             shadow.color = color
             next.shadow = shadow
+            look = next
+            return true
+        }
+    }
+
+    // MARK: Glow, plate and gradient fill
+
+    @discardableResult
+    func addTextLookGlow(clipId: String) -> Bool {
+        editTextLook(clipId: clipId, dropping: []) { look in
+            var next = look ?? NativeTextLook()
+            guard next.isSupported, next.glow == nil else { return false }
+            next.glow = Self.defaultGlow
+            look = next
+            return true
+        }
+    }
+
+    @discardableResult
+    func removeTextLookGlow(clipId: String) -> Bool {
+        editTextLook(clipId: clipId, dropping: NativeTextLookParameter.glowIds) { look in
+            guard var next = look, next.isSupported, next.glow != nil else { return false }
+            next.glow = nil
+            look = next
+            return true
+        }
+    }
+
+    /// The glow's radius (px) and colour; a default radius is stored as an absent key.
+    @discardableResult
+    func setTextLookGlow(clipId: String, radius: Double? = nil, color: String? = nil) -> Bool {
+        editTextLook(clipId: clipId, dropping: []) { look in
+            guard var next = look, next.isSupported, var glow = next.glow else { return false }
+            if let radius {
+                guard radius.isFinite else { return false }
+                let held = min(max(radius, NativeTextLook.glowRadiusRange.lowerBound), NativeTextLook.glowRadiusRange.upperBound)
+                glow.radius = held == NativeTextLook.defaultGlowRadius ? nil : held
+            }
+            if let color { guard isNativeHexColor(color) else { return false }; glow.color = color }
+            next.glow = glow
+            look = next
+            return true
+        }
+    }
+
+    @discardableResult
+    func addTextLookPlate(clipId: String) -> Bool {
+        editTextLook(clipId: clipId, dropping: []) { look in
+            var next = look ?? NativeTextLook()
+            guard next.isSupported, next.plate == nil else { return false }
+            next.plate = Self.defaultPlate
+            look = next
+            return true
+        }
+    }
+
+    @discardableResult
+    func removeTextLookPlate(clipId: String) -> Bool {
+        editTextLook(clipId: clipId, dropping: NativeTextLookParameter.plateIds) { look in
+            guard var next = look, next.isSupported, next.plate != nil else { return false }
+            next.plate = nil
+            look = next
+            return true
+        }
+    }
+
+    /// The plate's mode (`line` or `block`), padding, corner radius (px) and colour. Defaults are stored as absent keys.
+    /// A new colour keeps the opacity the plate has now unless it names its own alpha.
+    @discardableResult
+    func setTextLookPlate(clipId: String, mode: String? = nil, paddingX: Double? = nil, paddingY: Double? = nil,
+                          radius: Double? = nil, color: String? = nil) -> Bool {
+        editTextLook(clipId: clipId, dropping: []) { look in
+            guard var next = look, next.isSupported, var plate = next.plate else { return false }
+            func held(_ v: Double, _ range: ClosedRange<Double>) -> Double? {
+                guard v.isFinite else { return nil }
+                let h = min(max(v, range.lowerBound), range.upperBound)
+                return h == 0 ? nil : h
+            }
+            if let mode { guard NativeTextLook.plateModes.contains(mode) else { return false }; plate.mode = mode == "line" ? nil : mode }
+            if let paddingX { guard paddingX.isFinite else { return false }; plate.paddingX = held(paddingX, NativeTextLook.platePaddingRange) }
+            if let paddingY { guard paddingY.isFinite else { return false }; plate.paddingY = held(paddingY, NativeTextLook.platePaddingRange) }
+            if let radius { guard radius.isFinite else { return false }; plate.radius = held(radius, NativeTextLook.plateRadiusRange) }
+            if let color { guard isNativeHexColor(color) else { return false }; plate.color = color }
+            next.plate = plate
+            look = next
+            return true
+        }
+    }
+
+    @discardableResult
+    func addTextLookFill(clipId: String) -> Bool {
+        editTextLook(clipId: clipId, dropping: []) { look in
+            var next = look ?? NativeTextLook()
+            guard next.isSupported, next.fill == nil else { return false }
+            next.fill = Self.defaultFill
+            look = next
+            return true
+        }
+    }
+
+    @discardableResult
+    func removeTextLookFill(clipId: String) -> Bool {
+        editTextLook(clipId: clipId, dropping: NativeTextLookParameter.fillIds) { look in
+            guard var next = look, next.isSupported, next.fill != nil else { return false }
+            next.fill = nil
+            look = next
+            return true
+        }
+    }
+
+    @discardableResult
+    func setTextLookFill(clipId: String, from: String? = nil, to: String? = nil) -> Bool {
+        editTextLook(clipId: clipId, dropping: []) { look in
+            guard var next = look, next.isSupported, var fill = next.fill else { return false }
+            if let from { guard isNativeHexColor(from) else { return false }; fill.from = from }
+            if let to { guard isNativeHexColor(to) else { return false }; fill.to = to }
+            next.fill = fill
             look = next
             return true
         }

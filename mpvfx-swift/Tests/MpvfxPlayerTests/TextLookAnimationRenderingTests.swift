@@ -35,7 +35,9 @@ final class TextLookAnimationRenderingTests: XCTestCase {
         let e = try editor()
         let id = try XCTUnwrap(e.addTextClip(at: 0, content: "HI", seconds: 5))
         XCTAssertTrue(e.setTextLook(clipId: id, NativeTextLook(outlines: [.init(width: 2, color: "#ff0000")],
-                                                               shadow: .init(x: 1, y: 1, blur: 2, color: "#0000ff"))))
+                                                               shadow: .init(x: 1, y: 1, blur: 2, color: "#0000ff"),
+                                                               glow: .init(strength: 0.2, color: "#ffffff"),
+                                                               plate: .init(color: "#000000ff"), fill: .init(from: "#ff0000", to: "#0000ff", angle: 10))))
         let pids = [NativeTextLookParameter.outlineWidthIds[0], NativeTextLookParameter.shadowXId,
                     NativeTextLookParameter.shadowYId, NativeTextLookParameter.shadowBlurId]
         for pid in pids {
@@ -43,6 +45,13 @@ final class TextLookAnimationRenderingTests: XCTestCase {
             XCTAssertTrue(e.setAnimated(clipId: id, [(pid, .number(start))], true, time: 0))
             XCTAssertTrue(e.setTextLookValue(clipId: id, pid, start * 3 + 4, time: 1))
             XCTAssertTrue(e.setTextLookValue(clipId: id, pid, start * 6 + 8, time: 2))
+        }
+        for (pid, values) in [(NativeTextLookParameter.glowStrengthId, [0.2, 0.6, 1.0]),
+                              (NativeTextLookParameter.plateOpacityId, [1.0, 0.5, 0.0]),
+                              (NativeTextLookParameter.fillAngleId, [10.0, 90.0, 180.0])] {
+            XCTAssertTrue(e.setAnimated(clipId: id, [(pid, .number(values[0]))], true, time: 0), pid)
+            XCTAssertTrue(e.setTextLookValue(clipId: id, pid, values[1], time: 1), pid)
+            XCTAssertTrue(e.setTextLookValue(clipId: id, pid, values[2], time: 2), pid)
         }
         return (e, id)
     }
@@ -60,6 +69,10 @@ final class TextLookAnimationRenderingTests: XCTestCase {
             XCTAssertEqual(preview.shadow?.resolvedBlur ?? -1, want.blur, accuracy: 1e-6, "shadow blur at \(want.time)s")
             let exported = try XCTUnwrap(painter.layers(at: want.time).first { $0.layer.clipId == id }?.layer.text?.look)
             XCTAssertEqual(exported, preview, "export draws the look preview draws at \(want.time)s")
+            let more = [(0.0, 0.2, 1.0, 10.0), (1.0, 0.6, 0.5, 90.0), (2.0, 1.0, 0.0, 180.0)].first { $0.0 == want.time }!
+            XCTAssertEqual(preview.glow?.resolvedStrength ?? -1, more.1, accuracy: 1e-6, "glow strength at \(want.time)s")
+            XCTAssertEqual(NativeTextLookParameter.opacity(ofColor: preview.plate?.color ?? "") ?? -1, more.2, accuracy: 0.005, "plate opacity at \(want.time)s")
+            XCTAssertEqual(preview.fill?.resolvedAngle ?? -999, more.3, accuracy: 1e-6, "gradient angle at \(want.time)s")
         }
         let between = try XCTUnwrap(composition.layers(at: 0.5).first { $0.clipId == id }?.text?.look?.outlines?.first?.width)
         XCTAssertGreaterThanOrEqual(between, 2); XCTAssertLessThanOrEqual(between, 10)

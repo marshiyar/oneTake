@@ -25,7 +25,8 @@ final class TextLookExportAuditTests: XCTestCase {
         let id = try XCTUnwrap(editor.addTextClip(at: 0, content: "HI", seconds: 2))
         XCTAssertTrue(editor.setTextLook(clipId: id, NativeTextLook(
             outlines: [.init(width: 2, color: "#ff0000"), .init(width: 3, color: "#00ff00")],
-            shadow: .init(x: 1, y: 1, blur: 2, color: "#0000ff"))))
+            shadow: .init(x: 1, y: 1, blur: 2, color: "#0000ff"), glow: .init(color: "#ffffff"),
+            plate: .init(color: "#000000cc"), fill: .init(from: "#ff0000", to: "#0000ff"))))
         for pid in NativeTextLookParameter.all {
             XCTAssertEqual(exportAnimatableValueTypes(pid), [.number], pid)
             let start = try XCTUnwrap(editor.textLookValue(clipId: id, pid, time: 0))

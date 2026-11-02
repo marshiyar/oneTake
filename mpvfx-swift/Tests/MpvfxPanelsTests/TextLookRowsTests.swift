@@ -150,6 +150,63 @@ internal final class TextLookRowsTests: XCTestCase {
         XCTAssertTrue(editor.isAnimated(clipId: id, pids[0]))
     }
 
+    internal func testGlowPlateAndFillRowsEditTheirValuesAndKeyframeStrengthOpacityAndAngle() throws {
+        let (editor, id, panel) = try make()
+        for key in ["textLook:glow:add", "textLook:plate:add", "textLook:fill:add"] {
+            panel.button(key)?.action(); redraw(panel)
+        }
+        let l = try XCTUnwrap(look(editor, id))
+        XCTAssertEqual(l.glow, TimelineEditor.defaultGlow)
+        XCTAssertEqual(l.plate, TimelineEditor.defaultPlate)
+        XCTAssertEqual(l.fill, TimelineEditor.defaultFill)
+        let order = PanelFocus<InspectorPanel.Hit>.order(panel.hits, panel.isFocusable)
+        for key in ["textLook:glow:radius", "textLook:glow:strength", "textLook:plate:paddingX", "textLook:plate:paddingY",
+                    "textLook:plate:radius", "textLook:plate:opacity", "textLook:fill:angle"] {
+            XCTAssertTrue(order.contains(.slider(key)), "Tab reaches \(key)")
+        }
+        for key in ["textLook:glow:color", "textLook:plate:color", "textLook:fill:from", "textLook:fill:to"] {
+            XCTAssertTrue(order.contains(.field(key)), "Tab reaches \(key)")
+        }
+        focus(panel, "textLook:glow:radius")
+        XCTAssertTrue(panel.keyDown(EditorKey(.right, shift: true)))
+        XCTAssertEqual(look(editor, id)?.glow?.radius, NativeTextLook.defaultGlowRadius + 10)
+        redraw(panel)
+        focus(panel, "textLook:plate:paddingX")
+        XCTAssertTrue(panel.keyDown(EditorKey(.right)))
+        XCTAssertEqual(look(editor, id)?.plate?.paddingX, 13)
+        panel.segmented("textLook:plate:mode")?.select("block"); redraw(panel)
+        XCTAssertEqual(look(editor, id)?.plate?.mode, "block")
+        panel.segmented("textLook:plate:mode")?.select("line"); redraw(panel)
+        XCTAssertNil(look(editor, id)?.plate?.mode, "the default mode is an absent key")
+        panel.number("textLook:fill:from")?.commit("#00ff00"); redraw(panel)
+        XCTAssertEqual(look(editor, id)?.fill?.from, "#00ff00")
+        panel.number("textLook:plate:color")?.commit("#10203040"); redraw(panel)
+        XCTAssertEqual(look(editor, id)?.plate?.color, "#10203040")
+        // Keyframes on the three listed values follow the playhead.
+        for (pid, key, values) in [(NativeTextLookParameter.glowStrengthId, "textLook:glow:strength", [1.0, 0.5, 0.0]),
+                                   (NativeTextLookParameter.plateOpacityId, "textLook:plate:opacity", [0.25, 0.5, 1.0]),
+                                   (NativeTextLookParameter.fillAngleId, "textLook:fill:angle", [0.0, 45.0, 90.0])] {
+            panel.time = 0; redraw(panel)
+            panel.slider(key)?.keyframe?.stopwatch(); redraw(panel)
+            XCTAssertTrue(editor.isAnimated(clipId: id, pid), pid)
+            for (index, time) in [1.0, 2.0].enumerated() {
+                panel.time = time; redraw(panel)
+                panel.slider(key)?.commit((values[index + 1] * (pid == NativeTextLookParameter.fillAngleId ? 1 : 100)))
+                redraw(panel)
+            }
+            for (index, time) in [0.0, 1.0, 2.0].enumerated() {
+                let got = try XCTUnwrap(editor.textLookValue(clipId: id, pid, time: time), pid)
+                XCTAssertEqual(got, values[index], accuracy: 0.01, "\(pid) at \(time)s")
+            }
+        }
+        for key in ["textLook:glow:remove", "textLook:plate:remove", "textLook:fill:remove"] {
+            panel.button(key)?.action(); redraw(panel)
+        }
+        XCTAssertNil(look(editor, id))
+        XCTAssertFalse(editor.clip(id)?.clip.parameterTracks.contains { NativeTextLookParameter.isTextLookParameter($0.parameterId) } ?? true,
+                       "removing a part takes its keys")
+    }
+
     internal func testRemovingAPartDropsItsKeys() throws {
         let (editor, id, panel) = try make()
         addAll(panel)

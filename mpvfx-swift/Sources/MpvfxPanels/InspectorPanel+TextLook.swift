@@ -79,27 +79,116 @@ extension InspectorPanel {
                 self?.edited(editor.addTextLookShadow(clipId: id), label: Self.textLookLabel)
             })])))
         }
+        rows += textLookGlowRows(editor, s, text.look?.glow)
+        rows += textLookPlateRows(editor, s, text.look?.plate)
+        rows += textLookFillRows(editor, s, text.look?.fill)
         return rows
+    }
+
+    private func textLookButton(_ key: String, _ label: String, style: InspectorRow.Button.Style, _ action: @escaping () -> Bool) -> InspectorRow {
+        .init(.buttons([.init(key: key, label: label, style: style, action: { [weak self] in
+            self?.edited(action(), label: Self.textLookLabel)
+        })]))
+    }
+
+    private func textLookColorRows(_ key: String, _ label: String, _ value: String, alpha: Bool, clipId: String,
+                                   _ apply: @escaping (String) -> Bool) -> [InspectorRow] {
+        colorRows(ColorFieldSpec(key: key, label: label, value: value, placeholder: value, allowAlpha: alpha,
+                                 historyLabel: Self.textLookLabel, tier: .explicitCustom, reset: nil) { hex in
+            hex.map(apply) ?? false
+        }, clipId: clipId)
+    }
+
+    private func textLookGlowRows(_ editor: TimelineEditor, _ s: Selected, _ glow: NativeTextLook.Glow?) -> [InspectorRow] {
+        let id = s.id
+        guard let glow else {
+            return [textLookButton("textLook:glow:add", "Add glow", style: .accent) { editor.addTextLookGlow(clipId: id) }]
+        }
+        return [
+            textLookStaticSlider("textLook:glow:radius", "Glow radius", glow.resolvedRadius, NativeTextLook.glowRadiusRange,
+                                 reset: NativeTextLook.defaultGlowRadius) { editor.setTextLookGlow(clipId: id, radius: $0) },
+            textLookSlider(editor, s, "textLook:glow:strength", "Glow strength", NativeTextLookParameter.glowStrengthId,
+                           reset: NativeTextLook.defaultGlowStrength, scale: 100, suffix: "%"),
+        ] + textLookColorRows("textLook:glow:color", "Glow colour", glow.color, alpha: true, clipId: id) {
+            editor.setTextLookGlow(clipId: id, color: $0)
+        } + [textLookButton("textLook:glow:remove", "Remove glow", style: .muted) { editor.removeTextLookGlow(clipId: id) }]
+    }
+
+    private func textLookPlateRows(_ editor: TimelineEditor, _ s: Selected, _ plate: NativeTextLook.Plate?) -> [InspectorRow] {
+        let id = s.id
+        guard let plate else {
+            return [textLookButton("textLook:plate:add", "Add plate", style: .accent) { editor.addTextLookPlate(clipId: id) }]
+        }
+        let mode = plate.resolvedMode
+        let range = NativeTextLook.platePaddingRange
+        var rows: [InspectorRow] = [.init(.segmented(.init(key: "textLook:plate:mode", label: "Plate",
+            options: [("line", "Per line"), ("block", "Whole block")].map { (key: $0.0, label: $0.1, active: $0.0 == mode) },
+            select: { [weak self] key in
+                guard key != mode else { return }
+                self?.edited(editor.setTextLookPlate(clipId: id, mode: key), label: Self.textLookLabel)
+            })))]
+        rows.append(textLookStaticSlider("textLook:plate:paddingX", "Plate padding x", plate.resolvedPaddingX, range,
+                                         reset: TimelineEditor.defaultPlate.resolvedPaddingX) { editor.setTextLookPlate(clipId: id, paddingX: $0) })
+        rows.append(textLookStaticSlider("textLook:plate:paddingY", "Plate padding y", plate.resolvedPaddingY, range,
+                                         reset: TimelineEditor.defaultPlate.resolvedPaddingY) { editor.setTextLookPlate(clipId: id, paddingY: $0) })
+        rows.append(textLookStaticSlider("textLook:plate:radius", "Plate radius", plate.resolvedRadius, NativeTextLook.plateRadiusRange,
+                                         reset: TimelineEditor.defaultPlate.resolvedRadius) { editor.setTextLookPlate(clipId: id, radius: $0) })
+        rows.append(textLookSlider(editor, s, "textLook:plate:opacity", "Plate opacity", NativeTextLookParameter.plateOpacityId,
+                                   reset: 1, scale: 100, suffix: "%"))
+        rows += textLookColorRows("textLook:plate:color", "Plate colour", plate.color, alpha: true, clipId: id) {
+            editor.setTextLookPlate(clipId: id, color: $0)
+        }
+        rows.append(textLookButton("textLook:plate:remove", "Remove plate", style: .muted) { editor.removeTextLookPlate(clipId: id) })
+        return rows
+    }
+
+    private func textLookFillRows(_ editor: TimelineEditor, _ s: Selected, _ fill: NativeTextLook.Fill?) -> [InspectorRow] {
+        let id = s.id
+        guard let fill else {
+            return [textLookButton("textLook:fill:add", "Add gradient fill", style: .accent) { editor.addTextLookFill(clipId: id) }]
+        }
+        return textLookColorRows("textLook:fill:from", "Gradient from", fill.from, alpha: false, clipId: id) {
+            editor.setTextLookFill(clipId: id, from: $0)
+        } + textLookColorRows("textLook:fill:to", "Gradient to", fill.to, alpha: false, clipId: id) {
+            editor.setTextLookFill(clipId: id, to: $0)
+        } + [
+            textLookSlider(editor, s, "textLook:fill:angle", "Gradient angle", NativeTextLookParameter.fillAngleId, reset: 0, scale: 1, suffix: "°"),
+            textLookButton("textLook:fill:remove", "Remove gradient fill", style: .muted) { editor.removeTextLookFill(clipId: id) },
+        ]
+    }
+
+    /// A stored look number as a slider without keyframes; `commit` returns whether the document changed.
+    private func textLookStaticSlider(_ key: String, _ label: String, _ value: Double, _ range: ClosedRange<Double>, reset: Double,
+                                      _ commit: @escaping (Double) -> Bool) -> InspectorRow {
+        let shown = min(max(value, range.lowerBound), range.upperBound)
+        let format: (Double) -> String = { "\(PanelFormat.number($0.rounded()))px" }
+        return .init(.slider(.init(
+            key: key, label: label, position: shown, min: range.lowerBound, max: range.upperBound,
+            display: format(shown), format: format, tier: .explicitCustom,
+            commit: { [weak self] v in self?.edited(commit(v.rounded()), label: Self.textLookLabel) },
+            reset: { [weak self] in self?.edited(commit(reset), label: Self.textLookLabel) }, step: 1)))
     }
 
     /// A look value as a slider with the keyframe gutter. `reset` is the value ↺ writes back.
     private func textLookSlider(_ editor: TimelineEditor, _ s: Selected, _ key: String, _ label: String, _ pid: String,
-                                reset: Double) -> InspectorRow {
+                                reset: Double, scale: Double = 1, suffix: String = "px") -> InspectorRow {
         let range = NativeTextLookParameter.range(of: pid) ?? 0...100
         let t = time, id = s.id
         let value = editor.textLookValue(clipId: id, pid, time: t) ?? 0
-        let shown = min(max(value, range.lowerBound), range.upperBound)
-        let format: (Double) -> String = { "\(PanelFormat.number($0.rounded()))px" }
+        let held = min(max(value, range.lowerBound), range.upperBound)
+        // The slider works in display units (percent for strength and opacity); the document keeps its own.
+        let shown = held * scale
+        let format: (Double) -> String = { "\(PanelFormat.number($0.rounded()))\(suffix)" }
         let animated = editor.isAnimated(clipId: id, pid)
-        var kf = keyframe(editor, s, pid, fallback: .number(shown))
+        var kf = keyframe(editor, s, pid, fallback: .number(held))
         kf.stopwatch = { [weak self] in
             self?.edited(animated ? editor.stopAnimatingTextLook(clipId: id, pid, time: t)
-                                  : editor.setAnimated(clipId: id, [(pid, .number(shown))], true, time: t), label: Self.textLookLabel)
+                                  : editor.setAnimated(clipId: id, [(pid, .number(held))], true, time: t), label: Self.textLookLabel)
         }
         return .init(.slider(.init(
-            key: key, label: label, position: shown, min: range.lowerBound, max: range.upperBound,
+            key: key, label: label, position: shown, min: range.lowerBound * scale, max: range.upperBound * scale,
             display: format(shown), format: format, tier: .explicitCustom,
-            commit: { [weak self] v in self?.edited(editor.setTextLookValue(clipId: id, pid, v.rounded(), time: t), label: Self.textLookLabel) },
+            commit: { [weak self] v in self?.edited(editor.setTextLookValue(clipId: id, pid, v.rounded() / scale, time: t), label: Self.textLookLabel) },
             reset: { [weak self] in self?.edited(editor.setTextLookValue(clipId: id, pid, reset, time: t), label: Self.textLookLabel) },
             keyframe: kf, step: 1)))
     }

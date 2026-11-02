@@ -76,8 +76,37 @@ internal final class NativeTextLookParameterTests: XCTestCase {
             XCTAssertTrue(NativeTextLookParameter.isTextLookParameter(id))
             XCTAssertNotNil(NativeTextLookParameter.range(of: id), id)
         }
-        XCTAssertEqual(NativeTextLookParameter.all.count, 5)
+        XCTAssertEqual(NativeTextLookParameter.all.count, 8)
         XCTAssertFalse(NativeTextLookParameter.isTextLookParameter("text.look.outline.2.width"))
         XCTAssertNil(NativeTextLookParameter.range(of: "visual.opacity"))
+    }
+
+    internal func testGlowStrengthPlateOpacityAndFillAngleAreStoredInTheirOwnFields() {
+        let l = NativeTextLook(glow: .init(radius: 8, strength: 0.5, color: "#ffffff"),
+                               plate: .init(paddingX: 4, color: "#112233cc"), fill: .init(from: "#ff0000", to: "#0000ff", angle: 30))
+        XCTAssertEqual(NativeTextLookParameter.value(of: NativeTextLookParameter.glowStrengthId, in: l), 0.5)
+        XCTAssertEqual(try XCTUnwrap(NativeTextLookParameter.value(of: NativeTextLookParameter.plateOpacityId, in: l)), 0.8, accuracy: 0.003)
+        XCTAssertEqual(NativeTextLookParameter.value(of: NativeTextLookParameter.fillAngleId, in: l), 30)
+        let full = NativeTextLookParameter.setting(1, id: NativeTextLookParameter.glowStrengthId, in: l)
+        XCTAssertNil(full?.glow?.strength, "the default strength is an absent key")
+        XCTAssertEqual(full?.glow?.radius, 8)
+        let faded = NativeTextLookParameter.setting(0.5, id: NativeTextLookParameter.plateOpacityId, in: l)
+        XCTAssertEqual(faded?.plate?.color, "#11223380")
+        XCTAssertEqual(faded?.plate?.paddingX, 4)
+        XCTAssertEqual(NativeTextLookParameter.setting(1, id: NativeTextLookParameter.plateOpacityId, in: l)?.plate?.color, "#112233")
+        XCTAssertNil(NativeTextLookParameter.setting(0, id: NativeTextLookParameter.fillAngleId, in: l)?.fill?.angle)
+        XCTAssertEqual(NativeTextLookParameter.setting(-900, id: NativeTextLookParameter.fillAngleId, in: l)?.fill?.angle, -360)
+        XCTAssertNil(NativeTextLookParameter.setting(3, id: NativeTextLookParameter.glowStrengthId, in: l)?.glow?.strength, "held to 1, the default")
+        XCTAssertNil(NativeTextLookParameter.setting(0.5, id: NativeTextLookParameter.glowStrengthId, in: NativeTextLook(plate: l.plate)))
+    }
+
+    internal func testColourAlphaHelpers() {
+        XCTAssertEqual(NativeTextLookParameter.opacity(ofColor: "#fff"), 1)
+        XCTAssertEqual(NativeTextLookParameter.opacity(ofColor: "#00000000"), 0)
+        XCTAssertNil(NativeTextLookParameter.opacity(ofColor: "#12345"))
+        XCTAssertNil(NativeTextLookParameter.opacity(ofColor: "red"))
+        XCTAssertEqual(NativeTextLookParameter.color("#abc", opacity: 0), "#aabbcc00")
+        XCTAssertEqual(NativeTextLookParameter.color("#AABBCC80", opacity: 1), "#aabbcc")
+        XCTAssertNil(NativeTextLookParameter.color("blue", opacity: 1))
     }
 }
