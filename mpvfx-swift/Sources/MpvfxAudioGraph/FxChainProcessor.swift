@@ -266,6 +266,8 @@ public final class FxChainProcessor {
     var units: [FxUnit] = []
     /// What reports each unit's gain reduction (nil: it does not reduce), found once so the feeder casts nothing.
     private var reducers: [GainReducing?] = []
+    /// Each unit's latency, read once: asking a unit for it on the feeder allocates.
+    private var unitLatencies: [Int] = []
     /// The spectrum analysers of the watched module (`FxChainMeters.watchedNode`), made here so the feeder allocates none.
     private let spectrumIn: SpectrumAnalyzer, spectrumOut: SpectrumAnalyzer
     let chain: FxChain
@@ -306,6 +308,7 @@ public final class FxChainProcessor {
             if let id = node.id, byId[id] == nil { byId[id] = u } else if let id = node.id { byId[id] = u }
             runs.append(run)
         }
+        unitLatencies = units.map(\.latencyFrames)
         reducers = units.map { unit in (unit as? ProcessorUnit).map { $0.proc as? GainReducing } ?? (unit as? GainReducing) }
         for i in runs.indices {
             runs[i].dryDelay = FxFrameDelay(frames: runs[i].units.reduce(0) { $0 + $1.latencyFrames })
@@ -400,9 +403,9 @@ public final class FxChainProcessor {
         for run in runs {
             let entry = tail
             for u in run.units {
-                let before = tail
+                let before = index == watched ? tail : []
                 tail = finiteSamples(u.process(tail, frame: frame))
-                delay += u.latencyFrames
+                delay += unitLatencies[index]
                 if index == watched {
                     if spectrumIn.push(before) { spectrumIn.withUnsafeBands { meters.spectrumInput.publish(frame: frame - delay, bands: $0) } }
                     if spectrumOut.push(tail) { spectrumOut.withUnsafeBands { meters.spectrumOutput.publish(frame: frame - delay, bands: $0) } }
@@ -420,7 +423,7 @@ public final class FxChainProcessor {
             }
         }
         meters.chain.publish(FxMeterReading(
-            frame: frame - latencyFrames, inputPeak: chainInput.peak, inputRMS: chainInput.rms, outputPeak: level.peak,
+            frame: frame - delay, inputPeak: chainInput.peak, inputRMS: chainInput.rms, outputPeak: level.peak,
             outputRMS: level.rms))
         return tail
     }
