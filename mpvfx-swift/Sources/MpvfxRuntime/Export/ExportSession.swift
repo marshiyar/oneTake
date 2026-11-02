@@ -78,7 +78,8 @@ public func compositionExportResolution(_ choice: CompositionRenderResolution, c
     return (.custom, choice.dimensions(compositionWidth: canvas.width, compositionHeight: canvas.height, customWidth: customWidth))
 }
 
-public func planExport(_ project: NativeProjectDocument, settings: ExportSettings) -> ExportPlan {
+/// `projectDir` (when known) lets the plan check the clips' person mattes against the cache; without it that check is skipped.
+public func planExport(_ project: NativeProjectDocument, settings: ExportSettings, projectDir: String? = nil) -> ExportPlan {
     var issues: [String] = []
     let capability = exportFormatCapability(settings.format)
     if let refusal = capability.unsupportedMessage { issues.append(refusal) }
@@ -97,6 +98,7 @@ public func planExport(_ project: NativeProjectDocument, settings: ExportSetting
             : "Canvas dimensions exceed the 8K export limit (7680 long edge, 4320 short edge).")
     }
     do { try assertNativeTimelineSupported(project) } catch { issues.append("\(error)") }
+    if let projectDir { issues += personMatteExportIssues(project, projectDir: projectDir, range: settings.range) }
     let duration = frames / fps
     let hasAudio = exportMayHaveAudio(project)
     return ExportPlan(outputDimensions: dims, durationSeconds: duration, frameCount: exportFrameCount(duration, settings.fps),
@@ -175,7 +177,7 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
                         keyframeEngine: KeyframeEngine? = nil,
                         progress: @escaping (ExportProgress) -> Void = { _ in },
                         completion: @escaping (ExportOutcome) -> Void = { _ in }) throws -> ExportJob {
-    let plan = planExport(project, settings: settings)
+    let plan = planExport(project, settings: settings, projectDir: projectDir)
     var issues = plan.issues
     let missing = missingExportMedia(project, projectDir: projectDir)
     if !missing.isEmpty { issues.append("Missing media: \(missing.joined(separator: ", "))") }

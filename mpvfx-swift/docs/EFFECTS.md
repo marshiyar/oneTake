@@ -236,3 +236,31 @@ larger of the other two; at `1` it removes all such excess without changing neut
 
 Objects with an unknown `v` or `kind` remain in the project unchanged but are not drawn.
 They do not change `schemaVersion`, which remains `1`.
+
+## Person matte
+
+An enabled clip effect with `effectId: "person-matte"` keeps the people in a clip and makes the rest transparent,
+from a per-frame matte analysed ahead of time and cached beside the project. The entry stores:
+
+```json
+{"v":1,"quality":"balanced","shrink":0,"soften":0,"invert":false}
+```
+
+`v` and `quality` (`fast`, `balanced`, `accurate`) are required; `shrink` (px, -10...10, at picture size), `soften`
+(px, 0...20, Gaussian) and `invert` (keep the background) are omitted when they hold their defaults. Objects with an
+unknown `v` stay in the project unchanged, are not drawn and add one notice (the same list as `ExportPlan.notices`).
+
+Cache: `<project>/.studio/analysis/person-matte/<key>.matte`, one file per media file digest, source range, quality
+and analysis size, written through the durable write path. A file holds a JSON header (`"v": 1`, frame count, size,
+key fields) and 8-bit matte frames of at most 512 px on the long edge, run-length coded. The media digest is the file
+size and a hash of its first, middle and last mebibyte. A missing or damaged file never stops a project opening: the
+clip draws without the matte (`PreviewLayer.matteNeedsAnalysis`) and the damage is reported once. A matte analysed on
+a Mac is drawn on every OS.
+
+Drawing: the cache frame at the layer's source time (nearest earlier frame, never interpolated) is upscaled bilinearly
+to the picture, then shrunk (a square-window minimum, so the edge moves exactly `shrink` px along the axes), softened
+and inverted, and multiplies the picture's alpha after the crop and before the clip's masks and opacity. Preview and
+export share `PreviewPainter`. Export with a missing or incomplete matte is refused with an `ExportPlan` issue naming
+the clip and its time range.
+
+Sources: `Sources/MpvfxShared/Matte/`, `Sources/MpvfxRuntime/Matte/`, `Sources/MpvfxPlayer/PersonMatteApplier.swift`.

@@ -22,6 +22,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Person matte groundwork: a clip can carry a `person-matte` effect drawn from a cached per-frame matte (edge shrink,
+  soften and invert) in preview and export; export refuses a clip whose matte is not analysed. Analysis itself
+  arrives in a later change.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.
