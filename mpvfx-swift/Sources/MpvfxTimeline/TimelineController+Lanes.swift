@@ -58,7 +58,7 @@ public extension TimelineController {
                                                canPaste: clipboard != nil, canPasteGrade: gradeClipboard != nil,
                                                gradePasteReason: gradeClipboard == nil ? "Copy a grade before pasting" : nil,
                                                keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil,
-                                               disabled: c.hidden)
+                                               disabled: c.hidden, placeholder: c.placeholder != nil)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
         if viewport.height > 0 { m.maximumHeight = viewport.height }
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
@@ -85,6 +85,10 @@ public extension TimelineController {
             guard let onRevealSource else { return false }
             onRevealSource(id, action == .showSourceFile)
             return true
+        case .replaceMedia:
+            guard let onReplaceMedia else { return false }
+            onReplaceMedia(id)
+            return true
         case .split:
             let frame = (playback.currentTime * editor.fps).rounded()
             guard let a = editor.address(clipId: id) else { return false }
@@ -106,6 +110,7 @@ public extension TimelineController {
             return duplicateSelection()
         case .rename: return requestRenameClip(id)
         case .disable: return editor.setClipsHidden([id], !editor.isClipHidden(id))
+        case .placeholder: return c.placeholder == nil ? editor.markPlaceholder(clipId: id) : editor.clearPlaceholder(clipId: id)
         case .keepPitch: return editor.setPreservesPitch(clipId: id, !editor.preservesPitch(clipId: id))
         case .thumbnails:
             setThumbnailsEnabled(!view.thumbnailsEnabled)   // thumbnailMode is timeline-wide (adaptive / hidden)

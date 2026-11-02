@@ -276,6 +276,7 @@ private func applySplit(_ d: NativeProjectDocument, _ a: NativeProjectClipAddres
     right.id = rightId; right.startFrame = splitFrame; right.durationFrames = clip.durationFrames - local
     right.moves = clip.movesForSplitPart(.right, duration: right.durationFrames)
     right.speedRamp = clip.speedRamp?.sliced(from: local, until: clip.durationFrames)
+    if right.placeholder?.isCurrentVersion == true { right.placeholder = nil }   // a placeholder's number belongs to one clip: the left part
     setSource(&right, position)
     right.fadeInFrames = nil; right.clampFades(movedEdge: .start)
     if let rightBinding { right.binding = rightBinding }

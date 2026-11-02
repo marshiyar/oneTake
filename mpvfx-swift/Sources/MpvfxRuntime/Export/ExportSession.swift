@@ -97,6 +97,7 @@ public func planExport(_ project: NativeProjectDocument, settings: ExportSetting
             : "Canvas dimensions exceed the 8K export limit (7680 long edge, 4320 short edge).")
     }
     do { try assertNativeTimelineSupported(project) } catch { issues.append("\(error)") }
+    if let unfilled = unfilledPlaceholdersIssue(project) { issues.append(unfilled) }
     let duration = frames / fps
     let hasAudio = exportMayHaveAudio(project)
     return ExportPlan(outputDimensions: dims, durationSeconds: duration, frameCount: exportFrameCount(duration, settings.fps),
@@ -250,6 +251,14 @@ func missingExportMedia(_ project: NativeProjectDocument, projectDir: String) ->
     var checked = Set<String>()
     return sources.filter { checked.insert($0).inserted && !FileManager.default.fileExists(atPath: PosixPath.resolve(projectDir, $0)) }
         .map { PosixPath.basename($0) }
+}
+
+/// The refusal for template placeholders that still wait for media, naming their numbers; nil when there are none.
+func unfilledPlaceholdersIssue(_ project: NativeProjectDocument) -> String? {
+    let numbers = project.unfilledPlaceholderNumbers
+    guard !numbers.isEmpty else { return nil }
+    let list = numbers.map(String.init).joined(separator: ", ")
+    return "\(numbers.count == 1 ? "Placeholder" : "Placeholders") \(list) \(numbers.count == 1 ? "has" : "have") no media yet. Fill \(numbers.count == 1 ? "it" : "them") with media, or unmark \(numbers.count == 1 ? "it" : "them"), before exporting."
 }
 
 /// An unmuted audio or video clip: the export may carry sound (whether it does depends on the media's tracks).

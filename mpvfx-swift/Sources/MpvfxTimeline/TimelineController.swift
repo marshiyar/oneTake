@@ -102,6 +102,8 @@ public final class TimelineController {
     public var onNativeAudioAction: ((_ clipId: String, _ action: NativeAudioAction) -> Void)?
     /// Clip source navigation; the host selects its bin tile or reveals its file without editing the document.
     public var onRevealSource: ((_ clipId: String, _ inFileManager: Bool) -> Void)?
+    /// Clip menu Replace media…; the host asks for the file and swaps it in with `TimelineEditor.replaceMedia`.
+    public var onReplaceMedia: ((_ clipId: String) -> Void)?
     /// Paste from another project: copies `paths` (absolute media and LUT files outside this project) into it and
     /// calls `done` with each path's copy (project-relative), or nil when any of them could not be brought in (the
     /// host says why); the paste then goes ahead with the copies, or not at all. Unset: the paste keeps the
@@ -434,6 +436,7 @@ public final class TimelineController {
             case "=", "+", "-", "0": return zoomKey(Character(ch.lowercased()))
             case "a" where !k.shift && !k.alt: return selectAll()
             case "d" where !k.shift && !k.alt: return duplicateSelection()
+            case "p" where k.alt && !k.shift: return togglePlaceholderSelection()
             case "c" where k.alt: return copyGradeSelection()
             case "v" where k.alt: return pasteGradeSelection()
             case "c": return copySelection()
@@ -521,6 +524,16 @@ public final class TimelineController {
     @discardableResult public func copySelection() -> Bool {
         guard let editor, !view.selection.isEmpty, let board = editor.copyClips(view.selection) else { return false }
         clipboard = board; return true
+    }
+
+    /// ⌥⌘P: marks the selected clips as template placeholders, or unmarks them when every one of them already is;
+    /// one undo step either way.
+    @discardableResult public func togglePlaceholderSelection() -> Bool {
+        guard let editor, !view.selection.isEmpty else { return false }
+        let clips = view.selection.compactMap { editor.clip($0)?.clip }
+        guard !clips.isEmpty else { return false }
+        let ids = clips.map(\.id)
+        return clips.allSatisfy({ $0.placeholder?.isCurrentVersion == true }) ? editor.clearPlaceholders(clipIds: ids) : editor.markPlaceholders(clipIds: ids)
     }
 
     @discardableResult public func copyGradeSelection() -> Bool {

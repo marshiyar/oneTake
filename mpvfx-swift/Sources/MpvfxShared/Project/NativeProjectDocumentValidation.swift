@@ -89,6 +89,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
     let audioGroupIds = validateAudioGroups(sequence["audioGroups"], &issues)
 
     var trackIds = Set<String>(), authoredLaneIds = Set<String>(), displayLaneIds = Set<Double>()
+    var placeholderNumbers = Set<Double>()
     var clipIds = Set<String>(), bindingIdentities = Set<String>(), transitionIds = Set<String>()
     for (trackIndex, track) in tracks.enumerated() {
         let trackPath = "sequence.tracks[\(trackIndex)]"
@@ -255,6 +256,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["text"] != nil, assetKind != "element" {
                 pushIssue(&issues, .invalidClip, "\(clipPath).text", "Only a clip of an element asset can carry text")
             }
+            validateNativeClipPlaceholder(clip, clipPath, &placeholderNumbers, &issues)
             validateStaticParameters(clip["staticParameters"], "\(clipPath).staticParameters", &issues)
             if validateNativeClipHold(clip, asset, clipPath, &issues), let asset, assetKind == "video" || assetKind == "audio",
                let sourceInFrame = clip["sourceInFrame"]?.numberValue, isNonNegativeInteger(clip["sourceInFrame"]),

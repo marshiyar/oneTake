@@ -26,8 +26,14 @@ public struct MenuItem: Equatable, Sendable {
         /// MpVFX > Settings… (Cmd+,): the editor's Settings card (Ctrl+, on Linux and Windows).
         case settings
         case openProject, saveFrame
+        /// File > Export versions… (⇧⌘R): the Renders tab's checklist of export presets.
+        case exportVersions
         /// File > Open Recent: a submenu the shell fills from `DesktopBackend.recentProjects()` when it opens.
         case openRecent
+        /// File > New from Template: a submenu the shell fills from the user's templates when it opens.
+        case newFromTemplate
+        /// File > Save as Template…: the open project, without its media, as a template whose marked clips are placeholders.
+        case saveAsTemplate
         case closeWindow
         case undo, redo, cut, copy, paste, pasteAndMatchStyle, delete, selectAll
         case toggleFullScreen
@@ -77,6 +83,9 @@ public enum MenuModel {
                     MenuItem(label: "Open…", command: .openProject, key: "o", modifiers: [.command]),
                     MenuItem(label: "Open Recent", command: .openRecent),
                     MenuItem(label: "Save frame…", command: .saveFrame, key: "e", modifiers: [.command, .shift]),
+                    MenuItem(label: "Export versions…", command: .exportVersions, key: "r", modifiers: [.command, .shift]),
+                    MenuItem(label: "New from Template", command: .newFromTemplate, separatorBefore: true),
+                    MenuItem(label: "Save as Template…", command: .saveAsTemplate),
                     MenuItem(label: "Close Window", command: .closeWindow, key: "w", modifiers: [.command], separatorBefore: true),
                 ]),
                 Menu(label: "Edit", items: [

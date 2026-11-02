@@ -45,6 +45,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
     var appearanceItems: [ThemeAppearance: NSMenuItem] = [:]
     /// Window > Panels, filled from the dock each time it opens (menuNeedsUpdate).
     var panelsMenu: NSMenu?
+    var templatesMenu: NSMenu?
     var appearanceObservation: NSKeyValueObservation?
 
     init(paths: AppPaths, backend: DesktopBackend) { self.paths = paths; self.backend = backend }
@@ -71,7 +72,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
             let sub = NSMenu(title: menu.label)
             for item in menu.items {
                 if item.separatorBefore { sub.addItem(.separator()) }
-                if item.command == .openRecent || item.command == .panels { sub.addItem(filledOnOpen(item)); continue }
+                if item.command == .openRecent || item.command == .panels || item.command == .newFromTemplate { sub.addItem(filledOnOpen(item)); continue }
                 if item.command == .services {
                     let services = NSMenu(title: item.label)
                     let mi = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
@@ -83,12 +84,14 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                 let selector: Selector
                 switch item.command {
                 case .about: selector = #selector(NSApplication.orderFrontStandardAboutPanel(_:))
-                case .services, .openRecent, .panels: continue
-                case .openProject, .saveFrame, .settings, .closePanel, .keyframeEasing:
+                case .services, .openRecent, .panels, .newFromTemplate: continue
+                case .openProject, .saveFrame, .exportVersions, .saveAsTemplate, .settings, .closePanel, .keyframeEasing:
                     let action = item.command == .settings ? #selector(openSettings(_:))
                         : item.command == .closePanel ? #selector(closePanel(_:))
                         : item.command == .keyframeEasing ? #selector(openKeyframeEasing(_:))
-                        : item.command == .saveFrame ? #selector(saveFrame(_:)) : #selector(openProject(_:))
+                        : item.command == .saveAsTemplate ? #selector(saveAsTemplate(_:))
+                        : item.command == .saveFrame ? #selector(saveFrame(_:))
+                        : item.command == .exportVersions ? #selector(exportVersions(_:)) : #selector(openProject(_:))
                     let mi = NSMenuItem(title: item.label, action: action, keyEquivalent: item.key ?? "")
                     mi.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
                     mi.target = self
@@ -133,6 +136,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         let menu = NSMenu(title: item.label)
         menu.delegate = self
         if item.command == .panels { panelsMenu = menu }
+        if item.command == .newFromTemplate { templatesMenu = menu }
         let mi = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
         mi.submenu = menu
         return mi
@@ -155,6 +159,15 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
 
     /// File > Save frame… and ⇧⌘E use the same snapshot command.
     @objc func saveFrame(_ sender: NSMenuItem) { session?.requestSaveFrame() }
+    /// File > Export versions… and ⇧⌘R open the same checklist.
+    @objc func exportVersions(_ sender: NSMenuItem) { session?.requestExportVersions() }
+    /// File > Save as Template…: the open project without its media, its placeholders kept.
+    @objc func saveAsTemplate(_ sender: NSMenuItem) { session?.requestSaveAsTemplate() }
+    /// File > New from Template > <name>.
+    @objc func newFromTemplate(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        session?.requestNewFromTemplate(id: id)
+    }
     /// File > Open…: the folder dialog (⌘O in the editor reaches the same call through EditorSession.commandKey).
     @objc func openProject(_ sender: NSMenuItem) { session?.requestOpenProject() }
 
@@ -400,6 +413,7 @@ extension MacShell: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         if menu === panelsMenu { fillPanelsMenu(menu); return }
+        if menu === templatesMenu { fillTemplatesMenu(menu); return }
         let recent = session?.recentProjects ?? []
         for p in recent {
             let mi = NSMenuItem(title: p.title, action: #selector(openRecentProject(_:)), keyEquivalent: "")
@@ -414,6 +428,21 @@ extension MacShell: NSMenuDelegate {
 }
 
 extension MacShell {
+    /// File > New from Template: the user's templates by name, with their placeholders and any description as the tooltip.
+    func fillTemplatesMenu(_ menu: NSMenu) {
+        let templates = session?.projectTemplates?.list() ?? []
+        for t in templates {
+            let mi = NSMenuItem(title: t.name, action: #selector(newFromTemplate(_:)), keyEquivalent: "")
+            mi.target = self; mi.representedObject = t.id
+            let slots = "\(t.slots.count) placeholder\(t.slots.count == 1 ? "" : "s")"
+            mi.toolTip = [t.description, slots].compactMap { $0 }.joined(separator: " · ")
+            menu.addItem(mi)
+        }
+        if templates.isEmpty {
+            menu.addItem(NSMenuItem(title: "No templates yet", action: nil, keyEquivalent: ""))
+        }
+    }
+
     /// Window > Panels: every panel, a checkmark on the open ones.
     func fillPanelsMenu(_ menu: NSMenu) {
         for p in session?.shell?.windowMenuPanels ?? [] {

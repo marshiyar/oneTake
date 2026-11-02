@@ -30,6 +30,7 @@ extension EditorSession {
         timeline.onRevealSource = { [weak self] clipId, inFileManager in
             self?.revealClipSource(clipId: clipId, inFileManager: inFileManager)
         }
+        timeline.onReplaceMedia = { [weak self] clipId in self?.requestReplaceMedia(clipId: clipId) }
         timeline.importForPaste = { [weak self] paths, done in self?.importForPaste(paths, done) }
         timeline.onAddText = { [weak self] time in self?.addText(at: time) }
         timeline.onEditKeyframeEasing = { [weak self] clipId, refs in self?.openKeyframeEasing(clipId: clipId, refs: refs) }

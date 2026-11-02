@@ -35,7 +35,7 @@ extension PreviewPainter {
                 c.fill(.rect(box), offlineSlateFill.withAlpha(layer.opacity))
                 c.clip(box)
                 drawHatch(c, in: box, color: offlineSlateHatch.withAlpha(offlineSlateHatch.a * layer.opacity))
-                drawSlateText(c, layer.offlineFileName ?? "", in: box, opacity: layer.opacity)
+                drawSlateText(c, layer.offlineFileName ?? "", in: box, opacity: layer.opacity, placeholder: layer.placeholderNumber)
             }
         }
         guard layer.transform3D.isIdentity else {
@@ -63,15 +63,17 @@ extension PreviewPainter {
         c.stroke(p, color, StrokeStyle(width: step / 4))
     }
 
-    /// "Media offline" over the file name, centred in `box`, sized to the box.
-    static func drawSlateText(_ c: CanvasContext, _ fileName: String, in box: CanvasRect, opacity: Double) {
+    /// "Media offline" over the file name, centred in `box`, sized to the box. A template placeholder's card says
+    /// "Placeholder N" in the neutral text colour instead.
+    static func drawSlateText(_ c: CanvasContext, _ fileName: String, in box: CanvasRect, opacity: Double, placeholder: Int? = nil) {
         let titleFont = CanvasFont(size: max(9, min(18, box.height / 8)), weight: .semibold)
         let nameFont = CanvasFont(size: max(8, min(14, box.height / 10)))
         let gap = nameFont.size / 2
         let top = box.y + (box.height - titleFont.size - gap - nameFont.size) / 2
-        let title = "Media offline"
+        let title = placeholder.map { "Placeholder \($0)" } ?? "Media offline"
         let tw = c.measureText(title, font: titleFont).width
-        c.drawText(title, at: CanvasPoint(box.x + (box.width - tw) / 2, top), font: titleFont, color: offlineSlateTitle.withAlpha(opacity))
+        c.drawText(title, at: CanvasPoint(box.x + (box.width - tw) / 2, top), font: titleFont,
+                   color: (placeholder == nil ? offlineSlateTitle : offlineSlateText).withAlpha(opacity))
         guard !fileName.isEmpty else { return }
         let nw = min(c.measureText(fileName, font: nameFont).width, box.width - 8)
         c.drawText(fileName, at: CanvasPoint(box.x + max(4, (box.width - nw) / 2), top + titleFont.size + gap), font: nameFont,
