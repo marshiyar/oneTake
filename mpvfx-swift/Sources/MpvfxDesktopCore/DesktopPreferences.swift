@@ -88,6 +88,13 @@ public final class DesktopPreferences: @unchecked Sendable {
         }
         set { set("mpvfx-voice-count-in", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
     }
+    public var voicePreRoll: Int {
+        get {
+            guard let n = value("mpvfx-voice-pre-roll")?.number, n.isFinite, (0...5).contains(n), n == n.rounded() else { return 2 }
+            return Int(n)
+        }
+        set { set("mpvfx-voice-pre-roll", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
+    }
 
     public static let audioOutputDeviceKey = "mpvfx-audio-output-device"
     public static let previewCacheKey = "mpvfx-preview-cache-mb"

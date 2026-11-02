@@ -22,6 +22,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Voice-over punch-in: with the I and O points set, Record voice plays from a pre-roll before I (Settings > Voice
+  pre-roll, default 2 s), records exactly I to O and stops at O, landing as one clip covering that range.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

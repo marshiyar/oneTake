@@ -51,6 +51,7 @@ extension EditorSession {
                                           interfaceScalePercent: prefs.interfaceScalePercent)
         values.inputDevice = prefs.audioInputDevice
         values.voiceCountIn = prefs.voiceCountIn
+        values.voicePreRoll = prefs.voicePreRoll
         values.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
         return values
     }
@@ -62,6 +63,7 @@ extension EditorSession {
     func applySettings(_ v: SettingsPanel.Values, _ prefs: DesktopPreferences) {
         prefs.audioInputDevice = v.inputDevice
         prefs.voiceCountIn = v.voiceCountIn
+        prefs.voicePreRoll = v.voicePreRoll
         if v.appearance != appearance?.appearance { setAppearance(v.appearance) }
         if v.interfaceScalePercent != prefs.interfaceScalePercent {
             prefs.interfaceScalePercent = v.interfaceScalePercent
