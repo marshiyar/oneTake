@@ -10,7 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Issue #324 A1: ⇧S, the picker, the drag with Shift and Option and the click, through the stage controller.
+//===----------------------------------------------------------------------===//
 import MpvfxCanvas
 import MpvfxShared
 import MpvfxTimeline

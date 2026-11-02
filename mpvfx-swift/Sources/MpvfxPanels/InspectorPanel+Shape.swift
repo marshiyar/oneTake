@@ -10,10 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// The Shape group (issue #324): a shape clip's kind and the values that belong to that kind (corner radius, sides,
-// inner radius, arrow head length), with its stroke width, dash and colours. Every pick and value is one undo step
-// through TimelineEditor.setClipShape; a value left at its default is not stored, and its reset removes the key.
-// Every row and button is a focusable control, so Tab, the arrows and Return reach all of them.
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxShared
 import MpvfxTimeline

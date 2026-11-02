@@ -10,7 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Issue #324 A2: the Shape group's rows by kind, one undo step per edit, and keyboard access to every row.
+//===----------------------------------------------------------------------===//
 import MpvfxCanvas
 import MpvfxShared
 import OneTakeKeyframes
@@ -23,7 +23,7 @@ internal final class InspectorShapeTests: XCTestCase {
     private static let frame = CanvasRect(x: 0, y: 0, width: 360, height: 9000)
 
     private func panel(_ shape: NativeClipShape) throws -> (InspectorPanel, TimelineEditor, String) {
-        let editor = try TimelineEditor(json: CompositionSizeTests.json, engine: KeyframeRuntime())
+        let editor = try TimelineEditor(json: InspectorMediaFitTests.json, engine: KeyframeRuntime())
         let id = try XCTUnwrap(editor.addShapeClip(shape, left: 100, top: 50, width: 300, height: 200, at: 0))
         let p = InspectorPanel()
         p.editor = editor
@@ -122,10 +122,10 @@ internal final class InspectorShapeTests: XCTestCase {
     }
 
     internal func testNoShapeGroupWithoutAShape() throws {
-        let editor = try TimelineEditor(json: CompositionSizeTests.json, engine: KeyframeRuntime())
+        let editor = try TimelineEditor(json: InspectorMediaFitTests.json, engine: KeyframeRuntime())
         let p = InspectorPanel()
         p.editor = editor
-        p.selection = ["natural"]
+        p.selection = ["clip:a"]
         XCTAssertFalse(p.groups.contains { $0.id == InspectorPanel.shapeGroupId })
     }
 }

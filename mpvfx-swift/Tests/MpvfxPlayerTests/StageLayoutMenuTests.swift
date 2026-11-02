@@ -10,7 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Issue #322 A1: the Layout menu's rows, keys and clicks, through the menu model and the stage controller.
+//===----------------------------------------------------------------------===//
 import MpvfxCanvas
 import MpvfxShared
 import MpvfxTimeline

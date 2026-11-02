@@ -10,11 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// The Shape tool on the stage (issue #324). ⇧S turns it on with the kind drawn last (rectangle at first) and off again,
-// while the stage has the keys; the keys 1 to 4 or a click on a chip of the picker choose rectangle, ellipse, line or
-// arrow, and Esc cancels a drag, then turns the tool off. A drag inside the composition frame draws the shape (Shift
-// and Option as StageShapeDraft says), a click makes the default size; letting go adds it at the playhead through
-// `onCreateShape` and selects it, and the tool goes off.
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
 import MpvfxShared

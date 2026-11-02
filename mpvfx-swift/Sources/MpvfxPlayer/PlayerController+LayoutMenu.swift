@@ -24,8 +24,9 @@ extension PlayerController {
 
     /// Opens the menu at `point` for `clipCount` selected clips.
     public func openLayoutMenu(at point: CanvasPoint, clipCount: Int) {
-        view.layoutMenu = StageLayoutMenu(origin: point, clipCount: clipCount)
-        view.layoutMenu?.selected = StageLayoutMenu.layouts.firstIndex { view.layoutMenu?.isEnabled($0) == true } ?? 0
+        var menu = StageLayoutMenu(origin: point, clipCount: clipCount)
+        menu.selected = StageLayoutMenu.layouts.firstIndex { menu.isEnabled($0) } ?? 0
+        view.layoutMenu = menu
         view.contextMenu = nil
         needsDisplay?()
     }

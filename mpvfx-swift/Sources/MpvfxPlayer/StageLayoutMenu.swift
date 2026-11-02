@@ -10,10 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// The stage's Layout menu (issue #322): ⌥⌘G opens it at the pointer. One row per layout with a small diagram of its
-// cells and how many clips it takes, and a footer with the gutter and margin the layout is applied with. Up and Down
-// (or 1 to 6) choose a row, Left and Right change the gutter by 4 px (with Shift the margin), Return applies the layout
-// to the selected clips as one undo step, Esc closes the menu. A click on a row applies it too.
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
 import MpvfxPanels

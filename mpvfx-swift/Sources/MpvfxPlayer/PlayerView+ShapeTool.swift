@@ -10,8 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// The Shape tool's chrome (issue #324): the picker chips along the top left of the stage while the tool is on, and the
-// shape being dragged, drawn the way the layer will be (PlayerController+ShapeTool.swift).
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
 import MpvfxPanels

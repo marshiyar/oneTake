@@ -10,7 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Issue #324 A1: what a drag, Shift, Option and a click make, in composition pixels.
+//===----------------------------------------------------------------------===//
 import MpvfxCanvas
 import MpvfxShared
 import XCTest
