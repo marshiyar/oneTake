@@ -69,7 +69,7 @@ enum TextRevealRenderer {
         let timing = NativeTextRevealTiming(unitCount: inUnits.count, unrevealUnitCount: outUnits.count, clipFrames: frame.clipFrames,
                                             reveal: reveal, unreveal: unreveal)
         let cursorOn = reveal?.hasCursor == true
-            || (unreveal?.hasCursor == true && frame.frame > frame.clipFrames - timing.unrevealFrames)
+            || (unreveal?.hasCursor == true && frame.frame > max(0, frame.clipFrames - 1) - timing.unrevealFrames)
         guard timing.isAnimating(atFrame: frame.frame) || cursorOn else { return nil }
 
         let inOwner = owners(inUnits, length: body.count), outOwner = owners(outUnits, length: body.count)
@@ -113,31 +113,74 @@ enum TextRevealRenderer {
         }
     }
 
-    /// Draws the plan's letters, then its cursor, in `box` at `opacity`.
-    static func draw(_ plan: TextRevealPlan, units: TextUnits, block: TextBlock, in box: CanvasRect, on c: CanvasContext, opacity: Double) {
-        let body = Array(block.text.utf16)
-        var still: [TextUnit] = []
-        for atom in plan.atoms where atom.isIdentity { still += atom.clusters.map { units.clusters[$0] } }
-        if !still.isEmpty {
-            // Spaces draw nothing; counting them keeps a run that is shown whole from being clipped.
-            still += units.clusters.filter { isBlank($0.range, in: body) }
-            TextLayout.draw(units, in: box, on: c, selecting: still, opacity: opacity)
+    /// Extra pixels around the box in a frame picture: room for a rising unit and for glyph overhang.
+    static func inset(for block: TextBlock) -> Int { Int((block.font.size * riseDistance).rounded(.up)) + 2 }
+
+    /// One frame of the reveal as a picture, and where it goes, for a text box of `box` view units on a canvas with
+    /// `deviceScale` device pixels per view unit. Nil when the frame shows the text in full (draw it as plain text).
+    static func image(_ text: NativeClipText, box: CanvasRect, scale s: Double, deviceScale k: Double,
+                      frame: TextRevealFrame) -> (image: CanvasImage, rect: CanvasRect)? {
+        let k = max(k, 1e-3), px = s * k
+        let width = Int((box.width * k).rounded(.up)), height = Int((box.height * k).rounded(.up))
+        guard width > 0, height > 0 else { return nil }
+        let block = NativeTextRendering.block(text, scale: px)
+        let layoutWidth = box.width * k
+        guard let (plan, units) = plan(text, block: block, width: layoutWidth, frame: frame) else { return nil }
+        let inset = inset(for: block)
+        guard let rgba = pixels(text, plan: plan, units: units, block: block, width: width, height: height, layoutWidth: layoutWidth,
+                                scale: px, inset: inset) else { return nil }
+        let rect = CanvasRect(x: box.x - Double(inset) / k, y: box.y - Double(inset) / k,
+                              width: Double(width + 2 * inset) / k, height: Double(height + 2 * inset) / k)
+        return (CanvasImage(width: width + 2 * inset, height: height + 2 * inset, rgba: rgba), rect)
+    }
+
+    /// The frame's pixels, `inset` px wider than the box on every side: the whole text drawn once, then each atom's
+    /// share of it placed as the plan says. Nil when this platform cannot rasterize text.
+    static func pixels(_ text: NativeClipText, plan: TextRevealPlan, units: TextUnits, block: TextBlock, width: Int, height: Int,
+                       layoutWidth: Double, scale px: Double, inset: Int) -> [UInt8]? {
+        var still = text
+        still.reveal = nil; still.unreveal = nil; still.look = nil
+        guard let base = baseCache.get(still, width, height, px, inset) ?? NativeTextRendering.rasterize(
+            still, width: width, height: height, scale: px, inset: inset, layoutWidth: layoutWidth) else { return nil }
+        baseCache.put(still, width, height, px, inset, base)
+        let glyphTop = (block.lineHeight - block.font.size) / 2
+        let offset = Double(inset)
+        let atoms = plan.atoms.map { atom in
+            TextRevealCompositor.Atom(
+                regions: atom.clusters.map {
+                    let r = units.clusters[$0].rect
+                    return CanvasRect(x: r.x + offset, y: r.y - glyphTop + offset, width: r.width, height: block.lineHeight)
+                },
+                opacity: atom.opacity,
+                moves: atom.moves.map { TextRevealPlan.Move(cx: $0.cx + offset, cy: $0.cy + offset, dy: $0.dy, scale: $0.scale) })
         }
-        for atom in plan.atoms where !atom.isIdentity && atom.opacity > 0 {
-            c.withState {
-                for m in atom.moves {
-                    c.translate(0, m.dy)
-                    c.translate(box.x + m.cx, box.y + m.cy); c.scale(m.scale, m.scale); c.translate(-(box.x + m.cx), -(box.y + m.cy))
-                }
-                TextLayout.draw(units, in: box, on: c, selecting: atom.clusters.map { units.clusters[$0] }, opacity: opacity * atom.opacity)
-            }
+        let color = CanvasColor.documentColor(text.resolvedColor)
+        let bytes = [color.r, color.g, color.b, color.a].map { UInt8(max(0, min(255, ($0 * 255).rounded()))) }
+        return TextRevealCompositor.compose(
+            source: base, width: width + 2 * inset, height: height + 2 * inset, atoms: atoms, showsAll: atoms.allSatisfy(\.isIdentity),
+            cursor: plan.cursor.map { CanvasRect(x: $0.x + offset, y: $0.y + offset, width: $0.width, height: $0.height) }, cursorColor: bytes)
+    }
+
+    private final class BaseCache: @unchecked Sendable {
+        struct Key: Hashable { let text: NativeClipText; let width: Int; let height: Int; let scale: Double; let inset: Int }
+        private let lock = NSLock()
+        private var entries: [(key: Key, pixels: [UInt8])] = []
+        static let capacity = 3
+        func get(_ text: NativeClipText, _ w: Int, _ h: Int, _ scale: Double, _ inset: Int) -> [UInt8]? {
+            let key = Key(text: text, width: w, height: h, scale: scale, inset: inset)
+            lock.lock(); defer { lock.unlock() }
+            return entries.first { $0.key == key }?.pixels
         }
-        if let k = plan.cursor, block.color.a * opacity > 0 {
-            var p = CanvasPath()
-            p.addRect(CanvasRect(x: box.x + k.x, y: box.y + k.y, width: k.width, height: k.height))
-            c.fill(p, block.color.withAlpha(block.color.a * opacity))
+        func put(_ text: NativeClipText, _ w: Int, _ h: Int, _ scale: Double, _ inset: Int, _ pixels: [UInt8]) {
+            let key = Key(text: text, width: w, height: h, scale: scale, inset: inset)
+            lock.lock(); defer { lock.unlock() }
+            entries.removeAll { $0.key == key }
+            entries.append((key, pixels))
+            if entries.count > Self.capacity { entries.removeFirst() }
         }
     }
+
+    private static let baseCache = BaseCache()
 
     // MARK: units
 
@@ -229,10 +272,11 @@ enum TextRevealRenderer {
 
     private static func measure(_ block: TextBlock, width: Double) -> TextUnits? {
         #if os(Linux)
-        return TextLayout.units(block, width: width, on: CairoImageTarget(width: 1, height: 1).canvas)
+        let target = CairoImageTarget(width: 1, height: 1)
+        return withExtendedLifetime(target) { TextLayout.units(block, width: width, on: target.canvas) }
         #elseif os(Windows)
         guard let target = try? Direct2DImageTarget(width: 1, height: 1) else { return nil }
-        return TextLayout.units(block, width: width, on: target.canvas)
+        return withExtendedLifetime(target) { TextLayout.units(block, width: width, on: target.canvas) }
         #elseif canImport(CoreGraphics) && canImport(CoreText)
         // CoreGraphicsCanvas keeps its fonts in a static dictionary that is not thread-safe: measure on the main thread.
         if !Thread.isMainThread { return DispatchQueue.main.sync { measure(block, width: width) } }

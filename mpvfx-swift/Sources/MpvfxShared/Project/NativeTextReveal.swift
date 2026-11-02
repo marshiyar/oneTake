@@ -178,6 +178,8 @@ public struct NativeTextRevealTiming: Equatable, Sendable {
     let revealCount: Int
     let unrevealCount: Int
     let clipFrames: Double
+    /// The clip's last frame, clip-local.
+    var lastFrame: Double { max(0, clipFrames - 1) }
     let reveal: NativeTextReveal?
     let unreveal: NativeTextReveal?
     /// Position of each unit in its reveal order (0 starts first), per reveal.
@@ -194,8 +196,9 @@ public struct NativeTextRevealTiming: Equatable, Sendable {
             guard let r, n > 0 else { return 0 }
             return Double(n - 1) * r.resolvedStaggerFrames + (r.resolvedStyle == "typeOn" ? 0 : r.resolvedUnitFrames)
         }
+        // The last frame the clip shows is `clipFrames - 1`: by then the unreveal has taken everything away.
         let natural = span(reveal, inCount) + span(unreveal, outCount)
-        compression = natural > clipFrames && natural > 0 ? max(0, clipFrames) / natural : 1
+        compression = natural > max(0, clipFrames - 1) && natural > 0 ? max(0, clipFrames - 1) / natural : 1
         revealFrames = span(reveal, inCount) * compression; unrevealFrames = span(unreveal, outCount) * compression
         inRanks = Self.ranks(inCount, reveal); outRanks = Self.ranks(outCount, unreveal)
     }
@@ -205,7 +208,7 @@ public struct NativeTextRevealTiming: Equatable, Sendable {
     /// (a type-on cursor, which blinks, is the renderer's own matter).
     public func isAnimating(atFrame frame: Double) -> Bool {
         if reveal != nil, revealCount > 0, frame < revealFrames { return true }
-        if unreveal != nil, unrevealCount > 0, frame > clipFrames - unrevealFrames { return true }
+        if unreveal != nil, unrevealCount > 0, frame > lastFrame - unrevealFrames { return true }
         return false
     }
 
@@ -219,7 +222,7 @@ public struct NativeTextRevealTiming: Equatable, Sendable {
     /// How much of unit `index` the unreveal has not yet taken away at `frame`: 1 (shown) … 0 (gone). 1 without an unreveal.
     public func remaining(ofUnit index: Int, atFrame frame: Double) -> Double {
         guard let unreveal, outRanks.indices.contains(index) else { return 1 }
-        let start = clipFrames - unrevealFrames + Double(outRanks[index]) * unreveal.resolvedStaggerFrames * compression
+        let start = lastFrame - unrevealFrames + Double(outRanks[index]) * unreveal.resolvedStaggerFrames * compression
         return 1 - Self.progress(frame - start, unreveal, compression)
     }
 
@@ -229,8 +232,9 @@ public struct NativeTextRevealTiming: Equatable, Sendable {
     }
 
     private static func progress(_ elapsed: Double, _ r: NativeTextReveal, _ compression: Double) -> Double {
-        if r.resolvedStyle == "typeOn" { return elapsed >= 0 ? 1 : 0 }
-        return min(1, max(0, elapsed / (r.resolvedUnitFrames * compression)))
+        let length = r.resolvedUnitFrames * compression
+        if r.resolvedStyle == "typeOn" || length <= 0 { return elapsed >= 0 ? 1 : 0 }
+        return min(1, max(0, elapsed / length))
     }
 
     /// The order the units arrive in: `ranks[i]` is the position of unit `i`.
@@ -243,7 +247,7 @@ public struct NativeTextRevealTiming: Equatable, Sendable {
             let arrival = (0..<n).sorted { (abs(Double($0) - middle), $0) < (abs(Double($1) - middle), $1) }
             return invert(arrival)
         case "random":
-            var rng = SplitMix64(seed: UInt64(r.resolvedSeed))
+            var rng = SplitMix64(seed: UInt64(truncatingIfNeeded: r.resolvedSeed))
             var arrival = Array(0..<n)
             if n > 1 { for i in stride(from: n - 1, to: 0, by: -1) { arrival.swapAt(i, Int(rng.next() % UInt64(i + 1))) } }
             return invert(arrival)

@@ -39,28 +39,36 @@ enum TextLookRenderer {
         let width = Int((box.width * k).rounded(.up)), height = Int((box.height * k).rounded(.up))
         guard width > 0, height > 0 else { return nil }
         let bands = bandReaches(look, pxPerCanvas: pxPerCanvas)
+        // A frame in which a reveal changes the letters is built from its plan and cached by what it shows; any other
+        // frame is the plain letters, cached by the text alone.
+        let revealBlock = NativeTextRendering.block(text, scale: pxPerCanvas)
+        let planned = frame.flatMap { TextRevealRenderer.plan(text, block: revealBlock, width: Double(width), frame: $0) }
         let shadow = look.shadow.flatMap { sh in CanvasColor(hex: sh.color).map {
             TextLookCompositor.Shadow(dx: Int((sh.resolvedX * pxPerCanvas).rounded()), dy: Int((sh.resolvedY * pxPerCanvas).rounded()),
                                       blur: sh.resolvedBlur * pxPerCanvas, color: $0)
         } }
         let outlineReach = bands.last?.reach ?? 0
         let shadowReach = shadow.map { Double(max(abs($0.dx), abs($0.dy))) + $0.blur * 1.5 } ?? 0
-        let inset = Int((outlineReach + shadowReach).rounded(.up)) + 2
+        var inset = Int((outlineReach + shadowReach).rounded(.up)) + 2
+        if planned != nil { inset = max(inset, TextRevealRenderer.inset(for: revealBlock)) }
         guard (width + 2 * inset) * (height + 2 * inset) <= maxPixels else {
             FileHandle.standardError.write(Data("[MpVFX] text look skipped: \(width + 2 * inset) x \(height + 2 * inset) px is too large\n".utf8))
             return nil
         }
-        // A frame in which a reveal changes the picture is cached by what it shows; any other frame by the text alone.
-        let plan = frame.flatMap { TextRevealRenderer.plan(text, block: NativeTextRendering.block(text, scale: pxPerCanvas),
-                                                           width: Double(width), frame: $0)?.plan }
-        let key = Key(text: text, width: width, height: height, scale: pxPerCanvas, plan: plan)
+        let key = Key(text: text, width: width, height: height, scale: pxPerCanvas, plan: planned?.plan)
         let rect = CanvasRect(x: box.x - Double(inset) / k, y: box.y - Double(inset) / k,
                               width: Double(width + 2 * inset) / k, height: Double(height + 2 * inset) / k)
         if let hit = cache.get(key) { return Rendered(image: hit, rect: rect) }
         var letters = text
         letters.color = NativeClipText.newLayerColor; letters.look = nil
-        guard let rgba = NativeTextRendering.rasterize(letters, width: width, height: height, scale: pxPerCanvas, inset: inset,
-                                                  frame: plan == nil ? nil : frame) else { return nil }
+        let rgba: [UInt8]?
+        if let planned {
+            rgba = TextRevealRenderer.pixels(letters, plan: planned.plan, units: planned.units, block: revealBlock, width: width, height: height,
+                                             layoutWidth: Double(width), scale: pxPerCanvas, inset: inset)
+        } else {
+            rgba = NativeTextRendering.rasterize(letters, width: width, height: height, scale: pxPerCanvas, inset: inset)
+        }
+        guard let rgba else { return nil }
         let coverage = stride(from: 3, to: rgba.count, by: 4).map { rgba[$0] }
         let fill = CanvasColor.documentColor(text.resolvedColor)
         let out = TextLookCompositor.compose(coverage: coverage, width: width + 2 * inset, height: height + 2 * inset,

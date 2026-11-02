@@ -135,27 +135,33 @@ final class NativeTextRevealTests: XCTestCase {
         XCTAssertEqual(a, NativeTextRevealTiming.ranks(12, NativeTextReveal(order: "random", seed: 5)))
         XCTAssertEqual(a.sorted(), Array(0..<12))
         XCTAssertNotEqual(a, NativeTextRevealTiming.ranks(12, NativeTextReveal(order: "random", seed: 6)))
-        XCTAssertEqual(a, [3, 9, 5, 1, 11, 10, 0, 7, 8, 6, 2, 4], "pinned: the same on every platform and run")
+        XCTAssertEqual(a, [6, 1, 11, 9, 10, 7, 4, 0, 2, 5, 3, 8], "pinned: the same on every platform and run")
     }
 
     func testRevealAndUnrevealCompressToFitTheClip() {
         let reveal = NativeTextReveal(staggerFrames: 10, unitFrames: 10)
         let t = timing(11, clip: 100, reveal, reveal)
-        XCTAssertEqual(t.compression, 100.0 / 220.0, accuracy: 1e-9)
+        XCTAssertEqual(t.compression, 99.0 / 220.0, accuracy: 1e-9, "the last frame shown is frame 99")
         XCTAssertTrue(t.isCompressed)
-        XCTAssertEqual(t.revealFrames + t.unrevealFrames, 100, accuracy: 1e-9)
-        XCTAssertEqual(t.amounts(ofUnit: 10, atFrame: 100).remaining, 0, accuracy: 1e-9, "everything is gone when the clip ends")
+        XCTAssertEqual(t.revealFrames + t.unrevealFrames, 99, accuracy: 1e-9)
+        XCTAssertEqual(t.amounts(ofUnit: 10, atFrame: 99).remaining, 0, accuracy: 1e-9, "everything is gone on the last frame")
         XCTAssertEqual(t.amounts(ofUnit: 0, atFrame: 50).arrived, 1, accuracy: 1e-9)
         XCTAssertFalse(timing(3, clip: 100, reveal).isCompressed)
     }
 
-    func testAnUnrevealLeavesTheLastUnitAtTheEndOfTheClip() {
+    func testAnUnrevealLeavesTheLastUnitOnTheLastFrameOfTheClip() {
         let t = timing(3, clip: 60, nil, NativeTextReveal(staggerFrames: 4, unitFrames: 6))
         XCTAssertEqual(t.unrevealFrames, 14)
-        XCTAssertEqual(t.amounts(ofUnit: 0, atFrame: 46).remaining, 1)
-        XCTAssertEqual(t.amounts(ofUnit: 0, atFrame: 49).remaining, 0.5, accuracy: 1e-9)
-        XCTAssertEqual(t.amounts(ofUnit: 2, atFrame: 60).remaining, 0, accuracy: 1e-9)
-        XCTAssertFalse(t.isAnimating(atFrame: 46)); XCTAssertTrue(t.isAnimating(atFrame: 47))
+        XCTAssertEqual(t.amounts(ofUnit: 0, atFrame: 45).remaining, 1)
+        XCTAssertEqual(t.amounts(ofUnit: 0, atFrame: 48).remaining, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(t.amounts(ofUnit: 2, atFrame: 59).remaining, 0, accuracy: 1e-9, "frame 59 is the last of a 60 frame clip")
+        XCTAssertFalse(t.isAnimating(atFrame: 45)); XCTAssertTrue(t.isAnimating(atFrame: 46))
+    }
+
+    func testAOneFrameClipWithAnUnrevealDoesNotDivideByZero() {
+        let t = timing(3, clip: 1, nil, NativeTextReveal(staggerFrames: 4, unitFrames: 6))
+        XCTAssertEqual(t.compression, 0)
+        for unit in 0..<3 { XCTAssertEqual(t.amounts(ofUnit: unit, atFrame: 0).remaining, 0) }
     }
 
     func testTypeOnShowsEachUnitAtOnceAtItsStart() {
