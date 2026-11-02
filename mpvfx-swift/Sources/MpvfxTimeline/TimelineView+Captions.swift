@@ -36,6 +36,9 @@ public struct TimelineCaptionLane: Equatable, Sendable {
     /// The project has a caption track (even with no cues): the lane is drawn and takes presses.
     public var isShown = false
     public var cues: [NativeCaptionCue] = []
+    /// The track's look and the composition size, which decide how many lines a cue takes (`overflowingCueIds`).
+    public var look: NativeCaptionLook?
+    public var frameWidth = 1920.0, frameHeight = 1080.0
     public var selectedCueId: String?
     /// The cue a move or trim is dragging, as it would land (clamped); drawn in place of the stored cue until release.
     public var preview: NativeCaptionCue?
@@ -45,6 +48,8 @@ public struct TimelineCaptionLane: Equatable, Sendable {
     mutating func load(from editor: TimelineEditor) {
         isShown = editor.document.sequence.captions != nil
         cues = editor.captionCues
+        look = editor.document.sequence.captions?.look
+        frameWidth = Double(editor.document.canvas.width); frameHeight = Double(editor.document.canvas.height)
         let ids = Set(cues.map(\.id))
         if let id = selectedCueId, !ids.contains(id) { selectedCueId = nil }
         if let id = preview?.id, !ids.contains(id) { preview = nil }
@@ -99,6 +104,8 @@ extension TimelineView {
         c.fillRect(CanvasRect(x: 0, y: top, width: size.width, height: f.height), theme.rowBackground)
         c.fillRect(CanvasRect(x: 0, y: top + f.height - 1, width: size.width, height: 1), theme.rowBorder)
         let font = CanvasFont(family: Self.uiFontFamily, size: 11, weight: .medium)
+        let look = captions.look?.isSupported == false ? nil : captions.look
+        let family = (look ?? NativeCaptionLook()).resolvedFontFamily, weight = (look ?? NativeCaptionLook()).resolvedWeight
         c.withState {
             c.clip(CanvasRect(x: L.contentOrigin, y: max(top, L.rulerHeight), width: max(0, size.width - L.contentOrigin), height: f.height))
             for cue in displayedCaptionCues {
@@ -111,8 +118,19 @@ extension TimelineView {
                     c.fillRect(CanvasRect(x: r.x, y: r.y, width: w, height: r.height), theme.accent.withAlpha(0.5))
                     c.fillRect(CanvasRect(x: r.maxX - w, y: r.y, width: w, height: r.height), theme.accent.withAlpha(0.5))
                 }
+                // More lines than the look allows: a warning badge, never a smaller font (the preview shows the cue whole).
+                let warn = nativeCaptionLayout(text: cue.text, look: look, position: cue.position, frameWidth: captions.frameWidth,
+                                               frameHeight: captions.frameHeight) { text, size in
+                    c.measureText(text, font: CanvasFont(family: family, size: size, numericWeight: weight, italic: false)).width
+                }.overflowsLines
                 let label = cue.text.replacingOccurrences(of: "\n", with: " ")
-                if let shown = Self.ellipsize(c, label, font: font, maxWidth: r.width - 12) {
+                if warn, r.width >= 24 {
+                    let badge = CanvasRect(x: r.maxX - 16, y: r.y + (r.height - 12) / 2, width: 12, height: 12)
+                    c.fillRoundedRect(badge, radius: 6, CanvasColor(ThemeTokens.red500Pair.now))
+                    c.drawText("!", at: .init(badge.x + 4, badge.y - 0.5), font: CanvasFont(family: Self.uiFontFamily, size: 10, weight: .bold),
+                               color: CanvasColor(ThemeTokens.white))
+                }
+                if let shown = Self.ellipsize(c, label, font: font, maxWidth: r.width - (warn && r.width >= 24 ? 24 : 12)) {
                     c.drawText(shown, at: .init(r.x + 6, r.y + (r.height - 12) / 2), font: font, color: theme.textPrimary)
                 }
             }
@@ -125,6 +143,19 @@ extension TimelineView {
             c.fillRoundedRect(add, radius: 3, theme.accent.withAlpha(0.15))
             c.drawText("+", at: .init(add.x + 8, add.y + (add.height - 12) / 2), font: font, color: theme.textPrimary)
         }
+    }
+
+    /// The cues that take more lines than a caption should (`NativeCaptionLook.maxLines`) at the current composition size,
+    /// measured with `measure(text, font)`. The lane badges them.
+    func overflowingCaptionCueIds(measure: (String, CanvasFont) -> Double) -> Set<String> {
+        let look = captions.look?.isSupported == false ? nil : captions.look
+        let resolved = look ?? NativeCaptionLook()
+        return Set(captions.cues.filter { cue in
+            nativeCaptionLayout(text: cue.text, look: look, position: cue.position, frameWidth: captions.frameWidth,
+                                frameHeight: captions.frameHeight) { text, size in
+                measure(text, CanvasFont(family: resolved.resolvedFontFamily, size: size, numericWeight: resolved.resolvedWeight, italic: false))
+            }.overflowsLines
+        }.map(\.id))
     }
 
     func drawCueEdit(_ c: CanvasContext) {

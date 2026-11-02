@@ -53,6 +53,22 @@ public extension TimelineEditor {
         return commitPresets(d, label: "Add caption") ? planned.cueId : nil
     }
 
+    /// Sets the look every cue shares (nil goes back to the default look). False when there is no caption track, nothing
+    /// changes, or the look is not storable.
+    @discardableResult
+    func setCaptionLook(_ look: NativeCaptionLook?) -> Bool {
+        commitCaptions(label: "Change caption look") { var t = $0; t.look = look; return t }
+    }
+
+    /// Sets where one cue sits (nil makes it follow the track look again).
+    @discardableResult
+    func setCaptionPosition(_ id: String, to position: NativeCaptionPosition?) -> Bool {
+        commitCaptions(label: "Move caption on screen") { track in
+            guard let i = track.cues.firstIndex(where: { $0.id == id }) else { throw NativeCaptionEditError.unknownCue(id) }
+            var t = track; t.cues[i].position = position; return t
+        }
+    }
+
     private func commitCaptions(label: String, _ plan: (NativeCaptionTrack) throws -> NativeCaptionTrack) -> Bool {
         guard let track = document.sequence.captions, let edited = try? plan(track), edited != track else { return false }
         var d = document
