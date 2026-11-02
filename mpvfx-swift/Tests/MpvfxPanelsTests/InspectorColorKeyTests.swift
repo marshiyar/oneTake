@@ -14,6 +14,7 @@
 import XCTest
 import MpvfxCanvas
 import MpvfxShared
+import MpvfxTheme
 @testable import MpvfxTimeline
 @testable import MpvfxPanels
 
