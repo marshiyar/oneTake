@@ -88,7 +88,7 @@ final class GradeSecondaryKeyframeInspectorTests: XCTestCase {
         }
         XCTAssertEqual(e.undoStack.count, undo + 1, "one undo step")
         XCTAssertEqual(p.slider("sec:shift")?.keyframe?.state, .onKey)
-        XCTAssertEqual(p.slider("sec:sat")?.keyframe?.state, .none)
+        XCTAssertEqual(p.slider("sec:sat")?.keyframe?.state, .some(.none))
     }
 
     func testEditingAnAnimatedSettingKeysThereAndLeavesTheStoredValue() throws {
@@ -127,13 +127,38 @@ final class GradeSecondaryKeyframeInspectorTests: XCTestCase {
         let (p, e) = try make()
         try click(p, .stopwatch("sec:shift"))
         let count = try XCTUnwrap(e.colorGrading(clipId: "clip:a")).secondaries.count
-        try customHead(p, 0)
+        XCTAssertNil(p.hits.rect { $0 == .custom("sec:head", 0) }, "Add has no hit while animated")
+        XCTAssertNil(p.hits.rect { $0 == .custom("sec:head", 1) }, "Remove has no hit while animated")
+        let head = try XCTUnwrap(p.customRow("sec:head"), "sec:head is drawn")
+        head.pointer(0, CanvasPoint(0, 0), 0)
+        redraw(p)
         XCTAssertEqual(try XCTUnwrap(e.colorGrading(clipId: "clip:a")).secondaries.count, count,
                        "Add is refused while animated")
-        try customHead(p, 1)
+        head.pointer(1, CanvasPoint(0, 0), 0)
+        redraw(p)
         XCTAssertEqual(try XCTUnwrap(e.colorGrading(clipId: "clip:a")).secondaries.count, count,
                        "Remove is refused while animated")
         XCTAssertFalse(try keys(e, Self.hueShift).isEmpty, "the animation is untouched")
+    }
+
+    func testQualifierRangeStopwatchesKeyTheirRanges() throws {
+        let (p, e) = try make()
+        let channels: [(SecondaryQualifier, [String])] = [
+            (.hue, ["hueCenter", "hueRange"]),
+            (.saturation, ["satMin", "satMax"]),
+            (.luma, ["lumaMin", "lumaMax"]),
+        ]
+        for (channel, fields) in channels {
+            let key = "sec:qualifier:\(channel.rawValue):keys"
+            let row = try XCTUnwrap(p.number(key), "\(key) descriptor is drawn")
+            XCTAssertNotNil(row.keyframe, "\(key) carries keyframe controls")
+            try click(p, .stopwatch(key))
+            for field in fields {
+                XCTAssertEqual(try keys(e, NativeGradeParameter.secondaryId(0, field)).map(\.frame), [30],
+                               "\(field) is keyed at the playhead")
+            }
+            XCTAssertEqual(p.number(key)?.keyframe?.state, .onKey, "\(key) shows on-key state")
+        }
     }
 
     func testSecondSecondarySlidersKeyIndependentlyOfTheFirst() throws {
