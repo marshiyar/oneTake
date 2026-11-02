@@ -10,6 +10,8 @@ Unreleased; nightly builds of `main` are published as pre-releases named `nightl
 Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binaries.lock`); no version tag yet.
 
 ### Editing
+- A clip can hold several grade layers, drawn in order with a switch each, in preview and export; a project with one
+  grade opens and saves exactly as before. The layers panel comes next.
 - Nested sequences in the project file and the plans behind Nest, Un-nest and Make unique (no shortcut or screen yet;
   nested clips are not drawn until a later change).
 - Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels

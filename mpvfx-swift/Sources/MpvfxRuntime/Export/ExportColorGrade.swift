@@ -19,7 +19,7 @@ import MpvfxColor
 
 /// The clip's enabled `color-grading` effect, as a renderer; nil when the clip has none or it changes nothing.
 func exportGradeRenderer(_ clip: NativeProjectClip, projectDir: String) -> ColorGradeRenderer? {
-    ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir)
+    ColorGradeRenderer.forClipLayers(clip, projectDir: projectDir)
 }
 
 /// Effects the native renderer draws: the color grade (with its stylize effects). Others are still refused.

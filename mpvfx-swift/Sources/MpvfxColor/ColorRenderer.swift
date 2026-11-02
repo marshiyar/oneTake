@@ -108,6 +108,10 @@ extension ColorGradeRenderer {
                        using renderer: ColorRenderer = ColorRendering.shared) {
         guard isActive, width > 0, height > 0, rgba.count >= width * height * 4 else { return }
         renderer.render(self, &rgba, width: width, height: height, time: time, sourceKey: sourceKey)
+        // Later grade layers (issue #457) grade this layer's output; their input is not the source picture, so no reuse key.
+        for layer in following where layer.isActive {
+            renderer.render(layer, &rgba, width: width, height: height, time: time, sourceKey: nil)
+        }
     }
 }
 
