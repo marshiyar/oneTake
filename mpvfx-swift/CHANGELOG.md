@@ -24,6 +24,11 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Layer moves (in, out, loop) evaluated the same in preview and export.
 - A per-user text style library: the Text group's Style menu shows each saved style as a sample, applies it to the
   selected text layers (⌥⌘1…9), and saves the current layer as a style (⌥⌘S).
+- Text reveals: a text layer can arrive and leave per character, word or line (fade, rise, grow or type on, with an
+  optional blinking cursor), in forward, backward, centre-out or seeded random order, the same in preview and export.
+  The controls come in a later change; the project file already stores them.
+- Text look grows a glow, a background plate (behind each line or the whole block, with padding and rounded corners)
+  and a two-colour gradient fill, drawn the same in preview and export. The controls come in a later change.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

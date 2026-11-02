@@ -95,6 +95,8 @@ private func planUpdate(
     var next = document
     var text = try sourceText(document, clipId: clipId)
     text.content = ""
+    text.reveal = nil
+    text.unreveal = nil
     next.textStyles?[index].text = text
     return next
 }

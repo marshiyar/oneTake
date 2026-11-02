@@ -177,8 +177,8 @@ public extension TimelineEditor {
         return editClipText(clipId: clipId) { $0.textTransform = transform == "none" ? nil : transform }
     }
 
-    /// Outlines and drop shadow (nil or an empty look removes it). One undo step; false when the look breaks a
-    /// document rule (more than two outlines, a width, offset or blur out of range, a colour that is not hex).
+    /// The text look: outlines, shadow, glow, plate and gradient fill (nil or an empty look removes it). One undo step;
+    /// false when the look breaks a document rule (more than two outlines, a number out of range, a colour that is not hex).
     @discardableResult
     func setTextLook(clipId: String, _ look: NativeTextLook?) -> Bool {
         if let l = look, l.isSupported {
@@ -191,8 +191,37 @@ public extension TimelineEditor {
                       NativeTextLook.shadowOffsetRange.contains(sh.resolvedY),
                       NativeTextLook.shadowBlurRange.contains(sh.resolvedBlur) else { return false }
             }
+            if let g = l.glow {
+                guard isNativeHexColor(g.color), NativeTextLook.glowRadiusRange.contains(g.resolvedRadius),
+                      NativeTextLook.glowStrengthRange.contains(g.resolvedStrength) else { return false }
+            }
+            if let p = l.plate {
+                guard isNativeHexColor(p.color), NativeTextLook.plateModes.contains(p.resolvedMode),
+                      NativeTextLook.platePaddingRange.contains(p.resolvedPaddingX),
+                      NativeTextLook.platePaddingRange.contains(p.resolvedPaddingY),
+                      NativeTextLook.plateRadiusRange.contains(p.resolvedRadius) else { return false }
+            }
+            if let f = l.fill {
+                guard isNativeHexColor(f.from), isNativeHexColor(f.to), NativeTextLook.fillAngleRange.contains(f.resolvedAngle) else { return false }
+            }
         }
         return editClipText(clipId: clipId) { $0.look = (look?.isEmpty ?? true) ? nil : look }
+    }
+
+    /// How the text arrives (`leaving` false) or leaves (`leaving` true); nil removes it. One undo step; false when a
+    /// value breaks a document rule (a unit, style or order that is not listed, frames or a seed out of range).
+    @discardableResult
+    func setTextReveal(clipId: String, leaving: Bool = false, _ reveal: NativeTextReveal?) -> Bool {
+        if let r = reveal {
+            guard r.isSupported,
+                  r.resolvedUnit.isIn(NativeTextReveal.units), r.resolvedStyle.isIn(NativeTextReveal.styles),
+                  r.resolvedOrder.isIn(NativeTextReveal.orders),
+                  r.resolvedStaggerFrames.isFinite, NativeTextReveal.staggerFramesRange.contains(r.resolvedStaggerFrames),
+                  r.resolvedUnitFrames.isFinite, NativeTextReveal.unitFramesRange.contains(r.resolvedUnitFrames),
+                  NativeTextReveal.seedRange.contains(r.resolvedSeed) else { return false }
+        }
+        let stored = reveal?.normalized
+        return editClipText(clipId: clipId) { if leaving { $0.unreveal = stored } else { $0.reveal = stored } }
     }
 
     @discardableResult
@@ -200,6 +229,10 @@ public extension TimelineEditor {
         if let v = style, !NativeClipText.fontStyles.contains(v) { return false }
         return editClipText(clipId: clipId) { $0.fontStyle = style == "normal" ? nil : style }
     }
+}
+
+private extension String {
+    func isIn(_ allowed: [String]) -> Bool { allowed.contains(self) }
 }
 
 /// normalizeTextMetricValue for the inspector's typed values: "1.5" / "24px" / "150%" / "normal".

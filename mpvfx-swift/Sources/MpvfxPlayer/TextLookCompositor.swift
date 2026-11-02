@@ -14,8 +14,8 @@
 import Foundation
 import MpvfxCanvas
 
-/// The pixel half of a text look: from the coverage of the letters (alpha, 0...255) it builds the drop shadow, the
-/// outlines and the fill as one straight-alpha RGBA8 image. It only reads the coverage, so every canvas backend
+/// The pixel half of a text look: from the coverage of the letters (alpha, 0...255) it builds the plate, the drop
+/// shadow, the glow, the outlines and the fill as one straight-alpha RGBA8 image. It only reads the coverage, so every canvas backend
 /// gets the same outline and shadow for the same letters, in preview and in export.
 ///
 /// Outline edges come from the distance to the nearest covered pixel (exact Euclidean distance), so corners are
@@ -24,10 +24,18 @@ enum TextLookCompositor {
     /// One outline band in device pixels: it covers every pixel whose distance from the letter edge is at most `reach`.
     struct Band { var reach: Double; var color: CanvasColor }
     struct Shadow { var dx: Int; var dy: Int; var blur: Double; var color: CanvasColor }
+    /// A halo `radius` device px wide that reaches `strength` (0...1) of `color` at the letter edge.
+    struct Glow { var radius: Double; var strength: Float; var color: CanvasColor }
+    /// A rounded rectangle in image pixels; `radius` is clamped to half its shorter side.
+    struct PlateRect { var rect: CanvasRect; var radius: Double }
+    struct Plate { var rects: [PlateRect]; var color: CanvasColor }
+    /// `from` to `to` along `angle` degrees (0: left to right, 90: top to bottom) across `bounds`, in image pixels.
+    struct Gradient { var from: CanvasColor; var to: CanvasColor; var angle: Double; var bounds: CanvasRect }
 
-    /// Composites shadow, outer outline, inner outline and fill (in that order) from `coverage` (`width` x `height`).
-    /// `bands` are nearest-first with growing reach.
-    static func compose(coverage: [UInt8], width: Int, height: Int, fill: CanvasColor, bands: [Band], shadow: Shadow?) -> [UInt8] {
+    /// Composites plate, shadow, glow, outer outline, inner outline and fill (in that order) from `coverage`
+    /// (`width` x `height`). `bands` are nearest-first with growing reach. A `gradient` replaces the solid `fill`.
+    static func compose(coverage: [UInt8], width: Int, height: Int, fill: CanvasColor, bands: [Band], shadow: Shadow?,
+                        glow: Glow? = nil, plate: Plate? = nil, gradient: Gradient? = nil) -> [UInt8] {
         let n = width * height
         guard coverage.count == n, n > 0 else { return [UInt8](repeating: 0, count: n * 4) }
         let cov = coverage.map { Float($0) / 255 }
@@ -40,14 +48,19 @@ enum TextLookCompositor {
             }
         }
         let bandCovs = bands.map { bandCoverage($0.reach) }
+        let silhouette = bandCovs.last.map { zip($0, cov).map { max($0, $1) } } ?? cov
+        if let plate, plate.color.a > 0 { over(&acc, plateCoverage(plate.rects, width: width, height: height), plate.color) }
         if let shadow, shadow.color.a > 0 {
-            let silhouette = bandCovs.last.map { zip($0, cov).map { max($0, $1) } } ?? cov
             let moved = shifted(silhouette, width: width, height: height, dx: shadow.dx, dy: shadow.dy)
             let soft = blurred(moved, width: width, height: height, sigma: shadow.blur / 2)
             over(&acc, soft, shadow.color)
         }
+        if let glow, glow.strength > 0, glow.color.a > 0 {
+            let soft = blurred(silhouette, width: width, height: height, sigma: glow.radius / 2)
+            over(&acc, soft.map { min(1, 2 * $0) * glow.strength }, glow.color)
+        }
         for (band, bc) in zip(bands, bandCovs).reversed() { over(&acc, bc, band.color) }
-        over(&acc, cov, fill)
+        if let gradient { overGradient(&acc, cov, gradient, width: width) } else { over(&acc, cov, fill) }
         var out = [UInt8](repeating: 0, count: n * 4)
         for i in 0..<n {
             let a = acc[i * 4 + 3]
@@ -67,6 +80,49 @@ enum TextLookCompositor {
             let k = 1 - a
             acc[i * 4] = r * a + acc[i * 4] * k
             acc[i * 4 + 1] = g * a + acc[i * 4 + 1] * k
+            acc[i * 4 + 2] = b * a + acc[i * 4 + 2] * k
+            acc[i * 4 + 3] = a + acc[i * 4 + 3] * k
+        }
+    }
+
+    /// The share of each pixel the plate covers: the union of its rounded rectangles.
+    static func plateCoverage(_ rects: [PlateRect], width: Int, height: Int) -> [Float] {
+        var out = [Float](repeating: 0, count: width * height)
+        for plate in rects {
+            let r = plate.rect
+            guard r.width > 0, r.height > 0 else { continue }
+            let radius = max(0, min(plate.radius, min(r.width, r.height) / 2))
+            let halfW = r.width / 2, halfH = r.height / 2, cx = r.x + halfW, cy = r.y + halfH
+            for y in max(0, Int(r.y.rounded(.down)) - 1)..<min(height, Int(r.maxY.rounded(.up)) + 1) {
+                let qy = abs(Double(y) + 0.5 - cy) - (halfH - radius)
+                for x in max(0, Int(r.x.rounded(.down)) - 1)..<min(width, Int(r.maxX.rounded(.up)) + 1) {
+                    let qx = abs(Double(x) + 0.5 - cx) - (halfW - radius)
+                    let distance = (max(qx, 0) * max(qx, 0) + max(qy, 0) * max(qy, 0)).squareRoot() + min(max(qx, qy), 0) - radius
+                    let c = Float(max(0, min(1, 0.5 - distance)))
+                    if c > out[y * width + x] { out[y * width + x] = c }
+                }
+            }
+        }
+        return out
+    }
+
+    /// Source-over of the gradient, scaled by `coverage`, onto the premultiplied accumulator.
+    static func overGradient(_ acc: inout [Float], _ coverage: [Float], _ g: Gradient, width: Int) {
+        let theta = g.angle * Double.pi / 180
+        let dx = cos(theta), dy = sin(theta)
+        let half = (g.bounds.width * abs(dx) + g.bounds.height * abs(dy)) / 2
+        let cx = g.bounds.x + g.bounds.width / 2, cy = g.bounds.y + g.bounds.height / 2
+        for i in 0..<coverage.count where coverage[i] > 0 {
+            let px = Double(i % width) + 0.5, py = Double(i / width) + 0.5
+            let t = half > 0 ? Float(max(0, min(1, ((px - cx) * dx + (py - cy) * dy) / (2 * half) + 0.5))) : 0.5
+            let r = Float(g.from.r) + (Float(g.to.r) - Float(g.from.r)) * t
+            let gr = Float(g.from.g) + (Float(g.to.g) - Float(g.from.g)) * t
+            let b = Float(g.from.b) + (Float(g.to.b) - Float(g.from.b)) * t
+            let a = coverage[i] * (Float(g.from.a) + (Float(g.to.a) - Float(g.from.a)) * t)
+            guard a > 0 else { continue }
+            let k = 1 - a
+            acc[i * 4] = r * a + acc[i * 4] * k
+            acc[i * 4 + 1] = gr * a + acc[i * 4 + 1] * k
             acc[i * 4 + 2] = b * a + acc[i * 4 + 2] * k
             acc[i * 4 + 3] = a + acc[i * 4 + 3] * k
         }
