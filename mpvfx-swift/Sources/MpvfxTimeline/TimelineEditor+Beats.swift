@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-// Hand-placed beat marks retained in the original media time.
+// Beat marks (hand-placed and analysed) retained in the original media time.
 import Foundation
 import MpvfxShared
 
@@ -21,7 +21,7 @@ extension TimelineEditor {
         guard let clip = editableBeatClip(clipId), let source = beatSourceFrame(clip, at: time) else {
             return false
         }
-        return !(clip.beats?.frames ?? []).contains(source)
+        return !(clip.beats?.allFrames ?? []).contains(source)
     }
 
     /// Add a mark through the document's validated, undoable audio edit path.
@@ -32,42 +32,103 @@ extension TimelineEditor {
         }
         var beats: NativeClipBeats = clip.beats ?? NativeClipBeats(frames: [])
         let frames: [Double] = beats.frames
-        guard !frames.contains(source) else {
+        guard !beats.allFrames.contains(source) else {
             return false
         }
         beats.frames = (frames + [source]).sorted()
         return storeBeats(beats, clipId: clipId, label: "Add beat")
     }
 
-    /// Move a source-frame mark, or delete it when the composition time is absent.
+    /// Move a source-frame mark, or delete it when the composition time is absent. A mark found by analysis can be
+    /// deleted, or moved, which makes it a hand-placed mark (a later analysis leaves it alone).
     @discardableResult
     public func editBeat(clipId: String, sourceFrame: Double, to time: Double?) -> Bool {
         guard let clip = editableBeatClip(clipId), var beats = clip.beats,
-            framesContain(beats, sourceFrame: sourceFrame)
+            beats.allFrames.contains(sourceFrame)
         else {
             return false
         }
-        let frames: [Double] = beats.frames
-
+        beats.frames = beats.frames.filter { $0 != sourceFrame }
+        if var analysis = beats.analysis, let index = analysis.frames.firstIndex(of: sourceFrame) {
+            analysis.frames.remove(at: index)
+            if analysis.strengths.indices.contains(index) { analysis.strengths.remove(at: index) }
+            beats.analysis = analysis
+        }
         guard let time else {
-            beats.frames = frames.filter { $0 != sourceFrame }
             return storeBeats(beats, clipId: clipId, label: "Delete beat")
         }
         guard let target = beatSourceFrame(clip, at: time), target != sourceFrame,
-            !frames.contains(target)
+            !(clip.beats?.allFrames ?? []).contains(target)
         else {
             return false
         }
-        beats.frames = (frames.filter { $0 != sourceFrame } + [target]).sorted()
+        beats.frames = (beats.frames + [target]).sorted()
         return storeBeats(beats, clipId: clipId, label: "Move beat")
+    }
+
+    /// What an analysis of `clipId` needs to read: the audio file's project path and the slice of the media the clip
+    /// plays, in seconds of the source. Nil for a clip that cannot hold beats (not audio, locked, or an unreadable
+    /// beat version or speed ramp) or whose asset has no file.
+    public func beatAnalysisSource(clipId: String) -> TimelineBeatAnalysisSource? {
+        guard let clip = editableBeatClip(clipId),
+            let asset = document.assets.first(where: { $0.id == clip.assetId }), let source = asset.source, !source.isEmpty
+        else {
+            return nil
+        }
+        let rate: Double = clip.playbackRate.map { $0.numerator / $0.denominator } ?? 1
+        let start: Double = clip.sourceInFrame + (clip.sourceInFraction.map { $0.numerator / $0.denominator } ?? 0)
+        return TimelineBeatAnalysisSource(
+            clipId: clipId, assetSource: source, startSeconds: start / fps,
+            durationSeconds: clip.durationFrames * rate / fps)
+    }
+
+    /// Replaces the clip's analysed marks with `marks` (seconds from the start of the media, with a 0...1 strength),
+    /// leaving hand-placed marks alone, as one undo step. Marks that fall on the same frame keep the stronger one;
+    /// marks past the end of the media are dropped. No marks clears the analysed ones. True when the marks are stored or
+    /// already were (that adds no undo step); false when the clip cannot hold beats or a setting is out of range.
+    @discardableResult
+    public func replaceAnalysisBeats(
+        clipId: String, marks: [(seconds: Double, strength: Double)], sensitivity: Double, every: Int
+    ) -> Bool {
+        guard let clip = editableBeatClip(clipId), sensitivity.isFinite, (0...1).contains(sensitivity),
+            NativeBeatAnalysis.everyChoices.contains(Double(every)),
+            let length = document.assets.first(where: { $0.id == clip.assetId })?.durationFrames
+        else {
+            return false
+        }
+        var byFrame: [Double: Double] = [:]
+        for mark in marks where mark.seconds.isFinite && mark.seconds >= 0 {
+            let frame: Double = (mark.seconds * fps).rounded()
+            guard frame < length else {
+                continue
+            }
+            let strength: Double = mark.strength.isFinite ? min(1, max(0, mark.strength)) : 0
+            byFrame[frame] = max(byFrame[frame] ?? 0, strength)
+        }
+        var beats: NativeClipBeats = clip.beats ?? NativeClipBeats(frames: [])
+        let frames: [Double] = byFrame.keys.sorted()
+        beats.analysis = frames.isEmpty
+            ? nil
+            : NativeBeatAnalysis(
+                frames: frames, strengths: frames.map { byFrame[$0] ?? 0 }, sensitivity: sensitivity, every: Double(every))
+        if beats.analysis == clip.beats?.analysis {
+            return true
+        }
+        return storeBeats(beats, clipId: clipId, label: "Find beats")
     }
 }
 
-extension TimelineEditor {
-    private func framesContain(_ beats: NativeClipBeats, sourceFrame: Double) -> Bool {
-        beats.frames.contains(sourceFrame)
-    }
+/// The part of a clip's audio an analysis reads. A result is applied only if the clip still reads the same slice of the
+/// same file, so a trim made while the analysis ran is never overwritten by it.
+public struct TimelineBeatAnalysisSource: Equatable, Sendable {
+    public var clipId: String
+    /// The asset's `source`, relative to the project folder.
+    public var assetSource: String
+    public var startSeconds: Double
+    public var durationSeconds: Double
+}
 
+extension TimelineEditor {
     private func editableBeatClip(_ clipId: String) -> NativeProjectClip? {
         guard !isClipLocked(clipId), let (_, clip) = clip(clipId),
             document.assets.first(where: { $0.id == clip.assetId })?.kind == .audio,
@@ -94,7 +155,7 @@ extension TimelineEditor {
 
     private func storeBeats(_ beats: NativeClipBeats, clipId: String, label: String) -> Bool {
         updateAudioClip(clipId, label) { clip in
-            clip.beats = !beats.frames.isEmpty ? beats : nil
+            clip.beats = !beats.frames.isEmpty || beats.analysis != nil ? beats : nil
         }
     }
 }

@@ -34,6 +34,8 @@ public final class TimelineController {
         case trim(clipId: String, edge: TrimEdge, ripple: Bool)
         case slip(clipId: String, x: Double)
         case roll(clipId: String, edge: TrimEdge)
+        /// A fade handle drag; `grab` is where the pointer took the handle, measured from the end of the ramp.
+        case fade(clipId: String, edge: TrimEdge, grab: Double)
         case pendingMarquee(x: Double, y: Double, base: Set<String>)
         case marquee(x: Double, y: Double, base: Set<String>)
     }
@@ -113,6 +115,9 @@ public final class TimelineController {
     public var holdSeconds = TimelineEditor.defaultHoldSeconds
     /// An edit key was refused, with the reason to show (a locked track, no clip under the playhead). Unset: silent.
     public var onEditRefused: ((_ message: String) -> Void)?
+    /// Clip menu "Find beats" on an audio clip: the host analyses it (`TimelineBeatSearch`) and stores the marks. Unset: the
+    /// row is left out.
+    public var onFindBeats: ((_ clipId: String) -> Void)?
     /// Keyframe menu "Edit Easing…": show the inspector's easing editor on these keys of the clip. Unset: the item is
     /// disabled.
     public var onEditKeyframeEasing: ((_ clipId: String, _ refs: Set<TimelineKeyframeRef>) -> Void)?
@@ -267,6 +272,7 @@ public final class TimelineController {
         }
         // Diamonds sit above the clip body and trim handles (TimelineClipDiamonds z-index 5, pointerdown stops there).
         if let kh = view.keyframeHit(x: x, y: y) { keyframePointerDown(kh, x: x, y: y, shift: shift); return }
+        if fadePointerDown(x: x, y: y) { return }
         if tool == .select, beatPointerDown(x: x, y: y, alt: keys.alt) { return }
         hitPointerDown(hit, x: x, y: y, keys: keys)
         needsDisplay?()
@@ -307,7 +313,8 @@ public final class TimelineController {
         guard let g = gesture else {
             if tool == .select, keyframeHover(x: x, y: y) { return }
             let hit = hitTest(x: x, y: y); updateHeaderHover(hit, x: x, y: y)
-            let (hovered, cur) = hoverState(hit)
+            var (hovered, cur) = hoverState(hit)
+            if let f = fadeHandleHit(x: x, y: y) { hovered = f.clipId; cur = .resize }
             if hovered != view.hoveredClip || cur != cursor { view.hoveredClip = hovered; cursor = cur; needsDisplay?() }
             return
         }
@@ -364,6 +371,7 @@ public final class TimelineController {
             view.drag = .trim(clipId: id, edge: edge, time: t, snapTime: s.target?.time)
             view.snapType = s.target?.type
             needsDisplay?()
+        case let .fade(id, edge, grab): fadeMove(clipId: id, edge: edge, grab: grab, x: x)
         default: slipRollMove(g, x: x)   // .slip, .roll
         }
     }
@@ -398,6 +406,7 @@ public final class TimelineController {
             let frame = (t * fps).rounded()
             if rippleTrim { editor.rippleTrim(clipId: id, edge: edge, toFrame: frame); return }
             editor.apply(edge == .start ? .trimIn(address: addr, startFrame: frame) : .trimOut(address: addr, endFrameExclusive: frame))
+        case .fade: commitFade(drag)
         default: commitSlipRoll(drag)    // .slip, .roll
         }
     }
@@ -440,6 +449,7 @@ public final class TimelineController {
             case "x": guard copySelection() else { return false }; return deleteSelection()
             case "v": return pasteClipboard()
             case "k" where !k.alt: return keySelectedProperties(animatedOnly: k.shift)
+            case "b" where k.shift && !k.alt: return cutSelectionToBeats()
             default: return false
             }
         }

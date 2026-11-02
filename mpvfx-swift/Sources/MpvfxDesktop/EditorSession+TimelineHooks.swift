@@ -16,6 +16,7 @@ import MpvfxShared
 import MpvfxTimeline
 import MpvfxPanels
 import MpvfxDesktopCore
+import MpvfxRuntime
 
 /// Timeline callbacks the app answers (group rows, toolbar, Remove silence, keyframe menu):
 /// the audio-group FX button and name open the bus rack in the inspector; Remove silence analyses the selected
@@ -33,7 +34,38 @@ extension EditorSession {
         timeline.importForPaste = { [weak self] paths, done in self?.importForPaste(paths, done) }
         timeline.onAddText = { [weak self] time in self?.addText(at: time) }
         timeline.onEditKeyframeEasing = { [weak self] clipId, refs in self?.openKeyframeEasing(clipId: clipId, refs: refs) }
-        // The timeline stores hand-placed beats directly on the selected audio clip (no analysis needed).
+        // Hand-placed beats are stored directly on the selected audio clip; Find beats analyses it first.
+        timeline.onFindBeats = { [weak self] clipId in self?.findBeats(clipId: clipId) }
+    }
+
+    /// Clip menu "Find beats": analyse the audio clip off the main thread (decode its slice of the media, onset analysis)
+    /// and store the marks as the clip's analysed beats in one undo step. Hand-placed marks stay. A second request while
+    /// one runs cancels the first.
+    func findBeats(clipId: String) {
+        let toast: (String, Bool) -> Void = { [weak self] m, e in self?.player.view.showToast(m, isError: e); self?.redraw() }
+        guard let root = projectDir?.path else { toast("No active project", true); return }
+        beatSearch?.cancel()
+        let search = TimelineBeatSearch(editor: editor, analysis: { source, options, isCancelled, progress in
+            let request = BeatAnalysisRequest(source: source.assetSource, sourceStart: source.startSeconds,
+                                              sourceDuration: source.durationSeconds, sensitivity: options.sensitivity, every: options.every)
+            do {
+                return try analyzeProjectAudioBeats(root, request, isCancelled: isCancelled, progress: progress)
+            } catch is MediaAbortError {
+                return nil
+            }
+        })
+        search.onFinish = { [weak self, weak search] outcome in
+            switch outcome {
+            case .applied(let marks): toast(marks == 0 ? "No beats found in this clip" : "Found \(marks) beats", false)
+            case .cancelled: toast("Find beats cancelled", false)
+            case .clipChanged: toast("The clip changed during analysis. Run Find beats again.", true)
+            case .failed(let message): toast(message, true)
+            }
+            if self?.beatSearch === search { self?.beatSearch = nil }
+        }
+        guard search.start(clipId: clipId) else { toast("Select an audio clip with a media file to find its beats", true); return }
+        beatSearch = search
+        toast("Finding beats…", false)
     }
 
     /// T: a new text layer at the playhead, selected, with its Text section open in Design.

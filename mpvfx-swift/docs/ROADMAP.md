@@ -21,7 +21,7 @@ Landed since the beta list was first written (evidence in [STATUS.md](STATUS.md)
 | Area | What landed |
 | --- | --- |
 | Projects | Open any project (File > Open, Open Recent, the Media panel's Open project…), a moved or deleted project folder is detected, save failures surface once, undo survives a restart |
-| Editing | Clips show content and timecode; slip and roll; media fit (Fit / Fill / Stretch); clip fades in the document, playback and export; cut transitions (dissolve, dip, wipe, push); align and distribute; background generators; layer moves |
+| Editing | Clips show content and timecode; slip and roll; media fit (Fit / Fill / Stretch); clip fades in the document, playback and export, with drag handles on the timeline; cut to beats from hand-placed marks; cut transitions (dissolve, dip, wipe, push); align and distribute; background generators; layer moves |
 | Grading | The full grade with `grade.*` keyframes, saved looks, auto balance, reference look matching, blend modes and a colour key; program scopes in the Grade row and a dockable Scopes panel |
 | Audio and markers | The dockable Mixer, sequence markers and the Markers panel, grouped text looks |
 | Platform and checks | The no-Vulkan-headers Linux build, the weekly doc link check and the doc reference check run in CI; preview memory stays within its budgets (measured, see [MEMORY.md](MEMORY.md)); each frame converts to a canvas surface once |

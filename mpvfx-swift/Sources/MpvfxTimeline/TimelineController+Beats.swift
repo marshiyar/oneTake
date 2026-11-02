@@ -117,3 +117,23 @@ extension TimelineController {
         return false
     }
 }
+
+extension TimelineController {
+    /// Why ⇧⌘B cannot cut the selection to the beat right now (shown as the menu row's hint), nil when it can.
+    public var cutToBeatsRefusal: String? {
+        guard let editor else { return "No project" }
+        return editor.beatCutRefusal(clipIds: view.selection)
+    }
+
+    /// ⇧⌘B: lay the selected clips end to end with their cuts on the beats of the music under them. A refusal is
+    /// reported through `onEditRefused`; a clip left at its length is reported by the editor's notice.
+    @discardableResult
+    public func cutSelectionToBeats() -> Bool {
+        guard let editor else { return false }
+        guard editor.cutToBeats(clipIds: view.selection) != nil else {
+            onEditRefused?(editor.lastFailure?.message ?? "The clips could not be cut to the beat"); return false
+        }
+        needsDisplay?()
+        return true
+    }
+}

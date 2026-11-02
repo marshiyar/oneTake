@@ -18,7 +18,13 @@ import MpvfxTheme
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
-        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
+        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, fadeIn, fadeOut, removeFades, cutToBeats, findBeats, detachAudio, reattachAudio, revealSource, showSourceFile, delete
+    }
+    /// What the Fade rows show: whether the clip has a fade-in / fade-out now, and whether they can be changed (not on a
+    /// locked track).
+    public struct FadeState: Equatable, Sendable {
+        public var fadeIn: Bool, fadeOut: Bool, enabled: Bool
+        public init(fadeIn: Bool, fadeOut: Bool, enabled: Bool = true) { self.fadeIn = fadeIn; self.fadeOut = fadeOut; self.enabled = enabled }
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -74,12 +80,13 @@ public struct TimelineClipMenu: Equatable, Sendable {
         return itemRects().first { px >= $0.1.x && px <= $0.1.maxX && py >= $0.1.y && py < $0.1.maxY }?.0
     }
 
-    /// Entries for a clip of `kind`: split, the clipboard group, thumbnails, mute and pitch, the audio link, delete.
+    /// Entries for a clip of `kind`: split, the clipboard group, thumbnails, mute and pitch, fades, the audio link, delete.
     /// `keepsPitch` is the clip's pitch option, nil for a clip without sound (no row).
     public static func entries(kind: TimelineClipKind, splitEnabled: Bool, thumbnails: Bool, muted: Bool,
                                canReattach: Bool, canDetach: Bool, canMute: Bool = true,
                                canPaste: Bool = false, canPasteGrade: Bool = false, gradePasteReason: String? = nil,
-                               keepsPitch: Bool? = nil, disabled: Bool = false) -> [Entry] {
+                               keepsPitch: Bool? = nil, disabled: Bool = false, fades: FadeState? = nil,
+                               cutToBeatsReason: String?? = nil, canFindBeats: Bool = false) -> [Entry] {
         var e: [Entry] = []
         let hasSplit = kind == .video || kind == .audio || kind == .image
         if hasSplit { e.append(.item(Item(action: .split, label: "Split", hint: "S", enabled: splitEnabled))); e.append(.divider) }
@@ -108,6 +115,21 @@ public struct TimelineClipMenu: Equatable, Sendable {
         }
         if let keepsPitch { e.append(.item(Item(action: .keepPitch, label: "Keep audio pitch", checked: keepsPitch))) }
         if e.last != .divider { e.append(.divider) }
+        if let fades {
+            e.append(.item(Item(action: .fadeIn, label: "Fade In", enabled: fades.enabled, checked: fades.fadeIn)))
+            e.append(.item(Item(action: .fadeOut, label: "Fade Out", enabled: fades.enabled, checked: fades.fadeOut)))
+            e.append(.item(Item(action: .removeFades, label: "Remove Fades", enabled: fades.enabled && (fades.fadeIn || fades.fadeOut))))
+            e.append(.divider)
+        }
+        // `cutToBeatsReason`: nil leaves the row out; .some(nil) shows it enabled; .some(reason) shows it disabled with the reason.
+        if (kind == .video || kind == .image), let reason = cutToBeatsReason {
+            e.append(.item(Item(action: .cutToBeats, label: "Cut to beats", hint: reason ?? "⇧⌘B", enabled: reason == nil)))
+            e.append(.divider)
+        }
+        if kind == .audio && canFindBeats {
+            e.append(.item(Item(action: .findBeats, label: "Find beats")))
+            e.append(.divider)
+        }
         if canReattach { e.append(.item(Item(action: .reattachAudio, label: "Reattach audio"))); e.append(.divider) }
         else if canDetach { e.append(.item(Item(action: .detachAudio, label: "Detach audio"))); e.append(.divider) }
         e.append(.item(Item(action: .delete, label: "Delete", hint: "⌫", destructive: true)))
