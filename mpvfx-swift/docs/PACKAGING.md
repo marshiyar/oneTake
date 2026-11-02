@@ -34,20 +34,8 @@ with the app's own folder. To move to a newer engine: `python3 scripts/fetch-bin
 
 ## Where they are built
 
-GitHub Actions in this repository (`.github/workflows/`), on every pull request into `main`, every push to `main`,
-every night and every push of a `v*` tag: `mpvfx-ci.yml` (Linux, Windows) and `mpvfx-macos.yml` (macOS). Either can also be run by hand on any
-branch (Actions > workflow > Run workflow; "full tests" ignores recorded passes, and for macOS "Skip the test suite"
-gives a packaging-only run). Each OS has one build, package and install-smoke job and runs its tests beside it as 4
-shards (`linux test (…)`, `windows test (…)`, `macos / test (…)`), the same shard list on every OS
-(`.github/ci/test-shards.py`, balanced by measured test time). A shard that passed on an OS is not rerun there while
-every file its tests are built from (and `binaries.lock`) is unchanged (cache entry `<os>-pass-<shard>-<key>`). The
-nightly run ignores every recorded pass and runs all of it. A pull request builds and tests only the platforms its
-files can affect (`.github/ci/platforms.py`: a Windows-only change never waits for a Mac; anything shared runs all
-three), and the macOS jobs start only after the fast Linux checks passed. `ci-ok` passes when every job passed or was
-skipped for a recorded pass or an unaffected platform. Pull requests build and test but never publish. The macOS jobs run on GitHub's `xcode-27` runner with
-Xcode pinned (`XCODE_VERSION` in `mpvfx-macos.yml`). Each job installs its installer on the runner, launches the
-installed app with a hidden window (the `*-smoke.png` snapshot) with the build tree and the fetched libraries moved
-away, and, on Windows and Linux, uninstalls it again.
+By hand, for now: see "Building an installer by hand". CI ([ci.yml](../../.github/workflows/ci.yml)) builds and tests on Linux
+and Windows and doesn't package or publish.
 
 ## Symbols: stripped before packaging, verified after
 
@@ -58,101 +46,11 @@ No installer or portable archive carries symbols. The Linux portable binary and 
 artifacts `symbols-linux` (`.debug`) and `symbols-macos` (`.dSYM.tar.gz`) of the run that built the release, for
 symbolicating a crash report; they are never a release asset.
 
-`.github/workflows/strip-check.yml` verifies it separately: after every `mpvfx-ci` run that built installers (or by
-hand with a run id) it downloads that run's `linux`, `windows` and `macos` artifacts, unpacks each the way a user would
-(tar, dpkg, zip and the IExpress setup.exe, the mounted disk image) and reads every binary's own headers with
-`.github/ci/strip-check.py`: no ELF `.symtab` or `.debug_*` section, no PE symbol table or CodeView record, no Mach-O
-stab or local symbol. The engine libraries pinned in `binaries.lock` are held to the same rule; the Swift and MSVC
-runtime DLLs the Windows build redistributes are reported, not judged. The table of every binary is in the run's
-summary. The check is not required for merging: it reports on what was published.
+Nothing checks this automatically at the moment.
 
-## Releases: nightly and official (Linux and Windows from CI, macOS by hand)
+## Releases
 
-Owner ruling 2026-10-22: there is no macOS in CI. Linux and Windows installers come from CI as below; the macOS
-disk image is built, tested and signed on the owner's Mac (which has a real GPU — CI runners have only a virtual
-one, so GPU-graded tests and the Metal smoke mean nothing there) and attached to the release by hand:
-
-```sh
-# macOS, Developer ID signed and notarized (MACOS_SIGN_IDENTITY and APPLE_* set, see above):
-swift build -c release && sh packaging/macos/package.sh dist developer-id
-swift test   # full suite on the real GPU before attaching the image
-```
-
-Then attach the `dist/MpVFX-*-developer-verified.dmg` to whichever GitHub release you choose — a nightly or a
-versioned tag — alongside the CI-built Linux and Windows installers, whenever you judge it right. There is no
-macOS schedule: no nightly Mac build, no automatic attachment. The publish jobs never expect a macOS artifact
-from CI.
-
-When every platform is green, one publish job (`.github/ci/publish.sh`) uploads all installers to a single GitHub
-release:
-
-- **Nightly builds** are pre-releases named `nightly-<commit>` (the commit's first 7 hex digits), titled
-  `oneTake nightly <date> (<commit>)`, made by every green run of `main` (a push, the nightly run or a manual run).
-  A rerun on the same commit uploads into the same release. They are untested development builds, never marked
-  latest; only the newest 7 are kept.
-- **Official releases** come from pushing a `v*` tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`. The tag's
-  version (without the `v`) must equal `packaging/VERSION`, or the publish job fails before uploading anything. The
-  release is titled `oneTake <version>`, is the repository's "latest" release (`releases/latest`), and is never
-  deleted.
-
-Pull requests and other branches build and test but never publish. Older `build-main-*` releases from before this
-scheme are left as they are.
-
-## Merging
-
-`main` requires `ci-ok` and nothing else: a pull request merges, or auto-merges, once it passes. The project's GitHub
-App (installed on this repository only; repository secrets `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY`) only writes the
-merge train's comments and labels and turns on auto-merge (`.github/workflows/merge-train.yml`); it approves nothing.
-
-## Project board
-
-The board is the owner's private GitHub Project "oneTake launch". It shows
-every open issue and pull request, and those closed in the last 14 days, on a kanban by **Status**: Backlog, Ready
-(label `buildable`), In progress (label `in-progress`, or a draft pull request), Blocked (label `blocked`), In review
-(an open pull request) and Done (closed or merged). Where the project has these fields, it also fills **Priority**
-from `priority:P0`..`P3`, **Area** from `area:*`, **Size** from `size:*`, **Milestone** (single select) and
-**Iteration** (the iteration titled like the milestone) from the milestone, and **Target date** from the milestone's
-due date, which is what the roadmap view lays out. Fields are read from the project on every run; only Status is
-assumed, and a field that is missing, or of a type the sync does not set, is named in the run log and skipped.
-
-`.github/workflows/project-board.yml` runs `.github/ci/project_board.py` on issue and pull request events, hourly,
-and by hand (Actions > project-board > Run workflow: `full` resyncs every issue and pull request, closed ones
-included; `dry_run` logs the changes without writing; `create_options` adds missing single-select options such as
-the Status columns above, keeping the existing ones). Each run is a full pass that writes only values that differ;
-it never removes an item or clears a field, and leaves an item the owner archived alone. Labels drive the board:
-change the label, not the card.
-
-**One owner step.** Projects v2 is reachable only through GraphQL with a token that holds the Projects permission;
-the workflow's own token "is scoped to the repository level and cannot access projects" ([GitHub Docs, Automating
-Projects using Actions](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/automating-projects-using-actions),
-read 2026-10-21). Until the secret below exists, every run prints a notice and passes.
-
-1. github.com > Settings > Developer settings > Personal access tokens > Fine-grained tokens > Generate new token:
-   resource owner marshiyar, repository access "Only select repositories" > oneTake with Issues and Pull requests
-   read-only, and the account permission **Projects: Read and write**. If the token page offers no Projects
-   permission for a personal account, use a classic token with the `project` scope instead, which is the route the
-   page above documents for user-owned projects.
-2. This repository > Settings > Secrets and variables > Actions > New repository secret: `PROJECT_TOKEN`.
-3. Only if the board is not marshiyar's project 5: under the same page's Variables tab, set `PROJECT_OWNER` and
-   `PROJECT_NUMBER` (the number in the project's URL).
-
-Then run the workflow once by hand with `create_options` on, and check the log's change lines against the board.
-
-## Codacy findings to Codex
-
-`.github/workflows/codacy-to-codex.yml` hands Codacy's important findings to Codex with no session in the loop.
-When `codacy-production[bot]` posts a review or a review comment on a pull request from this repository (never a
-fork), `.github/ci/codacy_to_codex.py`, checked out from `main`, reads all of Codacy's comments on it and posts, as the
-review App, one `@codex Fix this Codacy finding on this PR: <file>:<line> — ...` task for each finding that is:
-
-- HIGH risk (`:red_circle:`, or CRITICAL) or a Security finding; MEDIUM and LOW findings are left alone;
-- still on the diff, its thread not resolved and not replied to by anyone but Codacy;
-- not handed over before (the task carries `<!-- codacy-to-codex:<comment id> -->`, and only the App's comments count);
-- within five tasks per pull request per hour; the rest wait for Codacy's next comment.
-
-The finding text is quoted as plain text, without `@`, backticks or HTML, at most 600 characters. Codex replies with
-one unified diff, which `codex-apply.yml` applies as usual; `codex_patch.py` refuses a Codex change to
-`codacy_to_codex.py` itself, as it does for the other scripts that run with a token.
+Installers are built by hand on each platform (see "Building an installer by hand") and attached to a release.
 
 ## macOS signing: one-time setup (owner)
 
@@ -188,9 +86,6 @@ reads bundled packs read-only and user packs from `<userData>/sound-packs/`.
 ## Building an installer by hand
 
 From `mpvfx-swift/`, after `python3 scripts/fetch-binaries.py`:
-
-CI skips the macOS package job on pull requests and the merge queue (tests only, `.github/workflows/mpvfx-macos.yml`):
-a disk image for a PR comes from this hand build instead, which is also the route for a local release candidate.
 
 ```sh
 # macOS, ad-hoc signed for this machine:
