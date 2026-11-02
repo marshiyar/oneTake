@@ -68,6 +68,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var generator: NativeFill?
     public var isProcedural: Bool { kind == .text || kind == .shape || kind == .generator }
     public var text: NativeClipText?
+    /// Where a text layer with a reveal or unreveal is in its clip (nil for any other layer).
+    public var textFrame: TextRevealFrame?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
     /// A dip transition's colour laid over the picture (nil: none), and how much of it (0…1).
@@ -447,6 +449,9 @@ public struct PreviewComposition {
         out.shape = e.kind == .shape ? c.shape : nil
         out.generator = e.kind == .generator ? c.generator : nil
         out.text = e.kind == .text ? c.text : nil
+        if out.text?.reveal?.isSupported == true || out.text?.unreveal?.isSupported == true {
+            out.textFrame = TextRevealFrame(frame: local, clipFrames: c.durationFrames, fps: fps)
+        }
         out.offlineFileName = e.offlineFileName
         out.fit = c.fit
         out.mediaAspect = e.mediaAspect
@@ -660,12 +665,12 @@ public enum PreviewPainter {
                 NativeShapeRendering.draw(shape, box: box, scale: s, opacity: layer.opacity, on: c)
             } else if let text = layer.text {
                 if layer.masks.isEmpty {
-                    if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale) {
+                    if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale, frame: layer.textFrame) {
                         c.drawImage(look.image, in: look.rect, opacity: layer.opacity)
                     } else {
-                        TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                        NativeTextRendering.draw(text, in: box, scale: s, on: c, opacity: layer.opacity, frame: layer.textFrame)
                     }
-                } else if let image = maskedText(text, masks: layer.masks, box: box, scale: s) {
+                } else if let image = maskedText(text, masks: layer.masks, box: box, scale: s, frame: layer.textFrame) {
                     // A masked text layer draws its fill only: the look reaches outside the box the mask is cut from.
                     c.drawImage(image, in: box, opacity: layer.opacity)
                 }
@@ -688,12 +693,12 @@ public enum PreviewPainter {
     }
 
     private static func maskedText(_ text: NativeClipText, masks: [NativeClipMask], box: CanvasRect,
-                                   scale: Double) -> CanvasImage? {
+                                   scale: Double, frame: TextRevealFrame?) -> CanvasImage? {
         let width = max(1, Int(box.width.rounded(.up))), height = max(1, Int(box.height.rounded(.up)))
         guard let canvas = try? RasterCanvas(width: width, height: height) else { return nil }
         canvas.clear(.transparent)
-        TextLayout.draw(NativeTextRendering.block(text, scale: scale),
-                        in: CanvasRect(x: 0, y: 0, width: box.width, height: box.height), on: canvas, opacity: 1)
+        NativeTextRendering.draw(text, in: CanvasRect(x: 0, y: 0, width: box.width, height: box.height), scale: scale, on: canvas,
+                                 opacity: 1, frame: frame)
         return MaskCoverageRasterizer.applying(masks, to: canvas.image())
     }
 

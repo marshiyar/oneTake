@@ -22,6 +22,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Text reveals: a text layer can arrive and leave per character, word or line (fade, rise, grow or type on, with an
+  optional blinking cursor), in forward, backward, centre-out or seeded random order, the same in preview and export.
+  The controls come in a later change; the project file already stores them.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

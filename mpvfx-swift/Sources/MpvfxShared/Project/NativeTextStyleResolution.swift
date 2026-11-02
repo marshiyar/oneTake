@@ -28,6 +28,8 @@ public func resolvedText(_ clip: NativeProjectClip, _ styles: [NativeTextStyle])
         return nil
     }
     result.content = text.content
+    result.reveal = text.reveal
+    result.unreveal = text.unreveal
     for field in link.overrides { copyNativeTextStyleField(field, from: text, to: &result) }
     return result
 }

@@ -26,12 +26,13 @@ enum TextLookRenderer {
     /// draws without its look and the reason is logged.
     static let maxPixels = 24_000_000
 
-    private struct Key: Hashable { let text: NativeClipText; let width: Int; let height: Int; let scale: Double }
+    private struct Key: Hashable { let text: NativeClipText; let width: Int; let height: Int; let scale: Double; let plan: TextRevealPlan? }
     private static let cache = LookCache()
 
     /// The look drawn for `text` in a box of `box` view units, with `s` view units per canvas px and `deviceScale`
     /// device pixels per view unit. Nil when the text has no (supported) look or this platform cannot rasterize text.
-    static func render(_ text: NativeClipText, box: CanvasRect, scale s: Double, deviceScale k: Double) -> Rendered? {
+    static func render(_ text: NativeClipText, box: CanvasRect, scale s: Double, deviceScale k: Double,
+                       frame: TextRevealFrame? = nil) -> Rendered? {
         guard let look = text.look, look.isSupported, !look.isEmpty else { return nil }
         let k = max(k, 1e-3)
         let pxPerCanvas = s * k
@@ -49,13 +50,17 @@ enum TextLookRenderer {
             FileHandle.standardError.write(Data("[MpVFX] text look skipped: \(width + 2 * inset) x \(height + 2 * inset) px is too large\n".utf8))
             return nil
         }
-        let key = Key(text: text, width: width, height: height, scale: pxPerCanvas)
+        // A frame in which a reveal changes the picture is cached by what it shows; any other frame by the text alone.
+        let plan = frame.flatMap { TextRevealRenderer.plan(text, block: NativeTextRendering.block(text, scale: pxPerCanvas),
+                                                           width: Double(width), frame: $0)?.plan }
+        let key = Key(text: text, width: width, height: height, scale: pxPerCanvas, plan: plan)
         let rect = CanvasRect(x: box.x - Double(inset) / k, y: box.y - Double(inset) / k,
                               width: Double(width + 2 * inset) / k, height: Double(height + 2 * inset) / k)
         if let hit = cache.get(key) { return Rendered(image: hit, rect: rect) }
         var letters = text
         letters.color = NativeClipText.newLayerColor; letters.look = nil
-        guard let rgba = NativeTextRendering.rasterize(letters, width: width, height: height, scale: pxPerCanvas, inset: inset) else { return nil }
+        guard let rgba = NativeTextRendering.rasterize(letters, width: width, height: height, scale: pxPerCanvas, inset: inset,
+                                                  frame: plan == nil ? nil : frame) else { return nil }
         let coverage = stride(from: 3, to: rgba.count, by: 4).map { rgba[$0] }
         let fill = CanvasColor.documentColor(text.resolvedColor)
         let out = TextLookCompositor.compose(coverage: coverage, width: width + 2 * inset, height: height + 2 * inset,

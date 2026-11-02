@@ -12,6 +12,17 @@ style/link versions and kinds remain serialized and undrawn with an open notice.
 slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
 and `TextStyleRenderingTests`.
 
+Text reveals (#277): `clip.text.reveal` and `clip.text.unreveal` (`"v": 1`; unit characters, words or lines; style fade,
+rise, grow or typeOn with an optional blinking cursor; stagger and unit length in frames; order forward, backward, center
+or random with a seed) make a text layer arrive at the start of its clip and leave at its end. Units come from
+`TextLayout.units`, so wrapping, letter spacing and right-to-left reading order match the static text; punctuation
+arrives with the word before it. When the two reveals do not fit the clip both are compressed by the same factor
+(`NativeTextRevealTiming.isCompressed`). A frame that shows every letter is drawn as plain text, so a layer without
+a cursor is drawn unit by unit only while it animates. Reveals belong to the layer, not to a text style. Values outside the document rules
+are typed validator issues; a reveal from a newer version is kept unchanged, not drawn, and noticed on open.
+`TimelineEditor.setTextReveal` edits them in one undo step; the Moves-group rows are a later slice. Covered by
+`NativeTextRevealTests`, `TextRevealTests` and `InspectorTextAuditTests`.
+
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript
 or a web view. The design audit in §11 is the floor for how the editor looks.

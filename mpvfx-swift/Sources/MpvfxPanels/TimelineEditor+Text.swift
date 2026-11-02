@@ -180,11 +180,31 @@ public extension TimelineEditor {
         return editClipText(clipId: clipId) { $0.look = (look?.isEmpty ?? true) ? nil : look }
     }
 
+    /// How the text arrives (`leaving` false) or leaves (`leaving` true); nil removes it. One undo step; false when a
+    /// value breaks a document rule (a unit, style or order that is not listed, frames or a seed out of range).
+    @discardableResult
+    func setTextReveal(clipId: String, leaving: Bool = false, _ reveal: NativeTextReveal?) -> Bool {
+        if let r = reveal {
+            guard r.isSupported,
+                  r.resolvedUnit.isIn(NativeTextReveal.units), r.resolvedStyle.isIn(NativeTextReveal.styles),
+                  r.resolvedOrder.isIn(NativeTextReveal.orders),
+                  r.resolvedStaggerFrames.isFinite, NativeTextReveal.staggerFramesRange.contains(r.resolvedStaggerFrames),
+                  r.resolvedUnitFrames.isFinite, NativeTextReveal.unitFramesRange.contains(r.resolvedUnitFrames),
+                  NativeTextReveal.seedRange.contains(r.resolvedSeed) else { return false }
+        }
+        let stored = reveal?.normalized
+        return editClipText(clipId: clipId) { if leaving { $0.unreveal = stored } else { $0.reveal = stored } }
+    }
+
     @discardableResult
     func setTextFontStyle(clipId: String, _ style: String?) -> Bool {
         if let v = style, !NativeClipText.fontStyles.contains(v) { return false }
         return editClipText(clipId: clipId) { $0.fontStyle = style == "normal" ? nil : style }
     }
+}
+
+private extension String {
+    func isIn(_ allowed: [String]) -> Bool { allowed.contains(self) }
 }
 
 /// normalizeTextMetricValue for the inspector's typed values: "1.5" / "24px" / "150%" / "normal".
