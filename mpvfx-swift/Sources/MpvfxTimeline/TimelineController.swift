@@ -267,6 +267,7 @@ public final class TimelineController {
         if tool == .razor, x >= TimelineLayout.contentOrigin, y >= TimelineLayout.rulerHeight {
             razorClick(x: x, hit: hit, shift: shift); return
         }
+        if tool == .select, wedgePointerDown(x: x, y: y) { needsDisplay?(); return }
         // Diamonds sit above the clip body and trim handles (TimelineClipDiamonds z-index 5, pointerdown stops there).
         if let kh = view.keyframeHit(x: x, y: y) { keyframePointerDown(kh, x: x, y: y, shift: shift); return }
         if tool == .select, beatPointerDown(x: x, y: y, alt: keys.alt) { return }
@@ -285,6 +286,7 @@ public final class TimelineController {
     }
 
     public func pointerMove(x: Double, y: Double) {
+        if view.wedgeDrag != nil { wedgeMove(x: x); return }
         if beatDrag != nil {
             beatDrag?.time = view.time(forX: x)
             view.beatDragTime = beatDrag?.time
@@ -371,6 +373,7 @@ public final class TimelineController {
     }
 
     public func pointerUp(x: Double, y: Double) {
+        if view.wedgeDrag != nil { wedgeUp(); return }
         if let drag = beatDrag {
             beatDrag = nil; view.beatDragTime = nil
             _ = editor?.editBeat(clipId: drag.clipId, sourceFrame: drag.source, to: view.time(forX: x))

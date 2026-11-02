@@ -22,6 +22,7 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Edit moves in the Moves group in Design, drag the In and Out wedges at the ends of a clip to set their length, and copy, paste or remove moves from the clip menu.
 - Draw rectangles, ellipses, lines and arrows on the stage with the Shape tool (Shift+S), and edit them in the Shape group in Design.
 - A Layout menu on the stage (Option+Cmd+G) arranges the selected clips side by side, stacked, three up, in a grid, large left or picture in picture; Option and the arrow keys move the small picture, Option+Cmd+[ and ] swap cells.
 
