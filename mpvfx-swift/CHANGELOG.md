@@ -18,6 +18,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   double-click to retype it, + adds one at the playhead.
 - Caption look: the preview shows the caption on screen with the track's font, size, outline, plate, position and
   safe area; a cue over two lines is badged on the lane.
+- Caption list: a Captions panel with a row per cue; keyboard edits, frame nudges, split and join, and find and replace
+  across all cues (Replace all is one undo step); rows read too fast are badged.
 - Cut transitions grow up: directional wipe and push join dissolve and dip, with direction, softness and duration
   in Design > Transition.
 - Background generator clips (solid, linear gradient, radial gradient) from the Media panel menu, edited under

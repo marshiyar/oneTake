@@ -108,6 +108,16 @@ The drawing is in `Sources/MpvfxTimeline/TimelineView+Captions.swift`, the gestu
 `Sources/MpvfxTimeline/TimelineEditor+Captions.swift`, and the pure edit plans in
 `Sources/MpvfxShared/Project/NativeCaptionEditPlan.swift`.
 
+## Caption list
+
+The Captions panel (Window menu) lists every cue as a row: in and out time, then the text. Click a row or press ↑/↓ to
+put the playhead on the cue. Enter edits the text in place (Enter saves, Shift+Enter adds a line, Escape cancels).
+⌥[ moves the in point one frame earlier and ⌥] the out point one frame later; add ⇧ for the other way. ⌘Enter splits the
+cue at the text caret and the playhead so the two cues stay contiguous; without an open edit it breaks at the space
+nearest the playhead. ⌘J joins the cue with the next one. ⌘F finds and ⌥⌘F finds and replaces across every cue
+(⌥C toggles case-sensitive, ⌥⌘Enter replaces all in one undo step). A row read faster than the reading-rate limit
+(Settings, default 17 characters per second; the limit is the editor's choice, not a standard) shows a badge.
+
 ## Captures
 
 Every change here is captured at 1440 × 900 and 1280 × 800 in dark and light (`TimelineControlsSnapshotTests` (native CoreGraphics timeline fixture on macOS), PNGs
