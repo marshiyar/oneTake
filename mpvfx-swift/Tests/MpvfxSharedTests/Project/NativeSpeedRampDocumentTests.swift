@@ -143,12 +143,12 @@ final class NativeSpeedRampDocumentTests: XCTestCase {
         let mixed = try withRamp(NativeSpeedRamp(points: [.init(t: 0, speed: 0.5)], blend: "mix"))
         let text = try serialize(mixed)
         XCTAssertTrue(text.contains(#""blend": "mix""#), text)
-        XCTAssertEqual(try findClip(try parse(J(text)), "clip:audio")?.speedRamp?.blend, "mix")
+        XCTAssertEqual(findClip(try parse(J(text)), "clip:audio")?.speedRamp?.blend, "mix")
         XCTAssertEqual(try serialize(try parse(J(text))), text)
         var d = try parse(J(clipCommandsFixtureJSON))
         mutateClip(&d, "clip:audio") { $0.frameBlend = "mix" }
         let framed = try serialize(d)
-        XCTAssertEqual(try findClip(try parse(J(framed)), "clip:audio")?.frameBlend, "mix")
+        XCTAssertEqual(findClip(try parse(J(framed)), "clip:audio")?.frameBlend, "mix")
         XCTAssertFalse(try serialize(try parse(J(clipCommandsFixtureJSON))).contains("frameBlend"))
     }
 
