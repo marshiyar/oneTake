@@ -121,6 +121,23 @@ private func validateTransitionStyle(_ entry: NativeJSONValue, _ path: String, _
     if let softness = entry["softness"], softness.numberValue.map({ $0.isFinite && $0 >= 0 && $0 <= 1 }) != true {
         pushIssue(&issues, .invalidTransition, "\(path).softness", "Transition softness must be a finite number between 0 and 1")
     }
+    if let angle = entry["angle"], angle.numberValue.map({ $0.isFinite && NativeCutTransition.angleRange.contains($0) }) != true {
+        pushIssue(&issues, .invalidTransition, "\(path).angle", "Transition angle must be a finite number from 0 to 359 degrees")
+    }
+    if let shape = entry["shape"], shape.stringValue.flatMap(NativeIrisShape.init(rawValue:)) == nil {
+        pushIssue(&issues, .invalidTransition, "\(path).shape", "Transition shape must be circle or rectangle")
+    }
+    for key in ["centreX", "centreY"] {
+        if let centre = entry[key], centre.numberValue.map({ $0.isFinite && NativeCutTransition.centreRange.contains($0) }) != true {
+            pushIssue(&issues, .invalidTransition, "\(path).\(key)", "Transition \(key) must be a finite number from -0.5 to 1.5")
+        }
+    }
+    if let strength = entry["strength"], strength.numberValue.map({ $0.isFinite && NativeCutTransition.strengthRange.contains($0) }) != true {
+        pushIssue(&issues, .invalidTransition, "\(path).strength", "Transition strength must be a finite number from 1 to 4")
+    }
+    if let ease = entry["ease"], (try? ease.decode(NativeInterpolation.self)) == nil {
+        pushIssue(&issues, .invalidTransition, "\(path).ease", "Transition ease must be hold, linear or cubic-bezier")
+    }
     if let color = entry["color"], color.stringValue.map(isNativeHexColor) != true {
         pushIssue(&issues, .invalidTransition, "\(path).color", "Transition color must be #RGB, #RRGGBB or #RRGGBBAA")
     }

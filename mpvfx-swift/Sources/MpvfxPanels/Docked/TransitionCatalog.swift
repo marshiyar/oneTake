@@ -22,6 +22,8 @@ public struct TransitionEntry: Equatable, Hashable, Sendable {
     public var direction: NativeTransitionDirection?
     /// The dip colour; nil for the other kinds.
     public var color: String?
+    /// The iris shape; nil for the other kinds.
+    public var irisShape: NativeIrisShape? = nil
     public var label: String
     public var group: String
     /// A stable id, saved in the favourites: `dissolve`, `dip:black`, `dip:white`, `wipe:left`, `push:up`, …
@@ -34,11 +36,15 @@ public enum TransitionCatalog {
         var out = [TransitionEntry(kind: .dissolve, direction: nil, color: nil, label: "Dissolve", group: "Dissolve", id: "dissolve"),
                    TransitionEntry(kind: .dip, direction: nil, color: NativeCutTransition.defaultDipColor, label: "Dip to black", group: "Dissolve", id: "dip:black"),
                    TransitionEntry(kind: .dip, direction: nil, color: NativeCutTransition.whiteDipColor, label: "Dip to white", group: "Dissolve", id: "dip:white")]
-        for (kind, name, group) in [(NativeCutTransitionKind.wipe, "Wipe", "Wipe"), (.push, "Push", "Push")] {
+        for (kind, name, group) in [(NativeCutTransitionKind.wipe, "Wipe", "Wipe"), (.push, "Push", "Push"), (.slide, "Slide", "Slide")] {
             for d in NativeTransitionDirection.allCases {
                 out.append(TransitionEntry(kind: kind, direction: d, color: nil, label: "\(name) \(d.rawValue)", group: group, id: "\(kind.rawValue):\(d.rawValue)"))
             }
         }
+        for shape in NativeIrisShape.allCases {
+            out.append(TransitionEntry(kind: .iris, direction: nil, color: nil, irisShape: shape, label: "Iris \(shape.rawValue)", group: "Iris", id: "iris:\(shape.rawValue)"))
+        }
+        out.append(TransitionEntry(kind: .zoomThrough, direction: nil, color: nil, label: "Zoom through", group: "Zoom", id: "zoomThrough"))
         return out
     }()
 

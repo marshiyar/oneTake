@@ -254,7 +254,14 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         let seconds = layer.sourceTime(at: Double(frame) / fps)
         guard let reader = openReader() else { deadFrom = min(deadFrom, frame); return false }
         let frames = MediaFrameStream.Frames(from: max(0, seconds), fps: fps, width: sz.width, height: sz.height)
-        stream = MediaFrameStream(reader: reader, frames: frames.playing(at: layer.rate))
+        let s = MediaFrameStream(reader: reader, frames: frames.playing(at: layer.rate))
+        // A speed ramp moves the source by a different amount every frame: the stream follows the layer's time map
+        // (the one export reads), not a constant rate.
+        let clip = layer, rate = fps
+        if clip.speedRamp != nil { s.sourceTimeOfFrame = { clip.sourceTime(at: Double(frame + $0) / rate) } }
+        // Slow sections of a clip with frame mixing show the blend of the two source frames around the mapped time.
+        if clip.canMixFrames { s.mixesFrame = { clip.mixesFrames(at: Double(frame + $0) / rate) } }
+        stream = s
         streamSize = sz; streamNext = frame; restarts += 1
         return true
     }

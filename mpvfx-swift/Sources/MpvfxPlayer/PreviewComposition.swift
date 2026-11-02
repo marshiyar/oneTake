@@ -110,6 +110,26 @@ public struct PreviewLayer: Equatable, Sendable {
     public var rampStart: Double?
     public var timelineFPS = 1.0
 
+    /// The clip mixes frames where it plays slower than 1x: its ramp's `blend`, or `clip.frameBlend` on a constant rate.
+    public var frameBlend = false
+    /// Set by export's painter for the frame it is painting: this frame is a mix of two source frames (`mixesFrames(at:)`).
+    public var mixesFramesNow = false
+    /// Whether any part of the clip can show mixed frames.
+    public var canMixFrames: Bool {
+        if holdSourceTime != nil { return false }
+        if let ramp = speedRamp { return ramp.mixesFrames }
+        return frameBlend && rate < 1 - 1e-9
+    }
+
+    /// Whether the frame at timeline `time` is a mix of the two source frames around its source position: the clip mixes
+    /// frames and plays slower than 1x there.
+    public func mixesFrames(at time: Double) -> Bool {
+        guard canMixFrames else { return false }
+        guard let ramp = speedRamp else { return true }
+        let x = (time - (rampStart ?? start)) * timelineFPS
+        return ramp.speed(atClipFrame: max(0, x)) < 1 - 1e-9
+    }
+
     /// One picture for the whole clip (an image, or a held frame): decoded once and kept (the still lane).
     public var isStill: Bool { kind == .image || holdSourceTime != nil }
 
@@ -134,7 +154,14 @@ public struct PreviewLayer: Equatable, Sendable {
     /// The grade is not part of it: lanes cache raw decoded frames and the grade is applied when drawing, so a grade
     /// edit never restarts a decoder.
     public var laneKey: String {
-        let key = "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)"
+        var key = "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)"
+        // A ramp's points are part of the lane: editing one starts a new lane for this clip, and the old lane's
+        // frames stay on screen until the new ones arrive.
+        if let ramp = speedRamp {
+            let points = ramp.points.map { "\($0.t)@\($0.speed)~\($0.ease)" }.joined(separator: ",")
+            key += "|ramp:\(ramp.isSupported ? points : "-")|\(rampStart ?? start)|\(timelineFPS)"
+        }
+        if canMixFrames { key += "|mix" }
         return holdSourceTime.map { "\(key)|hold:\($0)" } ?? key
     }
 }
@@ -437,6 +464,7 @@ public struct PreviewComposition {
         out.fadeGain = fade
         out.hiddenByFade = fade == 0 && keyed > 0
         out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
+        out.frameBlend = c.frameBlend == NativeSpeedRamp.blendMix
         out.timelineFPS = fps
         out.motionRotation = autoRotate
         out.holdSourceTime = held.map { $0 / fps }
@@ -487,9 +515,11 @@ public struct PreviewComposition {
         if let s = t.incoming, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.incomingMix(atFrame: frame) }
         else if let s = t.outgoing, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.outgoingMix(atFrame: frame) }
         else { return }
-        if span.kind == .wipe || span.kind == .push {
+        if span.kind.isSpatial {
             layer.spatialTransition = .init(kind: span.kind, direction: span.direction, softness: span.softness,
-                                            progress: span.progress(atFrame: frame), incoming: span.toClipId == layer.clipId)
+                                            progress: span.easedProgress(atFrame: frame), incoming: span.toClipId == layer.clipId,
+                                            angle: span.angle, irisShape: span.irisShape, centreX: span.centreX,
+                                            centreY: span.centreY, strength: span.strength)
         }
         layer.opacity *= mix.opacity
         if mix.colorAmount > 0 { layer.transitionColor = CanvasColor(hex: span.color); layer.transitionColorAmount = mix.colorAmount }

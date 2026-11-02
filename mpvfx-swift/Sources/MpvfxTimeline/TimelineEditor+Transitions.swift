@@ -42,6 +42,7 @@ public extension TimelineEditor {
         switch command {
         case .add(let trackId, _), .replace(let trackId, _): return trackId
         case .setLength(let i, _), .setKind(let i, _), .setAlignment(let i, _), .setColor(let i, _), .setDirection(let i, _), .setSoftness(let i, _), .remove(let i): id = i
+        case .setAngle(let i, _), .setIris(let i, _, _, _), .setStrength(let i, _), .setEase(let i, _): id = i
         }
         return document.sequence.tracks.first { $0.cutTransitions.contains { $0.id == id } }?.id
     }
@@ -56,6 +57,8 @@ public extension TimelineEditor {
         case .setDirection: "Change transition direction"
         case .setSoftness: "Change transition softness"
         case .setColor: "Change transition colour"
+        case .setAngle, .setIris, .setStrength: "Change transition options"
+        case .setEase: "Change transition ease"
         }
     }
 
@@ -137,8 +140,8 @@ public extension TimelineEditor {
     /// Puts a transition of `kind` on `cut`, replacing the one there, as one undo step; see `applyTransition(_:to:)`.
     @discardableResult
     func applyTransition(_ kind: NativeCutTransitionKind, direction: NativeTransitionDirection? = nil, color: String? = nil,
-                         to cut: TimelineCut, lengthFrames: Double? = nil) -> TransitionApplyOutcome {
-        applyTransition(kind, direction: direction, color: color, to: [cut], lengthFrames: lengthFrames)[0]
+                         irisShape: NativeIrisShape? = nil, to cut: TimelineCut, lengthFrames: Double? = nil) -> TransitionApplyOutcome {
+        applyTransition(kind, direction: direction, color: color, irisShape: irisShape, to: [cut], lengthFrames: lengthFrames)[0]
     }
 
     /// Puts a transition of `kind` on each of `cuts`, replacing the ones there, all in one undo step. The length is
@@ -147,13 +150,13 @@ public extension TimelineEditor {
     /// nothing; the others still get theirs. One outcome per cut, in order.
     @discardableResult
     func applyTransition(_ kind: NativeCutTransitionKind, direction: NativeTransitionDirection? = nil, color: String? = nil,
-                         to cuts: [TimelineCut], lengthFrames: Double? = nil) -> [TransitionApplyOutcome] {
+                         irisShape: NativeIrisShape? = nil, to cuts: [TimelineCut], lengthFrames: Double? = nil) -> [TransitionApplyOutcome] {
         var doc = document
         var undoToOriginal: NativeProjectClipCommand?
         var outcomes: [TransitionApplyOutcome] = []
         for cut in cuts {
             if isTrackLocked(cut.trackId) { outcomes.append(.refused("Track is locked")); continue }
-            switch plannedTransition(kind, direction: direction, color: color, cut: cut, lengthFrames: lengthFrames) {
+            switch plannedTransition(kind, direction: direction, color: color, irisShape: irisShape, cut: cut, lengthFrames: lengthFrames) {
             case .failure(let failure): outcomes.append(.refused(failure.message))
             case .success(let plan):
                 do {
@@ -182,7 +185,7 @@ public extension TimelineEditor {
         return (plan.length, plan.wanted)
     }
 
-    private func plannedTransition(_ kind: NativeCutTransitionKind, direction: NativeTransitionDirection?, color: String?, cut: TimelineCut,
+    private func plannedTransition(_ kind: NativeCutTransitionKind, direction: NativeTransitionDirection?, color: String?, irisShape: NativeIrisShape? = nil, cut: TimelineCut,
                                    lengthFrames: Double?) -> Result<(transition: NativeCutTransition, length: Double, wanted: Double), TransitionPlanFailure> {
         guard let track = document.sequence.tracks.first(where: { $0.id == cut.trackId }),
               let from = track.clips.first(where: { $0.id == cut.fromClipId }),
@@ -203,7 +206,8 @@ public extension TimelineEditor {
         }
         var transition = NativeCutTransition(id: UUID().uuidString.lowercased(), cut: (cut.fromClipId, cut.toClipId), kind: kind, durationFrames: length)
         if alignment != .centre { transition.alignment = alignment }
-        if kind == .wipe || kind == .push, let direction, direction != .left { transition.direction = direction }
+        if kind.usesDirection, let direction, direction != .left { transition.direction = direction }
+        if kind == .iris, let irisShape { transition.irisShape = irisShape }
         if kind == .dip, let color, color.lowercased() != NativeCutTransition.defaultDipColor { transition.color = color }
         return .success((transition, length, wanted))
     }

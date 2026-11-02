@@ -178,6 +178,49 @@ final class StemDecoderTests: XCTestCase {
         let path = try WavFixtures.write("t.wav", in: dir, WavFixtures.sine(440, seconds: 1, amp: 0.3, sampleRate: 48_000), sampleRate: 48_000)
         XCTAssertThrowsError(try DocumentAudioGraph.decodeStem(key(path, seconds: 1, rate: 8)))
     }
+
+    /// A clip key that carries a speed ramp: the `key` helper has no ramp, so this uses the full initialiser.
+    func rampKey(_ path: String, seconds: Double, ramp: NativeSpeedRamp, preservesPitch: Bool, rate: Double = 1) -> DocumentAudioGraph.StemKey {
+        .init(path: path, sourceIn: 0, duration: seconds, rate: rate, preservesPitch: preservesPitch, speedRamp: ramp, timelineFPS: 30)
+    }
+
+    func testRampWithPitchFollowingSamplesTheSourceThroughTheTimeMap() throws {
+        let ramp = NativeSpeedRamp(points: [.init(t: 0, speed: 2)])
+        let source = (0..<72_000).map { Float($0 % 4800) / 4800 - 0.5 }   // 1.5 s mono, every frame distinct per 0.1 s
+        let path = try WavFixtures.write("ramp2.wav", in: dir, source, sampleRate: 48_000)
+        let stem = try DocumentAudioGraph.decodeStem(rampKey(path, seconds: 0.5, ramp: ramp, preservesPitch: false, rate: 2), sampleRate: 48_000)
+        XCTAssertEqual(stem[0].count, 24_000, "0.5 s of clip at 48 kHz")
+        for i in stride(from: 0, to: 24_000, by: 997) {
+            XCTAssertEqual(stem[0][i], source[2 * i], accuracy: 1e-3, "output frame \(i) reads source frame \(2 * i)")
+        }
+    }
+
+    func testRampWithPitchFollowingReadsTheTwoPointMap() throws {
+        // Speed 1 for the first 15 clip frames, then 2. The source is a linear ramp, so interpolation is exact.
+        let ramp = NativeSpeedRamp(points: [.init(t: 0, speed: 1), .init(t: 15, speed: 2)])
+        let source = (0..<72_000).map { Float($0) / 72_000 - 0.5 }   // 1.5 s mono, value = sample index / 72000 - 0.5
+        let path = try WavFixtures.write("linear.wav", in: dir, source, sampleRate: 48_000)
+        let stem = try DocumentAudioGraph.decodeStem(rampKey(path, seconds: 1, ramp: ramp, preservesPitch: false), sampleRate: 48_000)
+        XCTAssertEqual(stem[0].count, 48_000)
+        // Up to clip frame 23.75, where the map reads source sample 64000 of 72000.
+        for i in stride(from: 0, to: 40_000, by: 2_000) {
+            let sourceSample = ramp.sourcePosition(atClipFrame: Double(i) / 48_000 * 30) / 30 * 48_000
+            XCTAssertEqual(Double(stem[0][i]), sourceSample / 72_000 - 0.5, accuracy: 1e-3, "output frame \(i)")
+        }
+    }
+
+    func testRampStemLengthIsTheClipDurationNotTheSourceCoverage() throws {
+        // Constant speed 2 covers 1 s of source for a 0.5 s clip, and the plain key covers 0.5 s: all are 0.5 s of stem.
+        let ramp = NativeSpeedRamp(points: [.init(t: 0, speed: 2)])
+        let source = (0..<72_000).map { Float($0 % 4800) / 4800 - 0.5 }
+        let path = try WavFixtures.write("cover.wav", in: dir, source, sampleRate: 48_000)
+        let followed = try DocumentAudioGraph.decodeStem(rampKey(path, seconds: 0.5, ramp: ramp, preservesPitch: false, rate: 2), sampleRate: 48_000)
+        let kept = try DocumentAudioGraph.decodeStem(rampKey(path, seconds: 0.5, ramp: ramp, preservesPitch: true, rate: 2), sampleRate: 48_000)
+        let plain = try DocumentAudioGraph.decodeStem(key(path, seconds: 0.5), sampleRate: 48_000)
+        XCTAssertEqual(followed.map(\.count), [24_000, 24_000], "pitch follows the ramp")
+        XCTAssertEqual(kept.map(\.count), [24_000, 24_000], "pitch kept under the ramp")
+        XCTAssertEqual(plain.map(\.count), [24_000, 24_000], "no ramp")
+    }
 }
 
 /// A document's WAV clip played by the live graph with the app's default (media engine) stem loader.

@@ -58,6 +58,28 @@ public enum TransitionTile {
             let v = (entry.direction ?? .left).vector
             side(c, r.offsetBy(dx: v.x * r.width * p, dy: v.y * r.height * p), from, opacity: 1)
             side(c, r.offsetBy(dx: v.x * r.width * (p - 1), dy: v.y * r.height * (p - 1)), to, opacity: 1)
+        case .slide:
+            // The incoming picture slides in over the one that stays still.
+            let v = (entry.direction ?? .left).vector
+            side(c, r, from, opacity: 1)
+            side(c, r.offsetBy(dx: v.x * r.width * (p - 1), dy: v.y * r.height * (p - 1)), to, opacity: 1)
+        case .iris:
+            side(c, r, from, opacity: 1)
+            guard p > 0 else { break }
+            // A circle or rectangle growing from the centre (the tile skips the centre point and the softness).
+            let half = p * (entry.irisShape == .rectangle ? 1 : 0.5 * (r.width * r.width + r.height * r.height).squareRoot())
+            let region: CanvasPath
+            if entry.irisShape == .rectangle {
+                region = .rect(CanvasRect(x: r.midXValue - r.width * p / 2, y: r.midYValue - r.height * p / 2, width: r.width * p, height: r.height * p))
+            } else {
+                region = .roundedRect(CanvasRect(x: r.midXValue - half, y: r.midYValue - half, width: 2 * half, height: 2 * half), radius: half)
+            }
+            c.save(); c.clip(region); side(c, r, to, opacity: 1); c.restore()
+        case .zoomThrough:
+            // The outgoing picture grows and fades out while the incoming one settles to full size from the same factor.
+            let outScale = 1 + p, inScale = 2 - p
+            side(c, r.scaledAboutCentre(outScale), from, opacity: 1 - p)
+            side(c, r.scaledAboutCentre(inScale), to, opacity: p)
         case .wipe:
             side(c, r, from, opacity: 1)
             guard p > 0 else { break }
@@ -85,4 +107,9 @@ public enum TransitionTile {
 
 private extension CanvasRect {
     func offsetBy(dx: Double, dy: Double) -> CanvasRect { CanvasRect(x: x + dx, y: y + dy, width: width, height: height) }
+    var midXValue: Double { x + width / 2 }
+    var midYValue: Double { y + height / 2 }
+    func scaledAboutCentre(_ k: Double) -> CanvasRect {
+        CanvasRect(x: midXValue - width * k / 2, y: midYValue - height * k / 2, width: width * k, height: height * k)
+    }
 }

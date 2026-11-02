@@ -343,6 +343,12 @@ extension InspectorPanel {
         if s.kind == .video || s.kind == .audio {
             rows.append(contentsOf: speedRampRows(editor, s))
             if !editor.isRamped(s.id) { rows.append(rateRow(editor, s)) }
+            // Slow motion from normal-rate footage steps; mixing the frames around each position smooths it.
+            if s.kind == .video, editor.playbackRate(clipId: s.id) < 1 || s.clip.speedRamp?.isSupported == true {
+                let mixes = editor.mixesFrames(clipId: s.id)
+                rows.append(.init(.toggle(.init(key: "frameMix", label: "Frame mix", on: mixes, tier: mixes ? .explicitCustom : .default,
+                                                set: { [weak self] v in self?.edited(editor.setMixesFrames(clipId: s.id, v)) }))))
+            }
             // A detached video plays no sound (its linked audio clip does, with its own pitch option), like the clip menu.
             let detached = s.kind == .video && editor.document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == s.id } }
             if !detached {

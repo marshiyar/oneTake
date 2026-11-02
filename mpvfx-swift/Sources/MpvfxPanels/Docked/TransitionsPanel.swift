@@ -114,7 +114,7 @@ public final class TransitionsPanel: DockedPanelView {
     }
 
     private func apply(_ entry: TransitionEntry, to cuts: [TimelineCut], editor: TimelineEditor) -> [TransitionApplyOutcome] {
-        let outcomes = editor.applyTransition(entry.kind, direction: entry.direction, color: entry.color, to: cuts)
+        let outcomes = editor.applyTransition(entry.kind, direction: entry.direction, color: entry.color, irisShape: entry.irisShape, to: cuts)
         let done = outcomes.filter(\.applied).count
         if done > 0 { onEdited?() }
         if done == 0, case .refused(let why)? = outcomes.first { status = why; return outcomes }

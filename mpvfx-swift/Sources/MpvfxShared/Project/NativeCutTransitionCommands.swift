@@ -27,6 +27,11 @@ public enum NativeCutTransitionCommand: Equatable {
     case setKind(id: String, kind: NativeCutTransitionKind)
     case setDirection(id: String, direction: NativeTransitionDirection)
     case setSoftness(id: String, softness: Double)
+    /// nil: the wipe follows its direction again.
+    case setAngle(id: String, angle: Double?)
+    case setIris(id: String, shape: NativeIrisShape, centreX: Double, centreY: Double)
+    case setStrength(id: String, strength: Double)
+    case setEase(id: String, ease: NativeInterpolation)
     case setAlignment(id: String, alignment: NativeCutTransitionAlignment)
     /// nil: the default dip colour (black).
     case setColor(id: String, color: String?)
@@ -91,7 +96,8 @@ private func editedTransitions(_ d: NativeProjectDocument, _ command: NativeCutT
 private func transitionId(of command: NativeCutTransitionCommand) -> String {
     switch command {
     case .add(_, let t), .replace(_, let t): t.id ?? ""
-    case .setLength(let id, _), .setKind(let id, _), .setAlignment(let id, _), .setColor(let id, _), .setDirection(let id, _), .setSoftness(let id, _), .remove(let id): id
+    case .setLength(let id, _), .setKind(let id, _), .setAlignment(let id, _), .setColor(let id, _), .setDirection(let id, _), .setSoftness(let id, _), .setAngle(let id, _), .setIris(let id, _, _, _),
+         .setStrength(let id, _), .setEase(let id, _), .remove(let id): id
     }
 }
 
@@ -103,6 +109,10 @@ private func edit(_ t: inout NativeCutTransition, _ command: NativeCutTransition
     case .setColor(_, let color): t.color = color
     case .setDirection(_, let direction): t.direction = direction
     case .setSoftness(_, let softness): t.softness = softness
+    case .setAngle(_, let angle): t.angle = angle
+    case .setIris(_, let shape, let x, let y): t.irisShape = shape; t.centreX = x; t.centreY = y
+    case .setStrength(_, let strength): t.strength = strength
+    case .setEase(_, let ease): t.ease = ease
     case .add, .replace, .remove: break
     }
 }

@@ -21,12 +21,20 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   them, each edit one undo step.
 - Cut transitions grow up: directional wipe and push join dissolve and dip, with direction, softness and duration
   in Design > Transition.
+- Three more cut transitions, slide, iris and zoom through, a wipe at any angle, and an ease (linear, ease in, ease
+  out, ease in-out) on every kind, all set in Design > Transition and drawn the same in preview and export.
 - Background generator clips (solid, linear gradient, radial gradient) from the Media panel menu, edited under
   Design > Background; canvas fills behind clips that do not cover the frame.
 - Align and distribute selected visual clips against the frame or the selection.
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Clips on a speed ramp play and scrub in the preview at the source frames the ramp maps to, the same ones export
+  reads (the preview used to step through the source at a constant rate once playback started); editing a ramp
+  point shows the old picture until the new frames are ready.
+- Frame mixing for slow motion: a speed ramp (or a constant speed below 1x) can blend the two source frames around
+  each position in linear light, in preview and export, so slow sections of normal-rate footage do not step; the Media
+  group has a Frame mix switch for it.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.
