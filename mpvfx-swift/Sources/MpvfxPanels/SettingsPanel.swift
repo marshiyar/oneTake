@@ -47,7 +47,7 @@ public final class SettingsPanel {
             self.interfaceScalePercent = interfaceScalePercent
         }
     }
-    public struct Device: Equatable { public var id, name: String
+    public struct Device: Equatable, Sendable { public var id, name: String
         public init(id: String, name: String) { self.id = id; self.name = name } }
     public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, input, countIn, cache, chooseFolder, resetFolder, hold, card }
 

@@ -158,6 +158,7 @@ public enum MaskCoverageRasterizer {
                 }
             }
         }}}}
+        let rowValues = rowValue   // an immutable copy: the concurrent rows below must not capture the var
         horizontal.withUnsafeBufferPointer { hBuf in
         output.withUnsafeMutableBufferPointer { oBuf in
         kernel.withUnsafeBufferPointer { kBuf in
@@ -167,8 +168,8 @@ public enum MaskCoverageRasterizer {
             DispatchQueue.concurrentPerform(iterations: height) { y in
                 let outRow = dst.pointer + y * width
                 // Window of identical constant rows: every column sums the same value in the same tap order.
-                let first = rowValue[min(max(y - radius, 0), height - 1)]
-                if !first.isNaN, (max(y - radius, 0)...min(y + radius, height - 1)).allSatisfy({ rowValue[$0] == first }) {
+                let first = rowValues[min(max(y - radius, 0), height - 1)]
+                if !first.isNaN, (max(y - radius, 0)...min(y + radius, height - 1)).allSatisfy({ rowValues[$0] == first }) {
                     var acc = 0.0
                     for t in 0..<taps { acc += first * kp[t] }
                     for x in 0..<width { outRow[x] = acc }

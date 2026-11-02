@@ -23,7 +23,8 @@ import MpvfxTimeline
 import MpvfxTheme
 
 final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorSaveChannel, @unchecked Sendable {
-    static var current: MacShell!
+    /// Safe: main.swift assigns it once, on the main thread, before `run()`; nothing writes it afterwards.
+    nonisolated(unsafe) static var current: MacShell!
     let paths: AppPaths
     let backend: DesktopBackend
     lazy var barrierHost = NativeSaveBarrierHost(editor: self) { s, body in
