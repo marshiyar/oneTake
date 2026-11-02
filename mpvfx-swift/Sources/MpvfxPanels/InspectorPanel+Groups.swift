@@ -44,7 +44,7 @@ extension InspectorPanel {
     /// The groups this panel shows: the Design tab's, minus the ones living in their own dock panel and in the
     /// user's order; or, for a detached panel (`pinnedPanel`), only that panel's groups.
     func buildGroups() -> [InspectorGroup] {
-        let all = buildAllGroups()
+        let all = (voiceRoom.map { [voiceRoomGroup($0)] } ?? []) + buildAllGroups()
         if let pinned = pinnedPanel { return all.filter { DesignGroups.panel(forGroup: $0.id) == pinned } }
         let shown = all.filter { g in DesignGroups.panel(forGroup: g.id).map { !detachedPanels.contains($0) } ?? true }
         let rank = DesignGroups.sanitized(order: designOrder)
@@ -280,7 +280,9 @@ extension InspectorPanel {
 
     func audioFxGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
         let chain = (try? s.clip.audioFxChain.map(AudioFx.parseChain)) ?? nil ?? FxChain()
-        var rows = audioFxRackRows(chain, owner: "clip:\(s.id)", subject: "track") { next in
+        var rows = voiceRoomRackRows()
+        rows.append(.init(.spacer(Self.afxSectionGap)))
+        rows += audioFxRackRows(chain, owner: "clip:\(s.id)", subject: "track") { next in
             editor.setClipFxChain(clipId: s.id, next.nodes.isEmpty ? nil : AudioFx.serializeChain(next))
         }
         // Group volume when the clip belongs to an audio group.

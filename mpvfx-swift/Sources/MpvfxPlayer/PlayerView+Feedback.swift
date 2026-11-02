@@ -20,9 +20,19 @@ import MpvfxPanels
 /// target and toasts.
 extension PlayerView {
     /// Shows `message` over the stage for a few seconds.
-    public func showToast(_ message: String, isError: Bool = false) {
+    public func showToast(_ message: String, isError: Bool = false, action: (label: String, run: () -> Void)? = nil) {
         toast = (message, isError, now())
+        toastAction = action
         requestAnimationFrame?()
+    }
+
+    /// A press on the toast's button runs it and ends the toast; false when the press is elsewhere.
+    public func pressToastAction(at p: CanvasPoint) -> Bool {
+        guard toast != nil, let action = toastAction, let r = toastActionRect, r.contains(p) else { return false }
+        toast = nil; toastAction = nil; toastActionRect = nil
+        action.run()
+        requestAnimationFrame?()
+        return true
     }
 
     /// Highlights the sibling a bring-forward / send-backward stepped over for 600 ms.
@@ -75,11 +85,12 @@ extension PlayerView {
     func drawToast(_ c: CanvasContext, size: CanvasSize, at t: Double) {
         guard let m = toast else { return }
         let since = t - m.start
-        guard since < Self.toastSeconds else { toast = nil; return }
+        guard since < Self.toastSeconds else { toast = nil; toastAction = nil; toastActionRect = nil; return }
         let a = since > Self.toastSeconds - Self.hudFadeSeconds ? max(0, (Self.toastSeconds - since) / Self.hudFadeSeconds) : 1
         let v = viewportRect(in: size), font = CanvasFont(size: 12)
         let tw = c.measureText(m.message, font: font).width
-        let w = min(v.width - 24, tw + 24), h = 12.0 + 16
+        let actionW = toastAction.map { c.measureText($0.label, font: font).width + 16 } ?? 0
+        let w = min(v.width - 24, tw + 24 + actionW), h = 12.0 + 16
         let r = CanvasRect(x: v.x + (v.width - w) / 2, y: v.maxY - 16 - h, width: w, height: h)
         c.fillRoundedRect(r, radius: 8, PanelStyle.neutral900.withAlpha(0.95 * a))
         c.strokeRoundedRect(r.insetBy(0.5), radius: 7.5, (m.isError ? PanelTheme.red500 : PanelStyle.neutral700).withAlpha(a), width: 1)
@@ -87,6 +98,13 @@ extension PlayerView {
         c.withState {
             c.clip(r)
             c.drawText(m.message, at: .init(r.x + 12, r.y + 8), font: font, color: color.withAlpha(a))
+        }
+        toastActionRect = nil
+        if let action = toastAction {
+            let button = CanvasRect(x: r.maxX - actionW - 4, y: r.y + 4, width: actionW, height: r.height - 8)
+            c.fillRoundedRect(button, radius: 5, theme.accent.withAlpha(0.25 * a))
+            c.drawText(action.label, at: .init(button.x + 8, button.y + 4), font: font, color: PanelStyle.neutral200.withAlpha(a))
+            toastActionRect = button
         }
     }
 }

@@ -58,7 +58,7 @@ public extension TimelineController {
                                                canPaste: clipboard != nil, canPasteGrade: gradeClipboard != nil,
                                                gradePasteReason: gradeClipboard == nil ? "Copy a grade before pasting" : nil,
                                                keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil,
-                                               disabled: c.hidden)
+                                               disabled: c.hidden, canMakeRoom: sounds && onMakeRoomForVoice != nil)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
         if viewport.height > 0 { m.maximumHeight = viewport.height }
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
@@ -107,6 +107,10 @@ public extension TimelineController {
         case .rename: return requestRenameClip(id)
         case .disable: return editor.setClipsHidden([id], !editor.isClipHidden(id))
         case .keepPitch: return editor.setPreservesPitch(clipId: id, !editor.preservesPitch(clipId: id))
+        case .makeRoomForVoice:
+            if !view.selection.contains(id) { view.selection = [id] }
+            guard let onMakeRoomForVoice else { return false }
+            onMakeRoomForVoice(); return true
         case .thumbnails:
             setThumbnailsEnabled(!view.thumbnailsEnabled)   // thumbnailMode is timeline-wide (adaptive / hidden)
             return true

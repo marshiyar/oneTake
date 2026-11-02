@@ -100,6 +100,9 @@ public final class PlayerView {
     public var assetDropActive = false
     /// Transient message over the stage.
     public var toast: (message: String, isError: Bool, start: Double)?
+    /// A button at the end of the toast (Re-run), and where it was last drawn.
+    public var toastAction: (label: String, run: () -> Void)?
+    var toastActionRect: CanvasRect?
     static let toastSeconds = 3.0
 
     var zoomChangedAt: Double?

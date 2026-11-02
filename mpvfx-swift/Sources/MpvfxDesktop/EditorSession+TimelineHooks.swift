@@ -27,6 +27,7 @@ extension EditorSession {
         timeline.onOpenGroupFxRack = { [weak self] groupId in self?.openAudioGroupRack(groupId) }
         timelineRegion?.toolbar.onRemoveSilence = { [weak self] clipId in self?.removeSilence(clipId: clipId) }
         timeline.onNativeAudioAction = { [weak self] clipId, action in self?.nativeAudioAction(clipId: clipId, action) }
+        timeline.onMakeRoomForVoice = { [weak self] in self?.openMakeRoomForVoice() }
         timeline.onRevealSource = { [weak self] clipId, inFileManager in
             self?.revealClipSource(clipId: clipId, inFileManager: inFileManager)
         }

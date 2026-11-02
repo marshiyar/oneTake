@@ -102,6 +102,8 @@ public final class TimelineController {
     public var onNativeAudioAction: ((_ clipId: String, _ action: NativeAudioAction) -> Void)?
     /// Clip source navigation; the host selects its bin tile or reveals its file without editing the document.
     public var onRevealSource: ((_ clipId: String, _ inFileManager: Bool) -> Void)?
+    /// Clip menu Make room for voice… and ⌥⌘D: the host opens its settings for the selected clips. Unset: no menu row, no key.
+    public var onMakeRoomForVoice: (() -> Void)?
     /// Paste from another project: copies `paths` (absolute media and LUT files outside this project) into it and
     /// calls `done` with each path's copy (project-relative), or nil when any of them could not be brought in (the
     /// host says why); the paste then goes ahead with the copies, or not at all. Unset: the paste keeps the
@@ -433,6 +435,9 @@ public final class TimelineController {
             case "y" where !k.meta: return editor?.redo() ?? false
             case "=", "+", "-", "0": return zoomKey(Character(ch.lowercased()))
             case "a" where !k.shift && !k.alt: return selectAll()
+            case "d" where k.alt && !k.shift:
+                guard let onMakeRoomForVoice else { return false }
+                onMakeRoomForVoice(); return true
             case "d" where !k.shift && !k.alt: return duplicateSelection()
             case "c" where k.alt: return copyGradeSelection()
             case "v" where k.alt: return pasteGradeSelection()

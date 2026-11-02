@@ -62,6 +62,10 @@ public final class InspectorPanel {
     public var onSaveAudioFxPreset: ((String, FxNode) -> Void)?
     /// Learn the noise for a Clean up noise module: the clip's id, the module's place in the clip's chain and where to learn
     /// from (`quietest` or `range`). The host learns off the UI thread and writes the profile as one edit.
+    /// Make room for voice: the open sheet, the last run (offered again as Re-run), and the host's runner.
+    public internal(set) var voiceRoom: VoiceRoomSheet?
+    public internal(set) var lastVoiceRoomRun: VoiceRoomSheet.Run?
+    public var onMakeRoomForVoice: ((VoiceRoomSheet.Run) -> Void)?
     public var onLearnNoise: ((_ clipId: String, _ nodeIndex: Int, _ source: String) -> Void)?
     public var onEdited: (() -> Void)?
     public var onSeek: ((Double) -> Void)?
@@ -955,6 +959,7 @@ public final class InspectorPanel {
             onEdited?(); return moved
         }
         if k.code == .escape, cancelGroupDrag() { return true }
+        if voiceRoomKey(k) { return true }
         guard var f = field else { return unfocusedKey(k) }
         switch f.key(k) {
         case .commit: field = f; commitField(); onEdited?(); return true

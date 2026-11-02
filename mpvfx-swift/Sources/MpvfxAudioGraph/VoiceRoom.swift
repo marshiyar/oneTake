@@ -26,7 +26,7 @@ public struct VoiceRoomSettings: Equatable, Sendable {
         self.amountDb = amountDb; self.attackMs = attackMs; self.releaseMs = releaseMs; self.holdMs = holdMs
     }
     /// Values clamped to what the plan accepts: a dip of 0 to −60 dB, ramps 1 ms to 5 s, hold 0 to 10 s.
-    var clamped: VoiceRoomSettings {
+    public var clamped: VoiceRoomSettings {
         func fix(_ v: Double, _ lo: Double, _ hi: Double, _ d: Double) -> Double { v.isFinite ? min(hi, max(lo, v)) : d }
         return VoiceRoomSettings(amountDb: fix(amountDb, -60, 0, -12), attackMs: fix(attackMs, 1, 5000, 250),
                                  releaseMs: fix(releaseMs, 1, 5000, 400), holdMs: fix(holdMs, 0, 10_000, 500))
@@ -54,6 +54,11 @@ public enum VoiceRoom {
             if let last = out.last, r.start - last.end < minGap { out[out.count - 1].end = max(last.end, r.end) } else { out.append(r) }
         }
         return out
+    }
+
+    /// How many phrases `regions` make once gaps shorter than the hold are merged (what the toast counts).
+    public static func phraseCount(_ regions: [SpeechRegion], settings: VoiceRoomSettings = .init()) -> Int {
+        merged(regions, settings.clamped).count
     }
 
     /// The ducking points for `regions`: full level one attack before speech, the dip while it lasts, full level

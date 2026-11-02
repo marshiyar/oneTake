@@ -18,7 +18,7 @@ import MpvfxTheme
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
-        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
+        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, makeRoomForVoice, detachAudio, reattachAudio, revealSource, showSourceFile, delete
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -79,7 +79,7 @@ public struct TimelineClipMenu: Equatable, Sendable {
     public static func entries(kind: TimelineClipKind, splitEnabled: Bool, thumbnails: Bool, muted: Bool,
                                canReattach: Bool, canDetach: Bool, canMute: Bool = true,
                                canPaste: Bool = false, canPasteGrade: Bool = false, gradePasteReason: String? = nil,
-                               keepsPitch: Bool? = nil, disabled: Bool = false) -> [Entry] {
+                               keepsPitch: Bool? = nil, disabled: Bool = false, canMakeRoom: Bool = false) -> [Entry] {
         var e: [Entry] = []
         let hasSplit = kind == .video || kind == .audio || kind == .image
         if hasSplit { e.append(.item(Item(action: .split, label: "Split", hint: "S", enabled: splitEnabled))); e.append(.divider) }
@@ -107,6 +107,7 @@ public struct TimelineClipMenu: Equatable, Sendable {
             e.append(.item(Item(action: .mute, label: muted ? "Unmute" : "Mute", checked: muted)))
         }
         if let keepsPitch { e.append(.item(Item(action: .keepPitch, label: "Keep audio pitch", checked: keepsPitch))) }
+        if canMakeRoom { e.append(.item(Item(action: .makeRoomForVoice, label: "Make room for voice…", hint: "⌥⌘D"))) }
         if e.last != .divider { e.append(.divider) }
         if canReattach { e.append(.item(Item(action: .reattachAudio, label: "Reattach audio"))); e.append(.divider) }
         else if canDetach { e.append(.item(Item(action: .detachAudio, label: "Detach audio"))); e.append(.divider) }

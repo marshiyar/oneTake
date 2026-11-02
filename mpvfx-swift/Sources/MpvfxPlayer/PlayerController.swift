@@ -146,6 +146,7 @@ public final class PlayerController {
         let p = CanvasPoint(x, y); shiftHeld = shift; lastPointer = p
         pressPoint = p; dragEngaged = false
         flushNudge()
+        if button == 0, view.pressToastAction(at: p) { needsDisplay?(); return }
         if let menu = view.contextMenu {
             let hit = menu.choice(at: p, bounds: bounds)
             if hit.inside {
