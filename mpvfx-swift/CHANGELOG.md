@@ -77,6 +77,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   statistics in one undo step.
 - Clip blend modes, a colour key with hue-following spill, and spill/GPU parity coverage.
 - The media bin keeps its filter and sort between launches.
+- Curves and secondary corrections can be animated: one stopwatch keys all points of the shown curve, and each
+  secondary setting has its own.
 
 ### Fixes and polish
 - Stage system cursors stay synchronised with the transform box without pointer motion.
@@ -104,6 +106,8 @@ Debian 13), with a clean-room media engine and no FFmpeg.
 - Imports stay in the selected library when another project is open (#70); preview decoding stays within its cache
   (#69).
 - A getting started guide and a sample project (#59).
+- Delete a library project or event from the Media panel's "…" menu, after a confirmation that says what goes with it; the
+  library's media and linked originals are kept when a project goes, and a library always keeps one event (#40).
 
 ### Look
 - Studio palette with clips coloured by kind (#30), flat panels with tab strips and a status line (#64), and a light

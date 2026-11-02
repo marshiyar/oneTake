@@ -83,6 +83,7 @@ extension LeftSidebarPanel {
         let busy = library.busy, g = "Library"
         o += [Option(value: "newEvent", label: "New event…", group: g, disabled: busy),
               Option(value: "renameEvent", label: "Rename event…", group: g, disabled: !canRename("renameEvent")),
+              Option(value: "deleteEvent", label: "Delete event…", group: g, disabled: !canDelete("deleteEvent")),
               Option(value: "importIntoEvent", label: "Import into \(activeEvent?.name ?? "event")…", group: g, disabled: busy || activeEvent == nil),
               Option(value: "storage:managed", label: "Copy files into the library", group: g, checked: !linkedImport),
               Option(value: "storage:linked", label: "Link to the original files", group: g, checked: linkedImport),
@@ -97,6 +98,7 @@ extension LeftSidebarPanel {
         }
         if library.available, activeLibrary != nil { o.append(Option(value: "newProject", label: "New project…", group: g, disabled: busy || activeEvent == nil)) }
         if library.available, activeLibrary != nil { o.append(Option(value: "renameProject", label: "Rename project…", group: g, disabled: !canRename("renameProject"))) }
+        if library.available, activeLibrary != nil { o.append(Option(value: "deleteProject", label: "Delete project…", group: g, disabled: !canDelete("deleteProject"))) }
         o.append(Option(value: "openProject", label: "Open project…", group: g, disabled: busy))
         if !library.isStandalone { o.append(Option(value: "standalone", label: "Open existing standalone project", group: g, disabled: busy)) }
         return o
@@ -117,6 +119,7 @@ extension LeftSidebarPanel {
         case "newLibrary": onLibrary?(.createLibrary)
         case "openLibrary": onLibrary?(.openLibrary)
         case "renameEvent": startRename(v)
+        case "deleteEvent": startDelete(v)
         case "newEvent": creating = ("event", PanelTextField(key: "create", value: ""))
         case "importIntoEvent": if let l, let e = activeEvent { onLibrary?(.importIntoEvent(libraryId: l.id, eventId: e.id, linked: linkedImport)) }
         case "storage:managed", "storage:linked": linkedImport = v == "storage:linked"
@@ -129,6 +132,7 @@ extension LeftSidebarPanel {
     func runProjectOption(_ v: String) {
         switch v {
         case "renameProject": startRename(v)
+        case "deleteProject": startDelete(v)
         case "newProject": creating = ("project", PanelTextField(key: "create", value: ""))
         case "openProject": onLibrary?(.openProject)
         case "standalone": onLibrary?(.openStandalone)
@@ -312,6 +316,8 @@ extension LeftSidebarPanel {
         switch hit {
         case .createConfirm: confirmCreate()
         case .createCancel: creating = nil
+        case .libraryDeleteConfirm: confirmDelete()
+        case .libraryDeleteCancel: deleting = nil
         default: break
         }
         return false

@@ -91,6 +91,7 @@ public enum LibraryCommands {
         case "reveal":
             await dialogs?.openPath(try service.root(libraryId: str("libraryId")))
         case "renameEvent", "renameProject": try await rename(service: service, command: command)
+        case "deleteEvent", "deleteProject": try await delete(service: service, backend: backend, command: command)
         case "saveOutput":
             try await saveOutput(service: service, dialogs: dialogs, libraryId: str("libraryId"), jobId: str("jobId"))
         default: throw DesktopError("Unknown library command")

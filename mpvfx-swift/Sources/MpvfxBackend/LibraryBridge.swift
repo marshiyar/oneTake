@@ -62,6 +62,12 @@ final class LibraryBridge: MpvfxDesktopCore.LibraryService, @unchecked Sendable 
     func renameProject(libraryId: String, projectId: String, name: String) async throws {
         try await map { try await service.renameProject(libraryId, projectId, name) }
     }
+    func deleteEvent(libraryId: String, eventId: String) async throws {
+        try await map { try await service.deleteEvent(libraryId, eventId) }
+    }
+    func deleteProject(libraryId: String, projectId: String) async throws {
+        try await map { try await service.deleteProject(libraryId, projectId) }
+    }
 
     private func map<T>(_ body: () async throws -> T) async throws -> T {
         do { return try await body() } catch { throw RuntimeDesktopBackend.desktopError(error) }

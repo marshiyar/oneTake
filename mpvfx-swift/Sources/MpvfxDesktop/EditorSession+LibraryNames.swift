@@ -16,6 +16,21 @@ import MpvfxDesktopCore
 import MpvfxPanels
 
 extension SessionPanels {
+    /// Moves the editor off the open project when `doomed` names it, so its folder can be deleted: to another ready
+    /// project of the library that stays, else to the standalone project. False (with the error shown) when the editor
+    /// is still on it, which stops the delete.
+    func leaveProject(libraryId: String, doomed: (DesktopLibraryProject) -> Bool) -> Bool {
+        guard let current = left.library.currentProjectId,
+              let library = libraryViews.first(where: { $0.id == libraryId }),
+              let open = library.projects.first(where: { $0.id == current }), doomed(open) else { return true }
+        if let next = library.projects.first(where: { $0.ready && !doomed($0) }) { switchToLibraryProject(next.id) } else { switchToStandalone() }
+        guard session.project?.directory == open.directory else { return true }
+        left.library.error = "Could not close \(open.name) to delete it"
+        redraw()
+        return false
+    }
+
+
     /// The LibraryCommands request for a command that names an event or project: create one, or rename one.
     static func namedItemCommand(_ cmd: LibraryNavCommand) -> JSONObject {
         switch cmd {

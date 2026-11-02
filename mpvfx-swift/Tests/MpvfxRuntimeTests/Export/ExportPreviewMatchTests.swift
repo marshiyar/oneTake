@@ -48,6 +48,18 @@ final class ExportPreviewMatchTests: XCTestCase {
     /// The base clip's grade keyed (issue #179): exposure 0 at its first frame to +1 at its last, linear.
     static let keyedExposure = #"[{"schemaVersion":1,"id":"param:exposure","parameterId":"grade.adjust.exposure","valueType":"number","frameRate":{"numerator":10,"denominator":1},"keyframes":[{"id":"k0","frame":0,"value":0,"outgoing":{"type":"linear"}},{"id":"k1","frame":19,"value":1,"outgoing":{"type":"linear"}}]}]"#
 
+    /// A numeric track over the clip's 20 frames, linear from `from` to `to` (issue #228).
+    static func keyedTrack(_ parameterId: String, from: Double, to: Double) -> String {
+        #"{"schemaVersion":1,"id":"param:\#(parameterId)","parameterId":"\#(parameterId)","valueType":"number","frameRate":{"numerator":10,"denominator":1},"keyframes":[{"id":"k0","frame":0,"value":\#(from),"outgoing":{"type":"linear"}},{"id":"k1","frame":19,"value":\#(to),"outgoing":{"type":"linear"}}]}"#
+    }
+    /// A master curve of three points, its middle output animated 0.5 to 0.9 (issue #228).
+    static let curveGrade = #"{"curves":{"master":[[0,0],[0.5,0.5],[1,1]]}}"#
+    static let keyedCurve = "[" + keyedTrack("grade.curves.master.1.y", from: 0.5, to: 0.9) + "]"
+    /// One secondary that qualifies the whole picture (hue range wide, saturation and luma ranges full), its
+    /// saturation correction animated 0 to -1 (issue #228).
+    static let secondaryGrade = #"{"secondaries":[{"key":{"hue":{"center":0,"range":180,"softness":0},"saturation":{"min":0,"max":1,"softness":0},"luma":{"min":0,"max":1,"softness":0}},"correction":{"saturation":0}}]}"#
+    static let keyedSecondary = "[" + keyedTrack("grade.secondaries.0.saturation", from: 0, to: -1) + "]"
+
     /// Curves on all seven tabs: a steep RGB rise, a master curve with its end points inside the range, and hue
     /// curves with a local bump, so export runs every curve table the preview does.
     static let curvesGrade = #"""
@@ -57,9 +69,9 @@ final class ExportPreviewMatchTests: XCTestCase {
     """#
 
     /// 96x48 at 10 fps, 2 s; the base clip graded with `grade`, or with `keyedGrade` its exposure animated (0 to +1).
-    func document(grade: String = exposureGrade, keyedGrade: Bool = false) throws -> NativeProjectDocument {
+    func document(grade: String = exposureGrade, keyedGrade: Bool = false, tracks: String? = nil) throws -> NativeProjectDocument {
         let text = Self.documentText.replacingOccurrences(of: "GRAY_GRADE", with: keyedGrade ? #"{"adjust":{"exposure":0}}"# : grade)
-            .replacingOccurrences(of: "GRAY_TRACKS", with: keyedGrade ? Self.keyedExposure : "[]")
+            .replacingOccurrences(of: "GRAY_TRACKS", with: tracks ?? (keyedGrade ? Self.keyedExposure : "[]"))
         let engine = try KeyframeRuntime()
         installKeyframeEngine(engine)   // export evaluates parameter tracks through the installed engine
         return try parseNativeProjectDocument(try NativeJSONValue.parse(text), engine: engine)
@@ -89,11 +101,11 @@ final class ExportPreviewMatchTests: XCTestCase {
              {"id":"tone","assetId":"tone","startFrame":0,"durationFrames":20,"sourceInFrame":0,"muted":false,"effects":[],"parameterTracks":[]}]}]}}
         """#
 
-    func export(_ format: ExportFormat, grade: String = exposureGrade, keyedGrade: Bool = false, name: String? = nil) throws
+    func export(_ format: ExportFormat, grade: String = exposureGrade, keyedGrade: Bool = false, tracks: String? = nil, name: String? = nil) throws
         -> (input: NativeTimelineRenderInput, file: Exported) {
         let output = "\(root)/\(name ?? "match\(keyedGrade ? "-keyed" : "")").\(format.rawValue)"
         try? FileManager.default.removeItem(atPath: output)
-        let input = NativeTimelineRenderInput(project: try document(grade: grade, keyedGrade: keyedGrade), projectDir: root, outputPath: output,
+        let input = NativeTimelineRenderInput(project: try document(grade: grade, keyedGrade: keyedGrade, tracks: tracks), projectDir: root, outputPath: output,
                                               format: format, quality: .high)
         try renderNativeTimeline(input)
         return (input, Exported(path: output))
@@ -179,6 +191,24 @@ final class ExportPreviewMatchTests: XCTestCase {
         XCTAssertLessThan(green[0], green[1], "exposure rises through the clip: \(green)")
         XCTAssertLessThan(green[1], green[2], "exposure rises through the clip: \(green)")
         XCTAssertLessThanOrEqual(abs(green[0] - 128), 2, "exposure 0 at the first frame leaves the video as it is: \(green)")
+    }
+
+    /// Issue #228: an animated curve point is evaluated per frame in preview and export alike, and it changes the picture.
+    func testKeyedCurveExportIsThePreviewFrameForFrame() throws {
+        let mov = try export(.mov, grade: Self.curveGrade, tracks: Self.keyedCurve, name: "keyed-curve")
+        let frames = try pairs(mov, [0, 1.0, 1.9])
+        let diffs = frames.map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        XCTAssertGreaterThan(maxAbsDiff(frames[0].1, frames[2].1), 1, "the animated point changes the exported picture")
+    }
+
+    /// Issue #228: an animated secondary setting is evaluated per frame in preview and export alike.
+    func testKeyedSecondaryExportIsThePreviewFrameForFrame() throws {
+        let mov = try export(.mov, grade: Self.secondaryGrade, tracks: Self.keyedSecondary, name: "keyed-secondary")
+        let frames = try pairs(mov, [0, 1.0, 1.9])
+        let diffs = frames.map { maxAbsDiff($0.1, $0.2) }
+        XCTAssertEqual(diffs.filter { $0 > 1 }, [], "max channel difference per frame: \(diffs)")
+        XCTAssertGreaterThan(maxAbsDiff(frames[0].1, frames[2].1), 1, "the animated setting changes the exported picture")
     }
 
     /// A 48x96 portrait frame at 10 fps, 2 s: the 96x48 video untouched and set to Fill, and the blue still set to

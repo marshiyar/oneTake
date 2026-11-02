@@ -92,6 +92,18 @@ extension InspectorPanel {
     var openCurveTab: CurveTab { Self.curveTabs.first { $0.key == grade.curveTab } ?? Self.curveTabs[0] }
     /// The point rules of the open tab.
     var curveEditing: CurveEditing { let t = openCurveTab; return CurveEditing(hue: t.hue, limit: t.min...t.max) }
+    /// Point tracks address positions, so an animated curve keeps its point count and order.
+    var activeCurveIsAnimated: Bool {
+        guard let editor, selection.count == 1, let id = selection.first, let clip = editor.clip(id)?.clip else { return false }
+        let tab = openCurveTab
+        return NativeGradeParameter.animatedCurveChannels(clip).contains("\(tab.hue ? "hueCurves" : "curves").\(tab.key)")
+    }
+
+    var hasAnimatedCurves: Bool {
+        guard let editor, selection.count == 1, let id = selection.first, let clip = editor.clip(id)?.clip else { return false }
+        return !NativeGradeParameter.animatedCurveChannels(clip).isEmpty
+    }
+
     /// A curve point's pointer target: a circle of this radius, so 24 pt across.
     static let curvePointHitRadius = 12.0
     /// The smallest pointer target of a curve control, in points.
@@ -106,7 +118,9 @@ extension InspectorPanel {
 
     func writeCurve(_ g: ColorGrading, _ pts: [[Double]]) -> ColorGrading {
         var n = g
-        let tab = openCurveTab, stored = curveEditing.stored(pts)
+        // Animated coordinates still need addressable points when the curve becomes identity / flat.
+        // Only static curves may collapse their default shape to an absent value.
+        let tab = openCurveTab, stored = activeCurveIsAnimated ? pts : curveEditing.stored(pts)
         if tab.hue { n.hueCurves[tab.key] = stored } else { n.curves[tab.key] = stored }
         return n
     }
@@ -288,7 +302,7 @@ extension InspectorPanel {
         let previous = grade.curveClick
         grade.curveClick = nil
         if let i = nearestCurvePoint(pts, to: p) {
-            if let last = previous, last.tab == openCurveTab.key, last.index == i, now - last.time <= Self.curveDoubleClickInterval,
+            if !activeCurveIsAnimated, let last = previous, last.tab == openCurveTab.key, last.index == i, now - last.time <= Self.curveDoubleClickInterval,
                let removed = curveEditing.removing(i, from: pts) {
                 grade.selectedPoint = nil; grade.curveGrab = nil
                 commit(writeCurve(g, removed)); return
@@ -297,7 +311,7 @@ extension InspectorPanel {
             grade.selectedPoint = i; grade.curveDraft = pts
             grade.curveGrab = (v.x - p.x, v.y - p.y, p, false)
             grade.curveClick = (openCurveTab.key, i, now)
-        } else if let added = curveEditing.inserting(curveFromView(p), into: pts) {
+        } else if !activeCurveIsAnimated, let added = curveEditing.inserting(curveFromView(p), into: pts) {
             grade.selectedPoint = added.index; grade.curveDraft = added.points
             grade.curveGrab = (0, 0, p, true)
         } else {
@@ -348,7 +362,7 @@ extension InspectorPanel {
         InspectorCustomRow(id: "grade:curvefoot", height: 28, draw: { [weak self] c, r, panel in
             self?.drawCurveFooter(c, r, panel, g)
         }, pointer: { [weak self] part, _, phase in
-            guard let self, phase == 0 else { return }
+            guard let self, phase == 0, self.curveFooterButtons(g).contains(where: { $0.part == part && $0.enabled }) else { return }
             switch part {
             case 0: self.grade.selectedPoint = nil; commit(self.writeCurve(g, self.openCurveTab.hue ? [] : (self.openCurveTab.min < 0 ? GradeCurve.flatDelta : GradeCurve.identity)))
             case 1: self.deleteSelectedCurvePoint(g, commit: commit)
@@ -359,8 +373,9 @@ extension InspectorPanel {
 
     /// The footer's buttons in order: label, hit part, whether it has something to do.
     func curveFooterButtons(_ g: ColorGrading) -> [(label: String, part: Int, enabled: Bool)] {
-        let canDelete = grade.selectedPoint.map { curveEditing.canRemove($0, in: currentCurvePoints(g)) } ?? false
-        return [("Delete point", 1, canDelete), ("Reset curve", 0, Self.isCurveEdited(g, openCurveTab)), ("Reset all", 2, !editedCurveTabs(g).isEmpty)]
+        let canDelete = !activeCurveIsAnimated && (grade.selectedPoint.map { curveEditing.canRemove($0, in: currentCurvePoints(g)) } ?? false)
+        return [("Delete point", 1, canDelete), ("Reset curve", 0, !activeCurveIsAnimated && Self.isCurveEdited(g, openCurveTab)),
+                ("Reset all", 2, !hasAnimatedCurves && !editedCurveTabs(g).isEmpty)]
     }
 
     func drawCurveFooter(_ c: CanvasContext, _ r: CanvasRect, _ panel: InspectorPanel, _ g: ColorGrading) {
@@ -381,22 +396,24 @@ extension InspectorPanel {
 
     /// The editing hint under the footer (10px text-2: 4.5:1 on the panel in both modes).
     func curveHintRow() -> InspectorCustomRow {
-        InspectorCustomRow(id: "grade:curvehint", height: 15, draw: { c, r, _ in
-            PanelDraw.text(c, "Click adds a point · drag moves it · double-click deletes it", in: r, font: PanelTheme.font(11), color: PanelTheme.text2)
+        InspectorCustomRow(id: "grade:curvehint", height: 15, draw: { [weak self] c, r, _ in
+            let hint = self?.activeCurveIsAnimated == true ? "Animated: turn the stopwatch off to add or remove points."
+                : "Click adds a point · drag moves it · double-click deletes it"
+            PanelDraw.text(c, hint, in: r, font: PanelTheme.font(11), color: PanelTheme.text2)
         })
     }
 
     /// Input and Output of the selected point: percent on Master/R/G/B; on hue curves degrees across and a degree
     /// (Hue/Hue) or percent delta. A typed or scrubbed value is one undo step, kept inside the neighbours by
     /// `CurveEditing.moving`. With no point selected both read "–" and are disabled; an RGB end point's Input too.
-    func curvePointRows(_ g: ColorGrading, set: @escaping (ColorGrading) -> Bool) -> [InspectorRow] {
+    func curvePointRows(_ g: ColorGrading, commit: @escaping (ColorGrading) -> Void) -> [InspectorRow] {
         let tab = openCurveTab, edit = curveEditing, pts = currentCurvePoints(g)
         let sel = grade.selectedPoint.flatMap { pts.indices.contains($0) ? $0 : nil }
         let rows: [InspectorRow] = [0, 1].map { axis in
             let unit = Self.curveFieldUnit(tab, axis: axis)
             var n = numberRow(key: axis == 0 ? "grade:curve:input" : "grade:curve:output", label: axis == 0 ? "Input" : "Output",
                               value: sel.map { pts[$0][axis] * unit.scale } ?? 0, suffix: unit.suffix, tier: .default, step: unit.step,
-                              apply: { [weak self] v in self?.typedCurveValue(v / unit.scale, axis: axis, g, set: set) ?? false })
+                              apply: { [weak self] v in self?.typedCurveValue(v / unit.scale, axis: axis, g, commit: commit) ?? false })
             if sel == nil { n.text = "–"; n.scrub = nil }
             n.disabled = sel == nil || (axis == 0 && sel.map { edit.isPinned($0, in: pts) } == true)
             return .init(.number(n))
@@ -411,23 +428,26 @@ extension InspectorPanel {
     }
 
     /// Sets the selected point's input (`axis` 0) or output (1) to `v` in curve units; false when nothing changed.
-    func typedCurveValue(_ v: Double, axis: Int, _ g: ColorGrading, set: (ColorGrading) -> Bool) -> Bool {
+    func typedCurveValue(_ v: Double, axis: Int, _ g: ColorGrading, commit: (ColorGrading) -> Void) -> Bool {
         let pts = currentCurvePoints(g)
         guard let i = grade.selectedPoint, pts.indices.contains(i), v.isFinite else { return false }
         var p = pts[i]
         p[axis] = v
         let moved = curveEditing.moving(i, to: p, in: pts)
-        return moved != pts && set(writeCurve(g, moved))
+        guard moved != pts else { return false }
+        commit(writeCurve(g, moved))
+        return true
     }
 
     func deleteSelectedCurvePoint(_ g: ColorGrading, commit: (ColorGrading) -> Void) {
-        guard let i = grade.selectedPoint, let pts = curveEditing.removing(i, from: currentCurvePoints(g)) else { return }
+        guard !activeCurveIsAnimated, let i = grade.selectedPoint, let pts = curveEditing.removing(i, from: currentCurvePoints(g)) else { return }
         grade.selectedPoint = nil
         commit(writeCurve(g, pts))
     }
 
     /// Enter: a point in the middle of the widest gap, on the curve, selected.
     func addCurvePoint(_ g: ColorGrading, commit: (ColorGrading) -> Void) {
+        guard !activeCurveIsAnimated else { return }
         let edit = curveEditing, pts = currentCurvePoints(g)
         guard let added = edit.inserting(edit.insertionPoint(pts), into: pts) else { return }
         grade.selectedPoint = added.index

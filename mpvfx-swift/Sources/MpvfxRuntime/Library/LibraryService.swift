@@ -349,6 +349,51 @@ public final class LibraryService: @unchecked Sendable {
             return true
         }
     }
+    /// Deletes a project: its catalog row, its placements and export records, then its folder, its export snapshots
+    /// and its renders. Nothing else is touched: the library's media, other projects and linked originals stay. The
+    /// catalog changes first, so a failure while removing files leaves only unreferenced folders behind. The caller
+    /// closes the project first; this does not know whether an editor has it open.
+    public func deleteProject(_ libraryId: String, _ projectId: String) async throws {
+        let l = try get(libraryId), id = try checkLibraryId(projectId)
+        _ = try await queue.run(l.root) { [self] in
+            let before = catalog(l)
+            _ = try Self.catalogProject(before, id)
+            try Self.refuseRunningExport(before.jobs.filter { $0.projectId == id })
+            try command(l, "deleteProject", [id])
+            removeProjectFiles(l, projectIds: [id], jobs: before.jobs.filter { $0.projectId == id }, assets: [])
+            return true
+        }
+    }
+    /// Deletes an event with everything in it: its projects (as `deleteProject` does each), its media records and the
+    /// copies the library made of them, and every placement of that media. A linked original is never touched. A
+    /// library keeps at least one event, so the last one is refused.
+    public func deleteEvent(_ libraryId: String, _ eventId: String) async throws {
+        let l = try get(libraryId), id = try checkLibraryId(eventId)
+        _ = try await queue.run(l.root) { [self] in
+            let before = catalog(l)
+            guard before.events.contains(where: { $0.id == id }) else { throw LibraryError("Library event not found") }
+            guard before.events.count > 1 else { throw LibraryError("A library keeps at least one event") }
+            let projectIds = before.projects.filter { $0.eventId == id }.map(\.id)
+            try Self.refuseRunningExport(before.jobs.filter { projectIds.contains($0.projectId) })
+            try command(l, "deleteEvent", [id])
+            removeProjectFiles(l, projectIds: projectIds, jobs: before.jobs.filter { projectIds.contains($0.projectId) },
+                               assets: before.assets.filter { $0.eventId == id })
+            return true
+        }
+    }
+    private static func refuseRunningExport(_ jobs: [CatalogJob]) throws {
+        if jobs.contains(where: { $0.status == "rendering" }) { throw LibraryError("An export is still running; wait for it to finish") }
+    }
+    /// Removes what a deleted project or event left on disk. Best effort: the catalog no longer names any of it.
+    private func removeProjectFiles(_ l: OpenLibrary, projectIds: [String], jobs: [CatalogJob], assets: [CatalogAsset]) {
+        for id in projectIds {
+            rmForce(PosixPath.join(l.root, "Projects", id))
+            rmForce(PosixPath.join(l.root, "renders", id))
+        }
+        for job in jobs { if let dir = try? libraryWithin(l.root, job.snapshot) { rmForce(dir) } }
+        for asset in assets where asset.mode == .managed { rmForce(PosixPath.join(l.root, "Media", "Originals", asset.id)) }
+        for file in ["Projects", "renders", "Media/Originals"] { try? librarySyncPath(PosixPath.join(l.root, file)) }
+    }
     /// :382 initializeProject: a new project is just its native document, the starter document every project starts from.
     private func initializeProject(_ l: OpenLibrary, _ projectId: String) throws {
         let root = PosixPath.join(l.root, "Projects", try checkLibraryId(projectId))

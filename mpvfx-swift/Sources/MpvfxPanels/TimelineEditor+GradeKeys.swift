@@ -28,7 +28,78 @@ extension ColorGrading {
         case ("details", 2): return details[path[1]] ?? p?.details[path[1]] ?? detail(path[1])
         case ("effects", 2): return effects[path[1]] ?? p?.effects[path[1]] ?? 0
         case ("wheels", 3): return Self.wheelField(wheel(path[1]), path[2])
+        default: return pointOrSecondaryValue(parameterId)
+        }
+    }
+
+    /// A curve point's coordinate or a secondary's setting (issue #228, `grade.curves.<channel>.<point>.<x|y>`,
+    /// `grade.secondaries.<n>.<field>`), nil when that point or secondary is not in the grade.
+    func pointOrSecondaryValue(_ parameterId: String) -> Double? {
+        guard let t = Self.pointTarget(parameterId) else { return nil }
+        switch t {
+        case .point(let hue, let channel, let i, let axis):
+            guard let pts = (hue ? hueCurves : curves)[channel], pts.indices.contains(i), pts[i].indices.contains(axis) else { return nil }
+            return pts[i][axis]
+        case .secondary(let i, let field):
+            guard secondaries.indices.contains(i) else { return nil }
+            return Self.secondaryField(secondaries[i], field)
+        }
+    }
+
+    /// What a curve or secondary id addresses.
+    enum PointTarget { case point(hue: Bool, channel: String, index: Int, axis: Int), secondary(index: Int, field: String) }
+
+    static func pointTarget(_ parameterId: String) -> PointTarget? {
+        guard NativeGradeParameter.isGradeParameter(parameterId) else { return nil }
+        let parts = parameterId.dropFirst(NativeGradeParameter.prefix.count).split(separator: ".").map(String.init)
+        switch (parts.first, parts.count) {
+        case ("curves", 4), ("hueCurves", 4):
+            guard let i = Int(parts[2]) else { return nil }
+            return .point(hue: parts[0] == "hueCurves", channel: parts[1], index: i, axis: parts[3] == "x" ? 0 : 1)
+        case ("secondaries", 3):
+            guard let i = Int(parts[1]) else { return nil }
+            return .secondary(index: i, field: parts[2])
         default: return nil
+        }
+    }
+
+    static func secondaryField(_ s: Secondary, _ field: String) -> Double? {
+        switch field {
+        case "hueCenter": s.hueCenter
+        case "hueRange": s.hueRange
+        case "hueSoftness": s.hueSoftness
+        case "satMin": s.satMin
+        case "satMax": s.satMax
+        case "satSoftness": s.satSoftness
+        case "lumaMin": s.lumaMin
+        case "lumaMax": s.lumaMax
+        case "lumaSoftness": s.lumaSoftness
+        case "hueShift": s.hueShift
+        case "saturation": s.saturation
+        case "luma": s.luma
+        case "temperature": s.temperature
+        case "tint": s.tint
+        default: nil
+        }
+    }
+
+    static func setSecondaryField(_ s: inout Secondary, _ field: String, _ v: Double) {
+        switch field {
+        case "hueCenter": s.hueCenter = v
+        case "hueRange": s.hueRange = v
+        case "hueSoftness": s.hueSoftness = v
+        case "satMin": s.satMin = v
+        case "satMax": s.satMax = v
+        case "satSoftness": s.satSoftness = v
+        case "lumaMin": s.lumaMin = v
+        case "lumaMax": s.lumaMax = v
+        case "lumaSoftness": s.lumaSoftness = v
+        case "hueShift": s.hueShift = v
+        case "saturation": s.saturation = v
+        case "luma": s.luma = v
+        case "temperature": s.temperature = v
+        case "tint": s.tint = v
+        default: break
         }
     }
 
@@ -43,7 +114,19 @@ extension ColorGrading {
             var w = wheel(path[1])
             switch path[2] { case "hue": w.hue = v; case "amount": w.amount = v; default: w.level = v }
             wheels[path[1]] = w
-        default: break
+        default:
+            switch Self.pointTarget(parameterId) {
+            case .point(let hue, let channel, let i, let axis)?:
+                var all = hue ? hueCurves : curves
+                guard var pts = all[channel], pts.indices.contains(i), pts[i].indices.contains(axis) else { return }
+                pts[i][axis] = v
+                all[channel] = pts
+                if hue { hueCurves = all } else { curves = all }
+            case .secondary(let i, let field)?:
+                guard secondaries.indices.contains(i) else { return }
+                Self.setSecondaryField(&secondaries[i], field, v)
+            case nil: break
+            }
         }
     }
 
