@@ -22,6 +22,11 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Replace media… in the clip menu swaps a clip's file for another and keeps its trim, transform, grade, moves and
+  effects.
+- Project templates: mark clips as placeholders (⌥⌘P), save the project as a template without its media, and start
+  a new project from it by choosing media for each placeholder. Unfilled placeholders show as numbered cards, and
+  export refuses them by number.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

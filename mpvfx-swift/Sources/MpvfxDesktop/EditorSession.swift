@@ -428,7 +428,10 @@ final class EditorSession {
                     completion(result)
                 }
             } catch {
-                self?.postToUI { self?.panels?.left.importing = false; self?.redraw(); self?.onError("Import failed", "\(error)") }
+                self?.postToUI {
+                    self?.panels?.left.importing = false; self?.redraw(); self?.onError("Import failed", "\(error)")
+                    completion(DesktopMediaImport())   // callers that go on to the next file still do
+                }
             }
         }
     }

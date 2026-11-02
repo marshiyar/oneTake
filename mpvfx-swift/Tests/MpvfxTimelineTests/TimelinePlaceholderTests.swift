@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import XCTest
+import MpvfxCanvas
 import MpvfxShared
 import OneTakeKeyframes
 @testable import MpvfxTimeline
@@ -120,10 +121,40 @@ final class TimelinePlaceholderTests: XCTestCase {
     func testOptionCommandPTogglesTheSelectedClips() throws {
         let (c, e) = try controller()
         c.view.selection = ["clip:m1", "clip:a"]
-        XCTAssertTrue(c.keyDown(EditorKey(.char("p"), meta: true, alt: true)))
+        XCTAssertTrue(c.keyDown(EditorKey(.char("p"), alt: true, meta: true)))
         XCTAssertEqual(e.clip("clip:a")?.clip.placeholder?.number, 1, "numbered in timeline order")
         XCTAssertEqual(e.clip("clip:m1")?.clip.placeholder?.number, 2)
-        XCTAssertTrue(c.keyDown(EditorKey(.char("p"), meta: true, alt: true)), "all marked: unmark them")
+        XCTAssertEqual(e.undoStack.count, 1, "both clips in one undo step")
+        XCTAssertTrue(c.keyDown(EditorKey(.char("p"), alt: true, meta: true)), "all marked: unmark them")
         XCTAssertEqual(e.document.unfilledPlaceholderNumbers, [])
+    }
+
+    /// A placeholder's number belongs to one clip, so a split, a copy or a duplicate never repeats it (the document would not reopen).
+    func testSplitAndDuplicateNeverRepeatAPlaceholderNumber() throws {
+        let (c, e) = try controller()
+        XCTAssertTrue(e.markPlaceholder(clipId: "clip:a"))
+        let address = try XCTUnwrap(e.address(clipId: "clip:a"))
+        XCTAssertTrue(e.apply(.split(address: address, splitFrame: 60)))
+        let clips = e.document.sequence.tracks[0].clips
+        XCTAssertEqual(clips.count, 2)
+        XCTAssertEqual(clips.compactMap { $0.placeholder?.number }, [1], "the left part keeps it, the right part is a plain clip")
+        c.view.selection = ["clip:a"]
+        XCTAssertTrue(c.duplicateSelection())
+        XCTAssertEqual(e.document.unfilledPlaceholderNumbers, [1])
+        _ = try parseNativeProjectDocument(try NativeJSONValue.from(e.document), engine: e.engine)
+    }
+
+    func testReplaceMediaIsInTheClipMenuAndAsksTheHost() throws {
+        let (c, _) = try controller()
+        var asked: [String] = []
+        c.openClipMenu("clip:a", x: 10, y: 10)
+        let actions = c.view.clipMenu?.entries.compactMap { entry -> TimelineClipMenu.Action? in
+            if case .item(let item) = entry { return item.action }; return nil
+        } ?? []
+        XCTAssertTrue(actions.contains(.replaceMedia))
+        XCTAssertFalse(c.runClipMenu(.replaceMedia, clipId: "clip:a"), "without a host there is nothing to ask")
+        c.onReplaceMedia = { asked.append($0) }
+        XCTAssertTrue(c.runClipMenu(.replaceMedia, clipId: "clip:a"))
+        XCTAssertEqual(asked, ["clip:a"])
     }
 }

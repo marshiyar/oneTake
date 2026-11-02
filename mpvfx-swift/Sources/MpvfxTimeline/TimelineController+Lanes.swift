@@ -85,6 +85,10 @@ public extension TimelineController {
             guard let onRevealSource else { return false }
             onRevealSource(id, action == .showSourceFile)
             return true
+        case .replaceMedia:
+            guard let onReplaceMedia else { return false }
+            onReplaceMedia(id)
+            return true
         case .split:
             let frame = (playback.currentTime * editor.fps).rounded()
             guard let a = editor.address(clipId: id) else { return false }

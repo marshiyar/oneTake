@@ -87,7 +87,7 @@ extension EditorSession {
     private func fillPlaceholders(_ slots: [ProjectTemplateSlot], dialogs: NativeDialogs) {
         guard let slot = slots.first else { return }
         let rest = Array(slots.dropFirst())
-        let title = "Media for placeholder \(slot.index)" + (slot.label.map { " – \($0)" } ?? "")
+        let title = "Media for Placeholder \(slot.index)" + (slot.label.map { " – \($0)" } ?? "")
         Task { [weak self] in
             let paths = await dialogs.showOpen(.init(title: title, directory: false, multiple: false))
             self?.postToUI {
@@ -101,16 +101,32 @@ extension EditorSession {
     /// Copies `path` into the project and swaps it into placeholder `number`, keeping the clip's edits. Refusals (media
     /// shorter than the clip) are shown as a toast with the frames missing, and the placeholder stays.
     func fillPlaceholder(number: Int, from path: String, then next: @escaping () -> Void = {}) {
+        guard let clip = editor.document.sequence.tracks.flatMap(\.clips).first(where: { $0.placeholder?.number == number }) else { next(); return }
+        replaceClipMedia(clipId: clip.id, from: path, label: "Placeholder \(number)", then: next)
+    }
+
+    /// Clip menu > Replace media…: the file dialog, then the file is copied into the project and swapped in, keeping the
+    /// clip's trim, transform, grade, moves and effects, in one undo step with the import's asset.
+    func requestReplaceMedia(clipId: String) {
+        guard let dialogs = panels?.dialogs, editor.clip(clipId) != nil else { return }
+        Task { [weak self] in
+            let paths = await dialogs.showOpen(.init(title: "Replace Media", directory: false, multiple: false))
+            guard let path = paths.first else { return }
+            self?.postToUI { self?.replaceClipMedia(clipId: clipId, from: path, label: nil) }
+        }
+    }
+
+    /// Copies `path` into the project and swaps it into clip `clipId`; a refusal is shown as a toast and changes nothing.
+    func replaceClipMedia(clipId: String, from path: String, label: String?, then next: @escaping () -> Void = {}) {
         importMedia(paths: [path]) { [weak self] result in
             defer { next() }
             guard let self, let imported = result.media.first(where: { ["video", "audio", "image"].contains($0.kind) }),
-                  let asset = self.editor.document.assets.first(where: { $0.source == imported.path }),
-                  let clip = self.editor.document.sequence.tracks.flatMap(\.clips).first(where: { $0.placeholder?.number == number }) else { return }
-            if self.editor.replaceMedia(clipId: clip.id, asset: asset) {
+                  let asset = self.editor.document.assets.first(where: { $0.source == imported.path }) else { return }
+            if self.editor.replaceMedia(clipId: clipId, asset: asset) {
                 self.composedDocument = nil
                 self.syncStage(); self.panels?.syncItems()
             } else if let failure = self.editor.lastFailure {
-                self.player.view.showToast("Placeholder \(number): \(failure.message)", isError: true)
+                self.player.view.showToast((label.map { $0 + ": " } ?? "") + failure.message, isError: true)
             }
             self.redraw()
         }

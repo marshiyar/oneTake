@@ -11,14 +11,15 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-// Project templates (#332): a project saved without its media, whose marked clips (placeholders) a new project fills.
+// Project templates (#332): a project saved without its media files, whose marked clips (placeholders) a new project fills.
+// Placeholders reference no file; an unmarked media clip keeps its reference, so it is offline in a new project.
 // A template is a folder under `<userData>/templates/<id>/` holding `template.json` (name, description, its slots and
 // fonts), `.studio/project.json` (the document, placeholders referencing no file) and the project's `.cube` LUTs.
 // Text and shapes live in the document itself.
 import Foundation
 import MpvfxShared
 
-/// One placeholder of a template, as the "new from template" sheet lists it.
+/// One placeholder of a template: its number, label, the kind of media it takes and its length.
 public struct ProjectTemplateSlot: Codable, Equatable, Sendable {
     public var index: Int
     public var label: String?

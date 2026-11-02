@@ -257,9 +257,12 @@ public extension TimelineEditor {
             taken.insert(id); newIds[item.clip.id] = id
         }
         let groups = Set((d.sequence.audioGroups ?? []).map(\.id))
+        var placeholderNumbers = Set(d.unfilledPlaceholderNumbers)
         for item in board.items {
             let ti = d.sequence.tracks.firstIndex { $0.id == destination[item.trackId] }!
             var c = item.clip
+            // A placeholder keeps its number only if no other clip has it (a cut and paste moves it; a copy is a plain clip).
+            if let n = c.placeholder?.number, !placeholderNumbers.insert(n).inserted { c.placeholder = nil }
             if !sameProject, c.textStyle != nil {
                 guard let text = item.resolvedText else {
                     return refuse("This text style is from a newer editor and cannot be pasted into another project")
