@@ -178,6 +178,55 @@ final class AudioFxRackTests: XCTestCase {
         }
     }
 
+    /// A response-graph handle writes the live graph during the drag like a slider does: nothing inside 30 ms of the last
+    /// write, the intermediate gain heard before release, and one undo step for the whole drag.
+    func testGraphHandleDragPublishesIntermediateLiveGraphInputsEveryThirtyMillisecondsAndOneUndo() throws {
+        let initial = FxChain(nodes: [FxNode(type: "lowshelf", id: "shelf", params: AudioFx.defaultParams("lowshelf"))])
+        let (editor, panel) = try liveFixture(initial)
+        func current() -> FxChain { (editor.clip("clip:music")?.clip.audioFxChain).flatMap { try? AudioFx.parseChain($0) } ?? FxChain() }
+        draw(panel)
+        let handle = try XCTUnwrap(panel.hits.rect { $0 == .custom("afx:node:0", 1) })
+        let graph = try XCTUnwrap(panel.audioFxUI.graphBoxes["afx:node:0"])
+        let before = editor.document, count = editor.undoStack.count
+        var now = 10.0; panel.fxGestureNow = { now }
+        var received: [String?] = []
+        let source = GraphAudioSource(project: AudioGraphProject(duration: 0.1, sampleRate: 48000, tracks: []))
+        let updater = LiveAudioGraphUpdater(source: source, loadStem: { _ in [[Float](repeating: 0.2, count: 4800)] })
+        editor.onChange = {
+            let inputs = DocumentAudioGraph.inputs(editor.document, duration: 0.1, projectDir: nil, fileExists: { _ in true })
+            received.append(inputs.tracks.first { $0.id == "clip:music" }?.fxChain)
+            updater.submit(inputs)
+        }
+        XCTAssertTrue(panel.pointerDown(CanvasPoint(handle.midX, handle.midY)))
+        let start = received.count
+        updater.waitUntilIdle() // Test synchronization only, outside the edit hook.
+        source.seek(0)
+        _ = source.render(frames: 1024)
+        let quiet = source.render(frames: 1024).map { abs($0) }.max() ?? 0
+        func point(_ gain: Double) -> CanvasPoint {
+            CanvasPoint(AfxGraphScale.x(200, in: graph.box), AfxGraphScale.y(gain, range: graph.range, in: graph.box))
+        }
+        now += 0.010
+        _ = panel.pointerMove(point(6))
+        XCTAssertEqual(received.count, start, "writes inside 30 ms are coalesced")
+        now += 0.021
+        _ = panel.pointerMove(point(12))
+        XCTAssertEqual(received.count, start + 1)
+        XCTAssertNotEqual(current(), initial)
+        XCTAssertEqual(editor.undoStack.count, count, "no history while the drag is in flight")
+        updater.waitUntilIdle()
+        source.seek(0)
+        _ = source.render(frames: 1024)
+        let loud = source.render(frames: 1024).map { abs($0) }.max() ?? 0
+        XCTAssertGreaterThan(loud, quiet * 2, "the intermediate gain is audible before release")
+        draw(panel)
+        panel.pointerUp(point(12))
+        XCTAssertEqual(editor.undoStack.count, count + 1)
+        XCTAssertTrue(editor.undo()); XCTAssertEqual(editor.document, before)
+        editor.onChange = nil
+        updater.waitUntilIdle()
+    }
+
     func testGraphDragPublishesBeforeReleaseAndCancelsThenRepeatsWithOneUndo() throws {
         let initial = FxChain(nodes: [FxNode(type: "peaking", id: "bell", params: AudioFx.defaultParams("peaking"))])
         let (editor, panel) = try liveFixture(initial)
