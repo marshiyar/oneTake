@@ -119,7 +119,7 @@ public struct ExportFrameError: Error, Equatable, CustomStringConvertible {
 /// `VideoFrameReader` (one per timeline lane, as the preview decodes), opened when the clip comes on screen and
 /// closed when it leaves, so memory stays bounded by what one frame shows.
 public final class PreviewExportFrames: NativeExportFrameRenderer {
-    private struct Lane { let reader: VideoFrameReader; var still: CanvasImage? }
+    private struct Lane { let reader: VideoFrameReader; var still: CanvasImage?; let sources = FrameMix.SourceFrames() }
 
     public let painter: ExportFramePainter
     private var lanes: [String: Lane] = [:]
@@ -159,7 +159,7 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
             let onePicture = layer.kind == .image || lane.reader.info.isStill
             let t = onePicture ? 0 : max(0, min(sourceTime, lane.reader.info.duration - 1e-6))
             framesDecoded += 1
-            let image = try FrameMix.frame(lane.reader, at: t, mix: layer.mixesFramesNow && !onePicture, width: width, height: height)
+            let image = try FrameMix.frame(lane.reader, at: t, mix: layer.mixesFramesNow && !onePicture, width: width, height: height, sources: lane.sources)
             if still { lane.still = image }
             return image
         } catch {

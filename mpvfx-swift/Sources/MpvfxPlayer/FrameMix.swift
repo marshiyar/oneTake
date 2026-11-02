@@ -24,29 +24,48 @@ public enum FrameMix {
     /// Fractions below this show the source frame itself.
     static let epsilon = 1e-3
 
-    /// The source frame at or before `sourceTime` and how far past it the time lies (0 ..< 1), nil when it lies on a
-    /// frame (or `fps` is unknown): nothing to mix.
-    static func position(sourceTime: Double, fps: Double) -> (index: Int, fraction: Double)? {
-        guard fps > 0, sourceTime.isFinite, sourceTime >= 0 else { return nil }
-        let p = sourceTime * fps
-        let index = (p + 1e-6).rounded(.down)
-        let fraction = p - index
-        return fraction > epsilon ? (Int(index), min(fraction, 1)) : nil
+    /// The last two source frames one reader decoded, kept for the next output frame. Slow motion shows each pair of
+    /// neighbouring source frames for several output frames and then moves on by one frame, so a mixed frame costs
+    /// one new decode at most and the reader only ever reads forward (reading frame A again would seek back to a
+    /// keyframe and decode the whole group of pictures again).
+    public final class SourceFrames {
+        private var frames: [Int: CanvasImage] = [:]
+        private var size = (width: 0, height: 0)
+        public init() {}
+
+        /// Source frame `index` of `reader` at width × height, read at the frame's centre so the engine picks the intended
+        /// frame whatever the rounding of the timestamps.
+        func frame(_ reader: VideoFrameReader, index: Int, width: Int, height: Int) throws -> CanvasImage {
+            if size.width != width || size.height != height { frames = [:]; size = (width, height) }
+            if let cached = frames[index] { return cached }
+            let fps = reader.info.frameRate
+            let picture = try reader.frame(at: (Double(index) + 0.5) / fps, width: width, height: height)
+            let image = CanvasImage(width: width, height: height, rgba: picture.rgba)
+            frames[index] = image
+            if frames.count > 2, let oldest = frames.keys.min(), oldest != index { frames[oldest] = nil }
+            return image
+        }
     }
 
     /// The picture of `reader` at `time`, at width × height. With `mix`, the two source frames around `time` blended
     /// by its fraction; at a frame, or when the next frame lies past the end of the media, the frame itself.
-    public static func frame(_ reader: VideoFrameReader, at time: Double, mix: Bool, width: Int, height: Int) throws -> CanvasImage {
-        guard mix, let p = position(sourceTime: time, fps: reader.info.frameRate),
-              Double(p.index + 1) / reader.info.frameRate < reader.info.duration - 1e-6 else {
+    /// `sources` keeps the frames a mix decoded for the next call (pass the same one for every call on a reader).
+    public static func frame(_ reader: VideoFrameReader, at time: Double, mix: Bool, width: Int, height: Int,
+                             sources: SourceFrames? = nil) throws -> CanvasImage {
+        let fps = reader.info.frameRate
+        guard mix, fps > 0, time.isFinite, time >= 0, Double(Int((time * fps + 1e-6).rounded(.down))) / fps < reader.info.duration - 1e-6 else {
             return CanvasImage(width: width, height: height, rgba: try reader.frame(at: time, width: width, height: height).rgba)
         }
-        // Frame centres, so the engine picks the intended frame whatever the rounding of the timestamps.
-        let fps = reader.info.frameRate
-        let a = try reader.frame(at: (Double(p.index) + 0.5) / fps, width: width, height: height)
-        let b = try reader.frame(at: (Double(p.index) + 1.5) / fps, width: width, height: height)
-        return mixed(CanvasImage(width: width, height: height, rgba: a.rgba),
-                     CanvasImage(width: width, height: height, rgba: b.rgba), fraction: p.fraction)
+        let sources = sources ?? SourceFrames()
+        let index = Int((time * fps + 1e-6).rounded(.down))
+        let fraction = time * fps - Double(index)
+        // On a frame (or no next frame): the frame itself, read through the cache like the frames of a mix.
+        guard fraction > epsilon, Double(index + 1) / fps < reader.info.duration - 1e-6 else {
+            return try sources.frame(reader, index: index, width: width, height: height)
+        }
+        let a = try sources.frame(reader, index: index, width: width, height: height)
+        let b = try sources.frame(reader, index: index + 1, width: width, height: height)
+        return mixed(a, b, fraction: min(fraction, 1))
     }
 
     /// `a` at (1 − fraction) and `b` at fraction, in linear light, with straight alpha (colours weighted by their

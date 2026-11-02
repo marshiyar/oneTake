@@ -58,13 +58,6 @@ final class FrameMixTests: XCTestCase {
         XCTAssertEqual(Array(mix.rgba[4..<8]), [255, 255, 255, 255])
     }
 
-    func testPositionIsTheFrameBeforeAndTheFractionPast() throws {
-        let p = try XCTUnwrap(FrameMix.position(sourceTime: 2.25 / 30, fps: 30))
-        XCTAssertEqual(p.index, 2); XCTAssertEqual(p.fraction, 0.25, accuracy: 1e-9)
-        XCTAssertNil(FrameMix.position(sourceTime: 3.0 / 30, fps: 30), "on a frame: nothing to mix")
-        XCTAssertNil(FrameMix.position(sourceTime: 1, fps: 0))
-    }
-
     // MARK: Decode lane and export
 
     /// One black then one white frame (30 fps, 64x36), played at half speed: timeline frames 0, 1, 2 land on source
@@ -119,5 +112,29 @@ final class FrameMixTests: XCTestCase {
         let plain = PreviewComposition(document: try document(blend: nil), projectDir: dir, engine: nil)
         let mixed = PreviewComposition(document: try document(blend: "mix"), projectDir: dir, engine: nil)
         XCTAssertNotEqual(try XCTUnwrap(plain.layers(at: 0).first).laneKey, try XCTUnwrap(mixed.layers(at: 0).first).laneKey)
+    }
+
+    /// Slow motion shows each pair of neighbouring source frames for several output frames: the reader is asked for each
+    /// source frame once, not twice per output frame (which also seeks it back on every draw).
+    func testAMixedStreamReadsEachSourceFrameOnce() throws {
+        var video = TestMedia.SolidVideo(segments: (0..<30).map { (rgb: [UInt8($0 * 4), 0, 0], seconds: 1.0 / 30) })
+        video.width = 32; video.height = 18
+        let src = try video.write(to: dir.appendingPathComponent("numbered.mov").path)
+        var layer = PreviewLayer(clipId: "m", source: src, kind: .video, start: 0, end: 4, sourceIn: 0, startFrame: 0, endFrame: 120,
+                                 box: CanvasRect(x: 0, y: 0, width: 32, height: 18))
+        layer.speedRamp = NativeSpeedRamp(points: [.init(t: 0, speed: 0.25)], blend: "mix"); layer.timelineFPS = 30
+        let cx = PreviewCompositor()
+        defer { cx.stopAll() }
+        let lane = try XCTUnwrap(cx.lane(for: layer, fps: 30))
+        for frame in 0..<40 {   // source positions 0 ... 9.75: source frames 0 ... 10
+            lane.request(frame: frame, ahead: 0, size: PreviewDecodeSize(width: 32, height: 18)); lane.wait()
+            XCTAssertTrue(cx.cache.contains(lane: layer.laneKey, frame: frame), "timeline frame \(frame)")
+        }
+        let asked = try XCTUnwrap(try lane.engineStats()).frames
+        XCTAssertLessThanOrEqual(asked, 12, "11 source frames, each read once (twice per output frame would be 80)")
+        // A mixed frame lies between its two source frames.
+        let between = try XCTUnwrap(cx.cache.frame(lane: layer.laneKey, frame: 2))   // source position 0.5: frames 0 and 1
+        let value = Int(between.rgba[(9 * 32 + 16) * 4])
+        XCTAssertGreaterThan(value, 0); XCTAssertLessThan(value, 4)
     }
 }

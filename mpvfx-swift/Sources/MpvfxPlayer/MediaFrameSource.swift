@@ -28,6 +28,7 @@ public final class MediaFrameStream {
     public var sourceTimeOfFrame: ((Int) -> Double)?
     /// Whether the n-th frame is a mix of the two source frames around its time (`FrameMix`); nil: never.
     public var mixesFrame: ((Int) -> Bool)?
+    private let sourceFrames = FrameMix.SourceFrames()
 
     /// Which frames a stream returns: from `start` (source seconds), `fps` per timeline second, fitted to
     /// width×height. `rate` is the clip playback rate (frames are 1/fps apart in timeline time, rate/fps in source
@@ -75,7 +76,7 @@ public final class MediaFrameStream {
     public func next() -> CanvasImage? {
         if still ? framesRead > 0 : nextTime >= reader.info.duration { return nil }
         let mix = !still && (mixesFrame?(framesRead) ?? false)
-        guard let image = try? FrameMix.frame(reader, at: still ? 0 : max(0, nextTime), mix: mix, width: width, height: height) else { return nil }
+        guard let image = try? FrameMix.frame(reader, at: still ? 0 : max(0, nextTime), mix: mix, width: width, height: height, sources: sourceFrames) else { return nil }
         framesRead += 1
         return image
     }
