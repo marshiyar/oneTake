@@ -78,6 +78,11 @@ public struct PreviewLayer: Equatable, Sendable {
     public var holdSourceTime: Double?
     /// Supported masks evaluated at this timeline time.
     public var masks: [NativeClipMask] = []
+    /// The cached person matte multiplied into the picture's alpha before the masks (nil: none, or not analysed).
+    public var matte: PreviewMatte?
+    /// The clip has an enabled person-matte effect but no matte for this frame (not analysed, damaged, or short): the
+    /// clip draws unmatted and the editor shows "Matte needs analysing".
+    public var matteNeedsAnalysis = false
     /// File name of an offline layer's missing media (kind .offline), shown on its slate.
     public var offlineFileName: String?
     /// How the picture fills the box (`clip.fit`; nil: Fit, contain).
@@ -167,6 +172,8 @@ public struct PreviewComposition {
         /// The image fill's file and natural aspect when the asset is on disk.
         public var fillImagePath: String? = nil
         public var fillImageAspect: Double? = nil
+        /// The clip's person-matte effect against its cache (video clips with the effect enabled).
+        var personMatte: PersonMatteBinding? = nil
     }
 
     /// Pre-roll horizon, in seconds, for a clip that comes on screen through a transition: both of its decoders run
@@ -196,6 +203,8 @@ public struct PreviewComposition {
         self.engine = engine
         let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var ordered: [(Entry, Int)] = []
+        let matteStore = PersonMatteCacheStore()
+        var matteDigests: [String: String?] = [:]
         var n = 0
         var media = MediaEntries(document: document, projectDir: projectDir, naturalSize: naturalSize, sizePending: sizePending,
                                  fileExists: fileExists)
@@ -221,6 +230,10 @@ public struct PreviewComposition {
                 } else if var entry = media.entry(clip, asset: asset, layer: layer) {
                     if entry.kind != .offline { entry.gradeAnimation = PreviewGradeAnimation.forClip(entry.clip, projectDir: projectDir?.path) }
                     if entry.kind == .video || entry.kind == .image { media.attachFill(&entry, document: document, assets: assets) }
+                    if entry.kind == .video {
+                        entry.personMatte = PersonMatteBinding.forClip(entry.clip, asset: asset, mediaPath: entry.path, projectDir: projectDir,
+                                                                       fps: rate > 0 && rate.isFinite ? rate : 30, store: matteStore, digests: &matteDigests)
+                    }
                     ordered.append((entry, n))
                 }
             }
@@ -470,6 +483,7 @@ public struct PreviewComposition {
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
         applyTransitions(e.transitions, to: &out, atFrame: Double(frameIndex(at: time)))
+        attachPersonMatte(e, to: &out, at: time)
         // Moves go over the static and keyframed values (before fades, which multiply the result).
         return out.moved(by: moveOffsets(c, local: local))
     }
@@ -647,8 +661,10 @@ public enum PreviewPainter {
                 let layerWidth = max(1, Int(box.width.rounded(.up))), layerHeight = max(1, Int(box.height.rounded(.up)))
                 let localPicture = CanvasRect(x: picture.x - box.x, y: picture.y - box.y,
                                               width: picture.width, height: picture.height)
-                let visibleImage = layer.masks.isEmpty ? image : MaskCoverageRasterizer.applying(
-                    layer.masks, to: image, layerWidth: layerWidth, layerHeight: layerHeight, picture: localPicture)
+                // The person matte multiplies the picture's alpha first (after the crop clip set above, before the masks).
+                let matted = layer.matte.map { PersonMatteApplier.apply($0, to: image) } ?? image
+                let visibleImage = layer.masks.isEmpty ? matted : MaskCoverageRasterizer.applying(
+                    layer.masks, to: matted, layerWidth: layerWidth, layerHeight: layerHeight, picture: localPicture)
                 // Fill overflows the box on one axis: clipped to the box, as object-fit: cover crops it.
                 if layer.fit == .fill {
                     c.withState { c.clip(box); c.drawImage(visibleImage, in: picture, opacity: layer.opacity) }

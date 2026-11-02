@@ -93,6 +93,7 @@ public func assertNativeTimelineSupported(_ project: NativeProjectDocument) thro
         // The color grade (and its stylize effects) renders through MpvfxColor; other effects are not migrated yet.
         if clip.effects.contains(where: { effect in
             effect.enabled && !exportSupportsEffect(effect) && effect.effectId != ColorGradeParams.colorKeyEffectId
+                && effect.effectId != PersonMatteEffect.effectId
         }) { throw MediaToolError("Clip \(clip.id) has effects that have not been migrated to the native renderer") }
         try assertClipParametersSupported(clip)
         if let crop = clip.crop, ![crop.top, crop.right, crop.bottom, crop.left].allSatisfy({ $0.isFinite }) {

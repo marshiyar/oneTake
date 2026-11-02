@@ -104,7 +104,7 @@ public enum MaskCoverageRasterizer {
     }
 
     /// A normalized, separable Gaussian. Samples beyond the layer edge repeat the edge coverage.
-    private static func gaussianBlur(_ input: [Double], width: Int, height: Int, sigma: Double) -> [Double] {
+    static func gaussianBlur(_ input: [Double], width: Int, height: Int, sigma: Double) -> [Double] {
         let radius = max(1, Int((sigma * 3).rounded(.up)))
         var kernel = [Double](), sum = 0.0
         for x in -radius...radius { let v = exp(-Double(x * x) / (2 * sigma * sigma)); kernel.append(v); sum += v }
