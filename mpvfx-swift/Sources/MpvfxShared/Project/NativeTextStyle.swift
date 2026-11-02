@@ -34,6 +34,8 @@ public struct NativeTextStyle: Codable, Equatable, Sendable {
         self.name = name
         self.text = text
         self.text?.content = ""
+        self.text?.reveal = nil
+        self.text?.unreveal = nil
     }
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: NativeAnyCodingKey.self)
