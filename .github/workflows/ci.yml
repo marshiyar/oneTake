@@ -36,4 +36,6 @@ jobs:
           path: mpvfx-swift/.build
           key: linux-${{ github.sha }}
           restore-keys: linux-
+      # The container runs as root over a checkout owned by the runner, and scripts/copyright.py needs `git ls-files`.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: sh mpvfx-swift/scripts/check.sh

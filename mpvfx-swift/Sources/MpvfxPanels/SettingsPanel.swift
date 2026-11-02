@@ -42,6 +42,7 @@ public final class SettingsPanel {
         public var holdSeconds = 2.0
         public var inputDevice: String?
         public var voiceCountIn = 3
+        public var voicePreRoll = 2
         /// Characters per second a caption may run before it is badged (`NATIVE_CAPTION_READING_RATE_RANGE`).
         public var captionReadingRate = NATIVE_CAPTION_READING_RATE_DEFAULT
         public init(appearance: ThemeAppearance = .system, audioDevice: String? = nil, previewCacheMB: Int? = nil, exportFolder: String? = nil,
@@ -52,7 +53,7 @@ public final class SettingsPanel {
     }
     public struct Device: Equatable, Sendable { public var id, name: String
         public init(id: String, name: String) { self.id = id; self.name = name } }
-    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, input, countIn, cache, chooseFolder, resetFolder, hold, readingRate, card }
+    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, input, countIn, preRoll, cache, chooseFolder, resetFolder, hold, readingRate, card }
 
     /// The cache sizes offered (MB); nil is automatic.
     public static let cacheChoicesMB: [Int?] = [nil, 512, 1024, 2048, 4096, 8192]
@@ -140,13 +141,13 @@ public final class SettingsPanel {
     private static var body: CanvasFont { PanelTheme.font(11) }
     private static var note: CanvasFont { PanelTheme.font(10) }
     static let rowH = 28.0, rowGap = 18.0, pad = 20.0, labelW = 132.0, header = 48.0
-    /// Appearance, interface size, audio output, preview cache, export folder, hold length.
-    static let rowCount = 9
+    /// Appearance, interface size, audio output, preview cache, export folder, hold length, microphone, count-in, pre-roll, reading rate.
+    static let rowCount = 10
 
-    private var rowStride: Double { size.height > 0 && size.height < 500 ? 32 : Self.rowH + Self.rowGap }
+    private var rowStride: Double { size.height > 0 && size.height < 500 ? 29 : Self.rowH + Self.rowGap }
 
     public func cardRect(in size: CanvasSize) -> CanvasRect {
-        let h = Self.header + 12 + Double(Self.rowCount) * (size.height < 500 ? 32 : Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
+        let h = Self.header + 12 + Double(Self.rowCount) * (size.height < 500 ? 29 : Self.rowH + Self.rowGap) + (saveError == nil ? 0 : 20) + Self.pad - 6
         let w = min(Self.width, max(0, size.width - 32))
         return CanvasRect(x: ((size.width - w) / 2).rounded(), y: max(16, ((size.height - h) / 2).rounded()), width: w, height: h)
     }
@@ -174,7 +175,7 @@ public final class SettingsPanel {
         PanelDraw.hline(c, x0: card.x + 1, x1: card.maxX - 1, y: card.y + Self.header, PanelTheme.panelBorderInput)
 
         var row = Row(x: x, cx: x + Self.labelW, cw: max(0, w - Self.labelW), y: card.y + Self.header + 12)
-        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold, drawInput, drawCountIn, drawReadingRate] {
+        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold, drawInput, drawCountIn, drawPreRoll, drawReadingRate] {
             drawRow(c, row)
             row.y += rowStride
         }
@@ -264,6 +265,14 @@ public final class SettingsPanel {
         hits.add(r, .countIn)
     }
 
+    private func drawPreRoll(_ c: CanvasContext, _ row: Row) {
+        rowLabel(c, row, "Voice pre-roll")
+        let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
+        field(c, r)
+        PanelSelect.draw(c, r.insetBy(1), text: "\(values.voicePreRoll) s", hovered: hovered == .preRoll)
+        hits.add(r, .preRoll)
+    }
+
     private func drawReadingRate(_ c: CanvasContext, _ row: Row) {
         rowLabel(c, row, "Caption reading rate")
         let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
@@ -336,6 +345,11 @@ public final class SettingsPanel {
             let options = (0...5).map { PanelDropdown.Option(value: String($0), label: "\($0) s") }
             openDropdown(.countIn, options, String(values.voiceCountIn)) { [weak self] v in
                 if let n = Int(v) { self?.change(\.voiceCountIn, n) }
+            }
+        case .preRoll:
+            let options = (0...5).map { PanelDropdown.Option(value: String($0), label: "\($0) s") }
+            openDropdown(.preRoll, options, String(values.voicePreRoll)) { [weak self] v in
+                if let n = Int(v) { self?.change(\.voicePreRoll, n) }
             }
         case .readingRate:
             let options = NATIVE_CAPTION_READING_RATE_RANGE.map { PanelDropdown.Option(value: String($0), label: "\($0) characters/s") }

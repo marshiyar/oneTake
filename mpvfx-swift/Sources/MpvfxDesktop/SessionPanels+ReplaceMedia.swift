@@ -41,9 +41,9 @@ extension SessionPanels {
         let duration = kind == .image ? 5 : knownDuration(path)
         if let duration, kind == .audio || natural != nil { finish(duration, natural); return }
         guard let backend, let projectId else { return }
-        // Safe: `finish`, `post` and `self` are only used inside `post`, which hops back to the UI thread this method
-        // started on; the task itself only awaits the backend.
-        nonisolated(unsafe) let post = uiPost
+        // Safe: `finish` and `self` are only used inside `post`, which hops back to the UI thread this method started on;
+        // the task itself only awaits the backend.
+        let post = uiPost
         nonisolated(unsafe) let finishOnUI = finish
         Task { [weak self] in
             do {

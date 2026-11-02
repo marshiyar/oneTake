@@ -89,6 +89,13 @@ public final class DesktopPreferences: @unchecked Sendable {
         }
         set { set("mpvfx-voice-count-in", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
     }
+    public var voicePreRoll: Int {
+        get {
+            guard let n = value("mpvfx-voice-pre-roll")?.number, n.isFinite, (0...5).contains(n), n == n.rounded() else { return 2 }
+            return Int(n)
+        }
+        set { set("mpvfx-voice-pre-roll", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
+    }
     /// Characters per second a caption may run before it is badged; 17 is the default and 5...40 the range (the same
     /// as `NATIVE_CAPTION_READING_RATE_DEFAULT` and `NATIVE_CAPTION_READING_RATE_RANGE` in MpvfxShared, which this
     /// module does not import).

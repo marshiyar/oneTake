@@ -52,9 +52,10 @@ final class FxMeterRingTests: XCTestCase {
     func testAReaderNeverSeesATornReading() {
         let ring = FxMeterRing()
         let done = Atomic(false)
+        nonisolated(unsafe) let test = self   // Safe: reading(_:) touches no state
         let writer = Thread {
             var k = 0
-            while !done.value { ring.publish(self.reading(k & 0xFFFFF)); k += 1 }
+            while !done.value { ring.publish(test.reading(k & 0xFFFFF)); k += 1 }
         }
         writer.start()
         var checked = 0
