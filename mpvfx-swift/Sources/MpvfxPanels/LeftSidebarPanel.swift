@@ -18,7 +18,7 @@ import MpvfxShared
 
 /// One item of the media bin: a project asset with what the card shows.
 public struct MediaBinItem: Equatable {
-    public enum Category: String, CaseIterable { case video, images, audio, fonts }
+    public enum Category: String, CaseIterable, Sendable { case video, images, audio, fonts }
     public var id: String
     public var name: String
     public var path: String?
@@ -92,7 +92,7 @@ public enum LibraryNavCommand: Equatable {
 /// Import, and the "…" menu of library and project actions); search with the filter menu; then the grid of
 /// sections (Video, Images, Audio, Fonts, Library media, Exports). Spacing comes from `MediaPanelMetrics`.
 public final class LeftSidebarPanel {
-    public enum Hit: Hashable {
+    public enum Hit: Hashable, Sendable {
         case showSidebar, hideSidebar, panelMenu
         case tab(LeftSidebarTab)
         case switcher, importMedia, more

@@ -106,7 +106,7 @@ extension InspectorPanel {
     }
 
     /// The setting each option part changes; the remaining parts are the scope chips.
-    static let scopeOptionEdits: [Int: (inout ScopeSettings) -> Void] = [
+    static let scopeOptionEdits: [Int: @Sendable (inout ScopeSettings) -> Void] = [
         ScopePart.percent: { $0.scale = .percent }, ScopePart.code10: { $0.scale = .code10 },
         ScopePart.target75: { $0.targetAmplitude = 0.75 }, ScopePart.target100: { $0.targetAmplitude = 1 },
         ScopePart.zoom: { $0.cycleZoom() }, ScopePart.gainDown: { $0.stepGain(-1) }, ScopePart.gainUp: { $0.stepGain(1) },

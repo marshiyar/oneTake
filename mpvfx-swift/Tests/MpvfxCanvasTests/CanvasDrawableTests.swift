@@ -42,10 +42,13 @@ enum DrawableFixtures {
 
 /// A drawable that counts how often it is made and freed.
 final class CountingDrawable: CanvasDrawable {
-    nonisolated(unsafe) static var made = 0
+    /// Safe: `madeCount` is only read and written under `madeLock`.
+    private static let madeLock = NSLock()
+    nonisolated(unsafe) private static var madeCount = 0
+    static var made: Int { madeLock.withLock { madeCount } }
     let byteCount: Int
     let owner: Int
-    init(bytes: Int, owner: Int = 0) { byteCount = bytes; self.owner = owner; Self.made += 1 }
+    init(bytes: Int, owner: Int = 0) { byteCount = bytes; self.owner = owner; Self.madeLock.withLock { Self.madeCount += 1 } }
 }
 
 final class CanvasDrawableModelTests: XCTestCase {

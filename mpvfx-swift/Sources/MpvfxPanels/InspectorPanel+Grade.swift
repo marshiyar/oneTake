@@ -482,9 +482,11 @@ extension InspectorPanel {
 /// padding box's farthest corner (72% of 55·√2 ≈ 56px). Drawn clipped to the wheel's circle.
 enum HueWheelImage {
     static let pixels = 448
+    /// Safe: `cached` is only read and written under `lock`; two threads racing the first call both render the same image.
+    private static let lock = NSLock()
     nonisolated(unsafe) private static var cached: CanvasImage?
     static func image() -> CanvasImage {
-        if let cached { return cached }
+        if let cached = lock.withLock({ cached }) { return cached }
         let n = pixels, scale = Double(n) / 112
         let stops: [(Double, Double, Double)] = [(1, 0.2, 0.2), (1, 0.2, 1), (0.2, 0.2, 1), (0.2, 1, 1), (0.2, 1, 0.2), (1, 1, 0.2), (1, 0.2, 0.2)]
         var px = [UInt8](repeating: 255, count: n * n * 4)
@@ -504,7 +506,7 @@ enum HueWheelImage {
             }
         }
         let img = CanvasImage(width: n, height: n, rgba: px)
-        cached = img
+        lock.withLock { cached = img }
         return img
     }
 

@@ -176,6 +176,7 @@ public final class TimelineEditor {
         return n
     }
     private static let fxCountLock = NSLock()
+    /// Safe: every read and write of the cache is between `fxCountLock.lock()` and `unlock()` (enabledFxNodeCount).
     nonisolated(unsafe) private static var fxCountCache: [String: Int] = [:]
 
     static func parseEnabledFxNodeCount(_ raw: String) -> Int {
