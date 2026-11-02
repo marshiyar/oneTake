@@ -19,6 +19,12 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   one on the clips around the selected cut, and applies it on Return, a double click or a drop on a cut.
 - Sequence markers: M drops a named marker at the playhead; the Markers panel jumps, renames, recolours and deletes
   them, each edit one undo step.
+- Caption lane: the caption track shows under the tracks; drag a cue to move it, drag its ends to trim it,
+  double-click to retype it, + adds one at the playhead.
+- Caption look: the preview shows the caption on screen with the track's font, size, outline, plate, position and
+  safe area; a cue over two lines is badged on the lane.
+- Caption list: a Captions panel with a row per cue; keyboard edits, frame nudges, split and join, and find and replace
+  across all cues (Replace all is one undo step); rows read too fast are badged.
 - Cut transitions grow up: directional wipe and push join dissolve and dip, with direction, softness and duration
   in Design > Transition.
 - Three more cut transitions, slide, iris and zoom through, a wipe at any angle, and an ease (linear, ease in, ease
@@ -35,6 +41,15 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Frame mixing for slow motion: a speed ramp (or a constant speed below 1x) can blend the two source frames around
   each position in linear light, in preview and export, so slow sections of normal-rate footage do not step; the Media
   group has a Frame mix switch for it.
+- Text reveals: a text layer can arrive and leave per character, word or line (fade, rise, grow or type on, with an
+  optional blinking cursor), in forward, backward, centre-out or seeded random order, the same in preview and export.
+  The controls come in a later change; the project file already stores them.
+- Text look grows a glow, a background plate (behind each line or the whole block, with padding and rounded corners)
+  and a two-colour gradient fill, drawn the same in preview and export. The controls come in a later change.
+- F6 and Shift+F6 move the keyboard focus between panels, the focused panel is outlined, and Tab past the last
+  control of a side panel moves on to the next panel instead of stopping.
+- Export versions (⇧⌘R): tick several export presets and render them one after another, each saved as
+  "<project> – <preset>" without replacing an existing file; a preset can render at its own composition size.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

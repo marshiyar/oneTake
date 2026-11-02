@@ -57,6 +57,8 @@ public final class TimelineController {
     /// Clip menu "Show thumbnails" flipped the timeline-wide thumbnail mode.
     public var onThumbnailModeChange: ((Bool) -> Void)?
     var gesture: Gesture?
+    /// The caption lane's gesture and double-click state (TimelineController+Captions.swift).
+    var captionState = TimelineCaptionControllerState()
     var beatDrag: (clipId: String, source: Double, time: Double)?
     /// A press on a keyframe diamond (select on click, retime on drag); takes priority over every clip gesture.
     var keyframeGesture: KeyframeGesture?
@@ -136,6 +138,7 @@ public final class TimelineController {
             clip.beatTimes.map { TimelineBeat(time: $0, clipId: clip.id) }
         }
         view.markers = e.document.sequence.markers ?? []
+        view.captions.load(from: e)
         // A keyed clip starts with its one summary row; expanded rows and folded kinds are kept per clip while it exists.
         let clipIds = Set(all.flatMap(\.clips).map(\.id))
         view.expandedClips.formIntersection(clipIds)
@@ -219,6 +222,7 @@ public final class TimelineController {
         switch band {
         case .group(let id): return .groupHeader(id: id, caret: x >= 6 && x <= 30 && abs(localY - TimelineLayout.groupHeaderHeight / 2) <= 12)
         case .track(let i): row = i
+        case .captions: return .empty(row: nil)
         }
         if x < TimelineLayout.contentOrigin { return .header(row: row) }
         if localY >= view.trackHeight {
@@ -266,6 +270,7 @@ public final class TimelineController {
     /// and ⇧ on an edge rolls the cut (`clipPointerDown`).
     public func pointerDown(x: Double, y: Double, keys: TimelineGestureKeys) {
         if menuPointerDown(x: x, y: y) { return }
+        if captionPointerDown(x: x, y: y) { return }
         let shift = keys.shift || keys.command
         let hit = hitTest(x: x, y: y)
         if case .transition = hit {} else { view.selectedTransitionId = nil; view.selectedCut = nil }
@@ -295,6 +300,7 @@ public final class TimelineController {
             view.beatDragTime = beatDrag?.time
             needsDisplay?(); return
         }
+        if captionPointerMove(x: x) { return }
         if view.gapMenu != nil { gapMenuHover(x: x, y: y); return }
         if let m = view.clipMenu {
             let a = m.item(atX: x, y: y)?.action
@@ -382,6 +388,7 @@ public final class TimelineController {
             _ = editor?.editBeat(clipId: drag.clipId, sourceFrame: drag.source, to: view.time(forX: x))
             needsDisplay?(); return
         }
+        if captionPointerUp() { return }
         if keyframeGesture != nil { keyframePointerUp(); return }
         let rippleTrim: Bool = { if case .trim(_, _, true)? = gesture { return true }; return false }()
         defer { gesture = nil; movePlan = nil; view.dropTarget = nil; view.dragLiftY = 0; view.drag = nil; view.snapType = nil; view.marquee = nil; view.scrubbing = false; cursor = .normal; needsDisplay?() }
@@ -427,6 +434,7 @@ public final class TimelineController {
     // MARK: Keyboard (timeline-owned edit shortcuts; playback keys fall through to PlaybackState)
 
     @discardableResult public func keyDown(_ k: EditorKey) -> Bool {
+        if let handled = captionKeyDown(k) { return handled }
         if view.clipRename != nil { return renameClipKey(k) }
         if view.clipMenu != nil { return clipMenuKeyDown(k) }
         if case .function(2) = k.code { return requestRenameSelection() }

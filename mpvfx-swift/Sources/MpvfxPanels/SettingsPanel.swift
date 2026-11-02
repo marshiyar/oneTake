@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared     // NATIVE_CAPTION_READING_RATE_DEFAULT / _RANGE
 import MpvfxTheme
 import MpvfxTimeline   // EditorKey
 
@@ -43,6 +44,8 @@ public final class SettingsPanel {
         public var voiceCountIn = 3
         /// The length of a new cut transition, in frames.
         public var transitionFrames = 15
+        /// Characters per second a caption may run before it is badged (`NATIVE_CAPTION_READING_RATE_RANGE`).
+        public var captionReadingRate = NATIVE_CAPTION_READING_RATE_DEFAULT
         public init(appearance: ThemeAppearance = .system, audioDevice: String? = nil, previewCacheMB: Int? = nil, exportFolder: String? = nil,
                     interfaceScalePercent: Int = 100) {
             self.appearance = appearance; self.audioDevice = audioDevice; self.previewCacheMB = previewCacheMB; self.exportFolder = exportFolder
@@ -51,7 +54,7 @@ public final class SettingsPanel {
     }
     public struct Device: Equatable { public var id, name: String
         public init(id: String, name: String) { self.id = id; self.name = name } }
-    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, input, countIn, transitionLength, cache, chooseFolder, resetFolder, hold, card }
+    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, input, countIn, transitionLength, cache, chooseFolder, resetFolder, hold, readingRate, card }
 
     /// The cache sizes offered (MB); nil is automatic.
     public static let cacheChoicesMB: [Int?] = [nil, 512, 1024, 2048, 4096, 8192]
@@ -140,9 +143,9 @@ public final class SettingsPanel {
     private static var note: CanvasFont { PanelTheme.font(10) }
     static let rowH = 28.0, rowGap = 18.0, pad = 20.0, labelW = 132.0, header = 48.0
     /// Appearance, interface size, audio output, preview cache, export folder, hold length.
-    static let rowCount = 9
-    /// Row spacing in a window under 500 pt tall (the editor at 200 %): nine rows and a save error still fit 400 pt.
-    static let compactRowStride = 32.0
+    static let rowCount = 10
+    /// Row spacing in a window under 500 pt tall (the editor at 200 %): ten rows and a save error still fit 400 pt.
+    static let compactRowStride = 29.0
 
     private var rowStride: Double { size.height > 0 && size.height < 500 ? Self.compactRowStride : Self.rowH + Self.rowGap }
 
@@ -175,7 +178,7 @@ public final class SettingsPanel {
         PanelDraw.hline(c, x0: card.x + 1, x1: card.maxX - 1, y: card.y + Self.header, PanelTheme.panelBorderInput)
 
         var row = Row(x: x, cx: x + Self.labelW, cw: max(0, w - Self.labelW), y: card.y + Self.header + 12)
-        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold, drawInput, drawCountIn, drawTransitionLength] {
+        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold, drawInput, drawCountIn, drawTransitionLength, drawReadingRate] {
             drawRow(c, row)
             row.y += rowStride
         }
@@ -273,6 +276,14 @@ public final class SettingsPanel {
         hits.add(r, .transitionLength)
     }
 
+    private func drawReadingRate(_ c: CanvasContext, _ row: Row) {
+        rowLabel(c, row, "Caption reading rate")
+        let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
+        field(c, r)
+        PanelSelect.draw(c, r.insetBy(1), text: "\(values.captionReadingRate) characters/s", hovered: hovered == .readingRate)
+        hits.add(r, .readingRate)
+    }
+
     private func drawCache(_ c: CanvasContext, _ row: Row) {
         rowLabel(c, row, "Preview cache")
         let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
@@ -344,6 +355,11 @@ public final class SettingsPanel {
             let options = choices.map { PanelDropdown.Option(value: String($0), label: Self.transitionFramesLabel($0)) }
             openDropdown(.transitionLength, options, String(values.transitionFrames)) { [weak self] v in
                 if let n = Int(v) { self?.change(\.transitionFrames, n) }
+            }
+        case .readingRate:
+            let options = NATIVE_CAPTION_READING_RATE_RANGE.map { PanelDropdown.Option(value: String($0), label: "\($0) characters/s") }
+            openDropdown(.readingRate, options, String(values.captionReadingRate)) { [weak self] v in
+                if let n = Int(v) { self?.change(\.captionReadingRate, n) }
             }
         case .cache: openCacheList()
         case .chooseFolder: onChooseExportFolder?()

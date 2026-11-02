@@ -255,6 +255,27 @@ final class DockViewTests: XCTestCase {
         XCTAssertFalse(v.focusVisible, "a pointer press hides the ring")
     }
 
+    /// #103: F6 and Shift+F6 move the focused pane like Ctrl+Tab, skip nothing that is open, and show the outline.
+    func testF6CyclesPaneFocusBothWaysAndShowsThePaneOutline() throws {
+        let v = makeView()
+        XCTAssertEqual(v.focused, "timeline")
+        XCTAssertTrue(v.keyDown(EditorKey(.function(6))))
+        XCTAssertEqual(v.focused, "media", "after the last panel, the first")
+        XCTAssertTrue(v.focusVisible)
+        XCTAssertTrue(v.keyDown(EditorKey(.function(6), shift: true)))
+        XCTAssertEqual(v.focused, "timeline")
+        XCTAssertFalse(v.keyDown(EditorKey(.function(6), meta: true)), "a command chord is not the pane key")
+        XCTAssertFalse(v.keyDown(EditorKey(.function(7))))
+        // The outline is the accent, 2 pt wide, just inside the focused pane's content.
+        let content = try XCTUnwrap(v.contentRect(of: "timeline"))
+        let canvas = PanelMeasureCanvas()
+        v.draw(canvas, in: bounds) { _, _, _ in }
+        let outlined = canvas.strokes.contains { $0.0 == .rect(content.insetBy(1)) && $0.1 == PanelTheme.accent && $0.2.width == 2 }
+        XCTAssertTrue(outlined, "the focused pane is outlined in the accent")
+        _ = v.pointerDown(CanvasPoint(700, 300))
+        XCTAssertFalse(v.focusVisible, "a pointer press hides the outline")
+    }
+
     func testAPressInContentReportsThePanelAndItsLocalPoint() throws {
         let v = makeView()
         let c = try frame(v, "preview").content

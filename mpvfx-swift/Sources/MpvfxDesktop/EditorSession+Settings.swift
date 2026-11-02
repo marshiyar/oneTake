@@ -40,6 +40,7 @@ extension EditorSession {
         applyAudioDevice(prefs.audioOutputDevice)
         applyPreviewCache(prefs.previewCacheMB)
         timeline.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
+        captionsPanel?.readingRateLimit = prefs.captionReadingRate
         editor.defaultTransitionFrames = Double(prefs.defaultTransitionFrames)
     }
 
@@ -54,6 +55,7 @@ extension EditorSession {
         values.voiceCountIn = prefs.voiceCountIn
         values.transitionFrames = prefs.defaultTransitionFrames
         values.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
+        values.captionReadingRate = prefs.captionReadingRate
         return values
     }
 
@@ -75,6 +77,10 @@ extension EditorSession {
         if v.previewCacheMB != prefs.previewCacheMB { prefs.previewCacheMB = v.previewCacheMB; applyPreviewCache(v.previewCacheMB) }
         if v.exportFolder != prefs.defaultExportFolder { prefs.defaultExportFolder = v.exportFolder; panels?.refreshRenders() }
         if v.holdSeconds != (prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds) { prefs.holdSeconds = v.holdSeconds; timeline.holdSeconds = v.holdSeconds }
+        if v.captionReadingRate != prefs.captionReadingRate {
+            prefs.captionReadingRate = v.captionReadingRate
+            captionsPanel?.readingRateLimit = v.captionReadingRate
+        }
         settingsPanel.saveError = prefs.lastWriteError.map { "Could not save settings (\($0)); they last until you quit." }
         redraw()
     }

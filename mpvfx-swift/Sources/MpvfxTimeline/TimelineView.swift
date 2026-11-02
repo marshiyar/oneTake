@@ -406,6 +406,8 @@ public final class TimelineView {
     public var gapMenu: GapMenu?
     public var clipMenu: TimelineClipMenu?
     public var clipRename: TimelineClipRename?
+    /// The caption lane (TimelineView+Captions.swift).
+    public var captions = TimelineCaptionLane()
     public var keyframeMenu: TimelineKeyframeMenu?
     /// thumbnailMode: "adaptive" (true, the default) draws filmstrips on video/image clips; "hidden" leaves
     /// plain bars. Audio clips always show their waveform. Toggled from the clip menu.
@@ -540,12 +542,13 @@ public final class TimelineView {
                     drawGroupHeader(c, g, top: f.top - scrollY, width: size.width)
                 }
             }
+            drawCaptionLane(c, size: size)
         }
 
         drawRuler(c, size: size)
         drawSequenceEnd(c, size: size)
         drawPlayhead(c, size: size)
-        drawOverlays(c, size: size); drawKeyframeTooltip(c, size: size)
+        drawOverlays(c, size: size); drawKeyframeTooltip(c, size: size); drawCueEdit(c)
     }
 
     var snapTime: Double? {
