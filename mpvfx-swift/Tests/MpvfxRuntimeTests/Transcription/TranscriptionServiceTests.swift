@@ -161,7 +161,9 @@ final class TranscriptionServiceTests: XCTestCase {
         let stub = StubTranscriptionService(script: { $0.index == 1 ? .stall : .words([RecognisedWord(text: "a", startMs: 0, endMs: 5)]) },
                                             onPiece: { signal.yield($0.index) })
         let cancel = MediaCancellation()
-        let job = Task { await run(stub, request("long.wav", duration: 120), cancel: cancel) }
+        // Safe: the task only calls this test's helpers, which the test does not touch until it awaits the job.
+        nonisolated(unsafe) let runner = self
+        let job = Task { await runner.run(stub, runner.request("long.wav", duration: 120), cancel: cancel) }
         for await index in entered where index == 1 { break }
         XCTAssertEqual(try leftoverFolders().count, 1, "piece 2 is on disk while it is recognised")
         cancel.cancel()
@@ -175,7 +177,8 @@ final class TranscriptionServiceTests: XCTestCase {
         try writeWAV("long.wav", seconds: 60, rate: 16_000) { _ in true }
         let (entered, signal) = AsyncStream<Int>.makeStream()
         let stub = StubTranscriptionService(script: { _ in .stall }, onPiece: { signal.yield($0.index) })
-        let job = Task { await run(stub, request("long.wav", duration: 60)) }
+        nonisolated(unsafe) let runner = self   // Safe: as above
+        let job = Task { await runner.run(stub, runner.request("long.wav", duration: 60)) }
         for await _ in entered { break }
         job.cancel()
         expectError(await job.value, .cancelled)

@@ -135,6 +135,36 @@ public final class PresetPreviewRenderer: @unchecked Sendable {
         return .rendering
     }
 
+    /// The clip's frame at `time` as the source decoded it, with no grade applied (what the key colour and the
+    /// grade secondaries are picked from), at most `pixelWidth` x `pixelHeight`. Same states as `gradedFrame`.
+    public func rawFrame(clipId: String, time: Double, pixelWidth: Int, pixelHeight: Int) -> State {
+        guard pixelWidth > 1, pixelHeight > 1, let at = clipFrame(clipId: clipId, time: time) else { return .unavailable }
+        let (comp, layer, t, want) = (at.comp, at.layer, at.time, at.want)
+        guard let source = sourceFrame(layer, want: want, fps: comp.fps, pixelWidth: pixelWidth, pixelHeight: pixelHeight, exactOnly: true) else {
+            return compositor.decodesMedia && !decodeGaveUp(lane: layer.laneKey) ? .rendering : .unavailable
+        }
+        let slot = "\u{0}raw"
+        let shownFrame = layer.isStill ? comp.frameIndex(at: t) : source.frame
+        let key = Key(lane: layer.laneKey, frame: source.frame, preset: "\(slot)|\(shownFrame)", lut: "", width: pixelWidth, height: pixelHeight)
+        lock.lock()
+        if let hit = images[key] {
+            tick += 1; images[key] = (hit.image, tick); latest[slot] = key
+            lock.unlock()
+            return .ready(hit.image)
+        }
+        latest[slot] = key
+        let queued = pending.contains(key)
+        if !queued { pending.insert(key) }
+        lock.unlock()
+        if !queued {
+            let renderer = colorRenderer, gradeTime = Double(shownFrame) / comp.fps
+            queue.async { [weak self] in
+                self?.render(key, slot: slot, raw: source.image, time: gradeTime, renderer: renderer, alphaCorrect: true) { nil }
+            }
+        }
+        return .rendering
+    }
+
     /// The composited program frame at composition `time` (every visible layer, graded, painted as export paints it),
     /// at most `pixelWidth` x `pixelHeight`: what the colour picker's eyedropper samples. Painted on the caller's
     /// thread from frames already decoded (the preview's, else this renderer's own lane); `.rendering` while a

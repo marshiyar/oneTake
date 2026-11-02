@@ -19,6 +19,7 @@ import MpvfxPanels
 @testable import MpvfxDesktop
 
 /// Runs the sidebar import command through the real dialogs/commands/backend/catalog path.
+@MainActor
 final class LibraryImportRoutingTests: XCTestCase {
     private actor ImportDialogs: NativeDialogs {
         let paths: [String]

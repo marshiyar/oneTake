@@ -202,6 +202,8 @@ public struct TimelineClipModel: Sendable, Equatable {
     /// Enabled nodes in the clip's audio FX chain (TimelineFxButton nodeCount: enabledAudioFxNodes).
     public var fxCount = 0
     public var beatTimes: [Double] = []
+    /// Lengths of the clip's In and Out moves in seconds (0: none), drawn as wedges at its ends.
+    public var moveInSeconds = 0.0, moveOutSeconds = 0.0
     public var end: Double { start + duration }
     public init(id: String? = nil, name: String, start: Double, duration: Double, kind: TimelineClipKind = .video,
                 keyframes: [Double] = [], effectCount: Int = 0) {
@@ -209,11 +211,30 @@ public struct TimelineClipModel: Sendable, Equatable {
         self.kind = kind; self.keyframes = keyframes; self.effectCount = effectCount
     }
 }
+/// A cut transition as the timeline draws it: its range in seconds around the cut between two touching clips.
+public struct TimelineTransitionModel: Sendable, Equatable {
+    public var id: String
+    public var fromClipId: String, toClipId: String
+    /// Seconds: where the range starts and ends, and the cut it belongs to.
+    public var start: Double, end: Double, cut: Double
+    public var kind: String
+    /// Frames, and how the range sits around the cut (`centre`, `endsAtCut`, `startsAtCut`).
+    public var durationFrames: Double
+    public var alignment: String
+    public init(id: String, fromClipId: String, toClipId: String, start: Double, end: Double, cut: Double, kind: String,
+                durationFrames: Double, alignment: String) {
+        self.id = id; self.fromClipId = fromClipId; self.toClipId = toClipId; self.start = start; self.end = end; self.cut = cut
+        self.kind = kind; self.durationFrames = durationFrames; self.alignment = alignment
+    }
+}
+
 public struct TimelineTrackModel: Sendable, Equatable {
     public var id: String; public var name: String; public var kind: String; public var clips: [TimelineClipModel]
     public var groupId: String?
     /// Track header state mirrored from the document (TimelineEditor+Tracks).
     public var hidden = false, locked = false, muted = false, soloed = false
+    /// The cut transitions of this track the editor draws (entries of a newer version are left out).
+    public var transitions: [TimelineTransitionModel] = []
     public init(id: String? = nil, name: String, kind: String = "video", clips: [TimelineClipModel]) {
         self.id = id ?? name; self.name = name; self.kind = kind; self.clips = clips
     }
@@ -272,6 +293,8 @@ public final class TimelineView {
     /// The tracks tags and targets are resolved against: `allTracks` once the controller set it.
     var targetableTracks: [TimelineTrackModel] { allTracks.isEmpty ? tracks : allTracks }
     public var drag: TimelineDragPreview?
+    /// A move wedge being dragged (issue #274): the length it would set, shown until the button is released.
+    public var wedgeDrag: TimelineWedgeDrag?
     /// The cut the roll tool would roll (row, time), shown as a double bracket while hovering.
     public var rollHover: (row: Int, time: Double)?
     /// Where a live clip move lands (placeholder slot or new-track line); `dragLiftY` is the pointer's vertical travel,
@@ -370,6 +393,14 @@ public final class TimelineView {
 
     // MARK: Overlays (razor guide, marquee, gap strips, gap menu)
     public var razorGuideX: Double?
+    /// The selected cut transition (a click on its band) and the cut walked to with ⌥← / ⌥→; Delete removes the
+    /// transition, Enter opens it in the inspector.
+    public var selectedTransitionId: String?
+    public var selectedCut: TimelineCut?
+    /// A live resize: the transition's length in frames while its edge is dragged.
+    public var transitionDrag: (id: String, frames: Double)?
+    /// What the status line says about the transition being resized.
+    public var transitionHint: String?
     public var marquee: CanvasRect?
     public var snapType: TimelineSnapType?
     /// Gap strips to highlight (hovered gap-menu action): row + [start, end) seconds.
@@ -377,6 +408,8 @@ public final class TimelineView {
     public var gapMenu: GapMenu?
     public var clipMenu: TimelineClipMenu?
     public var clipRename: TimelineClipRename?
+    /// The caption lane (TimelineView+Captions.swift).
+    public var captions = TimelineCaptionLane()
     public var keyframeMenu: TimelineKeyframeMenu?
     /// thumbnailMode: "adaptive" (true, the default) draws filmstrips on video/image clips; "hidden" leaves
     /// plain bars. Audio clips always show their waveform. Toggled from the clip menu.
@@ -487,6 +520,7 @@ public final class TimelineView {
                 }
                 drawDropPreview(c, contentWidth: max(0, size.width - L.contentOrigin))
                 for (i, clip) in dragged { drawTrackExtras(c, track: i, clip); drawClip(c, track: i, clip) }
+                drawTransitions(c)
                 // Snap guide: none for beat snaps; playhead #3CE6AC, clip edge rgba(255,255,255,0.6).
                 if let snap = snapTime ?? keyframeSnapTime, snapType != .beat {
                     c.fillRect(CanvasRect(x: Self.snappedLineLeft(centre: x(for: snap)), y: L.rulerHeight, width: 1, height: body.height),
@@ -510,12 +544,13 @@ public final class TimelineView {
                     drawGroupHeader(c, g, top: f.top - scrollY, width: size.width)
                 }
             }
+            drawCaptionLane(c, size: size)
         }
 
         drawRuler(c, size: size)
         drawSequenceEnd(c, size: size)
         drawPlayhead(c, size: size)
-        drawOverlays(c, size: size); drawKeyframeTooltip(c, size: size)
+        drawOverlays(c, size: size); drawKeyframeTooltip(c, size: size); drawCueEdit(c)
     }
 
     var snapTime: Double? {
@@ -627,6 +662,7 @@ public final class TimelineView {
                 c.fillRoundedRect(CanvasRect(x: r.x + 4, y: r.y + 6, width: 2, height: r.height - 12), radius: 1, col)
                 c.fillRoundedRect(CanvasRect(x: r.maxX - 6, y: r.y + 6, width: 2, height: r.height - 12), radius: 1, col)
             }
+            drawMoveWedges(c, clip: clip, r)
         }
         // Hidden track: the lane renders at opacity 0.35 (TimelineLanes isTrackHidden). Painting the row
         // background at 1 - opacity over the clip composites to the same result. Locked tracks (native

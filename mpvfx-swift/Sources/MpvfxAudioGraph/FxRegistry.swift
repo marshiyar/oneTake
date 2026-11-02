@@ -132,6 +132,9 @@ public enum AudioFx {
             num("attack", "Attack", "ms", 0.01, 2000, 0.1, 20, scale: .log), num("release", "Release", "ms", 0.01, 9000, 1, 250, scale: .log),
             num("knee", "Knee", "", 1, 8, 0.01, 2.83), num("makeup", "Makeup", "dB", 0, 36, 0.1, 0), num("mix", "Mix", "", 0, 1, 0.01, 1),
         ], implementation: "compressor"),
+        FxDef(id: "leveller", label: "Even Out", group: "dynamics", params: [
+            num("amount", "Amount", "", 0, 1, 0.01, 0.65),
+        ], implementation: "leveller"),
         FxDef(id: "limiter", label: "Limiter", group: "dynamics", params: [
             num("limit", "Ceiling", "dB", -24, 0, 0.1, -1), num("attack", "Attack", "ms", 0.1, 80, 0.1, 5),
             num("release", "Release", "ms", 1, 8000, 1, 50, scale: .log), num("level_out", "Output", "dB", -24, 24, 0.1, 0),

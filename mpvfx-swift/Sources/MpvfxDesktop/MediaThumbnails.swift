@@ -25,13 +25,14 @@ import MpvfxShared
 /// Frames are decoded by the media engine exactly as the preview decodes them (MediaFrameStream: fitted, RGBA), so a
 /// thumbnail and the preview show the same picture. Waveforms come from the backend (cached on disk with the
 /// project's waveform peaks).
-final class MediaThumbnails {
+/// `@unchecked Sendable`: the caches are only touched on the UI thread; the decode tasks hand their results back through `post`.
+final class MediaThumbnails: @unchecked Sendable {
     struct FrameKey: Hashable { var path: String; var millis: Int; var width: Int; var height: Int; var still: Bool }
     struct PeaksKey: Hashable { var projectId: String; var source: String; var bars: Int }
 
     /// Called on the UI thread when a requested picture or waveform arrives (the shell redraws).
     var onReady: () -> Void = {}
-    var post: (@escaping () -> Void) -> Void
+    var post: @Sendable (@escaping () -> Void) -> Void
 
     private var frames: [FrameKey: CanvasImage] = [:]
     private var framePending: Set<FrameKey> = []
@@ -56,7 +57,7 @@ final class MediaThumbnails {
     private var stripOrder: [StripKey] = []
     private var pressureToken: MemoryPressureMonitor.Token?
 
-    init(post: @escaping (@escaping () -> Void) -> Void, pressure: MemoryPressureMonitor? = .shared) {
+    init(post: @escaping @Sendable (@escaping () -> Void) -> Void, pressure: MemoryPressureMonitor? = .shared) {
         self.post = post
         // The system source calls on the main queue (this cache's thread).
         pressureToken = pressure?.observe { [weak self] level in self?.purge(level) }

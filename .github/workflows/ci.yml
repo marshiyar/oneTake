@@ -1,0 +1,39 @@
+name: CI
+
+# The gate: the same checks a contributor runs (mpvfx-swift/scripts/check.sh), on Linux. Windows runs nightly
+# (windows.yml), and macOS runs locally.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels its older run; every push to main runs to the end.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    container: swift:6.3.3-noble
+    timeout-minutes: 120
+    steps:
+      - name: System packages
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+            git curl ca-certificates zstd build-essential pkg-config libgtk-3-dev libsqlite3-dev libpulse-dev \
+            xvfb xauth dbus-x11 python3 file libvulkan-dev mesa-vulkan-drivers fonts-noto-color-emoji
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mpvfx-swift/.build
+          key: linux-${{ github.sha }}
+          restore-keys: linux-
+      - run: sh mpvfx-swift/scripts/check.sh

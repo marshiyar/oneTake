@@ -206,11 +206,13 @@ extension DockView {
 
     // MARK: Keys
 
-    /// ⌘⇧W / Ctrl+Shift+W closes the focused panel; Ctrl+Tab / Ctrl+Shift+Tab move focus to the next or previous
-    /// open panel (reading order) and show its tab's focus ring; Escape cancels a drag. Other keys: false.
+    /// ⌘⇧W / Ctrl+Shift+W closes the focused panel; F6 / Shift+F6 and Ctrl+Tab / Ctrl+Shift+Tab move focus to the next
+    /// or previous open panel (reading order) and show its tab's focus ring and outline; Escape cancels a drag. Other
+    /// keys: false.
     public func keyDown(_ k: EditorKey) -> Bool {
         if k.code == .escape { return cancelDrag() }
         if k.code == .tab, k.ctrl { cycleFocus(forward: !k.shift); return true }
+        if k.code == .function(6), !k.command, !k.alt { cycleFocus(forward: !k.shift); return true }
         if k.command, k.shift, case .char(let ch) = k.code, ch.lowercased() == "w" { return closeFocused() }
         return false
     }

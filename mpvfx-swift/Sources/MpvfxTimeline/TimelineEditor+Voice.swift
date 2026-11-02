@@ -20,7 +20,7 @@ public extension TimelineEditor {
     @discardableResult
     func addVoiceTake(source: String, seconds: Double, at start: Double) -> Bool {
         guard seconds.isFinite, seconds > 0, start.isFinite, start >= 0 else { return false }
-        let length = floor(seconds * fps)
+        let length = floor(seconds * fps + 1e-3)   // a take of exactly n frames (a sample off at 48 kHz) must not read as n - 1
         guard length >= 1 else { return false }
         var doc = document
         let number = doc.assets.filter { $0.name.hasPrefix("Voice-over ") }.count + 1

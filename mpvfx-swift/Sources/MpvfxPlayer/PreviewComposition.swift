@@ -27,7 +27,10 @@ import MpvfxColor
 /// `crop` insets the untransformed box (canvas px) and travels with the box's scale and rotation.
 public struct PreviewLayer: Equatable, Sendable {
     /// `offline`: a video or image clip whose media file is missing, drawn as a slate naming the file, never decoded.
-    public enum Kind: Sendable, Equatable { case video, image, text, shape, generator, offline }
+    public enum Kind: Sendable, Equatable { case video, image, text, shape, generator, offline
+        /// No picture of its own: grades the composite of the layers below (`AdjustmentLayer.swift`).
+        case adjustment
+    }
     public var clipId: String
     /// Absolute media path.
     public var source: String
@@ -64,10 +67,14 @@ public struct PreviewLayer: Equatable, Sendable {
     public var style: NativeClipStyle?
     /// Vector geometry (kind .shape), painted directly in the layer box.
     public var shape: NativeClipShape?
+    /// How much of the shape's stroke is drawn, from its start (the draw-on move; 1: all of it).
+    public var drawProgress = 1.0
     /// A text layer's words and typography (kind .text): laid out in the box instead of a decoded picture.
     public var generator: NativeFill?
     public var isProcedural: Bool { kind == .text || kind == .shape || kind == .generator }
     public var text: NativeClipText?
+    /// Where a text layer with a reveal or unreveal is in its clip (nil for any other layer).
+    public var textFrame: TextRevealFrame?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
     /// A dip transition's colour laid over the picture (nil: none), and how much of it (0…1).
@@ -182,6 +189,8 @@ public struct PreviewComposition {
     /// statted once per build, never per frame; a rebuild after the file comes back clears its mark.
     public let offlineAssetIds: Set<String>
     public let engine: KeyframeEngine?
+    /// The sequence's caption track: drawn over the picture in the preview (PreviewComposition+Captions.swift).
+    public let captions: NativeCaptionTrack?
 
     /// `naturalSize`: the media's natural pixel size (default: the size cached on the asset). A clip with no size
     /// of its own takes the default box for it (nativeClipNaturalLayout), as export does.
@@ -194,6 +203,7 @@ public struct PreviewComposition {
         let rate = document.frameRate.denominator != 0 ? document.frameRate.numerator / document.frameRate.denominator : 30
         fps = rate > 0 && rate.isFinite ? rate : 30
         self.engine = engine
+        captions = document.sequence.captions
         let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var ordered: [(Entry, Int)] = []
         var n = 0
@@ -211,7 +221,12 @@ public struct PreviewComposition {
                 guard !Self.isLeftOut(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
                 guard clip.shape?.isSupported != false else { continue }
                 let layer = Self.stackingLayer(clip, track: trackLayers[index])
-                if asset.kind == .element, clip.shape?.isSupported == true {
+                if asset.kind == .element, clip.isAdjustment {
+                    var entry = Entry(clip: clip, kind: .adjustment, path: "adjustment:\(clip.id)", layer: layer,
+                                      grade: ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path))
+                    entry.gradeAnimation = PreviewGradeAnimation.forClip(clip, projectDir: projectDir?.path)
+                    ordered.append((entry, n))
+                } else if asset.kind == .element, clip.shape?.isSupported == true {
                     ordered.append((Entry(clip: clip, kind: .shape, path: "shape:\(clip.id)", layer: layer), n))
                 } else if asset.kind == .element, clip.generator?.isGenerator == true, clip.text == nil {
                     ordered.append((Entry(clip: clip, kind: .generator, path: "generator:\(clip.id)", layer: layer), n))
@@ -446,7 +461,10 @@ public struct PreviewComposition {
         out.blend = c.style?.blendMode ?? .normal
         out.shape = e.kind == .shape ? c.shape : nil
         out.generator = e.kind == .generator ? c.generator : nil
-        out.text = e.kind == .text ? c.text : nil
+        out.text = e.kind == .text ? c.text.map { NativeTextLookParameter.applying(values, to: $0) } : nil
+        if out.text?.reveal?.isSupported == true || out.text?.unreveal?.isSupported == true {
+            out.textFrame = TextRevealFrame(frame: local, clipFrames: c.durationFrames, fps: fps)
+        }
         out.offlineFileName = e.offlineFileName
         out.fit = c.fit
         out.mediaAspect = e.mediaAspect
@@ -471,7 +489,7 @@ public struct PreviewComposition {
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
         applyTransitions(e.transitions, to: &out, atFrame: Double(frameIndex(at: time)))
         // Moves go over the static and keyframed values (before fades, which multiply the result).
-        return out.moved(by: moveOffsets(c, local: local))
+        return cameraMoved(out.moved(by: moveOffsets(c, local: local)), c, local: local)   // camera moves go over Layer moves
     }
 
     /// Widens the layer over its transitions' handle frames (one decode lane covers the whole range) and mixes it
@@ -657,15 +675,15 @@ public enum PreviewPainter {
                 }
                 covered = picture
             } else if let shape = layer.shape {
-                NativeShapeRendering.draw(shape, box: box, scale: s, opacity: layer.opacity, on: c)
+                NativeShapeRendering.draw(shape, box: box, scale: s, opacity: layer.opacity, drawProgress: layer.drawProgress, on: c)
             } else if let text = layer.text {
                 if layer.masks.isEmpty {
-                    if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale) {
+                    if let look = TextLookRenderer.render(text, box: box, scale: s, deviceScale: c.deviceScale, frame: layer.textFrame) {
                         c.drawImage(look.image, in: look.rect, opacity: layer.opacity)
                     } else {
-                        TextLayout.draw(NativeTextRendering.block(text, scale: s), in: box, on: c, opacity: layer.opacity)
+                        NativeTextRendering.draw(text, in: box, scale: s, on: c, opacity: layer.opacity, frame: layer.textFrame)
                     }
-                } else if let image = maskedText(text, masks: layer.masks, box: box, scale: s) {
+                } else if let image = maskedText(text, masks: layer.masks, box: box, scale: s, frame: layer.textFrame) {
                     // A masked text layer draws its fill only: the look reaches outside the box the mask is cut from.
                     c.drawImage(image, in: box, opacity: layer.opacity)
                 }
@@ -688,12 +706,12 @@ public enum PreviewPainter {
     }
 
     private static func maskedText(_ text: NativeClipText, masks: [NativeClipMask], box: CanvasRect,
-                                   scale: Double) -> CanvasImage? {
+                                   scale: Double, frame: TextRevealFrame?) -> CanvasImage? {
         let width = max(1, Int(box.width.rounded(.up))), height = max(1, Int(box.height.rounded(.up)))
         guard let canvas = try? RasterCanvas(width: width, height: height) else { return nil }
         canvas.clear(.transparent)
-        TextLayout.draw(NativeTextRendering.block(text, scale: scale),
-                        in: CanvasRect(x: 0, y: 0, width: box.width, height: box.height), on: canvas, opacity: 1)
+        NativeTextRendering.draw(text, in: CanvasRect(x: 0, y: 0, width: box.width, height: box.height), scale: scale, on: canvas,
+                                 opacity: 1, frame: frame)
         return MaskCoverageRasterizer.applying(masks, to: canvas.image())
     }
 

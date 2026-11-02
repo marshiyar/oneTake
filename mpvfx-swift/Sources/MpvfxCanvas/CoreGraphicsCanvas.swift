@@ -67,6 +67,8 @@ public final class CoreGraphicsCanvas: CanvasContext {
     }
 
     private struct FontKey: Hashable { let family: String; let size: Double; let weight: Int; let italic: Bool }
+    /// Safe: only `font(_:)` touches the cache, and it reads and writes it under `fontsLock`.
+    private static let fontsLock = NSLock()
     nonisolated(unsafe) private static var fonts: [FontKey: CTFont] = [:]
 
     /// "Sans" and "Monospace" (the names the views use, as on Linux/Pango) map to the system UI and
@@ -82,7 +84,7 @@ public final class CoreGraphicsCanvas: CanvasContext {
             weight = table[i]; w = 100 + nw
         }
         let key = FontKey(family: f.family, size: f.size, weight: w, italic: f.italic)
-        if let cached = fonts[key] { return cached }
+        if let cached = fontsLock.withLock({ fonts[key] }) { return cached }
         let base: CTFont
         switch f.family.lowercased() {
         case "sans", "sans-serif", "system-ui":
@@ -100,7 +102,7 @@ public final class CoreGraphicsCanvas: CanvasContext {
             font = CTFontCreateWithFontDescriptor(desc, f.size, nil)
         }
         if f.italic, let slanted = CTFontCreateCopyWithSymbolicTraits(font, f.size, nil, .traitItalic, .traitItalic) { font = slanted }
-        fonts[key] = font
+        fontsLock.withLock { fonts[key] = font }
         return font
     }
 

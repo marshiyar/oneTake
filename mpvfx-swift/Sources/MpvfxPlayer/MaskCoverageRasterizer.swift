@@ -71,7 +71,9 @@ public enum MaskCoverageRasterizer {
         let a = (m.angle ?? 0) * .pi / 180, ca = cos(a), sa = sin(a)
         var out = [Double](repeating: 0, count: w * h)
         let kind = m.kind
-        out.withUnsafeMutableBufferPointer { buf in
+        if kind == "path" {
+            out = m.path.map { MaskPathFill.binary(width: w, height: h, path: $0) } ?? out
+        } else { out.withUnsafeMutableBufferPointer { buf in
             guard let baseAddress = buf.baseAddress else { return }
             let base = SendablePointer(baseAddress)
             DispatchQueue.concurrentPerform(iterations: h) { y in
@@ -93,7 +95,7 @@ public enum MaskCoverageRasterizer {
                     row[x] = distance >= 0 ? 1 : 0
                 }
             }
-        }
+        } }
         if feather > 0 { out = gaussianBlur(out, width: w, height: h, sigma: feather / 2) }
         for i in out.indices {
             var value = out[i] * opacity
@@ -158,6 +160,7 @@ public enum MaskCoverageRasterizer {
                 }
             }
         }}}}
+        let rowValues = rowValue   // an immutable copy: the concurrent rows below must not capture the var
         horizontal.withUnsafeBufferPointer { hBuf in
         output.withUnsafeMutableBufferPointer { oBuf in
         kernel.withUnsafeBufferPointer { kBuf in
@@ -167,8 +170,8 @@ public enum MaskCoverageRasterizer {
             DispatchQueue.concurrentPerform(iterations: height) { y in
                 let outRow = dst.pointer + y * width
                 // Window of identical constant rows: every column sums the same value in the same tap order.
-                let first = rowValue[min(max(y - radius, 0), height - 1)]
-                if !first.isNaN, (max(y - radius, 0)...min(y + radius, height - 1)).allSatisfy({ rowValue[$0] == first }) {
+                let first = rowValues[min(max(y - radius, 0), height - 1)]
+                if !first.isNaN, (max(y - radius, 0)...min(y + radius, height - 1)).allSatisfy({ rowValues[$0] == first }) {
                     var acc = 0.0
                     for t in 0..<taps { acc += first * kp[t] }
                     for x in 0..<width { outRow[x] = acc }

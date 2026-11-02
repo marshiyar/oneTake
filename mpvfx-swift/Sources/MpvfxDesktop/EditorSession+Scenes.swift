@@ -32,13 +32,19 @@ extension EditorSession {
         return true
     }
 
-    func installSceneSplitHook() {
-        guard let toolbar = timelineRegion?.toolbar else { return }
+    /// The running scene analysis and whether the user cancelled it. `@unchecked Sendable`: only the UI thread reads or
+    /// writes it (the toolbar hook, and the `postToUI` body the analysis ends with).
+    final class SceneJob: @unchecked Sendable {
         var task: Task<Void, Never>?
         var cancelled = false
+    }
+
+    func installSceneSplitHook() {
+        guard let toolbar = timelineRegion?.toolbar else { return }
+        let job = SceneJob()
         toolbar.onSplitScenes = { [weak self, weak toolbar] in
             guard let self, let toolbar else { return }
-            if let task { cancelled = true; task.cancel(); return }
+            if let running = job.task { job.cancelled = true; running.cancel(); return }
             let toast: (String, Bool) -> Void = { [weak self] message, error in
                 self?.player.view.showToast(message, isError: error); self?.redraw()
             }
@@ -55,20 +61,24 @@ extension EditorSession {
             let fps = self.editor.fps
             let sourceStart = sourceFrameValue(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction)) / fps
             let threshold = toolbar.sceneThreshold, original = self.editor.document
-            toolbar.sceneProgress = 0; cancelled = false; self.redraw()
-            task = Task { [weak self, weak toolbar] in
+            toolbar.sceneProgress = 0; job.cancelled = false; self.redraw()
+            // Safe: the toolbar and `toast` are only used inside `postToUI`, which runs its body on the UI thread; the
+            // task itself only awaits the backend.
+            nonisolated(unsafe) let toolbarOnUI = toolbar
+            nonisolated(unsafe) let toastOnUI = toast
+            job.task = Task {   // holds the session for the length of the analysis, which is short
                 let result: Result<[Double], Error>
                 do {
                     result = .success(try await backend.sceneCuts(projectId: project.id, source: source,
                         sourceStart: sourceStart, sourceDuration: clip.durationFrames / fps * rate,
-                        framesPerSecond: fps / rate, threshold: threshold, onProgress: { [weak self, weak toolbar] progress in
-                            self?.postToUI { toolbar?.sceneProgress = progress; self?.redraw() }
+                        framesPerSecond: fps / rate, threshold: threshold, onProgress: { progress in
+                            self.postToUI { toolbarOnUI.sceneProgress = progress; self.redraw() }
                         }))
                 } catch { result = .failure(error) }
-                self?.postToUI {
-                    guard let self, let toolbar else { return }
-                    defer { task = nil; toolbar.sceneProgress = nil; self.redraw() }
-                    guard !cancelled else { toast("Scene analysis cancelled; no clips changed", false); return }
+                self.postToUI {
+                    let toolbar = toolbarOnUI, toast = toastOnUI
+                    defer { job.task = nil; toolbar.sceneProgress = nil; self.redraw() }
+                    guard !job.cancelled else { toast("Scene analysis cancelled; no clips changed", false); return }
                     guard self.project?.id == project.id, self.editor.document == original else {
                         toast("Project changed during scene analysis; run it again", true); return
                     }

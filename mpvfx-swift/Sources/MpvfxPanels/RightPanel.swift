@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import struct MpvfxAudioGraph.MasterLoudnessTarget
 import MpvfxCanvas
 import MpvfxShared
 import MpvfxTimeline
@@ -31,10 +32,12 @@ public struct RenderJobView: Equatable {
     public var createdAt: Double?
     public var sizeBytes: Double?
     public var durationMs: Double?
+    /// The loudness target and measured values as one label ("-23.0 LUFS target, measured -23.1"), in the meta line.
+    public var loudness: String?
     public init(id: String, name: String, status: Status, stage: String = "", progress: Double = 0, detail: String? = nil, error: String? = nil, thumbnail: CanvasImage? = nil,
-                createdAt: Double? = nil, sizeBytes: Double? = nil, durationMs: Double? = nil) {
+                createdAt: Double? = nil, sizeBytes: Double? = nil, durationMs: Double? = nil, loudness: String? = nil) {
         self.id = id; self.name = name; self.status = status; self.stage = stage; self.progress = progress; self.detail = detail; self.error = error; self.thumbnail = thumbnail
-        self.createdAt = createdAt; self.sizeBytes = sizeBytes; self.durationMs = durationMs
+        self.createdAt = createdAt; self.sizeBytes = sizeBytes; self.durationMs = durationMs; self.loudness = loudness
     }
 }
 
@@ -46,6 +49,11 @@ public struct RenderSettingsModel: Equatable, Codable {
     public var resolution: String = "auto"
     public var customWidth: Double = 1920
     public var customHeight: Double = 1080
+    /// Programme loudness in LUFS the export is brought to; nil is Off (the mix is left as it is). Optional, so
+    /// presets saved before it existed still load.
+    public var loudness: Double?
+    /// The true-peak ceiling in dBTP while `loudness` is on; nil is the default (-1).
+    public var truePeak: Double?
     public init() {}
 }
 
@@ -56,7 +64,7 @@ public enum RenderAction: Equatable { case start(RenderSettingsModel), cancel(St
 public final class RightPanel {
     public enum Hit: Equatable {
         case hide, show, design, easing, renders, showRenders, panelMenu, tabOverflow
-        case format, resolution, fps, quality, customW, customH, export, formatInfo
+        case format, resolution, fps, quality, loudness, truePeak, customW, customH, export, formatInfo
         case preset, presetName, savePreset, deletePreset
         case job(String), cancel(String), delete(String), reveal(String), retry(String), hideFinished, dismissError
         case confirmDelete(String), keep(String), thumb(String), listScrollbar
@@ -79,6 +87,13 @@ public final class RightPanel {
     public var presetName = ""
     public var onSavePreset: ((String, RenderSettingsModel) -> Void)?
     public var onDeletePreset: ((String) -> Void)?
+    /// The "Export versions" card (⇧⌘R) and what the host renders when it exports: the chosen presets' names.
+    public let versions = ExportVersionsCard()
+    public var onExportVersions: (([String]) -> Void)? { get { versions.onExport } set { versions.onExport = newValue } }
+    /// The composition size picked for a preset in that card (nil: the project's own size).
+    public var onSetPresetComposition: ((String, RenderPresetComposition?) -> Void)? {
+        get { versions.onSetComposition } set { versions.onSetComposition = newValue }
+    }
     public var canvasSize = CanvasSize(1920, 1080)
     public var lastRenderSeconds: Double?
     public var actionError: String?
@@ -118,6 +133,8 @@ public final class RightPanel {
         // The group the user left open last time; Transform when nothing was saved.
         inspector.openGroupId = layout.prefs.openInspectorGroup ?? "layout"
         inspector.scopeSource = layout.prefs.scopeSource ?? .clip
+        inspector.gradeSectionOpen = layout.prefs.gradeSections ?? [:]
+        inspector.grade.lutOpen = inspector.gradeSectionOpen[InspectorPanel.lutSectionId]
         if let order = layout.prefs.designGroupOrder { inspector.designOrder = DesignGroups.sanitized(order: order) }
         inspector.layout = layout
         inspector.onOpenEasing = { [weak self] clipId, refs in
@@ -210,6 +227,21 @@ public final class RightPanel {
             }
         }
         dropdown.draw(c)
+        versions.draw(c, size: size)
+    }
+
+    /// Shows the Renders tab with the "Export versions" checklist (⇧⌘R). While renders are running it says so instead:
+    /// one run of versions at a time.
+    public func openExportVersions() {
+        layout.setRightCollapsed(false)
+        layout.setRightTab(.renders)
+        if isRendering {
+            actionError = "Wait for the renders in progress to finish, then export versions."
+        } else {
+            actionError = nil
+            versions.open(presets: renderPresets)
+        }
+        onChange?()
     }
 
     /// The shown tab's content in `rect`.
@@ -262,6 +294,18 @@ public final class RightPanel {
         .init(value: "draft", label: "Draft"), .init(value: "standard", label: "Standard"), .init(value: "high", label: "High Quality"),
     ]
     static let rates: [PanelDropdown.Option] = [.init(value: "24", label: "24 fps"), .init(value: "30", label: "30 fps"), .init(value: "60", label: "60 fps")]
+    /// The loudness targets offered, in LUFS: -23 is EBU R128 broadcast, -24 ATSC A/85, -14 and -16 common for streaming.
+    static let loudnessTargets: [PanelDropdown.Option] = [.init(value: "off", label: "Off")] + [-14.0, -16, -18, -23, -24].map {
+        PanelDropdown.Option(value: String(Int($0)), label: "\(Int($0)) LUFS")
+    }
+    static let truePeakCeilings: [PanelDropdown.Option] = [-0.5, -1, -1.5, -2, -3].map {
+        PanelDropdown.Option(value: String($0), label: "\($0) dBTP")
+    }
+    static func loudnessLabel(_ target: Double?) -> String {
+        guard let target else { return "Off" }
+        return "\(target.rounded() == target ? String(Int(target)) : String(target)) LUFS"
+    }
+    static func ceilingLabel(_ ceiling: Double?) -> String { "\(ceiling ?? MasterLoudnessTarget.defaultTruePeak) dBTP" }
     static let formatInfo: [String: String] = [
         "mp4": "Best for general use. H.264 video with lossless FLAC sound.",
         "mov": "Transparent video: lossless PNG frames with 8-bit alpha and 16-bit PCM sound. Very large files.",
@@ -326,6 +370,12 @@ public final class RightPanel {
         if showQuality {
             select(.quality, "Quality", Self.qualities.first { $0.value == settings.quality }?.label ?? settings.quality,
                    CanvasRect(x: x + colW + gap, y: y, width: colW, height: 47))
+        }
+        y += 47 + gap
+        // Loudness: Off leaves the mix as it is; a target brings it there under the true-peak ceiling.
+        select(.loudness, "Loudness", Self.loudnessLabel(settings.loudness), CanvasRect(x: x, y: y, width: colW, height: 47))
+        if settings.loudness != nil {
+            select(.truePeak, "True-peak ceiling", Self.ceilingLabel(settings.truePeak), CanvasRect(x: x + colW + gap, y: y, width: colW, height: 47))
         }
         y += 47 + 12
         if settings.resolution == "custom" {   // custom W×H (aspect locked): grid-cols-2 gap-2 rounded-md border bg-panel-input/40 p-2
@@ -561,6 +611,7 @@ public final class RightPanel {
             var meta: [String] = []
             if let t = j.createdAt { meta.append(Self.timeAgo(t, now: now())) }
             if let b = j.sizeBytes { meta.append(formatExportFileSize(b)) }
+            if let l = j.loudness { meta.append(l) }
             let line = meta.isEmpty ? (j.detail ?? "") : meta.joined(separator: " · ")
             PanelDraw.text(c, line, in: CanvasRect(x: tx, y: ly, width: tw, height: 10), font: small, color: PanelTheme.text5)
         }
@@ -585,6 +636,7 @@ public final class RightPanel {
     }
 
     public func pointerDown(_ p: CanvasPoint) -> Bool {
+        if versions.isOpen { _ = versions.pointerDown(p); onChange?(); return true }
         focus.pointerPressed()
         if dropdown.pointerDown(p) { onChange?(); return true }
         if let r = contentPointerDown(p) { return r }
@@ -614,6 +666,14 @@ public final class RightPanel {
             }
         case .fps: open("fps", Self.rates, "\(Int(settings.fps))") { [weak self] v in self?.settings.fps = Double(v) ?? 30 }
         case .quality: open("quality", Self.qualities, settings.quality) { [weak self] v in self?.settings.quality = v }
+        case .loudness:
+            open("loudness", Self.loudnessTargets, settings.loudness.map { String(Int($0)) } ?? "off") { [weak self] v in
+                self?.settings.loudness = Double(v)
+            }
+        case .truePeak:
+            open("truePeak", Self.truePeakCeilings, String(settings.truePeak ?? MasterLoudnessTarget.defaultTruePeak)) { [weak self] v in
+                self?.settings.truePeak = Double(v)
+            }
         case .customW: field = PanelTextField(key: "w", value: "\(Int(settings.customWidth))")
         case .customH:
             let h = CompositionRenderResolution.customHeight(forWidth: settings.customWidth, compositionWidth: canvasSize.width,
@@ -649,6 +709,7 @@ public final class RightPanel {
     }
 
     public func pointerMove(_ p: CanvasPoint) -> Bool {
+        if versions.isOpen { return versions.pointerMove(p) }
         if dropdown.isOpen { return dropdown.pointerMove(p) }
         var changed = false
         changed = contentPointerMove(p)
@@ -666,6 +727,7 @@ public final class RightPanel {
     /// `dy` in points from the host: precise (trackpad) deltas move 1:1, wheel line steps glide (PanelScroller).
     /// `zoom` (the command key held) zooms the Easing tab's graph instead of panning it.
     public func scroll(_ p: CanvasPoint, dy: Double, precise: Bool = false, zoom: Bool = false) -> Bool {
+        if versions.isOpen { versions.scrollBy(dy); onChange?(); return true }
         if dropdown.isOpen { dropdown.scrollBy(dy); return true }
         if shownTab == .design { return inspector.scroll(p, dy: dy, precise: precise) }
         if shownTab == .easing { return easing.scroll(p, dy: dy, zoom: zoom) }
@@ -681,7 +743,7 @@ public final class RightPanel {
         return a || b || e
     }
 
-    public var isEditingText: Bool { field != nil || inspector.isEditingText || easing.isEditingText }
+    public var isEditingText: Bool { versions.isOpen || field != nil || inspector.isEditingText || easing.isEditingText }
 
     /// Release reaches the inspector even if a tab or field changed during a held arrow.
     public func keyUp(_ key: EditorKey) { inspector.keyUp(key) }
@@ -690,6 +752,7 @@ public final class RightPanel {
     /// hide, panel menu) comes first in the Tab order and the inspector after it; on the Renders tab one focus covers
     /// the header and the tab's controls.
     public func keyDown(_ k: EditorKey) -> Bool {
+        if versions.isOpen { let handled = versions.keyDown(k); onChange?(); return handled }
         if dropdown.key(k) { onChange?(); return true }
         if field != nil { return fieldKey(k) }
         if shownTab == .design && !layout.effectiveRightCollapsed { return designKey(k) }

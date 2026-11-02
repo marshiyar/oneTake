@@ -26,7 +26,8 @@ import struct MpvfxAudioGraph.FxMeterSnapshot
 /// and the library views; the Design panel's inspector edits the open document at the playhead for the current
 /// selection; the Renders panel exports; context-menu and navigator commands go to the backend. They draw into
 /// `shell.panes[.left]`, `[.right]` and `[.renders]`, three dock panels.
-final class SessionPanels {
+/// `@unchecked Sendable` for the same reason as `EditorSession`: UI-thread state that background tasks reach only through `postToUI`.
+final class SessionPanels: @unchecked Sendable {
     unowned let session: EditorSession
     let left: LeftSidebarPanel
     /// The Design panel (the inspector) and the Renders panel: one `RightPanel` each, docked to its tab.
@@ -75,6 +76,12 @@ final class SessionPanels {
                 try NativeDurableWrite().write(data, to: path)
             }
         } catch { session.onError("Saved looks unavailable", error.localizedDescription) }
+        let textStyles = TextStyleLibrary(path: URL(fileURLWithPath: userData).appendingPathComponent("text-styles.json").path) { data, path in
+            try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+            try NativeDurableWrite().write(data, to: path)
+        }
+        if let problem = textStyles.loadError { session.onError("Text styles unavailable", problem.localizedDescription) }
+        right.inspector.textStyleLibrary = textStyles
         right.inspector.resolveUserLookLut = { [weak session] source in session?.absoluteMediaPath(source) ?? source }
         wireLeft()
         wireRight()
@@ -86,7 +93,7 @@ final class SessionPanels {
     func redraw() { session.redraw() }
 
     /// Hops to the UI thread through whatever the shell installed by the time it is called.
-    var uiPost: (@escaping () -> Void) -> Void {
+    var uiPost: @Sendable (@escaping () -> Void) -> Void {
         { [weak session] body in session?.postToUI(body) }
     }
 
@@ -453,8 +460,13 @@ final class SessionPanels {
             self.session.playback.duration = self.session.editor.duration
             self.session.syncStage(); self.redraw()
         }
-        inspector.fxMeterProvider = { [weak self] owner in self?.session.fxMeterSnapshot(owner: owner) }
-        inspector.audioFxSpectrumProvider = { [weak self] owner, node in self?.session.fxSpectrumBands(owner: owner, nodeIndex: node) }
+        inspector.onPickKeyColor = { [weak self] in self?.session.pickKeyColorFromStage() }
+        inspector.onPickSecondaryColor = { [weak self] in self?.session.pickSecondaryColorFromStage() }
+        inspector.onColorKeyViewChange = { [weak self] mode in
+            guard let self else { return }
+            self.session.player.setColorKeyView(mode); self.right.inspector.colorKeyView = mode; self.redraw()
+        }
+        inspector.onEditMaskOnStage = { [weak self] clip, mask in self?.session.editMaskOnStage(clipId: clip, maskId: mask) }
         inspector.onSeek = { [weak self] t in
             guard let self else { return }
             self.session.playback.seek(t); self.session.timeline.syncFromPlayback(); self.session.syncStage(); self.redraw()
@@ -490,6 +502,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         inspector.lutStatus = { [weak self] src in LutStatusReader.status(src, projectDir: self?.session.projectDir?.path) }
+        inspector.clipLoudness = { [weak self] source in self?.session.clipLoudnessFeed?.reading(for: source) ?? .unavailable }
         wirePresetPreviews(inspector)
         wireCrop(inspector)
         wireEffectPreviews(inspector)
@@ -705,6 +718,7 @@ extension EditorSession {
             try adoptProject(opened)
             watchOpenProject()
             timeline.view.selection = []
+            lastLayout = nil   // clip ids repeat from project to project
             playback.seek(0); timeline.syncFromPlayback()
             panels?.projectSwitched()
         } catch { onError("Could not open the project", "\(error)") }

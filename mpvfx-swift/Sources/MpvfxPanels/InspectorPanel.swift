@@ -65,12 +65,20 @@ public final class InspectorPanel {
     /// shows no meters. Set by the app, which refreshes it at 30 Hz while playing and returns nothing when stopped.
     public var fxMeterProvider: ((String) -> FxMeterSnapshot?)?
     public var onEdited: (() -> Void)?
+    /// The Media group's speed graph and whether a ramp edit keeps the clip's length (the Keep length switch).
+    let speedGraph = SpeedGraph()
+    var speedKeepLength = true
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
     /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
     public var onCopyGrade: (() -> Bool)?
     /// Durable user-data look catalogue, supplied by the host; ordinary effects remain in the project.
     public var userLookStore: UserLookStore?
+    /// The user's text styles (`<userData>/text-styles.json`), supplied by the host; the project copies a style on first use.
+    public var textStyleLibrary: TextStyleLibrary?
+    var textStyleMenuOpen = false
+    var textStyleNameDraft: String?
+    var textStyleError: String?
     public var resolveUserLookLut: (String) -> String = { $0 }
     public var userLookLutExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     var selectedUserLook: String?
@@ -289,11 +297,18 @@ public final class InspectorPanel {
     public var scopeSource: ColorScopes.Source = .clip {
         didSet { if scopeSource != oldValue, let layout { layout.update { $0.scopeSource = scopeSource } } }
     }
+    /// The Grade sections the user opened (true) or collapsed (false), by id (InspectorPanel+GradeSections.swift). Every change
+    /// is saved as `PanelPreferences.gradeSections`; `RightPanel.init` restores it.
+    public var gradeSectionOpen: [String: Bool] = [:] {
+        didSet { if gradeSectionOpen != oldValue, let layout { layout.update { $0.gradeSections = gradeSectionOpen } } }
+    }
     /// Analyses scope frames off the draw thread; the host sets its `onReady` to redraw.
     public let scopeWorker = ScopeWorker()
     public var lutAssets: () -> [String] = { [] }
     /// The grid size of the grade's LUT (its `src`), or why it could not be read; nil while unknown (InspectorPanel+Lut).
     public var lutStatus: (String) -> LutStatus? = { _ in nil }
+    /// The Loudness row's reading for a clip's source path (Media group). Nil hides the row (InspectorPanel+Groups).
+    public var clipLoudness: ((_ source: String) -> ClipLoudnessReading)?
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,
                                  _ pick: @escaping (String) -> Void) -> Void)?
@@ -318,7 +333,7 @@ public final class InspectorPanel {
         case .reset(let key): return "Reset " + (slider(key)?.label ?? number(key)?.label ?? key)
         case .keyframe(let key) where key.hasSuffix(Self.gearSuffix):
             return (slider(String(key.dropLast(Self.gearSuffix.count)))?.label ?? key) + " settings"
-        case .custom(let section, let part): return Self.targetActionLabels[section]?[part]
+        case .custom(let section, let part): return Self.targetActionLabels[section]?[part] ?? gradeSectionLabel(section)
         default: return nil
         }
     }

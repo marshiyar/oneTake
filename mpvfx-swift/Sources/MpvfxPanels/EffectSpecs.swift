@@ -18,29 +18,29 @@ import MpvfxShared
 /// The Effects section's catalog: families, each effect's master slider and
 /// settings, and the values an effect is added with (HF_COLOR_GRADING_EFFECT_APPLY_DEFAULTS).
 public enum EffectSpecs {
-    public enum Control {
+    public enum Control: Sendable {
         /// A slider over `value * scale` in `min…max`, shown with `format` or the value and `unit` (default %).
-        case slider(key: String, label: String, min: Double, max: Double, scale: Double, unit: String, format: ((Double) -> String)?)
+        case slider(key: String, label: String, min: Double, max: Double, scale: Double, unit: String, format: (@Sendable (Double) -> String)?)
         case toggle(key: String, label: String)
         case select(key: String, label: String, options: [String])
         public var key: String {
             switch self { case .slider(let k, _, _, _, _, _, _), .toggle(let k, _), .select(let k, _, _): k }
         }
     }
-    public struct Spec {
+    public struct Spec: Sendable {
         public let key: String, label: String
         public var showMaster = true
         public var masterLabel = "Mix"
-        public var masterFormat: ((Double) -> String)?
+        public var masterFormat: (@Sendable (Double) -> String)?
         /// Master slider maximum (percent), 100 unless the effect's limit is wider (Bloom 0…3).
         public var max = 100.0
         public var settings: [Control] = []
         /// The effect draws with an ink palette (Ordered Dither, Mono Screen, ASCII: mono; Engraving, Crosshatch: art).
         public var palette: String?
     }
-    public struct Family { public let label: String; public let presets: [String]; public let effects: [Spec] }
+    public struct Family: Sendable { public let label: String; public let presets: [String]; public let effects: [Spec] }
 
-    static func percent(_ k: String, _ l: String, format: ((Double) -> String)? = nil) -> Control {
+    static func percent(_ k: String, _ l: String, format: (@Sendable (Double) -> String)? = nil) -> Control {
         .slider(key: k, label: l, min: 0, max: 100, scale: 100, unit: "%", format: format)
     }
     static func degrees(_ k: String, _ l: String, _ max: Double) -> Control {

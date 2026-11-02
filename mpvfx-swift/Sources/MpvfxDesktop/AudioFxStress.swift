@@ -31,6 +31,8 @@ import MpvfxPlayer
 #if os(Linux)
 typealias StressBacktrace = @convention(c) (UnsafeMutablePointer<UnsafeMutableRawPointer?>, Int32) -> Int32
 typealias StressBacktraceSymbols = @convention(c) (UnsafePointer<UnsafeMutableRawPointer?>, Int32, Int32) -> Void
+// Safe: both are written once, on the main thread, before `signal(SIGUSR1)` installs the handler that reads them, and
+// never written again.
 nonisolated(unsafe) var stressBacktrace: StressBacktrace?
 nonisolated(unsafe) var stressBacktraceSymbols: StressBacktraceSymbols?
 #endif

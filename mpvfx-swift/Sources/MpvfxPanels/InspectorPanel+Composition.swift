@@ -83,7 +83,8 @@ extension InspectorPanel {
             InspectorRow(.pair(label: "Size", width, height)),
             InspectorRow(.note("\(Self.sizeText(w, h)) · \(ratio) \(shape). Clips with no size of their own refit; "
                                + "placed clips and text keep their size and distance from the centre.")),
-        ]
+            InspectorRow(.section("Canvas fill")),
+        ] + canvasFillRows(projectCanvasFillScope(editor))
         return InspectorGroup(id: Self.compositionGroupId, title: "Composition", summary: "\(Self.sizeText(w, h)) · \(ratio)", rows: rows, spacing: 8)
     }
 

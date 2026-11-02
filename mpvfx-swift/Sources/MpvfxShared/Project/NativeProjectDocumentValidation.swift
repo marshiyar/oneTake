@@ -175,6 +175,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["scaleRatioLocked"] != nil && clip["scaleRatioLocked"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).scaleRatioLocked", "Scale ratio lock must be a boolean")
             }
+            validateNativeClipAdjustment(clip, assetKind: assetKind, clipPath, &issues)
             if clip["preservesPitch"] != nil && clip["preservesPitch"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).preservesPitch", "Preserves pitch must be a boolean")
             }
@@ -292,6 +293,13 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                     if effect["parameters"] != nil && !isRecordValue(effect["parameters"]) {
                         pushIssue(&issues, .invalidEffect, "\(effectPath).parameters", "Effect parameters must be an object")
                     }
+                    if str(effect["effectId"]) == NativeCameraMoves.effectId {
+                        if let parameters = effect["parameters"], parameters.isRecord {
+                            validateNativeCameraMoves(parameters, "\(effectPath).parameters", &issues)
+                        } else if effect["parameters"] == nil {
+                            pushIssue(&issues, .invalidEffect, "\(effectPath).parameters", "Camera moves parameters must be an object")
+                        }
+                    }
                     if str(effect["effectId"]) == "color-key" {
                         if effect["enabled"]?.boolValue == true { enabledColorKeyCount += 1 }
                         guard let parameters = effect["parameters"], parameters.isRecord else {
@@ -333,6 +341,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         }
         validateNativeTrackTransitions(track, trackPath, &transitionIds, &issues)
     }
+    validateNativeNestedSequences(input, engine: engine, &issues)
     return issues
 }
 

@@ -20,7 +20,8 @@ import OneTakeMedia
 @testable import MpvfxRuntime
 
 final class ExportNaturalSizeTests: XCTestCase {
-    static var root = ""
+    /// Safe: XCTest runs class setUp and tearDown serially, before and after the tests that read it.
+    nonisolated(unsafe) static var root = ""
     override class func setUp() {
         super.setUp()
         guard let dir = try? makeMediaTempDir("export-natural-") else { return }
