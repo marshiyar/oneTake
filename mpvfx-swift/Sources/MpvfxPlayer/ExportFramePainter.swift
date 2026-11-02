@@ -117,7 +117,7 @@ public struct ExportFrameError: Error, Equatable, CustomStringConvertible {
 /// `VideoFrameReader` (one per timeline lane, as the preview decodes), opened when the clip comes on screen and
 /// closed when it leaves, so memory stays bounded by what one frame shows.
 public final class PreviewExportFrames: NativeExportFrameRenderer {
-    private struct Lane { let reader: VideoFrameReader; var still: CanvasImage? }
+    private struct Lane { let reader: VideoFrameReader; var still: CanvasImage?; var reversed: ReversedFrameBuffer? }
 
     public let painter: ExportFramePainter
     private var lanes: [String: Lane] = [:]
@@ -148,7 +148,7 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
 
     private func decode(_ layer: PreviewLayer, sourceTime: Double, width: Int, height: Int) -> CanvasImage? {
         do {
-            var lane = try lanes[layer.laneKey] ?? Lane(reader: VideoFrameReader(path: layer.source), still: nil)
+            var lane = try lanes[layer.laneKey] ?? Lane(reader: VideoFrameReader(path: layer.source), still: nil, reversed: nil)
             defer { lanes[layer.laneKey] = lane }
             let still = layer.isStill || lane.reader.info.isStill
             if still, let cached = lane.still, cached.width == width, cached.height == height { return cached }
@@ -156,6 +156,15 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
             // shows the final frame. A held frame is read at its own source time, as the preview's still lane reads it.
             let onePicture = layer.kind == .image || lane.reader.info.isStill
             let t = onePicture ? 0 : max(0, min(sourceTime, lane.reader.info.duration - 1e-6))
+            if layer.reverseFrames != nil, layer.speedRamp == nil, !onePicture, layer.timelineFPS > 0 {
+                // A reversed clip: read a chunk of the source forward and serve it last frame first.
+                if let image = lane.reversed?.image(at: t, width: width, height: height) { return image }
+                lane.reversed = ReversedFrameBuffer.fill(
+                    reader: lane.reader, endingAt: t, notBefore: layer.sourceIn, step: layer.rate / layer.timelineFPS, fps: layer.timelineFPS, rate: layer.rate,
+                    width: width, height: height, capacity: ReversedFrameBuffer.capacity(width: width, height: height))
+                framesDecoded += lane.reversed?.frames.count ?? 0
+                if let image = lane.reversed?.image(at: t, width: width, height: height) { return image }
+            }
             framesDecoded += 1
             let frame = try lane.reader.frame(at: t, width: width, height: height)
             let image = CanvasImage(width: width, height: height, rgba: frame.rgba)

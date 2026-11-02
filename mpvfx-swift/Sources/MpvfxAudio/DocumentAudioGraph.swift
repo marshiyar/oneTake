@@ -29,18 +29,20 @@ public enum DocumentAudioGraph {
         public var timelineFPS: Double
         /// The clip's `preservesPitch`: true plays `rate` as tempo, false resamples so the pitch follows the speed.
         public var preservesPitch: Bool
+        /// The clip plays backwards (`clip.reversed`): the decoded stem is reversed sample by sample (`StemDecoder.decode`).
+        public var reversed: Bool
         public init(path: String, sourceIn: Double, duration: Double, rate: Double, preservesPitch: Bool = true,
-                    speedRamp: NativeSpeedRamp? = nil, timelineFPS: Double = 30) {
+                    speedRamp: NativeSpeedRamp? = nil, timelineFPS: Double = 30, reversed: Bool = false) {
             self.path = path; self.sourceIn = sourceIn; self.duration = duration; self.rate = rate; self.preservesPitch = preservesPitch
-            self.speedRamp = speedRamp; self.timelineFPS = timelineFPS
+            self.speedRamp = speedRamp; self.timelineFPS = timelineFPS; self.reversed = reversed
         }
         public static func == (lhs: StemKey, rhs: StemKey) -> Bool {
             lhs.path == rhs.path && lhs.sourceIn == rhs.sourceIn && lhs.duration == rhs.duration && lhs.rate == rhs.rate &&
-                lhs.preservesPitch == rhs.preservesPitch && lhs.speedRamp == rhs.speedRamp && lhs.timelineFPS == rhs.timelineFPS
+                lhs.preservesPitch == rhs.preservesPitch && lhs.reversed == rhs.reversed && lhs.speedRamp == rhs.speedRamp && lhs.timelineFPS == rhs.timelineFPS
         }
         public func hash(into hasher: inout Hasher) {
             hasher.combine(path); hasher.combine(sourceIn); hasher.combine(duration); hasher.combine(rate)
-            hasher.combine(preservesPitch); hasher.combine(timelineFPS)
+            hasher.combine(preservesPitch); hasher.combine(timelineFPS); hasher.combine(reversed)
             hasher.combine(speedRamp)
         }
     }
@@ -91,6 +93,8 @@ public enum DocumentAudioGraph {
             if a.kind == .video && detached.contains(c.id) { continue }
             // A held frame is silent (and a hold from a newer version is not played either).
             if c.holdSourceFrame != nil { continue }
+            // A reversed clip whose sound the user chose to mute (`reverseAudio: false`) adds nothing.
+            if c.playsBackwards && !c.reversesAudio { continue }
             let path = src.hasPrefix("/") ? src : (projectDir ?? URL(fileURLWithPath: ".")).appendingPathComponent(src).path
             guard fileExists(path) else { continue }
             let start = c.startFrame / fps, end = (c.startFrame + c.durationFrames) / fps
@@ -98,7 +102,7 @@ public enum DocumentAudioGraph {
             var volume = 1.0
             if case .number(let v)? = c.staticParameters?["audio.volume"] { volume = max(0, v) }
             let stem = StemKey(path: path, sourceIn: c.sourceInFrame / fps, duration: end - start, rate: rate,
-                               preservesPitch: c.preservesPitch ?? true, speedRamp: c.speedRamp, timelineFPS: fps)
+                               preservesPitch: c.preservesPitch ?? true, speedRamp: c.speedRamp, timelineFPS: fps, reversed: c.playsBackwards)
             let keyed = c.parameterTracks.first { $0.parameterId == volumeParameter && !$0.keyframes.isEmpty }
             var track = Inputs.Track(id: c.id, stem: stem,
                                      start: start, end: end, volume: volume, muted: c.muted,
@@ -110,7 +114,7 @@ public enum DocumentAudioGraph {
                 track.mixerTrackId = owner.id
             }
             track.volumeKeyframes = keyed.map { VolumeKeyframes(track: $0, durationFrames: c.durationFrames, fps: fps) }
-            if let t = transitions[c.id] { applyTransitions(t, to: &track, fps: fps, rampedClip: c.speedRamp?.isSupported == true) }
+            if let t = transitions[c.id] { applyTransitions(t, to: &track, fps: fps, rampedClip: c.speedRamp?.isSupported == true || c.playsBackwards) }
             tracks.append(track)
         }
         return Inputs(duration: duration, tracks: tracks, groups: doc.sequence.audioGroups ?? [])

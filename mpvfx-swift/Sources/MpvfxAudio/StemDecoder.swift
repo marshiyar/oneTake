@@ -34,6 +34,12 @@ public enum StemDecoder {
     /// `sampleRate`, so the pitch rises and falls with the speed.
     /// A file without an audio track decodes to an empty stem: the clip adds silence, like a muted one.
     public static func decode(_ key: DocumentAudioGraph.StemKey, sampleRate: Int) throws -> [[Float]] {
+        let forward = try decodeForward(key, sampleRate: sampleRate)
+        // A reversed clip plays the same samples last to first: live playback and export both read this stem.
+        return key.reversed ? forward.map { Array($0.reversed()) } : forward
+    }
+
+    private static func decodeForward(_ key: DocumentAudioGraph.StemKey, sampleRate: Int) throws -> [[Float]] {
         let probe = try MediaProbe.probe(path: key.path)
         guard let audio = probe.audio else { return [[], []] }
         guard audio.decodable else { throw StemDecodeError(audio.reason ?? "This file's audio cannot be decoded.") }

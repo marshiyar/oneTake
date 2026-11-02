@@ -72,14 +72,19 @@ public final class PreviewDecodeLane: @unchecked Sendable {
     var streamSize: PreviewDecodeSize?
     var streamNext = 0          // timeline frame index the stream returns next
     var deadFrom = Int.max      // the media ran out at this timeline frame
+    /// A reversed clip's open chunk (PreviewDecoder+Reversed.swift): the timeline frame the stream returns next (it runs
+    /// down) and the lowest frame of the chunk.
+    var reverseNext = Int.max, reverseFloor = 0
+    /// Timeline frames at or below this have no source picture (a reversed clip's media ended first).
+    var reverseDeadBelow = Int.min
     /// Frames ahead of the playhead a lane that fell behind aims at: what the playhead moved on while it last caught up.
     var lead = 0
     var stillSize: PreviewDecodeSize?
     /// Width/height of the media's picture, learned from the first decoded frame. Once known, frames are decoded
     /// at the media's own aspect, so a box whose size is animated does not restart the stream every frame.
-    public private(set) var mediaAspect: Double?
-    public private(set) var restarts = 0
-    public private(set) var framesDecoded = 0
+    public internal(set) var mediaAspect: Double?
+    public internal(set) var restarts = 0
+    public internal(set) var framesDecoded = 0
     public private(set) var framesSkipped = 0
     /// Seconds spent getting frames from the engine, summed (diagnostics, the preview benchmark).
     public private(set) var decodeSeconds = 0.0
@@ -144,7 +149,7 @@ public final class PreviewDecodeLane: @unchecked Sendable {
             // One pool per decoded frame: this loop runs for as long as playback keeps asking for frames, and the
             // queue only drains its own pool when the loop returns.
             let worked = withAutoreleasePool {
-                layer.isStill ? stepStill(sz) : b > 0 ? stepReverse(want: w, behind: b, size: sz) : stepVideo(want: w, ahead: a, size: sz)
+                layer.isStill ? stepStill(sz) : layer.reverseFrames != nil ? stepReversedClip(want: w, ahead: a, behind: b, size: sz) : b > 0 ? stepReverse(want: w, behind: b, size: sz) : stepVideo(want: w, ahead: a, size: sz)
             }
             if !worked {
                 lock.lock()

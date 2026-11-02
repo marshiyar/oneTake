@@ -101,6 +101,7 @@ public struct PreviewLayer: Equatable, Sendable {
     /// Source seconds shown at timeline `time`.
     public func sourceTime(at time: Double) -> Double {
         if let held = holdSourceTime { return held }
+        if let span = reverseFrames { return reversedSourceTime(at: time, clipFrames: span) }
         guard let ramp = speedRamp else { return sourceIn + (time - start) * rate }
         // A transition can start the layer earlier than its clip (handle media): the ramp is timed from the clip start.
         let x = (time - (rampStart ?? start)) * timelineFPS
@@ -109,6 +110,24 @@ public struct PreviewLayer: Equatable, Sendable {
     /// The clip's own start when a transition moved `start` earlier and a speed ramp is timed from the clip start.
     public var rampStart: Double?
     public var timelineFPS = 1.0
+
+    /// Set on the layer of a reversed clip (`clip.reversed`): the clip's length in timeline frames. The layer then plays its
+    /// source from the clip's out point back to its in point (`reversedSourceTime`); `reverseClipStart` is the clip's own
+    /// start in seconds (`start` is earlier when a transition widened the layer).
+    public var reverseFrames: Double?
+    public var reverseClipStart = 0.0
+
+    /// Source seconds shown at `time` by a reversed clip: clip frame x shows what the forward clip shows at frame
+    /// (frames - 1 - x), so the speed (and a ramp's shape, which stays in timeline time) is read from the mirrored frame.
+    func reversedSourceTime(at time: Double, clipFrames n: Double) -> Double {
+        let x = (time - reverseClipStart) * timelineFPS
+        let mirrored = n - 1 - x
+        // Read at the middle of the source frame: a time computed from a fraction of a second can land a rounding error
+        // before the frame's own time and decode its neighbour, and reversed chunks must name each frame exactly.
+        let middle = 0.5 / timelineFPS
+        guard let ramp = speedRamp else { return sourceIn + mirrored * rate / timelineFPS + middle * rate }
+        return sourceIn + (mirrored >= 0 ? ramp.sourcePosition(atClipFrame: mirrored) : mirrored * ramp.speed(atClipFrame: 0)) / timelineFPS + middle
+    }
 
     /// One picture for the whole clip (an image, or a held frame): decoded once and kept (the still lane).
     public var isStill: Bool { kind == .image || holdSourceTime != nil }
@@ -134,7 +153,8 @@ public struct PreviewLayer: Equatable, Sendable {
     /// The grade is not part of it: lanes cache raw decoded frames and the grade is applied when drawing, so a grade
     /// edit never restarts a decoder.
     public var laneKey: String {
-        let key = "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)"
+        var key = "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)"
+        if let n = reverseFrames { key += "|rev:\(n)" }
         return holdSourceTime.map { "\(key)|hold:\($0)" } ?? key
     }
 }
@@ -440,6 +460,9 @@ public struct PreviewComposition {
         out.timelineFPS = fps
         out.motionRotation = autoRotate
         out.holdSourceTime = held.map { $0 / fps }
+        if c.playsBackwards, held == nil, e.kind == .video {
+            out.reverseFrames = c.durationFrames; out.reverseClipStart = c.startFrame / fps
+        }
         // An animated grade decides on its own (nil there means no active grade at this frame, not "use the static one").
         out.grade = e.gradeAnimation.map { $0.renderer(e.clip, values: values) } ?? e.grade
         out.style = (c.style?.isEmpty ?? true) ? nil : c.style
@@ -479,7 +502,7 @@ public struct PreviewComposition {
     /// either clip.
     func applyTransitions(_ t: NativeClipTransitions, to layer: inout PreviewLayer, atFrame frame: Double) {
         if t.lead > 0 {
-            if layer.speedRamp != nil { layer.rampStart = layer.start } else { layer.sourceIn -= t.lead * layer.rate / fps }
+            if layer.speedRamp != nil { layer.rampStart = layer.start } else if layer.reverseFrames == nil { layer.sourceIn -= t.lead * layer.rate / fps }
             layer.start -= t.lead / fps; layer.startFrame -= Int(t.lead)
         }
         if t.tail > 0 { layer.end += t.tail / fps; layer.endFrame += Int(t.tail) }

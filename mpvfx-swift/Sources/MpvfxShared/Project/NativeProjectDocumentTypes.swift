@@ -194,6 +194,10 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var moves: NativeClipMoves? = nil
     /// A held source frame (`NativeClipHold`): the clip shows that one frame for its whole length; absent plays the source.
     public var holdSourceFrame: NativeClipHold? = nil
+    /// Play backwards (`NativeClipReverse`): true runs the clip's content from its out point to its in point; absent plays forward.
+    public var reversed: Bool? = nil
+    /// Sound of a reversed clip: false mutes it; absent or true plays it reversed. Meaningless on a forward clip.
+    public var reverseAudio: Bool? = nil
     /// How a media clip's picture fills its box (the inspector's Fit row); absent means Fit, the contain fit every
     /// clip had before the option existed. Text clips ignore it.
     public var fit: NativeMediaFit? = nil

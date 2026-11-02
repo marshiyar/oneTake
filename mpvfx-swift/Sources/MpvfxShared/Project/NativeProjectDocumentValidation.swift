@@ -178,6 +178,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["preservesPitch"] != nil && clip["preservesPitch"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).preservesPitch", "Preserves pitch must be a boolean")
             }
+            validateNativeClipReverse(clip, assetKind: asset == nil ? nil : assetKind, clipPath, &issues)
             if clip["muted"] != nil && clip["muted"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).muted", "Muted must be a boolean")
             }
