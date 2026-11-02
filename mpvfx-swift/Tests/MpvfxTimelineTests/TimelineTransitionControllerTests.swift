@@ -39,7 +39,9 @@ final class TimelineTransitionControllerTests: XCTestCase {
        {"id":"L2","assetId":"a2","startFrame":60,"durationFrames":60,"sourceInFrame":30,"muted":false,"effects":[],"parameterTracks":[]}]}]}}
     """#
     static let px = 100.0 / 30
-    func x(_ frame: Double) -> Double { 264 + frame * Self.px }
+    /// The controller under test, so a frame maps to the x the view really uses (the zoom can change on an edit).
+    var controller: TimelineController?
+    func x(_ frame: Double) -> Double { controller?.view.x(for: frame / 30) ?? 264 + frame * Self.px }
     /// Inside the first row's clip bar.
     var rowY: Double { TimelineLayout.rowTop(0) + 20 }
 
@@ -49,6 +51,7 @@ final class TimelineTransitionControllerTests: XCTestCase {
         e.onNotice = { told.append($0) }
         let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 30), editor: e)
         c.viewport = CanvasSize(1266, 300); c.setZoom(pixelsPerSecond: 100); c.snapEnabled = false
+        controller = c
         return (c, e, { told })
     }
     func transitions(_ e: TimelineEditor, _ track: String = "v1") -> [NativeCutTransition] {
@@ -135,7 +138,7 @@ final class TimelineTransitionControllerTests: XCTestCase {
         XCTAssertEqual(model.end * 30, 70, accuracy: 1e-9)
         let rect = c.view.transitionRect(row: 0, model)
         XCTAssertEqual(rect.x, x(50), accuracy: 0.01)
-        XCTAssertEqual(rect.width, 20 * Self.px, accuracy: 0.01)
+        XCTAssertEqual(rect.width, x(70) - x(50), accuracy: 0.01)
         guard case .transition(let id, 0, nil) = c.hitTest(x: x(60), y: rowY) else { return XCTFail("the middle of the band") }
         XCTAssertEqual(id, model.id)
         guard case .transition(_, 0, .start?) = c.hitTest(x: x(50) + 2, y: rowY) else { return XCTFail("its start edge") }
