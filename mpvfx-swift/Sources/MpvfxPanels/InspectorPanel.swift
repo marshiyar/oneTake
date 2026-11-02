@@ -63,6 +63,12 @@ public final class InspectorPanel {
     public var onEdited: (() -> Void)?
     /// "Edit on stage" in the Masks group: (clip id, mask id) of the mask to put on the stage.
     public var onEditMaskOnStage: ((String, String) -> Void)?
+    /// The Colour key controls (#300): the preview view the host shows, a change of it, and the stage eyedropper
+    /// that picks the key colour (`keyEyedropperActive` while it waits for a click on the stage).
+    public var colorKeyView: ColorKeyViewMode = .result
+    public var onColorKeyViewChange: ((ColorKeyViewMode) -> Void)?
+    public var onPickKeyColor: (() -> Void)?
+    public var keyEyedropperActive = false
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
     /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
