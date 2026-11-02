@@ -324,12 +324,19 @@ public struct AudioFxModulePreset: Equatable, Sendable {
 
 extension AudioFxPresets {
     /// Settings offered for a type that no chain preset uses, so every module's preset menu has more than its defaults.
-    private static let moduleFactory: [String: [(id: String, label: String, values: [String: Double])]] = [
-        "gain": [("cut-6", "Cut 6 dB", ["gain": -6]), ("boost-6", "Boost 6 dB", ["gain": 6])],
-        "deesser": [("gentle", "Gentle", ["threshold": -24, "range": -8]), ("strong", "Strong", ["threshold": -36, "range": -18])],
-        "denoise": [("light", "Light", ["amount": 0.4]), ("strong", "Strong", ["amount": 0.9])],
-        "reverb-v2": [("small-room", "Small room", ["size": 0.3, "wet": 0.25]), ("hall", "Hall", ["size": 0.9, "wet": 0.45])],
-        "phaser": [("slow", "Slow sweep", ["speed": 0.2]), ("fast", "Fast sweep", ["speed": 1.5])],
+    private static let moduleFactory: [String: [(id: String, label: String, values: [String: FxParamValue])]] = [
+        "gain": [("cut-6", "Cut 6 dB", ["gain": .number(-6)]), ("boost-6", "Boost 6 dB", ["gain": .number(6)])],
+        "deesser": [("gentle", "Gentle", ["threshold": .number(-24), "range": .number(-8)]),
+                    ("strong", "Strong", ["threshold": .number(-36), "range": .number(-18)])],
+        "denoise": [("light", "Light", ["amount": .number(0.4)]), ("strong", "Strong", ["amount": .number(0.9)])],
+        "reverb-v2": [("small-room", "Small room", ["size": .number(0.3), "wet": .number(0.25)]),
+                      ("hall", "Hall", ["size": .number(0.9), "wet": .number(0.45)])],
+        "phaser": [("slow", "Slow sweep", ["speed": .number(0.2)]), ("fast", "Fast sweep", ["speed": .number(1.5)])],
+        "eq": [("vocal-presence", "Vocal presence", ["bands": .number(1), "band1.type": .string("bell"), "band1.freq": .number(3000),
+                                                     "band1.gain": .number(3), "band1.q": .number(1)]),
+               ("low-cut-80", "Low cut 80 Hz", ["bands": .number(1), "band1.type": .string("lowcut"), "band1.freq": .number(80)]),
+               ("telephone", "Telephone", ["bands": .number(2), "band1.type": .string("lowcut"), "band1.freq": .number(300),
+                                           "band2.type": .string("highcut"), "band2.freq": .number(3400)])],
     ]
 
     public static func modulePresets(_ type: String, version: Int = 2) -> [AudioFxModulePreset] {
@@ -338,7 +345,7 @@ extension AudioFxPresets {
                                           params: AudioFx.defaultParams(type, version: version))]
         for factory in moduleFactory[type] ?? [] {
             var params = AudioFx.defaultParams(type, version: version)
-            for (key, value) in factory.values { params[key] = .number(value) }
+            for (key, value) in factory.values { params[key] = value }
             result.append(AudioFxModulePreset(id: "\(type)-\(factory.id)", label: factory.label, type: type, version: version, params: params))
         }
         for preset in all {

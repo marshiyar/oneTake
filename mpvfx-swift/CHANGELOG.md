@@ -27,6 +27,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   module's input and output spectrum for the parametric EQ's live display.
 - Every audio effect's preset menu offers factory settings beyond its defaults (gain, de-esser, noise reduction and
   phaser gained theirs).
+- Parametric EQ in the audio rack: up to eight bands (bell, shelves, low and high cut at 12, 24 or 48 dB per octave,
+  notch), each with its own frequency, gain and Q; drag a band's point on the graph, Alt-drag it for Q, double-click
+  the graph to add a band, Delete to remove one.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

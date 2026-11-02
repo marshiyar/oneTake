@@ -77,8 +77,10 @@ public enum AudioAutomation {
         if parts.count == 3 && parts[0] == "fx" && parts[1] == "preset" {
             return parts[2].isEmpty ? nil : .preset(presetId: parts[2])
         }
-        guard parts.count == 3, parts[0] == "fx", !parts[1].isEmpty, !parts[2].isEmpty else { return nil }
-        return .fx(nodeId: parts[1], param: parts[2])
+        // A band parameter of the parametric EQ is `fx.<node>.band<k>.<param>`: the key of that parameter has a dot.
+        guard parts.count == 3 || (parts.count == 4 && parts[2].hasPrefix("band")), parts[0] == "fx", !parts[1].isEmpty, !parts[2].isEmpty,
+              parts.count == 3 || !parts[3].isEmpty else { return nil }
+        return .fx(nodeId: parts[1], param: parts.dropFirst(2).joined(separator: "."))
     }
 
     public static func fxTarget(_ nodeId: String, _ param: String) -> String { "fx.\(nodeId).\(param)" }

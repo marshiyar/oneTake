@@ -23,7 +23,7 @@ public let dspBlockSize = 128
 
 // MARK: Biquad
 
-public enum BiquadType: Sendable { case lowpass, highpass, peaking, lowshelf, highshelf, allpass }
+public enum BiquadType: Sendable { case lowpass, highpass, peaking, lowshelf, highshelf, allpass, notch }
 
 struct BiquadCoefficients: Equatable {
     var b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0
@@ -82,6 +82,13 @@ struct BiquadCoefficients: Equatable {
                     return normalized(1 + alpha * a, -2 * k, 1 - alpha * a, 1 + alpha / a, -2 * k, 1 - alpha / a)
                 }
                 return normalized(a * a, 0, 0, 1, 0, 0)
+            }
+            return normalized(1, 0, 0, 1, 0, 0)
+        case .notch:
+            let qq = max(0.0001, q)
+            if f > 0 && f < 1 {
+                let w0 = Double.pi * f, alpha = sin(w0) / (2 * qq), k = cos(w0)
+                return normalized(1, -2 * k, 1, 1 + alpha, -2 * k, 1 - alpha)
             }
             return normalized(1, 0, 0, 1, 0, 0)
         case .allpass:
