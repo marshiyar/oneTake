@@ -93,7 +93,10 @@ public enum AudioFx {
     public static let definitions: [FxDef] = [
         FxDef(id: "denoise", label: "Noise Reduction", group: "filter", params: [
             num("amount", "Amount", "", 0, 1, 0.01, 0.7), num("learn", "Learn length", "ms", 100, 5000, 10, 500),
-            num("learn_from", "Learn from", "s", 0, 600, 0.1, 0),
+            num("learn_from", "Learn at", "s", 0, 600, 0.1, 0),
+            .enumeration(key: "learn_source", label: "Learn from", options: [("quietest", "Quietest parts"), ("range", "Selected range")],
+                         defaultValue: "quietest"),
+            .enumeration(key: "listen", label: "Listen to removed noise", options: [("off", "Off"), ("on", "On")], defaultValue: "off"),
         ], implementation: "spectral-denoise"),
         FxDef(id: "gain", label: "Gain", group: "dynamics", params: [gainDb(-60, 12, 0)], implementation: "gain"),
         FxDef(id: "peaking", label: "Peaking EQ", group: "filter", params: [freq("frequency", "Frequency", 1000), gainDb(-40, 40, 0), qParam(1)], implementation: "biquad-peaking"),
@@ -238,6 +241,9 @@ public struct FxNode: Equatable, Sendable {
     public var fromLeveller: Bool?
     public var presetAmount: Double?
     public var enabled: Bool?
+    /// A denoise node's learned noise profile: one dB value per bin (`NoiseProfile.bins`), shared by both A/B slots.
+    /// Nil until the noise is learned; then the effect uses it from the first frame instead of learning as it plays.
+    public var noiseProfile: [Double]?
     /// A is the original document parameter set. `params` always edits/hears the selected slot.
     public var paramsA: FxParams?
     public var paramsB: FxParams?
@@ -254,9 +260,10 @@ public struct FxNode: Equatable, Sendable {
     public mutating func copyAToB() { paramsB = paramsA }
 
     public init(type: String, version: Int? = nil, id: String? = nil, fromCarve: Bool? = nil, fromPreset: String? = nil, label: String? = nil, fromEq: String? = nil,
-                fromLeveller: Bool? = nil, presetAmount: Double? = nil, enabled: Bool? = nil, params: FxParams? = nil) {
+                fromLeveller: Bool? = nil, presetAmount: Double? = nil, enabled: Bool? = nil, params: FxParams? = nil, noiseProfile: [Double]? = nil) {
         self.type = type; self.version = version; self.id = id; self.fromCarve = fromCarve; self.fromPreset = fromPreset; self.label = label; self.fromEq = fromEq
         self.fromLeveller = fromLeveller; self.presetAmount = presetAmount; self.enabled = enabled; self.paramsA = params
+        self.noiseProfile = noiseProfile
     }
 }
 
@@ -346,6 +353,12 @@ extension AudioFx {
         if case let .object(pp)? = o["paramsB"] {
             node.paramsB = normalize(type, Dictionary(pp, uniquingKeysWith: { _, b in b }), version: nodeVersion)
         }
+        if type == "denoise", let profile = o["profile"] {
+            guard case let .array(items) = profile else { throw AudioFxChainError(message: "Node \(i) has an invalid noise profile.") }
+            let values: [Double] = items.compactMap { if case let .number(n) = $0 { return n }; return nil }
+            guard values.count == items.count, NoiseProfile.isValid(values) else { throw AudioFxChainError(message: "Node \(i) has an invalid noise profile.") }
+            node.noiseProfile = values
+        }
         if o["activeSlot"] == .string("B") { node.selectSlotB(true) }
         return node
     }
@@ -375,10 +388,20 @@ extension AudioFx {
         if node.fromLeveller == true { pairs.append(("fromLeveller", .bool(true))) }
         if let a = node.presetAmount, a != 1, a.isFinite { pairs.append(("presetAmount", .number(min(1, max(0, a))))) }
         if node.enabled == false { pairs.append(("enabled", .bool(false))) }
-        pairs.append(("params", normalize(node.type, node.paramsA, version: node.version ?? version).json))
-        if let b = node.paramsB { pairs.append(("paramsB", normalize(node.type, b, version: node.version ?? version).json)) }
+        pairs.append(("params", written(node.type, normalize(node.type, node.paramsA, version: node.version ?? version)).json))
+        if let b = node.paramsB { pairs.append(("paramsB", written(node.type, normalize(node.type, b, version: node.version ?? version)).json)) }
+        if node.type == "denoise", let profile = node.noiseProfile { pairs.append(("profile", .array(profile.map { .number($0) }))) }
         if node.activeSlotB { pairs.append(("activeSlot", .string("B"))) }
         return .object(pairs)
+    }
+
+    /// Parameters added after a document format shipped are left out while they hold their default, so a chain saved before
+    /// them is written back unchanged.
+    private static let omittedAtDefault: [String: Set<String>] = ["denoise": ["learn_source", "listen"]]
+    private static func written(_ type: String, _ params: FxParams) -> FxParams {
+        guard let keys = omittedAtDefault[type] else { return params }
+        let defaults = defaultParams(type)
+        return FxParams(params.entries.filter { !(keys.contains($0.0) && defaults[$0.0] == $0.1) })
     }
 
     private static func nonEmpty(_ v: JSONValue?) -> String? { if case let .string(s)? = v, !s.isEmpty { return s }; return nil }

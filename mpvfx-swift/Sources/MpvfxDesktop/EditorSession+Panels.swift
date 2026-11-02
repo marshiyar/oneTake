@@ -475,6 +475,10 @@ final class SessionPanels {
                 } catch { post { self?.session.onError("Could not save effect preset", (error as? DesktopError)?.message ?? "The effect preset could not be saved. Check that the disk has free space and the library is writable, then try again.") } }
             }
         }
+        inspector.onLearnNoise = { [weak self] clipId, index, source in
+            guard let self else { return }
+            self.session.learnNoise(clipId: clipId, nodeIndex: index, source: NoiseLearning.Source(rawValue: source) ?? .quietest, post: self.uiPost)
+        }
         inspector.onCopyGrade = { [weak self] in self?.session.timeline.copyGradeSelection() ?? false }
         inspector.onPasteGrade = { [weak self] in self?.session.timeline.pasteGradeSelection() ?? false }
         inspector.onOpenGroupChanged = { [weak self] _ in self?.redraw() }

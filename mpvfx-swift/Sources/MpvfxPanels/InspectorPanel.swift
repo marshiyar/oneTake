@@ -60,6 +60,9 @@ public final class InspectorPanel {
     }
     public var audioFxUserPresets: [AudioFxModulePreset] = []
     public var onSaveAudioFxPreset: ((String, FxNode) -> Void)?
+    /// Learn the noise for a Clean up noise module: the clip's id, the module's place in the clip's chain and where to learn
+    /// from (`quietest` or `range`). The host learns off the UI thread and writes the profile as one edit.
+    public var onLearnNoise: ((_ clipId: String, _ nodeIndex: Int, _ source: String) -> Void)?
     public var onEdited: (() -> Void)?
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?

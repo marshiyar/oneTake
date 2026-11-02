@@ -15,9 +15,13 @@ import Foundation
 
 // Spectral noise reduction: a short-time Fourier transform (STFT) pass that subtracts a learned noise profile.
 //
-// The profile is the mean power per frequency bin over a span of the clip the user points at (`learn_from`,
-// `learn`); it is learned in the same pass that denoises, so playback and export see the identical stream.
-// Frames before the span has produced a frame pass through; frames inside it use the profile learned so far.
+// The profile is either stored with the effect (`NoiseProfile`, learned from the quietest parts or an I/O range, used
+// from the first frame) or, when none is stored, the mean power per frequency bin over a span of the clip
+// (`learn_from`, `learn`), learned in the same pass that denoises. Playback and export see the identical stream.
+// In the second case frames before the span has produced a frame pass through; frames inside it use the profile
+// learned so far.
+// With `listen` on the output is what was taken out (input minus output) instead, for checking that no voice goes
+// with the noise. Export never turns it on (`AudioGraphProject.forExport`).
 // The unit delays its output by `DenoiseUnit.latency` frames; the stage that runs the chain drops that many
 // frames at the start (`FxChainProcessor.latencyFrames`), so the clip stays aligned with its input.
 
@@ -36,17 +40,22 @@ final class DenoiseUnit: FxUnit {
         var profile = [Double](repeating: 0, count: DenoiseUnit.size / 2 + 1)
         var profileFrames = 0
         var frameStart = 0                                       // first input sample of the next frame
+        var dry = [Float](repeating: 0, count: DenoiseUnit.latency) // input delayed by the latency, for `listen`
     }
 
     private var channels: [Channel] = []
     private let amount: Double
     private let learnStart: Int, learnEnd: Int
     private let alpha: Double, floorPower: Double
+    private let stored: [Double]?
+    private let listen: Bool
     private var re = [Double](repeating: 0, count: DenoiseUnit.size), im = [Double](repeating: 0, count: DenoiseUnit.size)
     private var gain = [Double](repeating: 1, count: DenoiseUnit.size / 2 + 1)
     private var smooth = [Double](repeating: 1, count: DenoiseUnit.size / 2 + 1)
 
-    init(_ p: FxParams, _ sr: Double) {
+    init(_ p: FxParams, _ sr: Double, profile: [Double]? = nil) {
+        stored = profile.flatMap { NoiseProfile.isValid($0) ? NoiseProfile.power(fromDb: $0) : nil }
+        listen = p["listen"]?.string == "on"
         amount = min(1, max(0, p.num("amount")))
         learnStart = Int((p.num("learn_from") * sr).rounded())
         learnEnd = learnStart + max(DenoiseUnit.size, Int((p.num("learn") / 1000 * sr).rounded()))
@@ -59,12 +68,26 @@ final class DenoiseUnit: FxUnit {
     var automation: [String: [ParamTarget]] { [:] }
 
     func process(_ x: [[Float]], frame: Int) -> [[Float]] {
-        while channels.count < x.count { channels.append(Channel()) }
+        while channels.count < x.count {
+            var channel = Channel()
+            if let stored { channel.profile = stored; channel.profileFrames = 1 }
+            channels.append(channel)
+        }
         return x.indices.map { c in
             channels[c].input.append(contentsOf: x[c])
             if amount > 0 { runFrames(c) } else { passThrough(c) }
-            return take(c, x[c].count)
+            let wet = take(c, x[c].count)
+            return listen ? removed(c, wet, dry: x[c]) : wet
         }
+    }
+
+    /// What the effect took out: the input, delayed to line up with `wet`, minus `wet`.
+    private func removed(_ c: Int, _ wet: [Float], dry: [Float]) -> [Float] {
+        channels[c].dry.append(contentsOf: dry)
+        let delayed = channels[c].dry.prefix(wet.count)
+        let out = zip(delayed, wet).map { $0 - $1 }
+        channels[c].dry.removeFirst(wet.count)
+        return out
     }
 
     private func passThrough(_ c: Int) {
@@ -91,7 +114,7 @@ final class DenoiseUnit: FxUnit {
             for i in 0..<n { re[i] = Double(channels[c].input[i]) * w[i]; im[i] = 0 }
             AudioCarve.fft(&re, &im)
             let start = channels[c].frameStart
-            let learning = start >= learnStart && start + n <= learnEnd
+            let learning = stored == nil && start >= learnStart && start + n <= learnEnd
             if learning {
                 for k in 0..<bins { channels[c].profile[k] += re[k] * re[k] + im[k] * im[k] }
                 channels[c].profileFrames += 1

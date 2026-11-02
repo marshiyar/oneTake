@@ -229,7 +229,7 @@ final class ReverbUnit: FxUnit {
 }
 
 /// `buildFxUnit`.
-func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, elapsed: Double = 0, version: Int = 1) -> FxUnit {
+func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, elapsed: Double = 0, version: Int = 1, noiseProfile: [Double]? = nil) -> FxUnit {
     guard let def = AudioFx.definition(type) else { fatalError("Unknown effect type: \(type)") }
     let p = AudioFx.normalize(type, params, version: version)
     if (type == "highpass" || type == "lowpass") && p["poles"]?.string == "1" { return OnePoleUnit(highpass: type == "highpass", p, sr) }
@@ -252,7 +252,7 @@ func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, ela
     case "allpass-phaser": return PhaserUnit(p, sr, elapsed: elapsed)
     case "convolver-v2": return ReverbV2Unit(p, sr)
     case "convolver": return ReverbUnit(p, sr)
-    case "spectral-denoise": return DenoiseUnit(p, sr)
+    case "spectral-denoise": return DenoiseUnit(p, sr, profile: noiseProfile)
     default: fatalError("No builder for \(def.implementation)")
     }
 }
@@ -278,7 +278,7 @@ public final class FxChainProcessor {
         for node in chain.enabledNodes {
             let preset = node.fromPreset
             if let last = runs.last, last.presetId == preset {
-                let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate, version: node.version ?? chain.version)
+                let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate, version: node.version ?? chain.version, noiseProfile: node.noiseProfile)
                 units.append(u)
                 runs[runs.count - 1].units.append(u)
                 if let id = node.id { byId[id] = u }
@@ -291,7 +291,7 @@ public final class FxChainProcessor {
                 run.dry = GainStage(1 - amount, sampleRate: sampleRate)
                 presetTargets[preset, default: []].append(contentsOf: mixTargets(run.wet!.gain, run.dry!.gain))
             }
-            let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate, version: node.version ?? chain.version)
+            let u = buildFxUnit(node.type, node.params, sampleRate: sampleRate, version: node.version ?? chain.version, noiseProfile: node.noiseProfile)
             units.append(u)
             run.units.append(u)
             if let id = node.id, byId[id] == nil { byId[id] = u } else if let id = node.id { byId[id] = u }

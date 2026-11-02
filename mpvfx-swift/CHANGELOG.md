@@ -22,6 +22,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Clean up noise learns a clip's steady background noise from its quietest parts or from the in and out points you set
+  over a noise-only stretch, keeps it with the effect, and can play only the noise it takes out so you can check that no
+  voice goes with it. Playback and export agree; the removed-noise listening is never part of an export.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

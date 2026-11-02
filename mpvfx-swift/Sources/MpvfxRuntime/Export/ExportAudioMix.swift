@@ -56,6 +56,7 @@ final class ExportAudioMix {
             return stem
         }, issues: &issues, sampleRate: Double(EXPORT_AUDIO_SAMPLE_RATE), engine: engine)
         graph.sampleRate = Double(EXPORT_AUDIO_SAMPLE_RATE)
+        graph = graph.forExport()
         try cancellation?.throwIfCancelled()
         if !issues.isEmpty { throw MediaToolError("Audio cannot be exported: " + issues.joined(separator: "; ")) }
         return graph

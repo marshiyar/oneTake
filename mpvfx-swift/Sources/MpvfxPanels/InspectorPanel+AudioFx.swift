@@ -524,6 +524,15 @@ extension InspectorPanel {
                 self?.audioFxUI.modulePreset = nil; write(next)
             }])))
         }
+        // Clean up noise learns its profile on request, from the clip it sits on.
+        let learnClip = ui.owner.hasPrefix("clip:") ? String(ui.owner.dropFirst("clip:".count)) : nil
+        let learnable = node.type == "denoise" && learnClip != nil && onLearnNoise != nil
+        let learnLabel = node.noiseProfile == nil ? "Learn noise" : "Learn again"
+        if node.type == "denoise" {
+            controls.append(.init(.buttons([.init(key: "\(fxKey):learn", label: learnLabel, style: .muted, action: { [weak self] in
+                if let clip = learnClip { self?.onLearnNoise?(clip, i, params["learn_source"]?.string ?? "quietest") }
+            }, disabled: !learnable)])))
+        }
         // The open face (FxNodeOpenBody): what it is for, the one knob and its ends, then Details.
         let copy = AudioFxCopy.effects[node.type]
         let profile = AudioFxProfiles.profiles[node.type]
@@ -548,7 +557,8 @@ extension InspectorPanel {
         let endsH = !shownFace.isEmpty && copy != nil ? 17.5 : 0
         let detailsH = 1 + 21.5 - (oneKnob ? 0 : 4)
         let graphH = Self.afxGraphHeight(node.type)
-        let openH = open ? doesH + graphH + paramsH(shownFace) + endsH + detailsH + paramsH(shownAll) : 0
+        let learnH = open && node.type == "denoise" ? 30.0 : 0
+        let openH = open ? doesH + graphH + paramsH(shownFace) + endsH + detailsH + paramsH(shownAll) + learnH : 0
         let graphPointer = afxNodeGraphPointer(node, i, update: update)
         let presetH = 28.0 + (menuOpen ? Double(presets.count + 1) * 24 : 0)
         let cardH = 2 + Self.nodeHeadH + presetH + (summary != nil ? Self.nodeSummaryH : 0) + openH
@@ -662,6 +672,15 @@ extension InspectorPanel {
             if oneKnob { self.addHit(dr, .button("\(fxKey):details")) }
             y += detailsH
             drawParams(shownAll)
+            if learnH > 0 {
+                rule()
+                let mid = y + 1 + 14
+                let left = self.afxSwitch(c, right: bx + bw - 6, midY: mid, learnLabel, hit: .button("\(fxKey):learn"), alpha: a, enabled: learnable)
+                PanelDraw.text(c, node.noiseProfile == nil ? "No noise learned yet" : "Noise learned and kept with the effect",
+                               in: CanvasRect(x: bx + 6, y: mid - 6.75, width: Swift.max(0, left - bx - 14), height: 13.5), font: PanelTheme.font(11),
+                               color: PanelTheme.text2.withAlpha(a))
+                y += learnH
+            }
         }, pointer: graphPointer)), controls: controls)
     }
 
