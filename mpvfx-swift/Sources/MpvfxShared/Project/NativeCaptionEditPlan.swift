@@ -24,6 +24,10 @@ public enum NativeCaptionEditError: Error, Equatable, Sendable {
     case invalidText(String)
     /// No gap at the requested time can hold a cue of at least one frame.
     case noRoom
+    /// A join needs a cue after this one.
+    case noNextCue
+    /// A split needs the text on both sides of the caret.
+    case nothingToSplit
 }
 
 /// Which end of a cue a trim moves.
@@ -107,10 +111,7 @@ public func planCaptionAdd(_ track: NativeCaptionTrack?, atMs startMs: Int, fram
     let next = out.cues.first { $0.startMs >= startMs }
     let end = min(startMs + NATIVE_CAPTION_NEW_CUE_MS, next?.startMs ?? NATIVE_CAPTION_MAX_MILLISECONDS, NATIVE_CAPTION_MAX_MILLISECONDS)
     guard end - startMs >= nativeCaptionMinimumDurationMs(frameRate: frameRate) else { throw NativeCaptionEditError.noRoom }
-    let used = Set(out.cues.map(\.id))
-    var n = 1
-    while used.contains("cue:manual-\(n)") { n += 1 }
-    let id = "cue:manual-\(n)"
+    let id = nextCaptionCueId(out, prefix: "cue:manual-")
     let index = out.cues.firstIndex { $0.startMs >= startMs } ?? out.cues.count
     out.cues.insert(NativeCaptionCue(id: id, startMs: startMs, endMs: end, text: NATIVE_CAPTION_NEW_CUE_TEXT), at: index)
     return (out, id)
@@ -119,4 +120,12 @@ public func planCaptionAdd(_ track: NativeCaptionTrack?, atMs startMs: Int, fram
 private func captionCueIndex(_ track: NativeCaptionTrack, _ cueId: String) throws -> Int {
     guard let i = track.cues.firstIndex(where: { $0.id == cueId }) else { throw NativeCaptionEditError.unknownCue(cueId) }
     return i
+}
+
+/// The first `prefix` + N (N from 1) that no cue of the track uses.
+func nextCaptionCueId(_ track: NativeCaptionTrack, prefix: String) -> String {
+    let used = Set(track.cues.map(\.id))
+    var n = 1
+    while used.contains("\(prefix)\(n)") { n += 1 }
+    return "\(prefix)\(n)"
 }

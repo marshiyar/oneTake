@@ -69,6 +69,40 @@ public extension TimelineEditor {
         }
     }
 
+    /// Moves one end of a cue by `frames` frames (clamped against the neighbours and the one-frame minimum).
+    @discardableResult
+    func nudgeCaptionCue(_ id: String, edge: NativeCaptionEdge, byFrames frames: Int) -> Bool {
+        let rate = fps
+        return commitCaptions(label: "Nudge caption") { try planCaptionNudge($0, cueId: id, edge: edge, byFrames: frames, frameRate: rate) }
+    }
+
+    /// Splits a cue at the playhead time `atMs` and the text caret; the two halves stay contiguous. Returns the new cue's id.
+    @discardableResult
+    func splitCaptionCue(_ id: String, atMs: Int, caret: Int) -> String? {
+        guard let track = document.sequence.captions,
+              let planned = try? planCaptionSplit(track, cueId: id, atMs: atMs, caret: caret, frameRate: fps) else { return nil }
+        var d = document
+        d.sequence.captions = planned.track
+        return commitPresets(d, label: "Split caption") ? planned.newCueId : nil
+    }
+
+    /// Joins a cue with the next one into a single cue spanning both.
+    @discardableResult
+    func joinCaptionCue(_ id: String) -> Bool {
+        commitCaptions(label: "Join captions") { try planCaptionJoin($0, cueId: id) }
+    }
+
+    /// Replaces text in every cue as one undo step. Nil when nothing matched or there is no caption track.
+    @discardableResult
+    func replaceAllCaptions(find: String, with replacement: String, caseSensitive: Bool) -> NativeCaptionReplaceResult? {
+        guard let track = document.sequence.captions else { return nil }
+        let result = planCaptionReplaceAll(track, find: find, replace: replacement, caseSensitive: caseSensitive)
+        guard result.cuesChanged > 0 else { return nil }
+        var d = document
+        d.sequence.captions = result.track
+        return commitPresets(d, label: "Replace in captions") ? result : nil
+    }
+
     private func commitCaptions(label: String, _ plan: (NativeCaptionTrack) throws -> NativeCaptionTrack) -> Bool {
         guard let track = document.sequence.captions, let edited = try? plan(track), edited != track else { return false }
         var d = document
