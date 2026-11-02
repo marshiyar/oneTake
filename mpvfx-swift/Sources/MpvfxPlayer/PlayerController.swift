@@ -89,6 +89,8 @@ public final class PlayerController {
     public var onInsertAsset: ((_ assetId: String, _ time: Double) -> String?)?
     /// Adds a drawn shape at `time` (the playhead); returns the new clip id (PlayerController+ShapeTool.swift).
     public var onCreateShape: ((_ draft: StageShapeDraft, _ time: Double) -> String?)?
+    /// Applies a layout to the selected clips (one undo step); false when it was refused (the host says why).
+    public var onApplyLayout: ((_ layout: NativeGridLayout, _ options: NativeGridOptions) -> Bool)?
     /// The kind ⇧S turns the tool on with: the one drawn last.
     var lastShapeKind = StageShapeDraft.kinds[0]
 
@@ -152,6 +154,7 @@ public final class PlayerController {
         let p = CanvasPoint(x, y); shiftHeld = shift; lastPointer = p
         pressPoint = p; dragEngaged = false
         flushNudge()
+        if layoutMenuPress(p) { return }
         if let menu = view.contextMenu {
             let hit = menu.choice(at: p, bounds: bounds)
             if hit.inside {
@@ -488,6 +491,7 @@ public final class PlayerController {
     /// G toggles the grid, R arms Record motion (when wired).
     public func keyDown(_ k: EditorKey) -> Bool {
         guard !k.command, !k.alt else { return false }
+        if let handled = layoutMenuKey(k) { return handled }
         if let handled = shapeToolKey(k) { return handled }
         if nudgeKey(k) { return true }
         flushNudge()

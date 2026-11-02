@@ -71,7 +71,7 @@ final class ShortcutsPanelTests: XCTestCase {
         // Playback gained voice keys (Record/stop voice, issue #317): 9 + 2; Editing gained ⇧H and ⌥⇧H (Hold frame, issue #292): 15 + 2.
         // Editing gained reveal-source hints (Reveal clip in media bin / file manager, issue #446): 17 + 2.
         // Beat marks section added (editable beat marks in source time, issue #289): 0 + 4.
-        XCTAssertEqual(shortcutSections.reduce(0) { $0 + $1.hints.count }, 1 + 11 + 12 + 20 + 4 + 6 + 4 + 2 + 2 + 6)
+        XCTAssertEqual(shortcutSections.reduce(0) { $0 + $1.hints.count }, 1 + 11 + 12 + 23 + 4 + 6 + 4 + 2 + 2 + 6)
         let editing = shortcutSections.first { $0.title == "Editing" }?.hints.map(\.key) ?? []
         XCTAssertTrue(editing.contains("⇧H") && editing.contains("⌥⇧H"), "\(editing)")
         XCTAssertTrue(editing.contains("⌥⌘F") && editing.contains("⌥⇧⌘F"), "\(editing)")

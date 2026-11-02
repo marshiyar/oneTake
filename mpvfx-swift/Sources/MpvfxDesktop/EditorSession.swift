@@ -384,6 +384,8 @@ final class EditorSession {
 
     /// Set by the shell: show a file chooser and call importMedia(paths:).
     var onImportRequested: (() -> Void)?
+    /// The last layout the Layout menu applied (EditorSession+Layout.swift): ⌥ arrows and ⌥⌘[ ⌥⌘] re-apply it.
+    var lastLayout: (layout: NativeGridLayout, ids: [String], options: NativeGridOptions)?
 
     /// Cmd+S / Ctrl+S saves now; Cmd+I / Ctrl+I imports media (when the shell offers a chooser); Cmd+O / Ctrl+O opens
     /// a project folder (EditorSession+OpenProject); Cmd+, / Ctrl+, opens and closes Settings (EditorSession+Settings).

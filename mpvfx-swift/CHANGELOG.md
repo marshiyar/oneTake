@@ -23,6 +23,7 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
 - Draw rectangles, ellipses, lines and arrows on the stage with the Shape tool (Shift+S), and edit them in the Shape group in Design.
+- A Layout menu on the stage (Option+Cmd+G) arranges the selected clips side by side, stacked, three up, in a grid, large left or picture in picture; Option and the arrow keys move the small picture, Option+Cmd+[ and ] swap cells.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

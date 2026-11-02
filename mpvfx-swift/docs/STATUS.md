@@ -126,6 +126,14 @@ has not been measured in the contribution environment (no Swift toolchain).
   access; stage snapshots (dark and light) are not added: the snapshot tests only run on Linux and were not run here.
   The tool has no callout (#256), the new layer goes on the first free video row rather than the selected track, and
   Shift+S still splits when the timeline has the keys.
+- #322 Layout grids 2: Option+Cmd+G opens the Layout menu on the stage at the pointer (a diagram, name and clip count per
+  layout, and gutter and margin in the footer: Left and Right change the gutter, Shift with them the margin, 4 px at a
+  time); Up and Down or 1 to 6 choose, Return or a click applies it to the selected clips in selection order as one undo
+  step (`applyGridLayout`), Esc closes. After a layout, Option with an arrow key moves a picture in picture to that side, and
+  Option+Cmd+[ / ] swap the cells of two clips (with more clips they step around); both work only while the same clips are
+  selected, each is one undo step, and with no such layout Option+Cmd+[ / ] stay the scene-split threshold. The layout
+  is not stored in the document, so after a restart the shortcuts wait for the menu again. Menu snapshots (dark and light)
+  are not added: the snapshot tests only run on Linux and were not run here.
 Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
 Reference-look matching waits for exact source/reference frames, cancels pending work on selection/editor/playhead changes even with Grade closed, reports terminal decode failures, preserves alpha-weighted colour when reducing frames, and accounts for existing pivoted Contrast and Offset during primary correction. No-op completion refreshes the action without adding undo history.
 Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.

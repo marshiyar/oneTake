@@ -81,6 +81,8 @@ public final class PlayerView {
     /// The Shape tool (⇧S, issue #324): the kind it draws while it is on, nil when it is off, and the shape being dragged.
     public var shapeTool: String?
     public var shapeDraft: StageShapeDraft?
+    /// The Layout menu (⌥⌘G, issue #322).
+    public var layoutMenu: StageLayoutMenu?
     /// Seconds clock for animations (zoom readout fade, play/pause morph).
     public var now: () -> Double = { ProcessInfo.processInfo.systemUptime }
     /// Called at the end of a draw while an animation still runs; the host schedules another draw.
@@ -285,6 +287,7 @@ public final class PlayerView {
         if !isFullscreen { toolbar.draw(c, width: size.width, cropAvailable: cropAvailable, cropActive: cropActive) }
         drawControls(c, size: size)
         if let menu = contextMenu { menu.draw(c, bounds: CanvasRect(x: 0, y: 0, width: size.width, height: size.height)) }
+        if let menu = layoutMenu { menu.draw(c, bounds: CanvasRect(x: 0, y: 0, width: size.width, height: size.height)) }
         if animating { requestAnimationFrame?() }
     }
 
