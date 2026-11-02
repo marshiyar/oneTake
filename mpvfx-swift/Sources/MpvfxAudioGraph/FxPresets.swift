@@ -323,10 +323,23 @@ public struct AudioFxModulePreset: Equatable, Sendable {
 }
 
 extension AudioFxPresets {
+    /// Settings offered for a type that no chain preset uses, so every module's preset menu has more than its defaults.
+    private static let moduleFactory: [String: [(id: String, label: String, values: [String: Double])]] = [
+        "gain": [("cut-6", "Cut 6 dB", ["gain": -6]), ("boost-6", "Boost 6 dB", ["gain": 6])],
+        "deesser": [("gentle", "Gentle", ["threshold": -24, "range": -8]), ("strong", "Strong", ["threshold": -36, "range": -18])],
+        "denoise": [("light", "Light", ["amount": 0.4]), ("strong", "Strong", ["amount": 0.9])],
+        "phaser": [("slow", "Slow sweep", ["speed": 0.2]), ("fast", "Fast sweep", ["speed": 1.5])],
+    ]
+
     public static func modulePresets(_ type: String, version: Int = 2) -> [AudioFxModulePreset] {
         guard AudioFx.definition(type) != nil else { return [] }
         var result = [AudioFxModulePreset(id: "default-" + type, label: "Default", type: type, version: version,
                                           params: AudioFx.defaultParams(type, version: version))]
+        for factory in moduleFactory[type] ?? [] {
+            var params = AudioFx.defaultParams(type, version: version)
+            for (key, value) in factory.values { params[key] = .number(value) }
+            result.append(AudioFxModulePreset(id: "\(type)-\(factory.id)", label: factory.label, type: type, version: version, params: params))
+        }
         for preset in all {
             for (index, node) in preset.nodes.enumerated() where node.type == type {
                 result.append(AudioFxModulePreset(id: "\(preset.id)-\(index)", label: "\(preset.label) · \(node.label ?? type)",
