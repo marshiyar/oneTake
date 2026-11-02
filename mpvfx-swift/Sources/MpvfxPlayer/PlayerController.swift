@@ -149,9 +149,13 @@ public final class PlayerController {
 
     // MARK: Pointer
 
-    public func pointerDown(x: Double, y: Double, shift: Bool = false, button: Int = 0) {
+    public func pointerDown(x: Double, y: Double, shift: Bool = false, button: Int = 0, option: Bool = false) {
         let p = CanvasPoint(x, y); shiftHeld = shift; lastPointer = p
         pressPoint = p; dragEngaged = false
+        if option {
+            beginColorKeyHold()   // Option-press previews the source; no gesture starts
+            return
+        }
         flushNudge()
         if let menu = view.contextMenu {
             let hit = menu.choice(at: p, bounds: bounds)
@@ -380,6 +384,7 @@ public final class PlayerController {
     }
 
     public func pointerUp(x: Double, y: Double) {
+        clearColorKeyHold()   // releasing the Option-press hold ends the source preview
         defer { gesture = nil; view.snapGuides = []; view.spacingGuides = []; endTransformGesture() }
         guard recorder == nil, let g = gesture else { finishTake(); return }   // release ends a take
         switch g {
@@ -493,7 +498,9 @@ public final class PlayerController {
         if nudgeKey(k) { return true }
         flushNudge()
         switch k.code {
-        case .escape: return escapeKey()
+        case .escape:
+            if clearColorKeyHold() { return true }
+            return escapeKey()
         case .enter where view.cropActive: runCrop(.apply); return true
         case .char(let ch) where ch == "c" || ch == "C":
             guard view.cropAvailable || view.cropActive else { return false }

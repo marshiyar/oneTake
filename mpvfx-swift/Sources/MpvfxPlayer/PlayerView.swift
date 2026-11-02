@@ -98,6 +98,10 @@ public final class PlayerView {
     static let zOrderFlashSeconds = 0.6
     /// A library or media asset is being dragged over the stage.
     public var assetDropActive = false
+    /// Colour-key preview mode for the selected clip.
+    public var colorKeyView: ColorKeyViewMode = .result
+    /// Held colour-key preview mode while its shortcut key is down (wins over colorKeyView).
+    public var colorKeyHold: ColorKeyViewMode?
     /// Transient message over the stage.
     public var toast: (message: String, isError: Bool, start: Double)?
     static let toastSeconds = 3.0
@@ -264,7 +268,8 @@ public final class PlayerView {
                 c.fillRect(frame, Self.canvasSurface)
                 let context = FrameDrawContext(backingScale: max(backingScale, c.deviceScale), isPlaying: playback.isPlaying,
                                                speed: playback.playbackRate * playback.direction, liveElementIds: liveElementIds?(),
-                                               compareClipId: toolbar.compareEnabled ? selection : nil, comparePosition: toolbar.comparePosition)
+                                               compareClipId: toolbar.compareEnabled ? selection : nil, comparePosition: toolbar.comparePosition,
+                                               colorKeyClipId: selection, colorKeyView: colorKeyHold ?? colorKeyView)
                 frameSource.draw(c, in: frame, time: playback.currentTime, elements: elements.map { viewElement($0, in: size) },
                                  context: context)
             }
