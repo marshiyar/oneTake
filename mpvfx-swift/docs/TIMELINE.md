@@ -92,6 +92,21 @@ Tests: `TimelineZoomControlsTests.testEffectsAndHintInkContrastInBothModes`, `Ti
 Hints are drawn in `text2` (4.5:1 on `panelBg`; `text3` is under 4.5:1 for 11 px text). The timeline's hint lists
 the main keys: "Space play · S split · I / O in and out · ⇧Z fit".
 
+## Caption lane
+
+The caption lane shows the sequence's caption track under the last track. It appears only when the project has a
+caption track, and each cue is one block at its time, showing its text.
+Drag a block to move the cue, or drag either end to trim it. Both clamp against the neighbouring cues and a
+one-frame minimum.
+Double-click a cue, or press Enter or F2 on the selected cue, to retype it. Enter saves, Shift+Enter adds a line
+and Escape cancels.
+The + in the lane label adds a cue at the playhead: 2 s long, or up to the next cue when the gap is shorter.
+Every edit is one undo step and persists in the edit history.
+The drawing is in `Sources/MpvfxTimeline/TimelineView+Captions.swift`, the gestures and keys in
+`Sources/MpvfxTimeline/TimelineController+Captions.swift`, the edits in
+`Sources/MpvfxTimeline/TimelineEditor+Captions.swift`, and the pure edit plans in
+`Sources/MpvfxShared/Project/NativeCaptionEditPlan.swift`.
+
 ## Captures
 
 Every change here is captured at 1440 × 900 and 1280 × 800 in dark and light (`TimelineControlsSnapshotTests` (native CoreGraphics timeline fixture on macOS), PNGs
