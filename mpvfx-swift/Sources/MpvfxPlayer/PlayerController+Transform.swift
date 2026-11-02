@@ -272,7 +272,7 @@ extension PlayerController {
         case .rotate: return .rotate
         case .anchor: return .anchor
         case .maskHandle: return .move
-        case .pan, .marquee, .crop, .compare: return .arrow
+        case .pan, .marquee, .crop, .compare, .shape: return .arrow
         }
     }
 

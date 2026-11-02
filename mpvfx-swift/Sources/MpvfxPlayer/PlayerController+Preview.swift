@@ -113,6 +113,7 @@ extension PlayerController {
         case .marquee:
             view.marquee = nil; view.marqueeCandidates = []
         case .maskHandle: cancelMaskDrag()
+        case .shape: view.shapeDraft = nil
         case .pan, .anchor, .compare: break   // the compare divider is preview-only state; nothing to restore
         }
         needsDisplay?()

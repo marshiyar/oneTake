@@ -202,6 +202,8 @@ public struct TimelineClipModel: Sendable, Equatable {
     /// Enabled nodes in the clip's audio FX chain (TimelineFxButton nodeCount: enabledAudioFxNodes).
     public var fxCount = 0
     public var beatTimes: [Double] = []
+    /// Lengths of the clip's In and Out moves in seconds (0: none), drawn as wedges at its ends.
+    public var moveInSeconds = 0.0, moveOutSeconds = 0.0
     public var end: Double { start + duration }
     public init(id: String? = nil, name: String, start: Double, duration: Double, kind: TimelineClipKind = .video,
                 keyframes: [Double] = [], effectCount: Int = 0) {
@@ -272,6 +274,8 @@ public final class TimelineView {
     /// The tracks tags and targets are resolved against: `allTracks` once the controller set it.
     var targetableTracks: [TimelineTrackModel] { allTracks.isEmpty ? tracks : allTracks }
     public var drag: TimelineDragPreview?
+    /// A move wedge being dragged (issue #274): the length it would set, shown until the button is released.
+    public var wedgeDrag: TimelineWedgeDrag?
     /// The cut the roll tool would roll (row, time), shown as a double bracket while hovering.
     public var rollHover: (row: Int, time: Double)?
     /// Where a live clip move lands (placeholder slot or new-track line); `dragLiftY` is the pointer's vertical travel,
@@ -627,6 +631,7 @@ public final class TimelineView {
                 c.fillRoundedRect(CanvasRect(x: r.x + 4, y: r.y + 6, width: 2, height: r.height - 12), radius: 1, col)
                 c.fillRoundedRect(CanvasRect(x: r.maxX - 6, y: r.y + 6, width: 2, height: r.height - 12), radius: 1, col)
             }
+            drawMoveWedges(c, clip: clip, r)
         }
         // Hidden track: the lane renders at opacity 0.35 (TimelineLanes isTrackHidden). Painting the row
         // background at 1 - opacity over the clip composites to the same result. Locked tracks (native

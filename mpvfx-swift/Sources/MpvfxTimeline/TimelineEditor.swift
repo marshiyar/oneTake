@@ -94,6 +94,8 @@ public final class TimelineEditor {
                         m.sourceEndFraction = (c.sourceInFrame + c.durationFrames * rate) / srcFrames
                     }
                     m.hidden = c.hidden == true
+                    m.moveInSeconds = Double(c.moves?.inMove?.frames ?? 0) / f
+                    m.moveOutSeconds = Double(c.moves?.outMove?.frames ?? 0) / f
                     m.audioDetachedFrom = c.audioDetachedFrom
                     m.fxCount = Self.enabledFxNodeCount(c.audioFxChain)
                     let detached = document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == c.id } }

@@ -40,6 +40,7 @@ extension TimelineView {
     }
 
     func drawSlipRollOverlay(_ c: CanvasContext) {
+        drawWedgeBadge(c)
         if case let .slip(id, frames, _)? = drag, let row = tracks.firstIndex(where: { $0.clips.contains { $0.id == id } }),
            let clip = tracks[row].clips.first(where: { $0.id == id }) {
             drawSlipBadge(c, Self.slipLabel(frames), in: clipRect(track: row, clip))

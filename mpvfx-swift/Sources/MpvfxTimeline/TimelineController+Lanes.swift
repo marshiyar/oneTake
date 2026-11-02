@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
 
 public extension TimelineController {
     /// U: expand/collapse property lanes of the selected clips (ShortcutsPanel "Expand / collapse properties").
@@ -58,7 +59,8 @@ public extension TimelineController {
                                                canPaste: clipboard != nil, canPasteGrade: gradeClipboard != nil,
                                                gradePasteReason: gradeClipboard == nil ? "Copy a grade before pasting" : nil,
                                                keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil,
-                                               disabled: c.hidden, canvasFill: canvasFillState(for: c))
+                                               disabled: c.hidden, canvasFill: canvasFillState(for: c),
+                                               hasMoves: editor?.clipMoves(clipId: id) != nil, canPasteMoves: movesClipboard != nil)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
         if viewport.height > 0 { m.maximumHeight = viewport.height }
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
@@ -117,6 +119,15 @@ public extension TimelineController {
             view.selection = [id]
             return duplicateSelection()
         case .rename: return requestRenameClip(id)
+        case .copyMoves:
+            guard let moves = editor.copyMoves(clipId: id) else { return false }
+            movesClipboard = moves
+            return true
+        case .pasteMoves:
+            guard let moves = movesClipboard else { return false }
+            return editor.setClipMoves(clipIds: view.selection.contains(id) ? view.selection : [id], moves)
+        case .removeMoves:
+            return editor.setClipMoves(clipIds: view.selection.contains(id) ? view.selection : [id], nil)
         case .disable: return editor.setClipsHidden([id], !editor.isClipHidden(id))
         case .keepPitch: return editor.setPreservesPitch(clipId: id, !editor.preservesPitch(clipId: id))
         case .thumbnails:

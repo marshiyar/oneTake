@@ -700,6 +700,7 @@ extension EditorSession {
             try adoptProject(opened)
             watchOpenProject()
             timeline.view.selection = []
+            lastLayout = nil   // clip ids repeat from project to project
             playback.seek(0); timeline.syncFromPlayback()
             panels?.projectSwitched()
         } catch { onError("Could not open the project", "\(error)") }

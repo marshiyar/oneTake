@@ -54,6 +54,8 @@ public final class PlayerController {
         case compare
         /// A handle of the target mask (PlayerController+Mask.swift).
         case maskHandle
+        /// The Shape tool's drag, from this composition-frame press point (view px).
+        case shape(from: CanvasPoint)
     }
     var gesture: Gesture?
     /// Where the move / group / resize press landed (view px) and whether it has travelled past `dragThreshold`.
@@ -93,6 +95,12 @@ public final class PlayerController {
 
     /// Inserts a dropped library/media asset at the playhead (TimelineEditor.insertClip, "Add at playhead"); returns the new clip id.
     public var onInsertAsset: ((_ assetId: String, _ time: Double) -> String?)?
+    /// Adds a drawn shape at `time` (the playhead); returns the new clip id (PlayerController+ShapeTool.swift).
+    public var onCreateShape: ((_ draft: StageShapeDraft, _ time: Double) -> String?)?
+    /// Applies a layout to the selected clips (one undo step); false when it was refused (the host says why).
+    public var onApplyLayout: ((_ layout: NativeGridLayout, _ options: NativeGridOptions) -> Bool)?
+    /// The kind ⇧S turns the tool on with: the one drawn last.
+    var lastShapeKind = StageShapeDraft.kinds[0]
 
     /// Arrow-key nudge burst: the elements as they were before it, and the last key time.
     var nudgeStarts: [StageElement] = []
@@ -159,6 +167,7 @@ public final class PlayerController {
             return
         }
         flushNudge()
+        if layoutMenuPress(p) { return }
         if let menu = view.contextMenu {
             let hit = menu.choice(at: p, bounds: bounds)
             if hit.inside {
@@ -195,6 +204,7 @@ public final class PlayerController {
             view.zoom = .fit; view.zoomChanged(); zoomTouched(); needsDisplay?(); return
         }
         if let b = view.button(at: p, in: size) { press(b); return }
+        if view.shapeTool != nil, !view.cropActive, recorder == nil, shapePress(p, viewport: vp) { return }
         guard vp.contains(p), !recordTakesPress(p, shift: shift) else { return }   // armed Record owns stage presses
         if eyedropperPress(at: p) { needsDisplay?(); return }   // the stage eyedropper owns the next press
 
@@ -275,6 +285,7 @@ public final class PlayerController {
         guard let g = gesture else { idleMove(p); return }
         let s = max(view.scale(in: size), 1e-9)
         switch g {
+        case .shape: updateShapeDraft(p)
         case .compare:
             let f = view.frameRect(in: size)
             view.toolbar.comparePosition = max(0, min(1, (x - f.x) / max(f.width, 1))); needsDisplay?()
@@ -306,7 +317,7 @@ public final class PlayerController {
 
     func drag(_ g: Gesture, _ p: CanvasPoint, scale s: Double) {
         switch g {
-        case .pan, .marquee, .compare: break
+        case .pan, .marquee, .compare, .shape: break
         case .maskHandle: dragMask(to: p)
         case let .move(id, start, x0, y0):
             let d = moveDelta(x0: x0, y0: y0, to: p, moving: [start])
@@ -393,6 +404,7 @@ public final class PlayerController {
         guard recorder == nil, let g = gesture else { finishTake(); return }   // release ends a take
         switch g {
         case .compare: needsDisplay?()
+        case .shape: finishShape(at: CanvasPoint(x, y))
         case .pan: zoomTouched(); return
         case let .marquee(_, _, additive):
             let picked = view.marqueeCandidates
@@ -499,6 +511,8 @@ public final class PlayerController {
     public func keyDown(_ k: EditorKey) -> Bool {
         guard !k.command, !k.alt else { return false }
         if maskNudgeKey(k) { return true }
+        if let handled = layoutMenuKey(k) { return handled }
+        if let handled = shapeToolKey(k) { return handled }
         if nudgeKey(k) { return true }
         flushNudge()
         switch k.code {
