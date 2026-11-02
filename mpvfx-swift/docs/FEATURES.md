@@ -255,6 +255,7 @@ their shape (`PlayerView+Outlines.swift`).
 | Clip fades: fade-in and fade-out lengths on a clip (`fadeInFrames` / `fadeOutFrames`, independent of keyframes), a linear gain ramp on the clip's sound heard the same in playback and export; split keeps the fade-in on the left part and the fade-out on the right, trims and speed changes clamp them (#85) | partial: in the document, playback and export (`NativeClipFade.swift`, `AudioGraph.swift` `ClipFadeRamp`); video opacity and timeline fade handles not yet built |
 | Volume automation lanes, automation selection menu (Simplify), value input | partial: automation plays and exports; lane editing UI partial |
 | Filmstrips and waveforms from the shared media cache, Show thumbnails toggle (314d72a, 71fdbd6) | done |
+| Steady shot: global motion analysis of a clip range, cached in `.motion-cache/` (analysis only, #304) | partial: analysis and cache done (`GlobalMotionTests`); smoothing, correcting transform and controls missing (#305, #306) |
 | Undo history persists across sessions per project (751c6c7) | done |
 | Clip context menu (split, cut, copy, paste, duplicate, thumbnails, mute, keep audio pitch, detach / reattach audio, delete), track gap context menu | done |
 
