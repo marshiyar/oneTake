@@ -93,9 +93,14 @@ enum TextLookCompositor {
             guard r.width > 0, r.height > 0 else { continue }
             let radius = max(0, min(plate.radius, min(r.width, r.height) / 2))
             let halfW = r.width / 2, halfH = r.height / 2, cx = r.x + halfW, cy = r.y + halfH
-            for y in max(0, Int(r.y.rounded(.down)) - 1)..<min(height, Int(r.maxY.rounded(.up)) + 1) {
+            // A rectangle past the picture's edge (text that overflows its box) simply has fewer rows or none.
+            let y0 = max(0, Int(r.y.rounded(.down)) - 1), y1 = min(height, Int(r.maxY.rounded(.up)) + 1)
+            let x0 = max(0, Int(r.x.rounded(.down)) - 1), x1 = min(width, Int(r.maxX.rounded(.up)) + 1)
+            guard y0 < y1, x0 < x1 else { continue }
+            let columns = x0..<x1
+            for y in y0..<y1 {
                 let qy = abs(Double(y) + 0.5 - cy) - (halfH - radius)
-                for x in max(0, Int(r.x.rounded(.down)) - 1)..<min(width, Int(r.maxX.rounded(.up)) + 1) {
+                for x in columns {
                     let qx = abs(Double(x) + 0.5 - cx) - (halfW - radius)
                     let distance = (max(qx, 0) * max(qx, 0) + max(qy, 0) * max(qy, 0)).squareRoot() + min(max(qx, qy), 0) - radius
                     let c = Float(max(0, min(1, 0.5 - distance)))
