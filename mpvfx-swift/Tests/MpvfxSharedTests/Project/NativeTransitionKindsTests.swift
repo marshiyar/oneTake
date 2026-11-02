@@ -43,7 +43,7 @@ final class NativeTransitionKindsTests: XCTestCase {
             let reopened = try parse(saved)
             XCTAssertEqual(reopened, opened, name)
             XCTAssertEqual(try save(reopened), saved, "\(name): a second save writes the same bytes")
-            for key in ["angle", "shape", "centreX", "centreY", "strength", "ease", "direction"] {
+            for key in ["angle", "shape", "centreX", "centreY", "strength", "ease", "direction", "softness"] {
                 XCTAssertFalse(saved.contains("\"\(key)\""), "\(name): no \(key) key is added")
             }
             XCTAssertEqual(validateNativeProjectDocument(try NativeJSONValue.parse(saved), engine: engine), [])
@@ -96,6 +96,8 @@ final class NativeTransitionKindsTests: XCTestCase {
         raw["sequence"]?["tracks"]?[0]?["transitions"]?[0]?["angle"] = .number(.nan)
         let found = validateNativeProjectDocument(raw, engine: engine)
         XCTAssertTrue(found.contains { $0.code == .invalidTransition && $0.path.hasSuffix("transitions[0].angle") }, "\(found)")
+        // Like every other bad value, parsing refuses it too (NaN can't come from JSON text, so it is injected above).
+        XCTAssertThrowsError(try parseNativeProjectDocument(raw, engine: engine))
     }
 
     func testGoodBoundsAreAccepted() throws {
