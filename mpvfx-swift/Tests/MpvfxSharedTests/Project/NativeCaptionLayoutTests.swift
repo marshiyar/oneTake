@@ -121,7 +121,7 @@ final class NativeCaptionLayoutTests: XCTestCase {
 
     // (3) Every cue stays inside the safe area in both orientations. The frames share the short edge 1080, so the font
     // stays 64.8 in both; the width limit is 0.8 * width.
-    let cues: [String] = [
+    var cues: [String] { [
         "Hi",
         "Hello",
         "Hello there, this is a short cue",
@@ -130,7 +130,7 @@ final class NativeCaptionLayoutTests: XCTestCase {
         xs(200),
         "Line one\nLine two\nLine three",
         "",
-    ]
+    ] }
     let positions: [NativeCaptionPosition] = [.bottom, .top, .custom(x: 0.9, y: 0.95), .custom(x: 0.0, y: 0.0)]
     let frames: [(width: Double, height: Double)] = [(1920, 1080), (1080, 1920)]
 

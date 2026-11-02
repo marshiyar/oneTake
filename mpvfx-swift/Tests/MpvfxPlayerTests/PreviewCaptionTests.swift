@@ -108,7 +108,7 @@ final class PreviewCaptionTests: XCTestCase {
     }
 
     func testAnUnsupportedLookDrawsWithTheDefaultLook() throws {
-        let future = try JSONDecoder().decode(NativeCaptionLook.self, from: Data(#"{"v":2,"size":0.2,"plate":{"color":"#ff0000"}}"#.utf8))
+        let future = try JSONDecoder().decode(NativeCaptionLook.self, from: Data(##"{"v":2,"size":0.2,"plate":{"color":"#ff0000"}}"##.utf8))
         XCTAssertFalse(future.isSupported)
         let layers = composition(try document(captions: track(look: future))).captionLayers(at: 0.5, measure: Self.measure)
         XCTAssertEqual(layers.map(\.clipId), ["caption:cue:1"], "the default look has no plate")
