@@ -160,6 +160,7 @@ public struct PanelTextField: Equatable {
 public final class PanelMeasureCanvas: CanvasContext {
     public private(set) var texts: [(String, CanvasPoint, CanvasFont, CanvasColor)] = []
     public private(set) var fills: [(CanvasPath, CanvasColor)] = []
+    public private(set) var strokes: [(CanvasPath, CanvasColor, StrokeStyle)] = []
     public init() {}
     public func save() {}
     public func restore() {}
@@ -168,13 +169,13 @@ public final class PanelMeasureCanvas: CanvasContext {
     public func rotate(_ radians: Double) {}
     public func clip(_ path: CanvasPath) {}
     public func fill(_ path: CanvasPath, _ color: CanvasColor) { fills.append((path, color)) }
-    public func stroke(_ path: CanvasPath, _ color: CanvasColor, _ style: StrokeStyle) {}
+    public func stroke(_ path: CanvasPath, _ color: CanvasColor, _ style: StrokeStyle) { strokes.append((path, color, style)) }
     public func drawText(_ text: String, at origin: CanvasPoint, font: CanvasFont, color: CanvasColor) { texts.append((text, origin, font, color)) }
     public func measureText(_ text: String, font: CanvasFont) -> CanvasSize {
         CanvasSize(Double(text.count) * font.size * (font.family.contains("Mono") ? 0.6 : 0.56), font.size)
     }
     public func drawImage(_ image: CanvasImage, in rect: CanvasRect) {}
-    public func reset() { texts.removeAll(); fills.removeAll() }
+    public func reset() { texts.removeAll(); fills.removeAll(); strokes.removeAll() }
     /// All drawn strings (tests).
     public var drawnStrings: [String] { texts.map(\.0) }
 }

@@ -43,7 +43,7 @@ public let shortcutSections: [ShortcutSection] = {
                                           ("⌥ Drag", "Record rotation"), ("⌘ Drag↕", "Record opacity"), ("⌘ Scroll", "Record scale")]),
         s("Canvas", [("\\", "Toggle before / after compare"), ("Drag", "Move element / add keyframe"), ("⌥ Drag", "Move entire animation path"), ("⇧ Drag", "Uniform resize")]),
         s("Crop", [("Drag edge", "Crop a side"), ("Drag center", "Reposition the crop")]),
-        s("Panels", [("⌘1", "Compositions tab"), ("⌘2", "Assets tab")]),
+        s("Panels", [("⌘1", "Compositions tab"), ("⌘2", "Assets tab"), ("F6 / ⇧F6", "Next / previous panel")]),
         s("Work area", [("I", "Set in-point"), ("⇧I", "Clear in-point"), ("O", "Set out-point"), ("⇧O", "Clear out-point"),
                         ("A", "Jump to in-point"), ("E", "Jump to out-point")]),
     ]
