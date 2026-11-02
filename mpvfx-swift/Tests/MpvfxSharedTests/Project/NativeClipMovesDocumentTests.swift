@@ -118,6 +118,15 @@ final class NativeClipMovesDocumentTests: XCTestCase {
         }
         XCTAssertNoThrow(try parse(withMoves(#"{"v":1,"in":{"kind":"spin","frames":3,"amount":-720},"loop":{"kind":"sway","periodFrames":4,"amount":180}}"#)))
     }
+    func testDrawOnIsAnInMoveWithoutDirectionOrAmount() throws {
+        let json = #"{"in":{"frames":12,"kind":"draw"},"v":1}"#
+        let moves = try XCTUnwrap(try parse(J(try serialize(withMoves(json)))).sequence.tracks[0].clips[0].moves)
+        XCTAssertEqual(moves.inMove, NativeEdgeMove(kind: .draw, frames: 12))
+        XCTAssertEqual(try NativeJSONValue.from(moves), J(json), "a draw-on saves exactly as written")
+        rejects(#"{"v":1,"out":{"kind":"draw","frames":3}}"#, at: ".out.kind", "Draw-on is an In move")
+        rejects(#"{"v":1,"in":{"kind":"draw","frames":3,"direction":"left"}}"#, at: ".in.direction", "Only a slide move")
+        rejects(#"{"v":1,"in":{"kind":"draw","frames":3,"amount":50}}"#, at: ".in.amount", "range of a draw move")
+    }
     func testA1RuleEaseIsAKeyframeInterpolation() {
         rejects(#"{"v":1,"in":{"kind":"slide","frames":3,"ease":"ease-in"}}"#, at: ".in.ease", "Move ease must be")
         rejects(#"{"v":1,"in":{"kind":"slide","frames":3,"ease":{"type":"bounce"}}}"#, at: ".in.ease", "Move ease must be")

@@ -66,14 +66,22 @@ extension InspectorPanel {
         var groups: [InspectorGroup] = []
         if let generator = generatorGroup(editor, s) { groups.append(generator) }
         if let text = textGroup(editor, s) { groups.append(text) }
-        if s.isVisual { groups.append(transformGroup(editor, s)); groups.append(styleGroup(editor, s)) }
+        if let shape = shapeGroup(editor, s) { groups.append(shape) }
+        if s.isVisual {
+            groups.append(transformGroup(editor, s))
+            if let moves = movesGroup(editor, s) { groups.append(moves) }
+            groups.append(styleGroup(editor, s))
+        }
         if let transition = transitionGroup(editor, s) { groups.append(transition) }
+        if let masks = masksGroup(editor, s) { groups.append(masks) }
         if s.kind == .video || s.kind == .image {
             groups.append(gradeGroup(editor, s))
             if userLookStore != nil { groups.append(userLooksGroup(editor)) }
             groups.append(stylizeGroup(editor, s))
         }
-        if s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId }) { groups.append(effectsGroup(editor, s)) }
+        if s.kind == .video || s.kind == .image || s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId }) {
+            groups.append(effectsGroup(editor, s))
+        }
         if s.hasAudio { groups.append(audioFxGroup(editor, s)) }
         if s.kind != .element { groups.append(mediaGroup(editor, s)) }
         if editor.isClipLocked(s.id) {   // a locked track refuses edits: say so instead of offering dead controls
@@ -260,14 +268,19 @@ extension InspectorPanel {
     // MARK: Effects
 
     func effectsGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
-        let active = s.clip.effects.filter { $0.enabled && $0.effectId != ColorGrading.effectId }.count
-        var rows: [InspectorRow] = s.clip.effects.filter { $0.effectId != ColorGrading.effectId }.map { e in
+        // The colour key has its own rows below (colorKeyRows); the grade has its own group.
+        let others = s.clip.effects.filter { $0.effectId != ColorGrading.effectId && $0.effectId != TimelineEditor.colorKeyEffectId }
+        let active = others.filter(\.enabled).count + (editor.isColorKeyEnabled(clipId: s.id) ? 1 : 0)
+        var rows: [InspectorRow] = others.map { e in
             .init(.fxNode(.init(key: "effect:\(e.id)", label: Self.titleCase(e.effectId), detail: e.effectId, enabled: e.enabled,
                                 toggle: { [weak self] in self?.edited(editor.setEffectEnabled(clipId: s.id, effectId: e.id, !e.enabled)) },
                                 remove: { [weak self] in self?.edited(editor.removeEffect(clipId: s.id, effectId: e.id)) })))
         }
-        // The grade and its stylize effects render in preview and export; other effect nodes are only kept (export refuses them).
-        if !rows.isEmpty { rows.append(.init(.note("These effects are kept in the project; only the grade and its stylize effects render, and export refuses the rest."))) }
+        // Unsupported effect nodes remain visible and are kept in the project.
+        if s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId && $0.effectId != TimelineEditor.colorKeyEffectId }) {
+            rows.append(.init(.note("These effects are kept in the project; only the color key, grade and its stylize effects render, and export refuses the rest.")))
+        }
+        rows.append(contentsOf: colorKeyRows(editor, s))
         return InspectorGroup(id: "clip-effects", title: "Clip effects", summary: active > 0 ? "\(active) active" : "none", rows: rows)
     }
 
@@ -323,6 +336,8 @@ extension InspectorPanel {
         if s.kind == .video || s.kind == .image {
             rows.append(contentsOf: mediaFitRows(editor, s))
             rows.append(contentsOf: cropRows(editor, s))
+            rows.append(InspectorRow(.section("Canvas fill")))
+            rows.append(contentsOf: canvasFillRows(clipCanvasFillScope(editor, s)))
         }
         if s.hasAudio {
             let vol = AudioGainFader.clamp(editor.numberValue(clipId: s.id, TimelineEditor.volumeId, time: t) ?? 1)
@@ -339,9 +354,16 @@ extension InspectorPanel {
                 reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.volumeId)) },
                 keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol)), parseInput: Self.gainSliderInput))))
             if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
+            // The source's loudness at the clip's static gain (read-only; measured off the UI thread by the host).
+            if let clipLoudness, let source = s.asset?.source, !source.isEmpty {
+                let keyed = editor.isAnimated(clipId: s.id, TimelineEditor.volumeId)
+                let text = ClipLoudnessReading.label(reading: clipLoudness(source), volume: editor.clipVolume(clipId: s.id), keyframed: keyed)
+                rows.append(.init(.number(.init(key: "loudness", label: "Loudness", text: text, tier: .default, commit: { _ in }, readOnly: true))))
+            }
         }
         if s.kind == .video || s.kind == .audio {
-            rows.append(rateRow(editor, s))
+            rows.append(contentsOf: speedRampRows(editor, s))
+            if !editor.isRamped(s.id) { rows.append(rateRow(editor, s)) }
             // A detached video plays no sound (its linked audio clip does, with its own pitch option), like the clip menu.
             let detached = s.kind == .video && editor.document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == s.id } }
             if !detached {

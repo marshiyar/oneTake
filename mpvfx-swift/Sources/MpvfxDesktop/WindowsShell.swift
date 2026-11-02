@@ -31,7 +31,8 @@ private final class UIWork { let body: () -> Void; init(_ body: @escaping () -> 
 /// and the posted messages, so scheduling works before the main window exists and after it is gone; the Win32
 /// message loop does not drain the main dispatch queue, so work for the UI thread is posted there (`post`).
 final class WindowsShell: EditorSaveChannel, @unchecked Sendable {
-    static var current: WindowsShell!
+    /// Safe: main.swift assigns it once, on the main thread, before `run()`; nothing writes it afterwards.
+    nonisolated(unsafe) static var current: WindowsShell!
     static let className = "MpVFXWindow"
     static let messageClassName = "MpVFXMessageWindow"
     /// WM_APP + 1: posted by any thread to the main hwnd; marshals quitRequested() onto the UI thread.

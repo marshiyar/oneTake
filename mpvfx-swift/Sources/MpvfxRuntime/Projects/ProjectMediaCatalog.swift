@@ -41,7 +41,7 @@ public struct ProjectMediaEntry: Equatable, Sendable {
 
 /// Generated, recovery or tool directories that never hold the user's media.
 let PROJECT_MEDIA_EXCLUDED_DIRECTORIES: Set<String> = [
-    ".studio", ".build", ".git", ".thumbnails", ".transcode-cache", ".media", ".waveform-cache",
+    ".studio", ".build", ".git", ".thumbnails", ".transcode-cache", ".media", ".waveform-cache", ".loudness-cache",
     "renders", "dist", "desktop-dist", "out",
 ]
 

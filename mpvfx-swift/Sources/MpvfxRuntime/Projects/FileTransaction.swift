@@ -398,6 +398,7 @@ public protocol DurableFileTransactionStoreProtocol: AnyObject {
 /// sharedOperationQueues: one lock per configured root, shared by every store instance.
 private enum SharedOperationLocks {
     static let lock = NSLock()
+    /// Safe: `locks` is only read and written inside `lock.withLock` (`lock(for:)`).
     nonisolated(unsafe) static var locks: [String: NSLock] = [:]
     static func lock(for root: String) -> NSLock { lock.withLock { if let l = locks[root] { return l }; let l = NSLock(); locks[root] = l; return l } }
 }

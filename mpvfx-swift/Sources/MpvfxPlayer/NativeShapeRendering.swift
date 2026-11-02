@@ -86,17 +86,20 @@ public enum NativeShapeRendering {
     }
 
     public static func draw(
-        _ shape: NativeClipShape, box: CanvasRect, scale: Double, opacity: Double, on canvas: CanvasContext
+        _ shape: NativeClipShape, box: CanvasRect, scale: Double, opacity: Double, drawProgress: Double = 1,
+        on canvas: CanvasContext
     ) {
         guard shape.isSupported else { return }
         let shapePath = path(shape, box: box, scale: scale)
+        // A draw-on reveals the stroke along its path; a filled outline fades its fill in with it.
+        let progress = max(0, min(1, drawProgress))
         if shape.kind != "line" && shape.kind != "arrow", let fill = CanvasColor(hex: shape.fill) {
-            canvas.fill(shapePath, fill.withAlpha(fill.a * opacity))
+            canvas.fill(shapePath, fill.withAlpha(fill.a * opacity * progress))
         }
         let width = shape.number("strokeWidth") * scale
-        if width > 0, let stroke = CanvasColor(hex: shape.stroke) {
+        if width > 0, progress > 0, let stroke = CanvasColor(hex: shape.stroke) {
             canvas.stroke(
-                shapePath, stroke.withAlpha(stroke.a * opacity),
+                NativeShapeDrawOn.trimmed(shapePath, fraction: progress), stroke.withAlpha(stroke.a * opacity),
                 StrokeStyle(width: width, dash: shape.dash.map { $0 * scale }))
         }
     }

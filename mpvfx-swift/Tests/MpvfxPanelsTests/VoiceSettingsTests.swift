@@ -35,4 +35,21 @@ final class VoiceSettingsTests: XCTestCase {
         panel.dropdown.pick("0")
         XCTAssertEqual(changes.last?.voiceCountIn, 0)
     }
+
+    func testPreRollCanBeChosenFromKeyboardAndFitACompactCard() throws {
+        let panel = SettingsPanel(), canvas = PanelMeasureCanvas(), size = CanvasSize(640, 400)
+        var changes = [SettingsPanel.Values]()
+        panel.onChange = { changes.append($0) }
+        panel.open(); panel.draw(canvas, size: size)
+        XCTAssertEqual(panel.values.voicePreRoll, 2)
+        XCTAssertLessThanOrEqual(panel.cardRect(in: size).maxY, size.height)
+        panel.focus.current = .preRoll
+        XCTAssertTrue(panel.keyDown(EditorKey(.space)))
+        XCTAssertEqual(panel.dropdown.options.map(\.value), ["0", "1", "2", "3", "4", "5"])
+        XCTAssertEqual(panel.dropdown.options.map(\.label), ["0 s", "1 s", "2 s", "3 s", "4 s", "5 s"])
+        panel.dropdown.pick("4")
+        XCTAssertEqual(changes.last?.voicePreRoll, 4)
+        panel.draw(canvas, size: size)
+        XCTAssertLessThanOrEqual(panel.cardRect(in: size).maxY, size.height)
+    }
 }

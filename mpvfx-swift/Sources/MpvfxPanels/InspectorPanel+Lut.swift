@@ -171,7 +171,7 @@ extension InspectorPanel {
             draw: { canvas, rect, panel in panel.drawLutToggle(canvas, rect, open: open) },
             pointer: { [weak self] _, _, phase in
                 if phase == 0 {
-                    self?.grade.lutOpen = !open
+                    self?.setGradeSection(InspectorPanel.lutSectionId, open: !open)
                 }
             }
         )

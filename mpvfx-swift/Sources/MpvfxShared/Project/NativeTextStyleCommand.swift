@@ -22,4 +22,11 @@ public enum NativeTextStyleCommand: Equatable, Sendable {
     case save(clipId: String, styleId: String, name: String)
 
     case update(styleId: String, fromClipId: String)
+
+    /// Saves the clip as a new project style and links the clip to it, as one edit.
+    case create(clipId: String, styleId: String, name: String)
+
+    /// Links the clips to a style that comes from the user's library. A project that already holds the style id
+    /// keeps its own copy; otherwise the library's copy is added to the project first.
+    case adopt(style: NativeTextStyle, clipIds: [String])
 }

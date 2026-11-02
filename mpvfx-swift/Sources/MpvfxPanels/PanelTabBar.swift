@@ -47,13 +47,13 @@ public struct PanelTabBar: Equatable {
     public enum Part: Equatable, Sendable { case tab(String), close(String), overflow }
 
     /// One laid-out tab: its rect and, for a closable one, the close button's rect inside it.
-    public struct Slot: Equatable {
+    public struct Slot: Equatable, Sendable {
         public var tab: PanelTab
         public var rect: CanvasRect
         public var close: CanvasRect?
     }
 
-    public struct Layout: Equatable {
+    public struct Layout: Equatable, Sendable {
         public var slots: [Slot]
         /// The overflow button, when some tabs did not fit.
         public var overflow: CanvasRect?

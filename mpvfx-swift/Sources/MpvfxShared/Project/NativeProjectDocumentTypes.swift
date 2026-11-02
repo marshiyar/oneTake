@@ -217,6 +217,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var narration: NativeClipNarrationRecord? = nil
     /// Hand-placed beat marks in original source frames; absent means none.
     public var beats: NativeClipBeats? = nil
+    /// The nested sequence this clip shows (`NativeNestedSequence`); absent on every other clip.
+    public var sequenceId: String? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -315,6 +317,8 @@ public struct NativeProjectDocument: Codable, Equatable, Sendable {
     public var textStyles: [NativeTextStyle]? = nil
     /// What fills the frame behind clips that do not cover it (`NativeFill`); nil writes no key (black bars).
     public var compositionFill: NativeFill? = nil
+    /// Nested sequences stored once beside the main sequence (`NativeNestedSequence.swift`); nil writes no key.
+    public var sequences: [NativeNestedSequence]? = nil
 }
 
 public extension NativeProjectDocument {
@@ -322,7 +326,7 @@ public extension NativeProjectDocument {
     /// renderer cannot draw. It stays in the document unchanged (never lose the user's edit); preview and export
     /// skip it, and `undrawnElementLayersNotice` tells the user.
     func isUndrawnElementClip(_ clip: NativeProjectClip) -> Bool {
-        guard assets.first(where: { $0.id == clip.assetId })?.kind == .element else { return false }
+        guard clip.sequenceId == nil, assets.first(where: { $0.id == clip.assetId })?.kind == .element else { return false }
         if let shape = clip.shape { return !shape.isSupported }
         return clip.text == nil
     }
@@ -373,7 +377,7 @@ public extension NativeProjectDocument {
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
-         unsupportedTextStylesNotice, unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice,
+         unsupportedTextRevealsNotice, unsupportedTextStylesNotice, unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice,
          unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
     }
 }
@@ -390,8 +394,11 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
     case duplicateTransition = "duplicate-transition"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
+    case invalidMaskPath = "invalid-mask-path"
     case invalidSpeedRamp = "invalid-speed-ramp", invalidMove = "invalid-move"
     case invalidNarration = "invalid-narration", invalidFill = "invalid-fill"
+    case invalidSequence = "invalid-sequence", sequenceCycle = "sequence-cycle"
+    case sequenceFrameRateMismatch = "sequence-frame-rate-mismatch"
 }
 
 public struct NativeProjectDocumentValidationIssue: Codable, Equatable, Sendable {

@@ -232,6 +232,7 @@ final class PanelSnapshotTests: XCTestCase {
     func testGradePresetTilesShowLookFrames() throws {
         for scale in [1.0, 2.0] {
             let r = try Self.rightFixture(open: "grade", h: 900)
+            r.inspector.gradeSectionOpen["looks"] = true
             var asked: [PresetPreviewRequest] = []
             r.inspector.presetPreview = { req in
                 asked.append(req)
@@ -262,14 +263,15 @@ final class PanelSnapshotTests: XCTestCase {
     /// the body's top, 76.5 under the 32px tab strip).
     func testGradeScopesRowAndRetryPlaceTheGrid() throws {
         let r = try Self.rightFixture(open: "grade", h: 1900)
+        r.inspector.gradeSectionOpen["looks"] = true
         let c = PanelMeasureCanvas()
         r.draw(c, size: CanvasSize(409, 1900))
         XCTAssertTrue(c.drawnStrings.contains("Scopes")); XCTAssertTrue(c.drawnStrings.contains("Off"))
         XCTAssertTrue(c.drawnStrings.contains("Retry look previews"))
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
         // The Grade header scrolled to the body's top (32 + 48), its 40, the body's 8, the closed Scopes row (35 in a
-        // 40 slot), 12, the retry link (18 in a 24 slot), 6.
-        let gridTop = 80.0 + 40 + 8 + 40 + 12 + 24 + 6
+        // 40 slot), 12, the Looks header (32), 6, the retry link (18 in a 24 slot), 6.
+        let gridTop = 80.0 + 40 + 8 + 40 + 12 + 32 + 6 + 24 + 6
         XCTAssertEqual(tile.y, gridTop, accuracy: 0.5)
         XCTAssertEqual(tile.x, 16, accuracy: 0.5)
         // With look frames available the link goes and the grid moves up by its slot and gap, 24 + 6.
@@ -303,8 +305,10 @@ final class PanelSnapshotTests: XCTestCase {
                       "Zoom 1x", "Gain 1x", "Luma waveform", "Vectorscope · 75%"]
         for s in labels { XCTAssertTrue(c.drawnStrings.contains(s), s) }
         let open = InspectorPanel.scopeHead + InspectorPanel.scopeChips + InspectorPanel.scopeOptions + 6 + ScopeLayout.height([.waveform, .vectorscope], width: 377) + 7
+        r.inspector.gradeSectionOpen["looks"] = true
+        c.reset(); r.draw(c, size: CanvasSize(409, 1900))
         let tile = try XCTUnwrap(r.inspector.hits.rect { $0 == .custom("grade:presets", 0) })
-        XCTAssertEqual(tile.y, 80 + 40 + 8 + PanelGrid.snapUp(open) + 12 + 24 + 6, accuracy: 1, "the open scopes push the grid down")
+        XCTAssertEqual(tile.y, 80 + 40 + 8 + PanelGrid.snapUp(open) + 12 + 32 + 6 + 24 + 6, accuracy: 1, "the open scopes push the grid down")
         let parade = try XCTUnwrap(ScopeKind.allCases.firstIndex(of: .parade))
         try click(r, part: 2 + parade)
         XCTAssertEqual(r.inspector.grade.scopes.kinds, [.waveform, .vectorscope, .parade])
