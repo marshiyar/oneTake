@@ -24,11 +24,42 @@ public enum NativeCutTransitionKind: String, CaseIterable, Sendable {
     case dissolve
     /// The outgoing clip fades to a colour up to the cut, and the incoming clip fades up from it.
     case dip
+    /// A straight edge sweeps across and reveals the incoming clip (`direction` or `angle`, `softness`).
     case wipe
+    /// Both clips move together: the outgoing leaves as the incoming enters (`direction`).
     case push
+    /// The incoming clip slides over the outgoing one, which stays still (`direction`).
+    case slide
+    /// A circle or rectangle grows from a centre and reveals the incoming clip (`shape`, `centreX`, `centreY`, `softness`).
+    case iris
+    /// The outgoing clip scales up while the incoming one scales down to 1 from the same factor and fades in (`strength`).
+    case zoomThrough
 
     /// Transitions with both clips visible throughout the range borrow source handles.
     public var overlaps: Bool { self != .dip }
+    /// Kinds `PreviewPainter` draws with geometry (a mask or a move) instead of an opacity or colour mix.
+    public var isSpatial: Bool { self != .dissolve && self != .dip }
+    /// Kinds that read `direction`.
+    public var usesDirection: Bool { self == .wipe || self == .push || self == .slide }
+    /// Kinds that read `softness`.
+    public var usesSoftness: Bool { self == .wipe || self == .iris }
+    /// The name the editor shows (sentence case).
+    public var title: String {
+        switch self {
+        case .dissolve: "Dissolve"
+        case .dip: "Dip to colour"
+        case .wipe: "Wipe"
+        case .push: "Push"
+        case .slide: "Slide"
+        case .iris: "Iris"
+        case .zoomThrough: "Zoom through"
+        }
+    }
+}
+
+/// The shape an iris grows.
+public enum NativeIrisShape: String, CaseIterable, Sendable {
+    case circle, rectangle
 }
 
 /// Direction the new picture travels into the canvas.
@@ -103,6 +134,43 @@ public struct NativeCutTransition: Codable, Equatable, Sendable {
     public var softness: Double {
         get { object["softness"]?.numberValue ?? 0 }
         set { object["softness"] = .number(newValue) }
+    }
+
+    // Per-kind options. Each is optional and absent when it holds its default; unknown keys stay in `object`.
+    /// Default wipe-edge angle when `angle` is absent: the one `direction` gives.
+    public static let angleRange: ClosedRange<Double> = 0...359
+    public static let strengthRange: ClosedRange<Double> = 1...4
+    public static let defaultStrength = 2.0
+    public static let centreRange: ClosedRange<Double> = -0.5...1.5
+
+    /// Wipe edge travel in degrees (0 right, 90 down, 180 left, 270 up); nil: use `direction`.
+    public var angle: Double? {
+        get { object["angle"]?.numberValue }
+        set { object["angle"] = newValue.map { .number($0) } }
+    }
+    /// Iris shape (a circle when absent).
+    public var irisShape: NativeIrisShape? {
+        get { object["shape"] == nil ? .circle : object["shape"]?.stringValue.flatMap(NativeIrisShape.init(rawValue:)) }
+        set { object["shape"] = newValue == .circle ? nil : newValue.map { .string($0.rawValue) } }
+    }
+    /// Iris centre as a fraction of the frame (0.5, 0.5 when absent).
+    public var centreX: Double {
+        get { object["centreX"]?.numberValue ?? 0.5 }
+        set { object["centreX"] = newValue == 0.5 ? nil : .number(newValue) }
+    }
+    public var centreY: Double {
+        get { object["centreY"]?.numberValue ?? 0.5 }
+        set { object["centreY"] = newValue == 0.5 ? nil : .number(newValue) }
+    }
+    /// Zoom-through factor, 1...4 (2 when absent).
+    public var strength: Double {
+        get { object["strength"]?.numberValue ?? Self.defaultStrength }
+        set { object["strength"] = newValue == Self.defaultStrength ? nil : .number(newValue) }
+    }
+    /// Timing curve over the transition's range (linear when absent), an ease of the keyframe engine.
+    public var ease: NativeInterpolation {
+        get { object["ease"].flatMap { try? $0.decode(NativeInterpolation.self) } ?? .linear }
+        set { object["ease"] = newValue == .linear ? nil : (try? NativeJSONValue.from(newValue)) }
     }
     public var color: String? {
         get { object["color"]?.stringValue }

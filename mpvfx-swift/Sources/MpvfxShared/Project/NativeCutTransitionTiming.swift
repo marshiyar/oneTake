@@ -88,6 +88,12 @@ public struct NativeCutTransitionSpan: Equatable, Sendable {
     public var color: String
     public var direction: NativeTransitionDirection = .left
     public var softness: Double = 0
+    /// Wipe edge angle in degrees; nil: `direction` decides.
+    public var angle: Double? = nil
+    public var irisShape: NativeIrisShape = .circle
+    public var centreX = 0.5, centreY = 0.5
+    public var strength = NativeCutTransition.defaultStrength
+    public var ease: NativeInterpolation = .linear
     /// Timeline frames [startFrame, endFrame) the transition covers, and the cut inside them.
     public var startFrame: Double, cutFrame: Double, endFrame: Double
 
@@ -106,22 +112,25 @@ public struct NativeCutTransitionSpan: Equatable, Sendable {
     /// it from none at the start to all of it at the cut.
     public func outgoingMix(atFrame frame: Double) -> NativeTransitionMix {
         guard kind == .dip, cutFrame > startFrame else { return .none }
-        return NativeTransitionMix(colorAmount: Self.progress(frame, from: startFrame, to: cutFrame))
+        return NativeTransitionMix(colorAmount: KeyframeEase.progress(ease, at: Self.progress(frame, from: startFrame, to: cutFrame)))
     }
 
     /// The incoming clip: a dissolve fades it up from 0 at the start to 1 at the end; a dip lifts the colour off it
     /// from all of it at the cut to none at the end.
     public func incomingMix(atFrame frame: Double) -> NativeTransitionMix {
         switch kind {
-        case .wipe, .push: return .none
-        case .dissolve: return NativeTransitionMix(opacity: Self.progress(frame, from: startFrame, to: endFrame))
+        case .wipe, .push, .slide, .iris: return .none
+        case .dissolve, .zoomThrough: return NativeTransitionMix(opacity: easedProgress(atFrame: frame))
         case .dip:
             guard endFrame > cutFrame else { return .none }
-            return NativeTransitionMix(colorAmount: 1 - Self.progress(frame, from: cutFrame, to: endFrame))
+            return NativeTransitionMix(colorAmount: 1 - KeyframeEase.progress(ease, at: Self.progress(frame, from: cutFrame, to: endFrame)))
         }
     }
 
     public func progress(atFrame frame: Double) -> Double { Self.progress(frame, from: startFrame, to: endFrame) }
+
+    /// `progress(atFrame:)` shaped by the transition's ease: what every kind draws with.
+    public func easedProgress(atFrame frame: Double) -> Double { KeyframeEase.progress(ease, at: progress(atFrame: frame)) }
 
     /// Gain on the outgoing clip's sound at `frame` (fractional): an equal-power fade out over the dissolve, or
     /// over the dip's first part (up to the cut).
@@ -184,5 +193,7 @@ func resolveNativeCutTransition(_ entry: NativeCutTransition, clips: [String: Na
     let range = nativeCutTransitionRange(cut: to.startFrame, length: length, alignment: alignment)
     return NativeCutTransitionSpan(id: id, fromClipId: from.id, toClipId: to.id, kind: kind,
                                    color: entry.color ?? NativeCutTransition.defaultDipColor, direction: entry.direction ?? .left, softness: entry.softness,
+                                   angle: entry.angle, irisShape: entry.irisShape ?? .circle, centreX: entry.centreX, centreY: entry.centreY,
+                                   strength: entry.strength, ease: entry.ease,
                                    startFrame: range.start, cutFrame: to.startFrame, endFrame: range.end)
 }

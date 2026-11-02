@@ -35,7 +35,7 @@ class DesignWordingScannerTests(unittest.TestCase):
         self.assertEqual(len(self.scan('row("whitePoint", "White Point")\nlabel: "Use Source Color"')), 2)
 
     def test_allows_sentence_case_acronyms_and_preset_names(self):
-        source = 'label: "Import LUT…"\nlabel: "Tilt X"\nrow("waveFrequency", "Wave frequency")\n.init(id: "warm-daylight", label: "Warm Daylight")'
+        source = 'label: "Import LUT…"\nlabel: "Tilt X"\nlabel: "Copy A to B"\nrow("waveFrequency", "Wave frequency")\n.init(id: "warm-daylight", label: "Warm Daylight")'
         self.assertEqual(self.scan(source), [])
 
     def test_current_design_labels(self):

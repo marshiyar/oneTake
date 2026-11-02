@@ -89,11 +89,13 @@ public final class ExportFramePainter {
             canvas.fillRect(rect, composition.background)
         }
         let frameIndex = composition.frameIndex(at: time)
-        for (layer, w, h) in layers {
+        for (shown, w, h) in layers {
+            var layer = shown
             if layer.isProcedural {
                 PreviewPainter.drawText(layer, on: canvas, frame: rect, scale: s)
                 continue
             }
+            layer.mixesFramesNow = layer.mixesFrames(at: time)
             guard var image = frames(layer, layer.sourceTime(at: time), w, h) else { continue }
             // Grades animate on the timeline frame, as in the preview (PreviewCompositor.shownImage).
             if let g = layer.grade, g.isActive {
@@ -117,7 +119,7 @@ public struct ExportFrameError: Error, Equatable, CustomStringConvertible {
 /// `VideoFrameReader` (one per timeline lane, as the preview decodes), opened when the clip comes on screen and
 /// closed when it leaves, so memory stays bounded by what one frame shows.
 public final class PreviewExportFrames: NativeExportFrameRenderer {
-    private struct Lane { let reader: VideoFrameReader; var still: CanvasImage? }
+    private struct Lane { let reader: VideoFrameReader; var still: CanvasImage?; let sources = FrameMix.SourceFrames() }
 
     public let painter: ExportFramePainter
     private var lanes: [String: Lane] = [:]
@@ -157,8 +159,7 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
             let onePicture = layer.kind == .image || lane.reader.info.isStill
             let t = onePicture ? 0 : max(0, min(sourceTime, lane.reader.info.duration - 1e-6))
             framesDecoded += 1
-            let frame = try lane.reader.frame(at: t, width: width, height: height)
-            let image = CanvasImage(width: width, height: height, rgba: frame.rgba)
+            let image = try FrameMix.frame(lane.reader, at: t, mix: layer.mixesFramesNow && !onePicture, width: width, height: height, sources: lane.sources)
             if still { lane.still = image }
             return image
         } catch {
