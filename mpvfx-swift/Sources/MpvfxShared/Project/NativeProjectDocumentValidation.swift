@@ -175,6 +175,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["scaleRatioLocked"] != nil && clip["scaleRatioLocked"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).scaleRatioLocked", "Scale ratio lock must be a boolean")
             }
+            validateNativeClipAdjustment(clip, assetKind: assetKind, clipPath, &issues)
             if clip["preservesPitch"] != nil && clip["preservesPitch"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).preservesPitch", "Preserves pitch must be a boolean")
             }

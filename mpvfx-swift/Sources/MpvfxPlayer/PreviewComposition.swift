@@ -27,7 +27,10 @@ import MpvfxColor
 /// `crop` insets the untransformed box (canvas px) and travels with the box's scale and rotation.
 public struct PreviewLayer: Equatable, Sendable {
     /// `offline`: a video or image clip whose media file is missing, drawn as a slate naming the file, never decoded.
-    public enum Kind: Sendable, Equatable { case video, image, text, shape, generator, offline }
+    public enum Kind: Sendable, Equatable { case video, image, text, shape, generator, offline
+        /// No picture of its own: grades the composite of the layers below (`AdjustmentLayer.swift`).
+        case adjustment
+    }
     public var clipId: String
     /// Absolute media path.
     public var source: String
@@ -211,7 +214,12 @@ public struct PreviewComposition {
                 guard !Self.isLeftOut(track: track, clip: clip), let asset = assets[clip.assetId] else { continue }
                 guard clip.shape?.isSupported != false else { continue }
                 let layer = Self.stackingLayer(clip, track: trackLayers[index])
-                if asset.kind == .element, clip.shape?.isSupported == true {
+                if asset.kind == .element, clip.isAdjustment {
+                    var entry = Entry(clip: clip, kind: .adjustment, path: "adjustment:\(clip.id)", layer: layer,
+                                      grade: ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path))
+                    entry.gradeAnimation = PreviewGradeAnimation.forClip(clip, projectDir: projectDir?.path)
+                    ordered.append((entry, n))
+                } else if asset.kind == .element, clip.shape?.isSupported == true {
                     ordered.append((Entry(clip: clip, kind: .shape, path: "shape:\(clip.id)", layer: layer), n))
                 } else if asset.kind == .element, clip.generator?.isGenerator == true, clip.text == nil {
                     ordered.append((Entry(clip: clip, kind: .generator, path: "generator:\(clip.id)", layer: layer), n))

@@ -135,7 +135,7 @@ public final class PreviewCompositor: FrameSource {
 
         // A frame holding a blended layer is painted on a raster surface the blend can read back, then drawn in `rect`
         // (the picture export paints); other frames draw straight onto `c`.
-        let blended = layers.contains { $0.isVisible && $0.blend != .normal }
+        let blended = layers.contains { $0.isVisible && ($0.blend != .normal || $0.kind == .adjustment) }
         let offscreen = blended ? blendCanvas(rect, backing: context.backingScale) : nil
         let target: CanvasContext = offscreen ?? c
         let area = offscreen.map { CanvasRect(x: 0, y: 0, width: Double($0.surface.width), height: Double($0.surface.height)) } ?? rect
@@ -149,6 +149,12 @@ public final class PreviewCompositor: FrameSource {
         for layer in layers where layer.isVisible {
             if layer.kind == .offline {   // missing media: a slate naming the file, never decoded
                 PreviewPainter.drawOffline(layer, on: target, frame: area, scale: areaScale)
+                shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
+            }
+            if layer.kind == .adjustment {   // grades what is painted so far, never decoded
+                if let raster = target as? RasterCanvas {
+                    PreviewPainter.applyAdjustment(layer, on: raster, frame: area, grader: grader, time: Double(frame) / comp.fps)
+                }
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
             if layer.isProcedural {   // generated layers draw without media decoding
@@ -302,7 +308,7 @@ public final class PreviewCompositor: FrameSource {
     public var maxReverseChunk = 48
 
     func lane(for layer: PreviewLayer, fps: Double) -> PreviewDecodeLane? {
-        guard decodesMedia, !layer.isProcedural, layer.kind != .offline else { return nil }
+        guard decodesMedia, !layer.isProcedural, layer.kind != .offline, layer.kind != .adjustment else { return nil }
         if let l = lanes[layer.laneKey] { return l }
         let l = PreviewDecodeLane(layer: layer, fps: fps, cache: cache)
         l.onFrame = { [weak self] in self?.frameReady?() }
