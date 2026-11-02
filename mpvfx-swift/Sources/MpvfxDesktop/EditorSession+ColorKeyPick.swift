@@ -34,6 +34,11 @@ extension EditorSession {
         return panels?.presetPreviews?.rawFrame(clipId: clipId, time: time, pixelWidth: n, pixelHeight: n) ?? .unavailable
     }
 
+    /// Tells the stage which clips have an enabled colour key, so an Option-press on one shows its source while held.
+    func installColorKeyView() {
+        player.colorKeyActive = { [weak self] id in self?.editor.isColorKeyEnabled(clipId: id) ?? false }
+    }
+
     /// Starts the stage eyedropper for the key colour.
     func pickKeyColorFromStage() {
         startStagePick { [weak self] clipId, frame, x, y in

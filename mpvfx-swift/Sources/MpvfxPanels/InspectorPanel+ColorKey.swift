@@ -57,8 +57,10 @@ extension InspectorPanel {
                 key: "colorKey.\(key)", label: label, text: String(format: "%g", value * 100),
                 tier: value == def ? .default : .explicitCustom,
                 commit: { typed in
-                    guard let percent = Double(typed.trimmingCharacters(in: .whitespacesAndNewlines)),
-                          percent.isFinite, (0...100).contains(percent) else { return }
+                    let text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Plain decimal digits only: Double("0x10") and Double("1e1") would otherwise read as numbers.
+                    guard !text.isEmpty, text.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }),
+                          let percent = Double(text), (0...100).contains(percent) else { return }
                     apply("Set key \(key)") { $0[keyPath: path] = percent / 100 }
                 }, reset: value == def ? nil : { apply("Reset key \(key)") { $0[keyPath: path] = def } }))))
         }

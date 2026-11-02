@@ -72,6 +72,8 @@ public final class PlayerController {
     var maskStage = MaskStageSession()
     /// The stage eyedropper waiting for a click (PlayerController+Eyedropper.swift).
     var eyedropper: StageEyedropperSession?
+    /// Whether a clip has an enabled colour key: an Option-press on it shows its source while held (PlayerController+ColorKeyView.swift).
+    public var colorKeyActive: ((String) -> Bool)?
 
     // Gesture recording (wired by `enableGestureRecording`).
     public var recordingDocument: (() -> NativeProjectDocument?)?
@@ -152,7 +154,7 @@ public final class PlayerController {
     public func pointerDown(x: Double, y: Double, shift: Bool = false, button: Int = 0, option: Bool = false) {
         let p = CanvasPoint(x, y); shiftHeld = shift; lastPointer = p
         pressPoint = p; dragEngaged = false
-        if option {
+        if (option || modifiers.contains(.alt)), holdsColorKeySource(at: p) {
             beginColorKeyHold()   // Option-press previews the source; no gesture starts
             return
         }
@@ -268,6 +270,7 @@ public final class PlayerController {
     public func pointerMove(x: Double, y: Double, shift: Bool? = nil) {
         if let shift { shiftHeld = shift }
         let p = CanvasPoint(x, y); lastPointer = p
+        if view.colorKeyHold != nil, !modifiers.contains(.alt) { clearColorKeyHold() }   // Option let go: back to the keyed picture
         if recorder != nil { recordMove(p); return }   // only a held press on the layer drives it
         guard let g = gesture else { idleMove(p); return }
         let s = max(view.scale(in: size), 1e-9)

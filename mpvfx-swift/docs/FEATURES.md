@@ -127,7 +127,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Import local font files | partial: fonts import into the media bin (Fonts category); a text layer uses an installed family by name, not an imported file yet | n/a |
 | Grade: presets, intensity, primary adjust, color wheels (shadows/midtones/highlights with hue/amount/level and reset) | done; renders in preview and export (color-engine, 3fe63d2 / 5dbd897), on the GPU (Metal) on macOS, graded off the main thread at display size in preview | close |
 | Grade: curves Master/R/G/B, Hue vs Hue/Sat/Luma, Luma/Sat and Sat/Sat; click or Enter adds a point; delete; reset | done; renders | close |
-| Grade: secondaries (add/delete selection, hue/sat/luma qualifier, correction) | done; renders. Eyedropper ("Click a color to initialize this selection") missing (panels) | close |
+| Grade: secondaries (add/delete selection, hue/sat/luma qualifier, correction) | done; renders. The "Sample color from frame" eyedropper keys the selection from the graded frame in the inspector, and "Pick on stage" (#300) clicks a colour on the stage and samples the ungraded source (a 5 x 5 average) through the same stage eyedropper as the colour key | close |
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
 | Grade: copy grade to current file media / all project media | done | close |

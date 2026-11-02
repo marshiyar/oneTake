@@ -138,6 +138,7 @@ final class EditorSession {
         player.onCommit = { [weak self] e in self?.stageCommitted(e) }
         installStageTransform()
         installMaskStage()
+        installColorKeyView()
         player.onDelete = { [weak self] ids in self?.deleteClips(ids) }
         player.onZOrder = { [weak self] ids, action in self?.applyZOrder(ids, action) }
         player.zOrderEnabled = { [weak self] id in self?.zOrderActions(id) ?? [] }

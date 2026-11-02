@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import MpvfxCanvas
 import MpvfxPanels
 
 /// The colour-key preview mode (issue #300): which picture the stage shows of the selected clip (Result, Matte or
@@ -21,6 +22,18 @@ extension PlayerController {
     public func setColorKeyView(_ mode: ColorKeyViewMode) {
         view.colorKeyView = mode
         needsDisplay?()
+    }
+
+    /// Whether an Option-press at `p` starts the source hold: the selected layer has an enabled colour key and the press is
+    /// not for a transform handle, the rotate chip, the anchor, a mask handle, the crop tool or the eyedropper (which
+    /// all keep their Option meaning).
+    func holdsColorKeySource(at p: CanvasPoint) -> Bool {
+        guard let e = selected, colorKeyActive?(e.id) == true, maskStage.target == nil, eyedropper == nil, !view.cropActive,
+              view.viewportRect(in: size).contains(p) else { return false }
+        switch transformHit(p, view.chromeElement(e, in: size)) {
+        case .body?, nil: return true
+        default: return false
+        }
     }
 
     /// Holds the source picture while the Option press is down (wins over `colorKeyView` until released).

@@ -25,6 +25,7 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Draw-on: a line, arrow or closed shape can draw itself along its path as an In move, the same in preview and export.
 - Canvas fill controls: set what fills the empty frame area for the project (Composition) or a clip (Media), and switch it for the selected clips from the clip menu.
 - Shape masks: add rectangle, ellipse, linear and band masks to a layer from the Masks group or with Option+M, and shape them with handles on the stage.
+- Colour key controls in Clip effects: add the key, pick its colour with an eyedropper on the stage, and check it in a Matte or Source view that never changes the export.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

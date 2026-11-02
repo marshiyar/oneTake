@@ -263,8 +263,10 @@ extension InspectorPanel {
     // MARK: Effects
 
     func effectsGroup(_ editor: TimelineEditor, _ s: Selected) -> InspectorGroup {
-        let active = s.clip.effects.filter { $0.enabled && $0.effectId != ColorGrading.effectId }.count
-        var rows: [InspectorRow] = s.clip.effects.filter { $0.effectId != ColorGrading.effectId }.map { e in
+        // The colour key has its own rows below (colorKeyRows); the grade has its own group.
+        let others = s.clip.effects.filter { $0.effectId != ColorGrading.effectId && $0.effectId != TimelineEditor.colorKeyEffectId }
+        let active = others.filter(\.enabled).count + (editor.isColorKeyEnabled(clipId: s.id) ? 1 : 0)
+        var rows: [InspectorRow] = others.map { e in
             .init(.fxNode(.init(key: "effect:\(e.id)", label: Self.titleCase(e.effectId), detail: e.effectId, enabled: e.enabled,
                                 toggle: { [weak self] in self?.edited(editor.setEffectEnabled(clipId: s.id, effectId: e.id, !e.enabled)) },
                                 remove: { [weak self] in self?.edited(editor.removeEffect(clipId: s.id, effectId: e.id)) })))
