@@ -79,6 +79,7 @@ public extension TimelineController {
     }
 
     @discardableResult func runClipMenu(_ action: TimelineClipMenu.Action, clipId id: String) -> Bool {
+        if let handled = runCutMenu(action) { return handled }
         guard let editor, let (_, c) = clip(id) else { return false }
         switch action {
         case .revealSource, .showSourceFile:
@@ -120,6 +121,7 @@ public extension TimelineController {
             guard let a = editor.address(clipId: id) else { return false }
             view.selection.remove(id)
             return editor.apply(.delete(address: a))
+        default: return false   // the cut menu's actions are handled above
         }
     }
 }

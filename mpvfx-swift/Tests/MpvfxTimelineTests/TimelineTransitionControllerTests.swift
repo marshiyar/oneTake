@@ -259,4 +259,52 @@ final class TimelineTransitionControllerTests: XCTestCase {
         XCTAssertTrue(c.keyDown(EditorKey(.delete)))
         XCTAssertNil(e.clip("C"))
     }
+
+    // MARK: Menu on a cut
+
+    func labels(_ c: TimelineController) -> [String] {
+        (c.view.clipMenu?.entries ?? []).compactMap { if case .item(let item) = $0 { return item.label } else { return nil } }
+    }
+
+    func testRightClickOnACutOffersAddTransitionAndThenTheKindAlignmentAndRemove() throws {
+        let (c, e, _) = try make()
+        c.secondaryClick(x: x(60), y: rowY)
+        XCTAssertEqual(labels(c), ["Add transition"], "no transition yet")
+        XCTAssertEqual(c.view.selectedCut?.toClipId, "B")
+        XCTAssertTrue(c.runClipMenu(.addTransition, clipId: "A"))
+        XCTAssertEqual(transitions(e).first?.kind, .dissolve)
+        XCTAssertEqual(e.undoStack.count, 1)
+
+        c.secondaryClick(x: x(60), y: rowY)
+        XCTAssertEqual(labels(c), ["Dissolve", "Dip to colour", "Wipe", "Push", "Centred on the cut", "Ends at the cut", "Starts at the cut", "Remove transition"])
+        let checked = (c.view.clipMenu?.entries ?? []).compactMap { entry -> String? in
+            if case .item(let item) = entry, item.checked == true { return item.label } else { return nil }
+        }
+        XCTAssertEqual(checked, ["Dissolve", "Centred on the cut"], "the current kind and alignment are checked")
+
+        XCTAssertTrue(c.runClipMenu(.kindPush, clipId: "A"))
+        XCTAssertEqual(transitions(e).first?.kind, .push)
+        XCTAssertEqual(transitions(e).count, 1, "one transition per cut")
+        XCTAssertTrue(c.runClipMenu(.alignEndsAtCut, clipId: "A"))
+        XCTAssertEqual(transitions(e).first?.alignment, .endsAtCut)
+        XCTAssertEqual(e.undoStack.count, 3, "each choice is one undo step")
+        XCTAssertTrue(c.runClipMenu(.removeTransition, clipId: "A"))
+        XCTAssertTrue(transitions(e).isEmpty)
+        XCTAssertEqual(e.undoStack.count, 4)
+    }
+
+    func testRightClickInTheMiddleOfAClipStillOpensTheClipMenu() throws {
+        let (c, _, _) = try make()
+        c.secondaryClick(x: x(30), y: rowY)
+        XCTAssertTrue(labels(c).contains("Split"), "the clip menu, not the cut menu")
+    }
+
+    func testTheCutMenuRefusesOnALockedTrack() throws {
+        let (c, e, told) = try make()
+        c.secondaryClick(x: x(60), y: TimelineLayout.rowTop(1) + 20)
+        XCTAssertEqual(labels(c), ["Add transition"])
+        XCTAssertTrue(c.runClipMenu(.addTransition, clipId: "L1"))
+        XCTAssertTrue(transitions(e, "v2").isEmpty)
+        XCTAssertEqual(told(), ["Track is locked"])
+    }
 }

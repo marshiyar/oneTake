@@ -16,6 +16,7 @@
 // media), ⌥← / ⌥→ walk from cut to cut, ⌥[ / ⌥] shorten and lengthen by a frame (⇧ ten), Delete removes and Enter opens it
 // in the inspector. Every edit is one undo step; a refusal says why through the editor's notice.
 import Foundation
+import MpvfxShared
 
 extension TimelineController {
     // MARK: Hit testing
@@ -158,5 +159,54 @@ extension TimelineController {
     func openSelectedTransition() -> Bool {
         guard let id = view.selectedTransitionId else { return false }
         onEditTransition?(id); return true
+    }
+
+    // MARK: Menu on a cut
+
+    /// Right-click on the meeting point of two clips (or on a transition band): Add transition, or the kind, alignment and
+    /// Remove transition of the one there. The cut is selected so the menu's actions know where they apply.
+    func openCutMenu(_ cut: TimelineCut, x: Double, y: Double) {
+        guard let editor else { return }
+        view.selectedCut = cut
+        let transition = editor.transition(on: cut)
+        view.selectedTransitionId = transition?.id
+        var m = TimelineClipMenu(x: x, y: y, clipId: cut.fromClipId, entries: TimelineClipMenu.cutEntries(transition: transition))
+        if viewport.height > 0 { m.maximumHeight = viewport.height }
+        if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
+        if m.y + m.height > viewport.height { m.y = max(0, m.y - m.height) }
+        view.clipMenu = m
+    }
+
+    /// Runs a cut menu action on the selected cut; nil when `action` is not one of them.
+    func runCutMenu(_ action: TimelineClipMenu.Action) -> Bool? {
+        let kind: NativeCutTransitionKind?
+        switch action {
+        case .kindDissolve: kind = .dissolve
+        case .kindDip: kind = .dip
+        case .kindWipe: kind = .wipe
+        case .kindPush: kind = .push
+        default: kind = nil
+        }
+        let alignment: NativeCutTransitionAlignment?
+        switch action {
+        case .alignCentre: alignment = .centre
+        case .alignEndsAtCut: alignment = .endsAtCut
+        case .alignStartsAtCut: alignment = .startsAtCut
+        default: alignment = nil
+        }
+        guard kind != nil || alignment != nil || action == .addTransition || action == .removeTransition else { return nil }
+        guard let editor, let cut = view.selectedCut else { return false }
+        if let kind {
+            report(editor.applyTransition(kind, to: cut), editor: editor)
+        } else if let alignment {
+            guard let id = editor.transition(on: cut)?.id else { return false }
+            if !editor.applyTransition(.setAlignment(id: id, alignment: alignment)), let why = editor.lastFailure?.message { editor.onNotice?(why) }
+        } else if action == .addTransition {
+            report(editor.applyTransition(.dissolve, to: cut), editor: editor)
+        } else if let id = editor.transition(on: cut)?.id {
+            _ = editor.applyTransition(.remove(id: id))
+        }
+        view.selectedTransitionId = editor.transition(on: cut)?.id
+        return true
     }
 }

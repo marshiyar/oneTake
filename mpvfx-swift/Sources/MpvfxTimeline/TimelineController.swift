@@ -624,6 +624,9 @@ public final class TimelineController {
         // Diamonds sit above the clip body here too: their own menu, never the clip's.
         if let kh = view.keyframeHit(x: x, y: y) { openKeyframeMenu(kh, x: x, y: y); view.gapMenu = nil; needsDisplay?(); return }
         let hit = hitTest(x: x, y: y)
+        if let cut = (cutHit(x: x, y: y) ?? { if case .transition(let id, _, _) = hit { return editor?.cut(ofTransition: id) } else { return nil } }()) {
+            openCutMenu(cut, x: x, y: y); view.gapMenu = nil; needsDisplay?(); return
+        }
         switch hit {
         case let .clip(id, _, _), let .clipExtra(id, _): openClipMenu(id, x: x, y: y); view.gapMenu = nil; needsDisplay?(); return
         default: break

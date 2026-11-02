@@ -14,11 +14,14 @@
 import Foundation
 import MpvfxCanvas
 import MpvfxTheme
+import MpvfxShared
 
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
         case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
+        /// The menu on a cut between two clips (`cutEntries`).
+        case addTransition, removeTransition, kindDissolve, kindDip, kindWipe, kindPush, alignCentre, alignEndsAtCut, alignStartsAtCut
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -72,6 +75,21 @@ public struct TimelineClipMenu: Equatable, Sendable {
     public func item(atX px: Double, y py: Double) -> Item? {
         guard px >= rect.x + 1, px < rect.maxX - 1, py >= rect.y + 1, py < rect.maxY - 1 else { return nil }
         return itemRects().first { px >= $0.1.x && px <= $0.1.maxX && py >= $0.1.y && py < $0.1.maxY }?.0
+    }
+
+    /// The menu on the meeting point of two touching clips: add a transition, or, when there is one, its kind and
+    /// alignment (the current ones checked) and Remove transition.
+    public static func cutEntries(transition: NativeCutTransition?) -> [Entry] {
+        guard let transition, transition.isKnown else {
+            return [.item(Item(action: .addTransition, label: "Add transition", hint: "⌘T"))]
+        }
+        func kind(_ a: Action, _ label: String, _ k: NativeCutTransitionKind) -> Entry { .item(Item(action: a, label: label, checked: transition.kind == k)) }
+        func align(_ a: Action, _ label: String, _ v: NativeCutTransitionAlignment) -> Entry { .item(Item(action: a, label: label, checked: transition.alignment == v)) }
+        return [kind(.kindDissolve, "Dissolve", .dissolve), kind(.kindDip, "Dip to colour", .dip), kind(.kindWipe, "Wipe", .wipe), kind(.kindPush, "Push", .push),
+                .divider,
+                align(.alignCentre, "Centred on the cut", .centre), align(.alignEndsAtCut, "Ends at the cut", .endsAtCut), align(.alignStartsAtCut, "Starts at the cut", .startsAtCut),
+                .divider,
+                .item(Item(action: .removeTransition, label: "Remove transition", hint: "⌫", destructive: true))]
     }
 
     /// Entries for a clip of `kind`: split, the clipboard group, thumbnails, mute and pitch, the audio link, delete.
