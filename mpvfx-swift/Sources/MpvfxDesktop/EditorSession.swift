@@ -67,6 +67,9 @@ final class EditorSession {
     private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
+    /// The clip's ungraded frame for the stage eyedropper pick (id, time, largest width, largest height); nil uses the
+    /// preview renderer (EditorSession+ColorKeyPick.swift). Tests set it.
+    var rawFrameProvider: ((String, Double, Int, Int) -> PresetPreviewRenderer.State)?
     /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
     var clipInfoFeed: ClipInfoFeed?
     /// The router holds its cross-pane drag weakly; the bin and effects drags live here (EditorSession+DockedPanels.swift).
