@@ -35,21 +35,12 @@ extension InspectorPanel {
             }
             func apply(_ command: NativeCutTransitionCommand) { edited(editor.applyTransition(command), label: "Edit transition") }
             rows.append(.init(.segmented(.init(key: "transition:kind", label: "Kind",
-                options: NativeCutTransitionKind.allCases.map { ($0.rawValue, $0.rawValue.capitalized, $0 == transition.kind) },
+                options: NativeCutTransitionKind.allCases.map { ($0.rawValue, $0.title, $0 == transition.kind) },
                 select: { value in if let kind = NativeCutTransitionKind(rawValue: value) { apply(.setKind(id: id, kind: kind)) } }))))
             rows.append(.init(.number(.init(key: "transition:duration", label: "Duration (frames)",
                 text: PanelFormat.number(transition.durationFrames ?? 1, decimals: 0), tier: .explicitCustom,
                 commit: { value in if let length = PanelFormat.parse(value) { apply(.setLength(id: id, durationFrames: length)) } }))))
-            if transition.kind == .wipe || transition.kind == .push {
-                rows.append(.init(.segmented(.init(key: "transition:direction", label: "Direction",
-                    options: NativeTransitionDirection.allCases.map { ($0.rawValue, $0.rawValue.capitalized, $0 == transition.direction) },
-                    select: { value in if let direction = NativeTransitionDirection(rawValue: value) { apply(.setDirection(id: id, direction: direction)) } }))))
-            }
-            if transition.kind == .wipe {
-                rows.append(.init(.slider(.init(key: "transition:softness", label: "Softness", position: transition.softness * 100, min: 0, max: 100,
-                    display: "\(Int(transition.softness * 100))%", format: { "\(Int($0.rounded()))%" }, tier: .explicitCustom,
-                    commit: { apply(.setSoftness(id: id, softness: $0 / 100)) }))))
-            }
+            rows += kindOptionRows(transition: transition, id: id, apply: apply)
             if transition.kind == .dip {
                 rows.append(.init(.segmented(.init(key: "transition:color", label: "Dip to",
                     options: [(NativeCutTransition.defaultDipColor, "Black", (transition.color ?? NativeCutTransition.defaultDipColor) == NativeCutTransition.defaultDipColor), (NativeCutTransition.whiteDipColor, "White", transition.color?.lowercased() == NativeCutTransition.whiteDipColor)],
