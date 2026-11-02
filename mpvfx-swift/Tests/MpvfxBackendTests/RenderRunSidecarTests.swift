@@ -49,7 +49,7 @@ final class RenderRunSidecarTests: XCTestCase {
         try writer.finish()
     }
 
-    private func fileNumber(_ path: String) -> UInt64? {
+    private static func fileNumber(_ path: String) -> UInt64? {
         ((try? FileManager.default.attributesOfItem(atPath: path))?[.systemFileNumber] as? NSNumber)?.uint64Value
     }
 
@@ -74,9 +74,9 @@ final class RenderRunSidecarTests: XCTestCase {
         let outcome = Locked<ExportOutcome?>(nil)
         let done = expectation(description: "render finished")
         var callbacks = RenderCallbacks { o, _ in outcome.update { $0 = o }; done.fulfill() }
-        callbacks.progress = { [self] p in
+        callbacks.progress = { p in
             guard p.stage == "Complete" else { return }
-            let id = fileNumber(meta), bytes = FileManager.default.contents(atPath: meta)
+            let id = Self.fileNumber(meta), bytes = FileManager.default.contents(atPath: meta)
             atComplete.update { $0 = (id, bytes) }
         }
         _ = try RenderRun.start(backend: backend, request, callbacks)
@@ -84,7 +84,7 @@ final class RenderRunSidecarTests: XCTestCase {
         guard case .completed? = outcome.value else { return XCTFail("\(String(describing: outcome.value))") }
         let (firstId, firstBytes) = atComplete.value
         XCTAssertNotNil(firstId, "startExport wrote the history record before reporting completion")
-        XCTAssertEqual(fileNumber(meta), firstId, "the history record was not written a second time")
+        XCTAssertEqual(Self.fileNumber(meta), firstId, "the history record was not written a second time")
         XCTAssertEqual(FileManager.default.contents(atPath: meta), firstBytes)
         let history = try backend.renders(projectId: project.id)
         XCTAssertEqual(history.map(\.id), ["render-sidecar"])

@@ -39,7 +39,8 @@ private struct PaintFailure: Error, Equatable {}
 private struct EncodeFailure: Error, Equatable {}
 
 final class ExportOverlapTests: XCTestCase {
-    static var root = ""
+    /// Safe: XCTest runs class setUp and tearDown serially, before and after the tests that read it.
+    nonisolated(unsafe) static var root = ""
     override class func setUp() {
         super.setUp()
         guard let dir = try? makeMediaTempDir("export-overlap-") else { return }
@@ -90,7 +91,9 @@ final class ExportOverlapTests: XCTestCase {
     }
 
     func hooked(_ input: inout NativeTimelineRenderInput, _ before: @escaping (Int) throws -> Void) {
-        input.frameRenderer = { request in HookedFrames(try PreviewExportFrames(request), before: before) }
+        // Safe: the export calls `before` from its one frame loop, and the test reads what it recorded only after the export ends.
+        nonisolated(unsafe) let hook = before
+        input.frameRenderer = { request in HookedFrames(try PreviewExportFrames(request), before: hook) }
     }
 
     func sha(_ path: String) throws -> String { sha256Hex(try Data(contentsOf: URL(fileURLWithPath: path))) }

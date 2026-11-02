@@ -56,17 +56,20 @@ extension EditorSession {
             let sourceStart = sourceFrameValue(.init(sourceInFrame: clip.sourceInFrame, sourceInFraction: clip.sourceInFraction)) / fps
             let threshold = toolbar.sceneThreshold, original = self.editor.document
             toolbar.sceneProgress = 0; cancelled = false; self.redraw()
-            task = Task { [weak self, weak toolbar] in
+            // Safe: both are only used inside `postToUI`, which runs its body on the UI thread; the task awaits the backend.
+            nonisolated(unsafe) weak var weakSelf = self
+            nonisolated(unsafe) weak var weakToolbar = toolbar
+            task = Task {
                 let result: Result<[Double], Error>
                 do {
                     result = .success(try await backend.sceneCuts(projectId: project.id, source: source,
                         sourceStart: sourceStart, sourceDuration: clip.durationFrames / fps * rate,
-                        framesPerSecond: fps / rate, threshold: threshold, onProgress: { [weak self, weak toolbar] progress in
-                            self?.postToUI { toolbar?.sceneProgress = progress; self?.redraw() }
+                        framesPerSecond: fps / rate, threshold: threshold, onProgress: { progress in
+                            weakSelf?.postToUI { weakToolbar?.sceneProgress = progress; weakSelf?.redraw() }
                         }))
                 } catch { result = .failure(error) }
-                self?.postToUI {
-                    guard let self, let toolbar else { return }
+                weakSelf?.postToUI {
+                    guard let self = weakSelf, let toolbar = weakToolbar else { return }
                     defer { task = nil; toolbar.sceneProgress = nil; self.redraw() }
                     guard !cancelled else { toast("Scene analysis cancelled; no clips changed", false); return }
                     guard self.project?.id == project.id, self.editor.document == original else {
