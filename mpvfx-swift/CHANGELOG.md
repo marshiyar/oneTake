@@ -16,6 +16,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   them, each edit one undo step.
 - Cut transitions grow up: directional wipe and push join dissolve and dip, with direction, softness and duration
   in Design > Transition.
+- Three more cut transitions, slide, iris and zoom through, a wipe at any angle, and an ease (linear, ease in, ease
+  out, ease in-out) on every kind, all set in Design > Transition and drawn the same in preview and export.
 - Background generator clips (solid, linear gradient, radial gradient) from the Media panel menu, edited under
   Design > Background; canvas fills behind clips that do not cover the frame.
 - Align and distribute selected visual clips against the frame or the selection.
