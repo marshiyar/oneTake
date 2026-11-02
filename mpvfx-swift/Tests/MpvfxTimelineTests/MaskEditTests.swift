@@ -35,7 +35,7 @@ final class MaskEditTests: XCTestCase {
 
     func testEveryKindCanBeAddedAndIdsAreNeverReused() throws {
         let e = try editor()
-        let ids = ["rectangle", "ellipse", "linear", "band"].compactMap { e.addMask(clipId: "natural", kind: /opt/homebrew/bin/bash) }
+        let ids = ["rectangle", "ellipse", "linear", "band"].compactMap { e.addMask(clipId: "natural", kind: $0) }
         XCTAssertEqual(ids, ["mask-1", "mask-2", "mask-3", "mask-4"])
         XCTAssertTrue(e.removeMask(clipId: "natural", maskId: "mask-2"))
         XCTAssertEqual(e.addMask(clipId: "natural"), "mask-5")
