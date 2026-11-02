@@ -40,6 +40,7 @@ extension EditorSession {
         applyAudioDevice(prefs.audioOutputDevice)
         applyPreviewCache(prefs.previewCacheMB)
         timeline.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
+        editor.defaultTransitionFrames = Double(prefs.defaultTransitionFrames)
     }
 
     /// The router's scale for an interface size in percent.
@@ -51,6 +52,7 @@ extension EditorSession {
                                           interfaceScalePercent: prefs.interfaceScalePercent)
         values.inputDevice = prefs.audioInputDevice
         values.voiceCountIn = prefs.voiceCountIn
+        values.transitionFrames = prefs.defaultTransitionFrames
         values.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
         return values
     }
@@ -62,6 +64,8 @@ extension EditorSession {
     func applySettings(_ v: SettingsPanel.Values, _ prefs: DesktopPreferences) {
         prefs.audioInputDevice = v.inputDevice
         prefs.voiceCountIn = v.voiceCountIn
+        if v.transitionFrames != prefs.defaultTransitionFrames { prefs.defaultTransitionFrames = v.transitionFrames }
+        editor.defaultTransitionFrames = Double(v.transitionFrames)
         if v.appearance != appearance?.appearance { setAppearance(v.appearance) }
         if v.interfaceScalePercent != prefs.interfaceScalePercent {
             prefs.interfaceScalePercent = v.interfaceScalePercent

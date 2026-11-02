@@ -40,6 +40,11 @@ extension InspectorPanel {
             rows.append(.init(.number(.init(key: "transition:duration", label: "Duration (frames)",
                 text: PanelFormat.number(transition.durationFrames ?? 1, decimals: 0), tier: .explicitCustom,
                 commit: { value in if let length = PanelFormat.parse(value) { apply(.setLength(id: id, durationFrames: length)) } }))))
+            rows.append(.init(.segmented(.init(key: "transition:alignment", label: "Alignment",
+                options: [(NativeCutTransitionAlignment.centre.rawValue, "Centred", transition.alignment == .centre),
+                          (NativeCutTransitionAlignment.endsAtCut.rawValue, "Ends at cut", transition.alignment == .endsAtCut),
+                          (NativeCutTransitionAlignment.startsAtCut.rawValue, "Starts at cut", transition.alignment == .startsAtCut)],
+                select: { value in if let alignment = NativeCutTransitionAlignment(rawValue: value) { apply(.setAlignment(id: id, alignment: alignment)) } }))))
             if transition.kind == .wipe || transition.kind == .push {
                 rows.append(.init(.segmented(.init(key: "transition:direction", label: "Direction",
                     options: NativeTransitionDirection.allCases.map { ($0.rawValue, $0.rawValue.capitalized, $0 == transition.direction) },
@@ -54,6 +59,14 @@ extension InspectorPanel {
                 rows.append(.init(.segmented(.init(key: "transition:color", label: "Dip to",
                     options: [(NativeCutTransition.defaultDipColor, "Black", (transition.color ?? NativeCutTransition.defaultDipColor) == NativeCutTransition.defaultDipColor), (NativeCutTransition.whiteDipColor, "White", transition.color?.lowercased() == NativeCutTransition.whiteDipColor)],
                     select: { apply(.setColor(id: id, color: $0)) }))))
+            }
+            if let kind = transition.kind {
+                // The same kind, direction, colour and length on every cut of this track, one undo step.
+                rows.append(.init(.buttons([.init(key: "transition:apply-all", label: "Apply to all cuts on this track", style: .muted, action: { [weak self] in
+                    let cuts = editor.allCuts.filter { $0.trackId == s.track.id }
+                    let outcomes = editor.applyTransition(kind, direction: transition.direction, color: transition.color, to: cuts, lengthFrames: transition.durationFrames)
+                    self?.edited(outcomes.contains(where: \.applied), label: "Apply transition to all cuts")
+                })])))
             }
             rows.append(.init(.buttons([.init(key: "transition:remove", label: "Remove transition", style: .muted, action: { apply(.remove(id: id)) })])))
         } else {

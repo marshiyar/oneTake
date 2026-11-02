@@ -41,6 +41,8 @@ public final class SettingsPanel {
         public var holdSeconds = 2.0
         public var inputDevice: String?
         public var voiceCountIn = 3
+        /// The length of a new cut transition, in frames.
+        public var transitionFrames = 15
         public init(appearance: ThemeAppearance = .system, audioDevice: String? = nil, previewCacheMB: Int? = nil, exportFolder: String? = nil,
                     interfaceScalePercent: Int = 100) {
             self.appearance = appearance; self.audioDevice = audioDevice; self.previewCacheMB = previewCacheMB; self.exportFolder = exportFolder
@@ -49,7 +51,7 @@ public final class SettingsPanel {
     }
     public struct Device: Equatable { public var id, name: String
         public init(id: String, name: String) { self.id = id; self.name = name } }
-    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, input, countIn, cache, chooseFolder, resetFolder, hold, card }
+    public enum Hit: Hashable { case close, appearance(ThemeAppearance), interfaceSize, audio, input, countIn, transitionLength, cache, chooseFolder, resetFolder, hold, card }
 
     /// The cache sizes offered (MB); nil is automatic.
     public static let cacheChoicesMB: [Int?] = [nil, 512, 1024, 2048, 4096, 8192]
@@ -58,6 +60,9 @@ public final class SettingsPanel {
     public static func interfaceSizeLabel(_ percent: Int) -> String { "\(percent)%" }
     /// The hold lengths offered, in seconds.
     public static let holdChoicesSeconds: [Double] = [0.5, 1, 2, 3, 5, 10]
+    /// The cut transition lengths offered, in frames (the stored value can be any of 1...120).
+    public static let transitionFrameChoices = [5, 8, 10, 12, 15, 20, 24, 30, 45, 60, 90, 120]
+    public static func transitionFramesLabel(_ frames: Int) -> String { frames == 1 ? "1 frame" : "\(frames) frames" }
     public static let width = 520.0
 
     public private(set) var isOpen = false
@@ -135,7 +140,7 @@ public final class SettingsPanel {
     private static var note: CanvasFont { PanelTheme.font(10) }
     static let rowH = 28.0, rowGap = 18.0, pad = 20.0, labelW = 132.0, header = 48.0
     /// Appearance, interface size, audio output, preview cache, export folder, hold length.
-    static let rowCount = 8
+    static let rowCount = 9
 
     private var rowStride: Double { size.height > 0 && size.height < 500 ? 34 : Self.rowH + Self.rowGap }
 
@@ -168,7 +173,7 @@ public final class SettingsPanel {
         PanelDraw.hline(c, x0: card.x + 1, x1: card.maxX - 1, y: card.y + Self.header, PanelTheme.panelBorderInput)
 
         var row = Row(x: x, cx: x + Self.labelW, cw: max(0, w - Self.labelW), y: card.y + Self.header + 12)
-        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold, drawInput, drawCountIn] {
+        for drawRow in [drawAppearance, drawInterfaceSize, drawAudio, drawCache, drawFolder, drawHold, drawInput, drawCountIn, drawTransitionLength] {
             drawRow(c, row)
             row.y += rowStride
         }
@@ -258,6 +263,14 @@ public final class SettingsPanel {
         hits.add(r, .countIn)
     }
 
+    private func drawTransitionLength(_ c: CanvasContext, _ row: Row) {
+        rowLabel(c, row, "Transition length")
+        let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
+        field(c, r)
+        PanelSelect.draw(c, r.insetBy(1), text: Self.transitionFramesLabel(values.transitionFrames), hovered: hovered == .transitionLength)
+        hits.add(r, .transitionLength)
+    }
+
     private func drawCache(_ c: CanvasContext, _ row: Row) {
         rowLabel(c, row, "Preview cache")
         let r = CanvasRect(x: row.cx, y: row.y, width: row.cw, height: Self.rowH)
@@ -322,6 +335,13 @@ public final class SettingsPanel {
             let options = (0...5).map { PanelDropdown.Option(value: String($0), label: "\($0) s") }
             openDropdown(.countIn, options, String(values.voiceCountIn)) { [weak self] v in
                 if let n = Int(v) { self?.change(\.voiceCountIn, n) }
+            }
+        case .transitionLength:
+            var choices = Self.transitionFrameChoices
+            if !choices.contains(values.transitionFrames) { choices.append(values.transitionFrames); choices.sort() }
+            let options = choices.map { PanelDropdown.Option(value: String($0), label: Self.transitionFramesLabel($0)) }
+            openDropdown(.transitionLength, options, String(values.transitionFrames)) { [weak self] v in
+                if let n = Int(v) { self?.change(\.transitionFrames, n) }
             }
         case .cache: openCacheList()
         case .chooseFolder: onChooseExportFolder?()

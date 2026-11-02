@@ -89,6 +89,21 @@ public final class DesktopPreferences: @unchecked Sendable {
         set { set("mpvfx-voice-count-in", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
     }
 
+    public static let defaultTransitionFramesKey = "mpvfx-default-transition-frames"
+    /// The default cut transition lengths Settings accepts, in frames (a stored value outside it reads as the default).
+    public static let defaultTransitionFramesRange = 1...120
+    public static let standardTransitionFrames = 15
+
+    /// The length a new cut transition gets, in frames (⌘T and the Transitions browser).
+    public var defaultTransitionFrames: Int {
+        get {
+            guard let n = value(Self.defaultTransitionFramesKey)?.number, n.isFinite, n == n.rounded(),
+                  Self.defaultTransitionFramesRange.contains(Int(n)) else { return Self.standardTransitionFrames }
+            return Int(n)
+        }
+        set { set(Self.defaultTransitionFramesKey, Self.defaultTransitionFramesRange.contains(newValue) && newValue != Self.standardTransitionFrames ? .number(Double(newValue)) : nil) }
+    }
+
     public static let audioOutputDeviceKey = "mpvfx-audio-output-device"
     public static let previewCacheKey = "mpvfx-preview-cache-mb"
     public static let exportFolderKey = "mpvfx-default-export-folder"

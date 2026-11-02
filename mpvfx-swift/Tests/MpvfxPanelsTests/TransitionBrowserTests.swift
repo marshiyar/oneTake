@@ -156,7 +156,7 @@ final class TransitionBrowserTests: XCTestCase {
         XCTAssertEqual(t.kind, .wipe)
         XCTAssertEqual(t.direction, .right)
         XCTAssertEqual([t.fromClipId, t.toClipId], ["A", "B"])
-        XCTAssertEqual(t.durationFrames, TimelineEditor.defaultTransitionFrames)
+        XCTAssertEqual(t.durationFrames, e.defaultTransitionFrames)
         XCTAssertEqual(e.undoStack.count, 1)
         XCTAssertEqual(p.status, "Added Wipe right.")
         XCTAssertTrue(e.undo())
