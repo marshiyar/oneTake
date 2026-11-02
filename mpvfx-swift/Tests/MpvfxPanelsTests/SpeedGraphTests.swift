@@ -218,6 +218,60 @@ final class SpeedGraphTests: XCTestCase {
         XCTAssertTrue(g.points.indices.contains(g.focused!))
     }
 
+    // MARK: Regression: review findings
+
+    /// The drawn curve follows the drag preview before release.
+    func testCurveFollowsDragPreview() {
+        let g = makeGraph()
+        let start = CanvasPoint(g.x(forFrame: 0), g.y(forSpeed: 1))
+        run(g, g.pointerDown(start))
+        run(g, g.pointerMove(CanvasPoint(g.x(forFrame: 30), g.y(forSpeed: 2))))
+        XCTAssertNotNil(g.draggingPreview)
+        XCTAssertEqual(g.effectivePoints[0].t, 30, accuracy: 1e-9)
+        XCTAssertEqual(g.effectivePoints[0].speed, 2, accuracy: 1e-9)
+        XCTAssertEqual(g.rampSpeed(atFrame: 30), 1, accuracy: 1e-9, "stored ramp unchanged during preview")
+        XCTAssertEqual(NativeSpeedRamp(points: g.effectivePoints).speed(atClipFrame: 30), 2, accuracy: 1e-9)
+    }
+
+    /// Fractional-rate timecode counts frames at the nominal rate.
+    func testFormatTimeFractionalRate() {
+        let fps = 30000.0 / 1001.0
+        XCTAssertEqual(SpeedGraph.formatTime(frame: 1019, fps: fps), "00:33:29")
+        XCTAssertEqual(SpeedGraph.formatTime(frame: 1020, fps: fps), "00:34:00")
+    }
+
+    /// Repeated Enter at the same playhead focuses instead of duplicating.
+    func testRepeatedEnterFocusesExisting() {
+        let g = makeGraph()
+        run(g, g.keyDown(EditorKey(.enter)))
+        XCTAssertEqual(g.points.count, 3)
+        let actions = g.keyDown(EditorKey(.enter))
+        XCTAssertEqual(actions, [.focusPoint(1)])
+        run(g, actions)
+        XCTAssertEqual(g.points.count, 3)
+        XCTAssertEqual(g.focused, 1)
+    }
+
+    /// Enter on an occupied frame focuses the existing point.
+    func testEnterOnOccupiedFrameFocuses() {
+        let g = makeGraph()
+        g.playheadFrame = 0
+        let actions = g.keyDown(EditorKey(.enter))
+        XCTAssertEqual(actions, [.focusPoint(0)])
+        run(g, actions)
+        XCTAssertEqual(g.points.count, 2)
+    }
+
+    /// apply(addPoint) never creates duplicate times.
+    func testApplyAddPointOccupiedFocuses() {
+        let g = makeGraph()
+        g.apply(.addPoint(t: 40, speed: 1))
+        XCTAssertEqual(g.points.count, 3)
+        g.apply(.addPoint(t: 40, speed: 2))
+        XCTAssertEqual(g.points.count, 3, "no duplicate time")
+        XCTAssertEqual(g.points.filter { $0.t == 40 }.count, 1)
+    }
+
     // MARK: Drawing
 
     /// Drawing emits the speed labels without crashing.
