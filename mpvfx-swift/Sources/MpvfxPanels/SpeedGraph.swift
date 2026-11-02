@@ -111,10 +111,19 @@ public final class SpeedGraph {
         }
     }
 
+    /// Points as drawn, including the live drag preview.
+    var effectivePoints: [NativeSpeedRamp.Point] {
+        guard let i = draggingIndex, points.indices.contains(i),
+              let preview = draggingPreview else { return points }
+        var pts = points
+        pts[i] = preview
+        return pts
+    }
+
     /// The ramp curve, sampled through the same easing as the ramp itself.
     func drawCurve(_ c: CanvasContext) {
-        guard durationFrames > 0, !points.isEmpty else { return }
-        let ramp = NativeSpeedRamp(points: points)
+        guard durationFrames > 0, !effectivePoints.isEmpty else { return }
+        let ramp = NativeSpeedRamp(points: effectivePoints)
         var path = CanvasPath()
         let n = 64
         for i in 0...n {
@@ -138,8 +147,9 @@ public final class SpeedGraph {
                 c.stroke(dot, PanelTheme.text2, StrokeStyle(width: 1))
             }
         }
-        if let f = focused, points.indices.contains(f) {
-            let at = CanvasPoint(x(forFrame: points[f].t), y(forSpeed: points[f].speed))
+        let drawn = effectivePoints
+        if let f = focused, drawn.indices.contains(f) {
+            let at = CanvasPoint(x(forFrame: drawn[f].t), y(forSpeed: drawn[f].speed))
             PanelDraw.focusRing(c, CanvasRect(x: at.x - 5, y: at.y - 5, width: 10, height: 10), radius: 5)
         }
     }
@@ -168,18 +178,22 @@ public final class SpeedGraph {
 
     /// A frame count as MM:SS:FF timecode at `fps`.
     public static func formatTime(frame: Double, fps: Double) -> String {
-        let rate = max(1, fps)
+        let base = max(1, Int(max(1, fps).rounded()))
         let total = max(0, Int(frame.rounded()))
-        let ff = total % max(1, Int(rate.rounded()))
-        let sec = Int((Double(total) / rate).rounded(.down))
-        return String(format: "%02d:%02d:%02d", sec / 60, sec % 60, ff)
+        let sec = total / base
+        return String(format: "%02d:%02d:%02d", sec / 60, sec % 60, total % base)
     }
 
     /// Updates the model the same way the host will after the editor accepts it.
     public func apply(_ action: SpeedGraphAction) {
         switch action {
         case .addPoint(let t, let speed):
-            let p = NativeSpeedRamp.Point(t: clampedFrame(t), speed: clampedSpeed(speed))
+            let snapped = clampedFrame(t)
+            if let existing = points.firstIndex(where: { $0.t == snapped }) {
+                focused = existing
+                return
+            }
+            let p = NativeSpeedRamp.Point(t: snapped, speed: clampedSpeed(speed))
             points.append(p)
             points.sort { $0.t < $1.t }
             focused = points.firstIndex(of: p)
