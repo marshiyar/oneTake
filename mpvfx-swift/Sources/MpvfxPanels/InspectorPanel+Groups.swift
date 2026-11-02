@@ -74,7 +74,9 @@ extension InspectorPanel {
             if userLookStore != nil { groups.append(userLooksGroup(editor)) }
             groups.append(stylizeGroup(editor, s))
         }
-        if s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId }) { groups.append(effectsGroup(editor, s)) }
+        if s.kind == .video || s.kind == .image || s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId }) {
+            groups.append(effectsGroup(editor, s))
+        }
         if s.hasAudio { groups.append(audioFxGroup(editor, s)) }
         if s.kind != .element { groups.append(mediaGroup(editor, s)) }
         if editor.isClipLocked(s.id) {   // a locked track refuses edits: say so instead of offering dead controls
@@ -267,8 +269,11 @@ extension InspectorPanel {
                                 toggle: { [weak self] in self?.edited(editor.setEffectEnabled(clipId: s.id, effectId: e.id, !e.enabled)) },
                                 remove: { [weak self] in self?.edited(editor.removeEffect(clipId: s.id, effectId: e.id)) })))
         }
-        // The grade and its stylize effects render in preview and export; other effect nodes are only kept (export refuses them).
-        if !rows.isEmpty { rows.append(.init(.note("These effects are kept in the project; only the grade and its stylize effects render, and export refuses the rest."))) }
+        // Unsupported effect nodes remain visible and are kept in the project.
+        if s.clip.effects.contains(where: { $0.effectId != ColorGrading.effectId && $0.effectId != TimelineEditor.colorKeyEffectId }) {
+            rows.append(.init(.note("These effects are kept in the project; only the color key, grade and its stylize effects render, and export refuses the rest.")))
+        }
+        rows.append(contentsOf: colorKeyRows(editor, s))
         return InspectorGroup(id: "clip-effects", title: "Clip effects", summary: active > 0 ? "\(active) active" : "none", rows: rows)
     }
 
