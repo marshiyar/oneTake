@@ -34,8 +34,8 @@ with the app's own folder. To move to a newer engine: `python3 scripts/fetch-bin
 
 ## Where they are built
 
-By hand, for now: see "Building an installer by hand". CI ([ci.yml](../../.github/workflows/ci.yml)) builds and tests on Linux
-and Windows and doesn't package or publish.
+By hand, for now: see "Building an installer by hand". CI ([ci.yml](../../.github/workflows/ci.yml)) builds and tests on Linux, and
+[windows.yml](../../.github/workflows/windows.yml) does on Windows nightly. Neither packages or publishes.
 
 ## Symbols: stripped before packaging, verified after
 

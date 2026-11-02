@@ -8,7 +8,7 @@ reproduce. You will get an acknowledgement, and a fix or an explanation, in the 
 
 ## What is checked on every change
 
-- **CI** ([ci.yml](workflows/ci.yml)): builds and runs every test on Linux and Windows.
+- **CI** ([ci.yml](workflows/ci.yml)): builds and runs every test on Linux, and on Windows nightly ([windows.yml](workflows/windows.yml)).
 - **Dependabot**: the GitHub Actions the workflows run, one grouped pull request a week.
 
 ## What the app does not do

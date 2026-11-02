@@ -105,8 +105,8 @@ sh scripts/doctor.sh         # what a full run needs that is missing, with fixes
 A full run starts with [`scripts/doctor.sh`](mpvfx-swift/scripts/doctor.sh): with a prerequisite missing it stops at
 once with `check: UNAVAILABLE` (exit 2), neither passed nor failed.
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same checks on Linux and Windows. macOS runs them
-locally.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same checks on Linux. [`windows.yml`](.github/workflows/windows.yml) runs
+the build and tests on Windows nightly, and macOS runs them locally.
 
 ## Repository layout
 
