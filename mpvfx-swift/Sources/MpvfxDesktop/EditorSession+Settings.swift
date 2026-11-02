@@ -40,6 +40,7 @@ extension EditorSession {
         applyAudioDevice(prefs.audioOutputDevice)
         applyPreviewCache(prefs.previewCacheMB)
         timeline.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
+        captionsPanel?.readingRateLimit = prefs.captionReadingRate
     }
 
     /// The router's scale for an interface size in percent.
@@ -51,7 +52,9 @@ extension EditorSession {
                                           interfaceScalePercent: prefs.interfaceScalePercent)
         values.inputDevice = prefs.audioInputDevice
         values.voiceCountIn = prefs.voiceCountIn
+        values.voicePreRoll = prefs.voicePreRoll
         values.holdSeconds = prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds
+        values.captionReadingRate = prefs.captionReadingRate
         return values
     }
 
@@ -62,6 +65,7 @@ extension EditorSession {
     func applySettings(_ v: SettingsPanel.Values, _ prefs: DesktopPreferences) {
         prefs.audioInputDevice = v.inputDevice
         prefs.voiceCountIn = v.voiceCountIn
+        prefs.voicePreRoll = v.voicePreRoll
         if v.appearance != appearance?.appearance { setAppearance(v.appearance) }
         if v.interfaceScalePercent != prefs.interfaceScalePercent {
             prefs.interfaceScalePercent = v.interfaceScalePercent
@@ -71,6 +75,10 @@ extension EditorSession {
         if v.previewCacheMB != prefs.previewCacheMB { prefs.previewCacheMB = v.previewCacheMB; applyPreviewCache(v.previewCacheMB) }
         if v.exportFolder != prefs.defaultExportFolder { prefs.defaultExportFolder = v.exportFolder; panels?.refreshRenders() }
         if v.holdSeconds != (prefs.holdSeconds ?? TimelineEditor.defaultHoldSeconds) { prefs.holdSeconds = v.holdSeconds; timeline.holdSeconds = v.holdSeconds }
+        if v.captionReadingRate != prefs.captionReadingRate {
+            prefs.captionReadingRate = v.captionReadingRate
+            captionsPanel?.readingRateLimit = v.captionReadingRate
+        }
         settingsPanel.saveError = prefs.lastWriteError.map { "Could not save settings (\($0)); they last until you quit." }
         redraw()
     }

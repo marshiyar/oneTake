@@ -67,11 +67,13 @@ final class EditorSession: @unchecked Sendable {
     /// Timeline card content (toolbar + tracks); set by installShell.
     var timelineRegion: TimelineRegion?
     var volumeAnimating = false
-    private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
+    private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir; clipLoudnessFeed?.reset() } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
     /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
     var clipInfoFeed: ClipInfoFeed?
+    /// The Loudness row's readings (EditorSession+Loudness.swift); set by installShell.
+    var clipLoudnessFeed: ClipLoudnessFeed?
     /// The router holds its cross-pane drag weakly; the bin and effects drags live here (EditorSession+DockedPanels.swift).
     var crossPaneDrags: CrossPaneDragGroup?
     var desktopPreferences: DesktopPreferences?
@@ -79,6 +81,8 @@ final class EditorSession: @unchecked Sendable {
     var appearance: AppearanceSettings?
     /// The Settings card (Cmd/Ctrl+,, MpVFX > Settings… on macOS); EditorSession+Settings.
     let settingsPanel = SettingsPanel()
+    /// The Captions dock panel, kept so the Settings card can push the reading rate to it (EditorSession+DockedPanels).
+    var captionsPanel: CaptionsPanel?
     /// Shared media frames/peaks cache (MediaThumbnails.swift): bin cards, audio rows, timeline filmstrips.
     lazy var mediaThumbnails: MediaThumbnails = {
         let t = MediaThumbnails(post: { [weak self] body in self?.postToUI(body) })
@@ -392,6 +396,7 @@ final class EditorSession: @unchecked Sendable {
     /// a project folder (EditorSession+OpenProject); Cmd+, / Ctrl+, opens and closes Settings (EditorSession+Settings).
     func commandKey(_ k: EditorKey) -> Bool {
         if k.command, k.shift, !k.alt, case .char(let c) = k.code, c.lowercased() == "e" { return requestSaveFrame() }
+        if k.command, k.shift, !k.alt, case .char(let c) = k.code, c.lowercased() == "r" { return requestExportVersions() }
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
         case "s":
@@ -407,6 +412,15 @@ final class EditorSession: @unchecked Sendable {
             toggleSettings(); return true
         default: return false
         }
+    }
+
+    /// ⇧⌘R and File > Export versions…: the Renders tab with its checklist of export presets. False without a project.
+    @discardableResult
+    func requestExportVersions() -> Bool {
+        guard let panels, project != nil else { return false }
+        panels.rendersPanel.openExportVersions()
+        redraw()
+        return true
     }
 
     /// Copies files into the project, then adds each video, audio and image file to the document's assets

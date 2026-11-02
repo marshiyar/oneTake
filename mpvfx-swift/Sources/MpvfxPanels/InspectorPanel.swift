@@ -61,12 +61,20 @@ public final class InspectorPanel {
     public var audioFxUserPresets: [AudioFxModulePreset] = []
     public var onSaveAudioFxPreset: ((String, FxNode) -> Void)?
     public var onEdited: (() -> Void)?
+    /// The Media group's speed graph and whether a ramp edit keeps the clip's length (the Keep length switch).
+    let speedGraph = SpeedGraph()
+    var speedKeepLength = true
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
     /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).
     public var onCopyGrade: (() -> Bool)?
     /// Durable user-data look catalogue, supplied by the host; ordinary effects remain in the project.
     public var userLookStore: UserLookStore?
+    /// The user's text styles (`<userData>/text-styles.json`), supplied by the host; the project copies a style on first use.
+    public var textStyleLibrary: TextStyleLibrary?
+    var textStyleMenuOpen = false
+    var textStyleNameDraft: String?
+    var textStyleError: String?
     public var resolveUserLookLut: (String) -> String = { $0 }
     public var userLookLutExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     var selectedUserLook: String?
@@ -213,6 +221,15 @@ public final class InspectorPanel {
     var fxHeaderButtons: [String: Int] = [:]
     var fxReorder: ((Int, Int) -> Void)?
     var fxGestureNow: () -> Double = { Date().timeIntervalSinceReferenceDate }
+    /// Modifiers held at the last pointer event (the host sets them; Alt-drag on an EQ band moves its Q).
+    public var pointerModifiers: PointerModifiers = []
+    /// Each EQ graph's plot and its wheel step, rebuilt on every draw.
+    var fxGraphWheel: [String: (box: CanvasRect, step: (CanvasPoint, Double) -> Bool)] = [:]
+    /// The latest spectrum behind an EQ module's curve, from the owner's id (`clip:<id>` or `bus:<id>`) and the module's
+    /// chain index: one level in dBFS per equal log-spaced band from 20 Hz to 20 kHz (band k is centred at (k + 0.5) / count), or nil when nothing is playing.
+    public var audioFxSpectrumProvider: ((_ owner: String, _ node: Int) -> [Float]?)?
+    /// The last press on a graph's plot, for the double-click that adds an EQ band.
+    var fxGraphClick: (row: String, at: CanvasPoint, time: Double)?
 
     /// Keyframes selected on the timeline (synced before each paint): the easing block's "Easing…" opens the panel
     /// on these when any are on the selected clip's eased channels, else on the keys at/before the playhead.
@@ -286,6 +303,8 @@ public final class InspectorPanel {
     public var lutAssets: () -> [String] = { [] }
     /// The grid size of the grade's LUT (its `src`), or why it could not be read; nil while unknown (InspectorPanel+Lut).
     public var lutStatus: (String) -> LutStatus? = { _ in nil }
+    /// The Loudness row's reading for a clip's source path (Media group). Nil hides the row (InspectorPanel+Groups).
+    public var clipLoudness: ((_ source: String) -> ClipLoudnessReading)?
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,
                                  _ pick: @escaping (String) -> Void) -> Void)?
@@ -378,6 +397,7 @@ public final class InspectorPanel {
         validateAutoBalanceContext()
         lastRect = r
         fxHeaders.removeAll(keepingCapacity: true)
+        fxGraphWheel.removeAll(keepingCapacity: true)
         hits.reset(); tabBars = [:]
         // The shelf went away (closed, the rack's owner changed, the selection or group moved on): the audition ends.
         defer { if let k = auditionKey, hits.rect(where: { $0 == .button(k) }) == nil { endAudition() } }
@@ -914,6 +934,8 @@ public final class InspectorPanel {
     /// `dy` in points from the host: precise (trackpad) deltas move 1:1, wheel line steps glide (PanelScroller).
     public func scroll(_ p: CanvasPoint, dy: Double, precise: Bool = false) -> Bool {
         guard lastRect.contains(p) else { return false }
+        // A wheel notch over an EQ graph widens or narrows the nearest band; trackpad deltas keep scrolling the panel.
+        if !precise, let graph = fxGraphWheel.values.first(where: { $0.box.contains(p) }), graph.step(p, dy) { onEdited?(); return true }
         if bodyScroller.scroll(by: dy, precise: precise, max: bodyMaxScroll) { onAnimate?() }
         return true
     }

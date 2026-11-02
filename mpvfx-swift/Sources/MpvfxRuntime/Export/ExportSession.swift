@@ -18,6 +18,8 @@
 import Foundation
 import OneTakeMedia
 import MpvfxShared
+import struct MpvfxAudioGraph.MasterLoudnessTarget
+import struct MpvfxAudioGraph.MasterLoudnessResult
 
 /// Everything the export panel chooses. Defaults are the panel's first-run settings (MP4, Standard, 30 fps, auto).
 public struct ExportSettings: Equatable {
@@ -30,11 +32,13 @@ public struct ExportSettings: Equatable {
     public var customDimensions: ExportDimensions?
     /// Exports [startFrame, endFrame) of the sequence in project frames; nil exports the whole sequence.
     public var range: ExportFrameRange?
+    /// Brings the exported sound to a programme loudness under a true-peak ceiling; nil (Off) leaves the mix untouched.
+    public var loudness: MasterLoudnessTarget?
     public init(format: ExportFormat = .mp4, quality: ExportQuality = .standard, fps: ExportFrameRate = .fps30,
                 resolution: ExportResolutionChoice = .scale(.auto), customDimensions: ExportDimensions? = nil,
-                range: ExportFrameRange? = nil) {
+                range: ExportFrameRange? = nil, loudness: MasterLoudnessTarget? = nil) {
         self.format = format; self.quality = quality; self.fps = fps; self.resolution = resolution
-        self.customDimensions = customDimensions; self.range = range
+        self.customDimensions = customDimensions; self.range = range; self.loudness = loudness
     }
 }
 
@@ -96,6 +100,7 @@ public func planExport(_ project: NativeProjectDocument, settings: ExportSetting
             ? "Custom dimensions must be even whole pixels within the 8K limit (7680 long edge, 4320 short edge)."
             : "Canvas dimensions exceed the 8K export limit (7680 long edge, 4320 short edge).")
     }
+    if let issue = settings.loudness?.issue { issues.append(issue) }
     do { try assertNativeTimelineSupported(project) } catch { issues.append("\(error)") }
     let duration = frames / fps
     let hasAudio = exportMayHaveAudio(project)
@@ -205,11 +210,17 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
             progress(job.report(.init(percent: 0, stage: "Rendering")))
             // The mix decodes its stems before the first frame: the first 10 % when the export has sound.
             let mixesAudio = exportMayHaveAudio(project)
-            let input = NativeTimelineRenderInput(project: project, projectDir: projectDir, outputPath: staging.encodedOutputPath,
+            var input = NativeTimelineRenderInput(project: project, projectDir: projectDir, outputPath: staging.encodedOutputPath,
                 format: settings.format, outputDimensions: dims, outputFps: settings.fps.rawValue, quality: settings.quality,
                 cancellation: cancellation,
                 onProgress: { p in progress(job.report(.init(percent: p, stage: p < 10 && mixesAudio ? "Mixing audio" : "Rendering"))) },
                 keyframeEngine: keyframeEngine, range: settings.range)
+            var measured: MasterLoudnessResult?
+            if let target = settings.loudness {
+                if let issue = target.issue { throw ExportFailedError(issue) }
+                input.loudness = target
+                input.onLoudness = { measured = $0 }
+            }
             try renderNativeTimeline(input)
             try cancellation.throwIfCancelled()
             try publishExport(staging.encodedOutputPath, to: outputPath)   // never replaces a file created meanwhile
@@ -217,7 +228,8 @@ public func startExport(project: NativeProjectDocument, projectDir: String, outp
             let elapsed = Date().timeIntervalSince(started)
             let outcome = ExportOutcome.completed(path: outputPath, sizeBytes: size, elapsedSeconds: elapsed)
             // The one write of the history record (RenderRun does not write it again).
-            try? Data(#"{"status":"complete","durationMs":\#(Int(elapsed * 1000))}"#.utf8).write(to: URL(fileURLWithPath: metaPath), options: .atomic)
+            try? Data(exportMetaJSON(durationMs: Int(elapsed * 1000), loudness: settings.loudness, measured: measured).utf8)
+                .write(to: URL(fileURLWithPath: metaPath), options: .atomic)
             cleanUp()
             progress(job.report(.init(percent: 100, stage: "Complete")))
             job.finish(outcome); completion(outcome)
@@ -260,6 +272,18 @@ func exportMayHaveAudio(_ project: NativeProjectDocument) -> Bool {
 
 /// Why an export cannot start in a process that never installed the preview's painter (NativeExportFrames).
 public let EXPORT_NO_FRAME_RENDERER_MESSAGE = "Export cannot draw frames: no frame renderer is installed."
+
+/// The history record of a completed export. With a loudness target it also holds `loudness`: the target and ceiling, and
+/// what the output measured (absent when the mix had no sound or was silent). Without one the record is exactly what
+/// it always was.
+func exportMetaJSON(durationMs: Int, loudness: MasterLoudnessTarget?, measured: MasterLoudnessResult?) -> String {
+    guard let loudness else { return #"{"status":"complete","durationMs":\#(durationMs)}"# }
+    func n(_ v: Double) -> String { String(format: "%.1f", (v * 10).rounded() / 10) }
+    var fields = #""v":1,"target":\#(n(loudness.target)),"truePeak":\#(n(loudness.truePeak))"#
+    if let value = measured?.loudness { fields += #","measured":\#(n(value))"# }
+    if let value = measured?.truePeak { fields += #","measuredTruePeak":\#(n(value))"# }
+    return #"{"status":"complete","durationMs":\#(durationMs),"loudness":{\#(fields)}}"#
+}
 
 /// `<output>.meta.json` for an .mp4/.webm/.mov output.
 public func exportMetaPath(_ outputPath: String) -> String {

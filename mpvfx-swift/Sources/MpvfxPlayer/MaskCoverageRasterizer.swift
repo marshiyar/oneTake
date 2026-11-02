@@ -71,7 +71,9 @@ public enum MaskCoverageRasterizer {
         let a = (m.angle ?? 0) * .pi / 180, ca = cos(a), sa = sin(a)
         var out = [Double](repeating: 0, count: w * h)
         let kind = m.kind
-        out.withUnsafeMutableBufferPointer { buf in
+        if kind == "path" {
+            out = m.path.map { MaskPathFill.binary(width: w, height: h, path: $0) } ?? out
+        } else { out.withUnsafeMutableBufferPointer { buf in
             guard let baseAddress = buf.baseAddress else { return }
             let base = SendablePointer(baseAddress)
             DispatchQueue.concurrentPerform(iterations: h) { y in
@@ -93,7 +95,7 @@ public enum MaskCoverageRasterizer {
                     row[x] = distance >= 0 ? 1 : 0
                 }
             }
-        }
+        } }
         if feather > 0 { out = gaussianBlur(out, width: w, height: h, sigma: feather / 2) }
         for i in out.indices {
             var value = out[i] * opacity

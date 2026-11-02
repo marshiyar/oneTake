@@ -333,6 +333,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
         }
         validateNativeTrackTransitions(track, trackPath, &transitionIds, &issues)
     }
+    validateNativeNestedSequences(input, engine: engine, &issues)
     return issues
 }
 

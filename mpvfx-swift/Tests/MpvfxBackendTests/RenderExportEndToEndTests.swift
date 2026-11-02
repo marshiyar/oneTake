@@ -163,6 +163,53 @@ final class RenderExportEndToEndTests: XCTestCase {
         backend.closeProject(id: project.id)
     }
 
+    /// Export versions (#334 A1, A3): one run of three versions, one after another, each file named "<project> – <preset>".
+    /// A file already called that is kept, the version takes the next free name, and a version at its own composition
+    /// size comes out at that size while the other two keep the project's.
+    func testThreeVersionsAreNamedAfterTheirPresetsAndNoneReplacesAFile() throws {
+        NativeExportFrames.defaultRenderer = PreviewExportFrames.factory
+        let backend = RuntimeDesktopBackend(userData: root + "/userData", durableWrite: NativeDurableWrite())
+        let project = try backend.createProject(name: "Film", directory: nil)
+        try makeMedia(in: project.directory)
+        let doc = try document()
+        try backend.saveProject(id: project.id, content: try serializeNativeProjectDocument(doc))
+        let dir = try backend.rendersDirectory(projectId: project.id)
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let existing = dir + "/Film \u{2013} Master.mp4"
+        try Data("keep me".utf8).write(to: URL(fileURLWithPath: existing))
+        let tall = try nativeDocumentResizingCanvas(doc, width: 48, height: 96, natural: { $0.naturalSize })
+
+        let settings = ExportSettings(format: .mp4, quality: .draft, fps: .fps30, resolution: .scale(.auto), customDimensions: nil)
+        var outputs: [String] = []
+        for (preset, document) in [("Master", doc), ("Review", doc), ("Tall", tall)] {
+            let done = expectation(description: "\(preset) finished"), outcome = Box<ExportOutcome?>(nil)
+            var request = RenderRequest(projectId: project.id, document: document, settings: settings,
+                                        settingsJSON: .object(["format": .string("mp4"), "quality": .string("draft")]))
+            request.fileStem = "Film \u{2013} \(preset)"
+            let run = try RenderRun.start(backend: backend, request, RenderCallbacks { o, _ in outcome.update { $0 = o }; done.fulfill() })
+            wait(for: [done], timeout: 180)   // the next version starts when this one has ended
+            guard case .completed(let path, _, _)? = outcome.value else { return XCTFail("\(preset) did not complete: \(String(describing: outcome.value))") }
+            XCTAssertEqual(path, run.outputPath)
+            outputs.append(path)
+        }
+        XCTAssertEqual(outputs.map { ($0 as NSString).lastPathComponent },
+                       ["Film \u{2013} Master 2.mp4", "Film \u{2013} Review.mp4", "Film \u{2013} Tall.mp4"])
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: existing)), Data("keep me".utf8), "the file that was there is untouched")
+        let sizes = try outputs.map { path -> [Int] in
+            let video = try XCTUnwrap(MediaProbe.probe(path: path).video)
+            return [video.displayWidth, video.displayHeight]
+        }
+        XCTAssertEqual(sizes, [[96, 48], [96, 48], [48, 96]])
+        let history = try backend.renders(projectId: project.id)
+        XCTAssertEqual(Set(history.map(\.id)).intersection(["Film \u{2013} Master 2", "Film \u{2013} Review", "Film \u{2013} Tall"]).count, 3,
+                       "each version is in the render history under its own name")
+        XCTAssertEqual(history.filter { $0.id.hasPrefix("Film") && $0.status == "complete" }.count, 4)
+        for id in ["Film \u{2013} Master 2", "Film \u{2013} Review", "Film \u{2013} Tall"] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: dir + "/" + id + ".meta.json"), "\(id) has its history record")
+        }
+        backend.closeProject(id: project.id)
+    }
+
     /// Without the app's frame renderer the Renders tab gets a clear reason before anything starts (its error banner).
     func testExportWithoutAFrameRendererFailsWithAReasonUpFront() throws {
         let installed = NativeExportFrames.defaultRenderer

@@ -15,7 +15,8 @@
 // `<userData>/preferences.json`: the export dialog's last render settings ("hf-studio-render-settings") and,
 // per project, the renders the user removed from the Renders list ("hf-studio-hidden-renders:<projectId>",
 // at most the 200 newest ids), the appearance ("mpvfx-appearance") and the Settings window's interface size,
-// audio output device, preview cache size default export folder and default hold length. Unreadable or malformed files fall back to nothing stored;
+// audio output device, preview cache size, default export folder, default hold length and caption reading rate.
+// Unreadable or malformed files fall back to nothing stored;
 // values are opaque JSON that the reading feature validates. Every change rewrites the whole file through
 // `NativeDurableWrite` (temp file, fsync, rename, folder fsync), the same path a project save takes, so a crash
 // mid-write leaves the previous file, never a torn one.
@@ -87,6 +88,31 @@ public final class DesktopPreferences: @unchecked Sendable {
             return Int(n)
         }
         set { set("mpvfx-voice-count-in", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
+    }
+    /// Characters per second a caption may run before it is badged; 17 is the default and 5...40 the range (the same
+    /// as `NATIVE_CAPTION_READING_RATE_DEFAULT` and `NATIVE_CAPTION_READING_RATE_RANGE` in MpvfxShared, which this
+    /// module does not import).
+    public var captionReadingRate: Int {
+        get {
+            guard let n = value("mpvfx-caption-reading-rate")?.number, n.isFinite, (5...40).contains(n), n == n.rounded() else { return 17 }
+            return Int(n)
+        }
+        set { set("mpvfx-caption-reading-rate", (5...40).contains(newValue) ? .number(Double(newValue)) : nil) }
+    }
+
+    public static let defaultTransitionFramesKey = "mpvfx-default-transition-frames"
+    /// The default cut transition lengths Settings accepts, in frames (a stored value outside it reads as the default).
+    public static let defaultTransitionFramesRange = 1...120
+    public static let standardTransitionFrames = 15
+
+    /// The length a new cut transition gets, in frames (⌘T and the Transitions browser).
+    public var defaultTransitionFrames: Int {
+        get {
+            guard let n = value(Self.defaultTransitionFramesKey)?.number, n.isFinite, n == n.rounded(),
+                  Self.defaultTransitionFramesRange.contains(Int(n)) else { return Self.standardTransitionFrames }
+            return Int(n)
+        }
+        set { set(Self.defaultTransitionFramesKey, Self.defaultTransitionFramesRange.contains(newValue) && newValue != Self.standardTransitionFrames ? .number(Double(newValue)) : nil) }
     }
 
     public static let audioOutputDeviceKey = "mpvfx-audio-output-device"

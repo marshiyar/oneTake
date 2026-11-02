@@ -32,8 +32,22 @@ extension EditorSession {
         }
         timeline.importForPaste = { [weak self] paths, done in self?.importForPaste(paths, done) }
         timeline.onAddText = { [weak self] time in self?.addText(at: time) }
+        timeline.onEditTransition = { [weak self] id in self?.openTransition(id) }
         timeline.onEditKeyframeEasing = { [weak self] clipId, refs in self?.openKeyframeEasing(clipId: clipId, refs: refs) }
         // The timeline stores hand-placed beats directly on the selected audio clip (no analysis needed).
+    }
+
+    /// Enter on a selected cut transition: its Transition group open in Design.
+    func openTransition(_ id: String) {
+        guard let panels, let cut = editor.cut(ofTransition: id) else { return }
+        timeline.view.selection = [cut.fromClipId]
+        let inspector = panels.right.inspector
+        inspector.audioGroupId = nil
+        inspector.selection = [cut.fromClipId]
+        inspector.openGroupId = "transitions"
+        panels.right.layout.setRightCollapsed(false)
+        panels.right.layout.setRightTab(.design)
+        redraw()
     }
 
     /// T: a new text layer at the playhead, selected, with its Text section open in Design.
