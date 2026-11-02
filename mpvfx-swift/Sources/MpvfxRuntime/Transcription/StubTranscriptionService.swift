@@ -53,6 +53,9 @@ public final class StubTranscriptionService: SpeechPieceRecognizer, @unchecked S
     /// Every piece received so far, in order.
     public var received: [Received] { lock.lock(); defer { lock.unlock() }; return receivedPieces }
 
+    /// `Thread.isMainThread` is unavailable inside an async body, so the read lives in a synchronous helper.
+    private static func isOnMainThread() -> Bool { Thread.isMainThread }
+
     private func append(_ record: Received) { lock.lock(); defer { lock.unlock() }; receivedPieces.append(record) }
 
     public func availability(locale: String) -> TranscriptionAvailability { reported }
@@ -60,7 +63,7 @@ public final class StubTranscriptionService: SpeechPieceRecognizer, @unchecked S
 
     public func recognise(_ piece: TranscriptionPiece, locale: String, cancel: MediaCancellation) async throws -> [RecognisedWord] {
         let wav = try Data(contentsOf: URL(fileURLWithPath: piece.path))
-        let record = Received(piece: piece, wav: wav, onMainThread: Thread.isMainThread)
+        let record = Received(piece: piece, wav: wav, onMainThread: Self.isOnMainThread())
         append(record)
         onPiece(piece)
         switch script(piece) {
