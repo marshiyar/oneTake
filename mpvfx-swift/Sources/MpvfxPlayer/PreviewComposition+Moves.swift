@@ -26,6 +26,7 @@ extension PreviewLayer {
         l.scaleX = scaleX * o.scale; l.scaleY = scaleY * o.scale
         l.rotation = rotation + o.rotation
         l.opacity = max(0, min(1, opacity * o.opacity))
+        l.drawProgress = drawProgress * o.drawProgress
         return l
     }
 }

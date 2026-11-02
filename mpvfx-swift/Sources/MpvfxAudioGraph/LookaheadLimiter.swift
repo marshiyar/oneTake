@@ -38,7 +38,8 @@ final class FxFrameDelay {
 /// A boxcar of the same length smooths attack, reaching the target by the delayed peak:
 /// all L+1 terms then contain that peak's bound. Release can only lower that bound.
 /// Both filters use fixed rings, with amortized constant work per frame and no block resets.
-final class LookaheadLimiterUnit: FxUnit {
+final class LookaheadLimiterUnit: FxUnit, GainReducing {
+    private(set) var lowestGain = 1.0
     let latencyFrames: Int
     let ceiling: Double
     let release: Double
@@ -69,6 +70,7 @@ final class LookaheadLimiterUnit: FxUnit {
 
     func process(_ input: [[Float]], frame: Int) -> [[Float]] {
         var out = delay.process(input)
+        lowestGain = 1
         for i in 0..<(input.first?.count ?? 0) {
             let peak = input.reduce(0.0) { max($0, abs(Double($1[i]))) }
             if head != tail, deadlines[head] < clock {
@@ -89,6 +91,7 @@ final class LookaheadLimiterUnit: FxUnit {
             cursor = (cursor + 1) % smooth.count
             clock += 1
             let smoothedGain = min(1, max(0, smoothSum / Double(smooth.count)))
+            lowestGain = min(lowestGain, smoothedGain)
             // Only guards float rounding at the bound; the detector supplies the limiting gain.
             let cap = ceilingSample
             for ch in out.indices {

@@ -21,6 +21,8 @@ public struct AudioFxUIState: Equatable {
     public enum Menu: Equatable { case none, presets, add }
     public var modulePreset: String?
     var owner: String?
+    /// The gain-reduction bars' held peaks, by module row.
+    var reductionHolds: [String: AfxPeakHold] = [:]
     public var menu: Menu = .none
     /// The chain index whose module is open (`openNode`, 0 at mount).
     public var openNode: Int? = 0
@@ -33,6 +35,8 @@ public struct AudioFxUIState: Equatable {
     /// A response-graph handle drag in flight, and each graph's plot from the last draw (by row id).
     public var graphDrag: AfxGraphDrag?
     public var graphBoxes: [String: AfxGraphBox] = [:]
+    /// The parametric EQ band whose settings the open module shows (1-based).
+    public var selectedBand = 1
 }
 
 /// One run of the hand-built chain: a preset's consecutive nodes, or one bare node (FxSection `runs`).
@@ -61,7 +65,7 @@ extension InspectorPanel {
 
     /// The family a node letters and tints by (fxFamilyOf).
     static func afxFamily(_ n: FxNode) -> String {
-        if n.fromCarve == true || n.fromEq != nil || n.fromLeveller == true { return "smart" }
+        if n.fromCarve == true || n.fromEq != nil || n.fromLeveller == true || n.type == "eq" { return "smart" }
         let g = AudioFx.definition(n.type)?.group
         return g == "dynamics" || g == "nonlinear" || g == "time" ? g! : "filter"
     }
@@ -524,10 +528,11 @@ extension InspectorPanel {
                 self?.audioFxUI.modulePreset = nil; write(next)
             }])))
         }
+        if node.type == "eq" { controls += afxEqButtons(chain, node, i, fxKey: fxKey, write: write) }
         // The open face (FxNodeOpenBody): what it is for, the one knob and its ends, then Details.
         let copy = AudioFxCopy.effects[node.type]
         let profile = AudioFxProfiles.profiles[node.type]
-        let primary = AudioFxCopy.primaryParam(node.type)
+        let primary = node.type == "eq" ? nil : AudioFxCopy.primaryParam(node.type)   // an EQ lists its band's settings at once
         let oneKnob = primary != nil || profile != nil
         let details = ui.details.contains(nodeId)
         var face: [AfxParam] = []
@@ -535,7 +540,9 @@ extension InspectorPanel {
         else if let primary, let d = def?.params.first(where: { $0.key == primary }) {
             face = [AfxParam(key: primary, label: AudioFxCopy.paramLabel(node.type, primary, fallback: d.label), def: d)]
         }
-        let all = (def?.params ?? []).map { AfxParam(key: $0.key, label: AudioFxCopy.paramLabel(node.type, $0.key, fallback: $0.label), def: $0) }
+        let eqShown = node.type == "eq" ? Self.afxEqShownKeys(AudioFx.normalize("eq", params, version: node.version ?? chain.version), selected: ui.selectedBand) : nil
+        let all = (def?.params ?? []).filter { eqShown?.contains($0.key) ?? true }
+            .map { AfxParam(key: $0.key, label: AudioFxCopy.paramLabel(node.type, $0.key, fallback: $0.label), def: $0) }
         let shownFace = details ? [] : face
         let shownAll = details || !oneKnob ? all : []
         var seen = Set<String>()
@@ -550,8 +557,12 @@ extension InspectorPanel {
         let graphH = Self.afxGraphHeight(node.type)
         let openH = open ? doesH + graphH + paramsH(shownFace) + endsH + detailsH + paramsH(shownAll) : 0
         let graphPointer = afxNodeGraphPointer(node, i, update: update)
+        let graphKey = node.type == "eq" ? afxEqKey(node, i, update: update) : nil
+        let graphWheel = node.type == "eq" ? afxEqWheel(node, i, update: update) : nil
         let presetH = 28.0 + (menuOpen ? Double(presets.count + 1) * 24 : 0)
-        let cardH = 2 + Self.nodeHeadH + presetH + (summary != nil ? Self.nodeSummaryH : 0) + openH
+        let meterIndex = Self.afxMeterIndex(chain, i)
+        let meterH = fxMeterProvider != nil ? Self.afxMeterStripH : 0
+        let cardH = 2 + Self.nodeHeadH + presetH + (summary != nil ? Self.nodeSummaryH : 0) + meterH + openH
         let topGap = inRun != nil ? 4.0 : 0
         let name = Self.afxLettered(label, family: family)
         return .init(.custom(InspectorCustomRow(id: "afx:node:\(i)", height: topGap + cardH, draw: { [weak self] c, r, _ in
@@ -615,6 +626,8 @@ extension InspectorPanel {
                                color: PanelTheme.text2.withAlpha(a))
                 y += Self.nodeSummaryH
             }
+            let reading = self.afxMeterReading(meterIndex)
+            if meterH > 0 { y = self.afxDrawMeterStrip(c, card, y: y, reading, alpha: a) }
             guard open else { return }
             let bx = card.x + 2, bw = card.width - 3
             func rule() { c.fillRect(CanvasRect(x: bx, y: y, width: bw, height: 1), PanelTheme.inspectorControl) }
@@ -629,7 +642,12 @@ extension InspectorPanel {
             }
             if graphH > 0 {
                 rule()
-                self.afxDrawModuleGraph(c, CanvasRect(x: bx + 6, y: y + 1 + 6, width: bw - 12, height: Self.afxGraphH), (i: i, node: node), alpha: a)
+                self.afxDrawModuleGraph(c, CanvasRect(x: bx + 6, y: y + 1 + 6, width: bw - 12, height: Self.afxGraphH), (i: i, node: node), alpha: a, reading: reading)
+                if node.type == "eq" {
+                    self.afxEqStrip(c, CanvasRect(x: bx + 6, y: y + Self.afxGraphBlockH, width: bw - 12, height: Self.afxEqStripH), node, i,
+                                    fxKey: fxKey, alpha: a, enabled: !bypassed)
+                    if !bypassed, let graphWheel, let box = self.audioFxUI.graphBoxes["afx:node:\(i)"]?.box { self.fxGraphWheel["afx:node:\(i)"] = (box, graphWheel) }
+                }
                 y += graphH
             }
             func drawParams(_ ps: [AfxParam]) {
@@ -662,7 +680,7 @@ extension InspectorPanel {
             if oneKnob { self.addHit(dr, .button("\(fxKey):details")) }
             y += detailsH
             drawParams(shownAll)
-        }, pointer: graphPointer)), controls: controls)
+        }, pointer: graphPointer, key: graphKey)), controls: controls)
     }
 
     /// Width of `PanelDraw.tracked` text (no tracking after the last glyph).

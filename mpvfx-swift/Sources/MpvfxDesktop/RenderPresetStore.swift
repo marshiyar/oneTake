@@ -56,6 +56,19 @@ struct RenderPresetStore {
         return presets
     }
 
+    /// Sets (or, with nil, clears) the composition size a preset renders at in "Export versions".
+    @discardableResult
+    func setComposition(name: String, _ composition: RenderPresetComposition?) throws -> [RenderPreset] {
+        var presets = try load()
+        guard let index = presets.firstIndex(where: { $0.name == name }) else {
+            throw RenderPresetStoreError(path: path, reason: "the preset \"\(name)\" no longer exists")
+        }
+        presets[index].composition = composition
+        guard presets[index].hasValidSettings else { throw RenderPresetStoreError(path: path, reason: "invalid composition size") }
+        try write(presets)
+        return presets
+    }
+
     @discardableResult
     func delete(name: String) throws -> [RenderPreset] {
         let presets = try load().filter { $0.name != name }

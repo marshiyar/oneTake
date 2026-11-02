@@ -289,6 +289,28 @@ final class InspectorTextAuditTests: XCTestCase {
         XCTAssertNotNil(editor.clip(id), "and keeps the layer")
     }
 
+    func testSettingATextRevealIsOneUndoStepPerEditAndRefusesBadValues() throws {
+        let id = try XCTUnwrap(editor.addTextClip(at: 1))
+        XCTAssertFalse(editor.setTextReveal(clipId: id, NativeTextReveal(unit: "letters")))
+        XCTAssertFalse(editor.setTextReveal(clipId: id, NativeTextReveal(unitFrames: 0)))
+        XCTAssertFalse(editor.setTextReveal(clipId: id, NativeTextReveal(seed: -1)))
+        XCTAssertNil(editor.clipText(clipId: id)?.reveal)
+        XCTAssertTrue(editor.setTextReveal(clipId: id, NativeTextReveal(unit: "characters", style: "typeOn", cursor: true)))
+        XCTAssertTrue(editor.setTextReveal(clipId: id, leaving: true, NativeTextReveal(style: "grow")))
+        XCTAssertEqual(editor.clipText(clipId: id)?.reveal?.resolvedUnit, "characters")
+        XCTAssertEqual(editor.clipText(clipId: id)?.unreveal?.resolvedStyle, "grow")
+        XCTAssertNoThrow(try parseNativeProjectDocument(editor.document))
+        _ = editor.undo()
+        XCTAssertNil(editor.clipText(clipId: id)?.unreveal, "one undo removes only the unreveal")
+        XCTAssertNotNil(editor.clipText(clipId: id)?.reveal)
+        _ = editor.undo()
+        XCTAssertNil(editor.clipText(clipId: id)?.reveal)
+        XCTAssertNotNil(editor.clip(id), "and keeps the layer")
+        XCTAssertTrue(editor.setTextReveal(clipId: id, NativeTextReveal()))
+        XCTAssertTrue(editor.setTextReveal(clipId: id, nil), "nil removes it")
+        XCTAssertNil(editor.clipText(clipId: id)?.reveal)
+    }
+
     func testValidationKeepsAnElementWithoutTextAsAnUndrawnLayer() throws {
         let plain = Self.json.replacingOccurrences(of: ##""text":{"content":"Hello world","fontSize":20,"color":"#ffffff"}"##, with: ##""hidden":false"##)
         let kept = try parseNativeProjectDocument(try NativeJSONValue.parse(plain))

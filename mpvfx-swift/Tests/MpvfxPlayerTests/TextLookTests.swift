@@ -81,7 +81,11 @@ final class TextLookTests: XCTestCase {
         let look = NativeTextLook(outlines: [.init(width: 10, color: "#000000")])
         let img = try rasterized(layer(look: look))
         let plain = try rasterized(layer(look: nil))
-        let y = 170
+        // A row high in the H, clear of the crossbar's outline whatever the platform font: only the two stems cross it.
+        let top = try XCTUnwrap((0..<plain.height).first { row in
+            (0..<plain.width).contains { plain.rgba[(row * plain.width + $0) * 4 + 3] > 200 }
+        })
+        let y = top + 20
         func run(_ i: CanvasImage, _ test: (ArraySlice<UInt8>) -> Bool) -> [Int] {
             (0..<i.width).filter { test(i.rgba[(y * i.width + $0) * 4..<(y * i.width + $0) * 4 + 4]) }
         }

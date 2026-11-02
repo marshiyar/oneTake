@@ -24,7 +24,10 @@ import MpvfxPanels
 import MpvfxDesktopCore
 
 /// Wires the document, playback clock, timeline and player together (host-neutral).
-final class EditorSession {
+/// `@unchecked Sendable`: the session's state is only read and written on the UI thread. Its background tasks (probes,
+/// scene analysis, dialogs) await the backend off that thread and come back through `postToUI` before they touch it, the
+/// same contract the shells (`MacShell`) already declare.
+final class EditorSession: @unchecked Sendable {
     let editor: TimelineEditor
     let playback: PlaybackState
     let timeline: TimelineController
@@ -64,11 +67,16 @@ final class EditorSession {
     /// Timeline card content (toolbar + tracks); set by installShell.
     var timelineRegion: TimelineRegion?
     var volumeAnimating = false
-    private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
+    private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir; clipLoudnessFeed?.reset() } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
+    /// The clip's ungraded frame for the stage eyedropper pick (id, time, largest width, largest height); nil uses the
+    /// preview renderer (EditorSession+ColorKeyPick.swift). Tests set it.
+    var rawFrameProvider: ((String, Double, Int, Int) -> PresetPreviewRenderer.State)?
     /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
     var clipInfoFeed: ClipInfoFeed?
+    /// The Loudness row's readings (EditorSession+Loudness.swift); set by installShell.
+    var clipLoudnessFeed: ClipLoudnessFeed?
     /// The router holds its cross-pane drag weakly; the bin and effects drags live here (EditorSession+DockedPanels.swift).
     var crossPaneDrags: CrossPaneDragGroup?
     var desktopPreferences: DesktopPreferences?
@@ -76,6 +84,8 @@ final class EditorSession {
     var appearance: AppearanceSettings?
     /// The Settings card (Cmd/Ctrl+,, MpVFX > Settings… on macOS); EditorSession+Settings.
     let settingsPanel = SettingsPanel()
+    /// The Captions dock panel, kept so the Settings card can push the reading rate to it (EditorSession+DockedPanels).
+    var captionsPanel: CaptionsPanel?
     /// Shared media frames/peaks cache (MediaThumbnails.swift): bin cards, audio rows, timeline filmstrips.
     lazy var mediaThumbnails: MediaThumbnails = {
         let t = MediaThumbnails(post: { [weak self] body in self?.postToUI(body) })
@@ -134,6 +144,8 @@ final class EditorSession {
         player.onSelectionChange = { [weak self] ids in self?.timeline.view.selection = Set(ids); self?.redraw() }
         player.onCommit = { [weak self] e in self?.stageCommitted(e) }
         installStageTransform()
+        installMaskStage()
+        installColorKeyView()
         player.onDelete = { [weak self] ids in self?.deleteClips(ids) }
         player.onZOrder = { [weak self] ids, action in self?.applyZOrder(ids, action) }
         player.zOrderEnabled = { [weak self] id in self?.zOrderActions(id) ?? [] }
@@ -384,11 +396,14 @@ final class EditorSession {
 
     /// Set by the shell: show a file chooser and call importMedia(paths:).
     var onImportRequested: (() -> Void)?
+    /// The last layout the Layout menu applied (EditorSession+Layout.swift): ⌥ arrows and ⌥⌘[ ⌥⌘] re-apply it.
+    var lastLayout: (layout: NativeGridLayout, ids: [String], options: NativeGridOptions)?
 
     /// Cmd+S / Ctrl+S saves now; Cmd+I / Ctrl+I imports media (when the shell offers a chooser); Cmd+O / Ctrl+O opens
     /// a project folder (EditorSession+OpenProject); Cmd+, / Ctrl+, opens and closes Settings (EditorSession+Settings).
     func commandKey(_ k: EditorKey) -> Bool {
         if k.command, k.shift, !k.alt, case .char(let c) = k.code, c.lowercased() == "e" { return requestSaveFrame() }
+        if k.command, k.shift, !k.alt, case .char(let c) = k.code, c.lowercased() == "r" { return requestExportVersions() }
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
         case "s":
@@ -406,11 +421,22 @@ final class EditorSession {
         }
     }
 
+    /// ⇧⌘R and File > Export versions…: the Renders tab with its checklist of export presets. False without a project.
+    @discardableResult
+    func requestExportVersions() -> Bool {
+        guard let panels, project != nil else { return false }
+        panels.rendersPanel.openExportVersions()
+        redraw()
+        return true
+    }
+
     /// Copies files into the project, then adds each video, audio and image file to the document's assets
     /// (one undoable edit). Fonts and LUTs are copied but not added as timeline assets.
     func importMedia(paths: [String], completion: @escaping (DesktopMediaImport) -> Void = { _ in }) {
         guard let backend, let project, !paths.isEmpty else { return }
         panels?.left.importing = true; redraw()
+        // Safe: `completion` is only called inside `postToUI`, on the UI thread it was handed in on.
+        nonisolated(unsafe) let completionOnUI = completion
         Task { [weak self] in
             do {
                 let result = try await backend.importMedia(projectId: project.id, paths: paths, directory: nil)
@@ -425,7 +451,7 @@ final class EditorSession {
                     if !result.notices.isEmpty {
                         self.onError("Imported without sound", result.notices.map { "\($0.name) (\($0.reason))" }.joined(separator: ", "))
                     }
-                    completion(result)
+                    completionOnUI(result)
                 }
             } catch {
                 self?.postToUI { self?.panels?.left.importing = false; self?.redraw(); self?.onError("Import failed", "\(error)") }
@@ -557,6 +583,10 @@ final class EditorSession {
     // document and pulled in 128-frame blocks; master volume and mute come from the transport.
     var audio: AudioPlayback?
     var graph: GraphAudioSource?
+    /// The Audio FX rack's last meter reading, so it is taken at 30 Hz however often the rack draws (`fxMeterSnapshot`).
+    var fxMeterCache: (owner: String, at: Double, snapshot: FxMeterSnapshot?)?
+    /// The module spectrum last read for the rack, taken at 30 Hz like the meters (`fxSpectrumBands`).
+    var fxSpectrumCache: (owner: String, node: Int, at: Double, bands: [Float]?)?
     var graphInputs: DocumentAudioGraph.Inputs?
     var graphDocument: NativeProjectDocument?
     /// Builds and swaps the graph off the UI thread (decode, FX parse, pre-roll); edits only hand it inputs.

@@ -78,6 +78,11 @@ public final class PlayerView {
     public var marquee: CanvasRect?
     public var marqueeCandidates: [String] = []
     public var contextMenu: StageContextMenu?
+    /// The Shape tool (⇧S, issue #324): the kind it draws while it is on, nil when it is off, and the shape being dragged.
+    public var shapeTool: String?
+    public var shapeDraft: StageShapeDraft?
+    /// The Layout menu (⌥⌘G, issue #322).
+    public var layoutMenu: StageLayoutMenu?
     /// Seconds clock for animations (zoom readout fade, play/pause morph).
     public var now: () -> Double = { ProcessInfo.processInfo.systemUptime }
     /// Called at the end of a draw while an animation still runs; the host schedules another draw.
@@ -98,6 +103,10 @@ public final class PlayerView {
     static let zOrderFlashSeconds = 0.6
     /// A library or media asset is being dragged over the stage.
     public var assetDropActive = false
+    /// Colour-key preview mode for the selected clip.
+    public var colorKeyView: ColorKeyViewMode = .result
+    /// Held colour-key preview mode while its shortcut key is down (wins over colorKeyView).
+    public var colorKeyHold: ColorKeyViewMode?
     /// Transient message over the stage.
     public var toast: (message: String, isError: Bool, start: Double)?
     static let toastSeconds = 3.0
@@ -106,6 +115,8 @@ public final class PlayerView {
     var morph: (from: Double, to: Double, start: Double)?
     var lastPlaying: Bool?
     public var cropActive = false
+    /// The mask being edited and its handles, drawn over the selected layer (PlayerView+MaskHandles.swift).
+    public var maskOverlay: MaskOverlay?
     /// The transform box: anchors, hovered and dragged part, readout and cursor (PlayerView+TransformBox.swift).
     public var transformChrome = TransformChrome()
 
@@ -262,7 +273,8 @@ public final class PlayerView {
                 c.fillRect(frame, Self.canvasSurface)
                 let context = FrameDrawContext(backingScale: max(backingScale, c.deviceScale), isPlaying: playback.isPlaying,
                                                speed: playback.playbackRate * playback.direction, liveElementIds: liveElementIds?(),
-                                               compareClipId: toolbar.compareEnabled ? selection : nil, comparePosition: toolbar.comparePosition)
+                                               compareClipId: toolbar.compareEnabled ? selection : nil, comparePosition: toolbar.comparePosition,
+                                               colorKeyClipId: selection, colorKeyView: colorKeyHold ?? colorKeyView)
                 frameSource.draw(c, in: frame, time: playback.currentTime, elements: elements.map { viewElement($0, in: size) },
                                  context: context)
             }
@@ -282,6 +294,7 @@ public final class PlayerView {
         if !isFullscreen { toolbar.draw(c, width: size.width, cropAvailable: cropAvailable, cropActive: cropActive) }
         drawControls(c, size: size)
         if let menu = contextMenu { menu.draw(c, bounds: CanvasRect(x: 0, y: 0, width: size.width, height: size.height)) }
+        if let menu = layoutMenu { menu.draw(c, bounds: CanvasRect(x: 0, y: 0, width: size.width, height: size.height)) }
         if animating { requestAnimationFrame?() }
     }
 
@@ -324,6 +337,7 @@ public final class PlayerView {
         } else if let sel = selection, let e = elements.first(where: { $0.id == sel }) {
             let ve = chromeElement(e, in: size)
             if cropActive { drawCrop(c, ve) } else { drawSelection(c, ve) }
+            if let o = maskOverlay, o.clipId == e.id, !cropActive { drawMask(c, ve, o) }
         }
         // Marquee: candidates accent + accent/5 (square); the box accent + accent/10.
         for id in marqueeCandidates {
@@ -336,6 +350,7 @@ public final class PlayerView {
             Self.fillSquare(c, m, theme.accent.withAlpha(0.10))
             Self.strokeSquare(c, m, theme.accent, width: 1)
         }
+        drawShapeTool(c, size: size, frame: frame)
         drawGuides(c, frame: frame)
         drawTransformFeedback(c, size: size)
     }

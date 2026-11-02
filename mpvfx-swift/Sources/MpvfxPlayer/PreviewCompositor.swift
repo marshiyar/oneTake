@@ -135,7 +135,7 @@ public final class PreviewCompositor: FrameSource {
 
         // A frame holding a blended layer is painted on a raster surface the blend can read back, then drawn in `rect`
         // (the picture export paints); other frames draw straight onto `c`.
-        let blended = layers.contains { $0.isVisible && $0.blend != .normal }
+        let blended = layers.contains { $0.isVisible && ($0.blend != .normal || $0.kind == .adjustment) }
         let offscreen = blended ? blendCanvas(rect, backing: context.backingScale) : nil
         let target: CanvasContext = offscreen ?? c
         let area = offscreen.map { CanvasRect(x: 0, y: 0, width: Double($0.surface.width), height: Double($0.surface.height)) } ?? rect
@@ -149,6 +149,12 @@ public final class PreviewCompositor: FrameSource {
         for layer in layers where layer.isVisible {
             if layer.kind == .offline {   // missing media: a slate naming the file, never decoded
                 PreviewPainter.drawOffline(layer, on: target, frame: area, scale: areaScale)
+                shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
+            }
+            if layer.kind == .adjustment {   // grades what is painted so far, never decoded
+                if let raster = target as? RasterCanvas {
+                    PreviewPainter.applyAdjustment(layer, on: raster, frame: area, grader: grader, time: Double(frame) / comp.fps)
+                }
                 shown.append(Shown(clipId: layer.clipId, frame: frame, exact: true)); continue
             }
             if layer.isProcedural {   // generated layers draw without media decoding
@@ -171,6 +177,10 @@ public final class PreviewCompositor: FrameSource {
             shown.append(Shown(clipId: layer.clipId, frame: pick.frame, exact: pick.exact,
                                grade: look.grade, gradeCurrent: look.current))
             drew(pick, for: layer)
+        }
+        // The caption of the cue on screen, over the picture; the preview only (export burns captions in on its own).
+        for layer in comp.captionLayers(at: time, measure: { target.measureText($0, font: $1).width }) {
+            PreviewPainter.drawText(layer, on: target, frame: area, scale: areaScale)
         }
         // A layer only its fade hides this frame (a fade-in's first frame) keeps its decoder running.
         for layer in layers where !layer.isVisible && layer.needsDecoder {
@@ -249,7 +259,7 @@ public final class PreviewCompositor: FrameSource {
     func draw(_ layer: PreviewLayer, raw: CanvasImage, shown: CanvasImage, shownIsCurrent: Bool = true,
               on c: CanvasContext, frame: CanvasRect, scale: Double, context: FrameDrawContext) {
         guard context.compareClipId == layer.clipId else {
-            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+            drawColorKey(layer, raw: raw, shown: shown, on: c, frame: frame, scale: scale, context: context); return
         }
         let split = frame.x + frame.width * max(0, min(1, context.comparePosition))
         // A completed grade from a previous request is useful during normal playback, but must never be paired
@@ -264,6 +274,31 @@ public final class PreviewCompositor: FrameSource {
         c.withState {
             c.clip(CanvasRect(x: split, y: frame.y, width: max(0, frame.maxX - split), height: frame.height))
             PreviewPainter.draw(plain, image: after, on: c, frame: frame, scale: scale)
+        }
+    }
+
+    /// The colour-key preview for one layer (issue #300): `.source` shows the raw frame, `.matte` the key's matte
+    /// (white kept, black keyed out), `.result` the graded picture as usual. Other clips draw unchanged, and
+    /// `.result` returns after one comparison, so the normal path costs nothing extra.
+    func drawColorKey(_ layer: PreviewLayer, raw: CanvasImage, shown: CanvasImage,
+                      on c: CanvasContext, frame: CanvasRect, scale: Double, context: FrameDrawContext) {
+        guard context.colorKeyClipId == layer.clipId else {
+            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+        }
+        switch context.colorKeyView {
+        case .result:
+            PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale)
+        case .source:
+            var plain = layer; plain.blend = .normal
+            PreviewPainter.draw(plain, image: raw, on: c, frame: frame, scale: scale)
+        case .matte:
+            guard let key = layer.grade?.params.colorKey else {
+                PreviewPainter.draw(layer, image: shown, on: c, frame: frame, scale: scale); return
+            }
+            var plain = layer; plain.blend = .normal
+            let matte = ColorKeyMatte.image(rgba: raw.rgba, width: raw.width, height: raw.height, key: key)
+            PreviewPainter.draw(plain, image: CanvasImage(width: raw.width, height: raw.height, rgba: matte),
+                                on: c, frame: frame, scale: scale)
         }
     }
 
@@ -302,7 +337,7 @@ public final class PreviewCompositor: FrameSource {
     public var maxReverseChunk = 48
 
     func lane(for layer: PreviewLayer, fps: Double) -> PreviewDecodeLane? {
-        guard decodesMedia, !layer.isProcedural, layer.kind != .offline else { return nil }
+        guard decodesMedia, !layer.isProcedural, layer.kind != .offline, layer.kind != .adjustment else { return nil }
         if let l = lanes[layer.laneKey] { return l }
         let l = PreviewDecodeLane(layer: layer, fps: fps, cache: cache)
         l.onFrame = { [weak self] in self?.frameReady?() }

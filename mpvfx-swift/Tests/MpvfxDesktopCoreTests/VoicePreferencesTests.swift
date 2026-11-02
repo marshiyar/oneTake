@@ -30,4 +30,26 @@ final class VoicePreferencesTests: XCTestCase {
         XCTAssertEqual(next.voiceCountIn, 3)
         XCTAssertNil(next.lastWriteError)
     }
+
+    func testVoicePreRollDefaultsToTwoSurvivesRelaunchAndInvalidValueFallsBack() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("voice-pre-roll-\(UUID())").path
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let prefs = DesktopPreferences(userData: dir)
+        XCTAssertEqual(prefs.voicePreRoll, 2)
+        prefs.voicePreRoll = 4
+        XCTAssertEqual(DesktopPreferences(userData: dir).voicePreRoll, 4)
+        prefs.voicePreRoll = 0
+        let next = DesktopPreferences(userData: dir)
+        XCTAssertEqual(next.voicePreRoll, 0)
+        next.set("mpvfx-voice-pre-roll", .number(8))
+        XCTAssertEqual(next.voicePreRoll, 2)
+        next.set("mpvfx-voice-pre-roll", .number(2.5))
+        XCTAssertEqual(next.voicePreRoll, 2)
+        next.set("mpvfx-voice-pre-roll", .string("3"))
+        XCTAssertEqual(next.voicePreRoll, 2)
+        next.voicePreRoll = 9
+        XCTAssertNil(next.value("mpvfx-voice-pre-roll"), "an out-of-range value removes the key")
+        XCTAssertEqual(next.voicePreRoll, 2)
+        XCTAssertNil(next.lastWriteError)
+    }
 }

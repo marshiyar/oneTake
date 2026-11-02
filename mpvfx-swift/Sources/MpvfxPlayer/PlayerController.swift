@@ -52,6 +52,10 @@ public final class PlayerController {
         case marquee(x: Double, y: Double, additive: Bool)
         case pan(x: Double, y: Double, panX: Double, panY: Double)
         case compare
+        /// A handle of the target mask (PlayerController+Mask.swift).
+        case maskHandle
+        /// The Shape tool's drag, from this composition-frame press point (view px).
+        case shape(from: CanvasPoint)
     }
     var gesture: Gesture?
     /// Where the move / group / resize press landed (view px) and whether it has travelled past `dragThreshold`.
@@ -66,6 +70,12 @@ public final class PlayerController {
     /// The element as it was when the crop tool opened (Cancel restores it).
     var cropOriginal: StageElement?
     var transformSession = TransformSession()
+    /// The mask being edited on the stage, if any (PlayerController+Mask.swift).
+    var maskStage = MaskStageSession()
+    /// The stage eyedropper waiting for a click (PlayerController+Eyedropper.swift).
+    var eyedropper: StageEyedropperSession?
+    /// Whether a clip has an enabled colour key: an Option-press on it shows its source while held (PlayerController+ColorKeyView.swift).
+    public var colorKeyActive: ((String) -> Bool)?
 
     // Gesture recording (wired by `enableGestureRecording`).
     public var recordingDocument: (() -> NativeProjectDocument?)?
@@ -85,6 +95,12 @@ public final class PlayerController {
 
     /// Inserts a dropped library/media asset at the playhead (TimelineEditor.insertClip, "Add at playhead"); returns the new clip id.
     public var onInsertAsset: ((_ assetId: String, _ time: Double) -> String?)?
+    /// Adds a drawn shape at `time` (the playhead); returns the new clip id (PlayerController+ShapeTool.swift).
+    public var onCreateShape: ((_ draft: StageShapeDraft, _ time: Double) -> String?)?
+    /// Applies a layout to the selected clips (one undo step); false when it was refused (the host says why).
+    public var onApplyLayout: ((_ layout: NativeGridLayout, _ options: NativeGridOptions) -> Bool)?
+    /// The kind ⇧S turns the tool on with: the one drawn last.
+    var lastShapeKind = StageShapeDraft.kinds[0]
 
     /// Arrow-key nudge burst: the elements as they were before it, and the last key time.
     var nudgeStarts: [StageElement] = []
@@ -135,6 +151,7 @@ public final class PlayerController {
         if ids != view.selectedIds {
             if view.cropActive { cancelCrop() }
             view.selectedIds = ids
+            if maskStage.target.map({ ids != [$0.clipId] }) ?? false { maskTarget = nil }   // another layer: the mask mode ends
             onSelect?(view.selection)
             onSelectionChange?(ids)
         }
@@ -142,10 +159,15 @@ public final class PlayerController {
 
     // MARK: Pointer
 
-    public func pointerDown(x: Double, y: Double, shift: Bool = false, button: Int = 0) {
+    public func pointerDown(x: Double, y: Double, shift: Bool = false, button: Int = 0, option: Bool = false) {
         let p = CanvasPoint(x, y); shiftHeld = shift; lastPointer = p
         pressPoint = p; dragEngaged = false
+        if (option || modifiers.contains(.alt)), holdsColorKeySource(at: p) {
+            beginColorKeyHold()   // Option-press previews the source; no gesture starts
+            return
+        }
         flushNudge()
+        if layoutMenuPress(p) { return }
         if let menu = view.contextMenu {
             let hit = menu.choice(at: p, bounds: bounds)
             if hit.inside {
@@ -182,7 +204,9 @@ public final class PlayerController {
             view.zoom = .fit; view.zoomChanged(); zoomTouched(); needsDisplay?(); return
         }
         if let b = view.button(at: p, in: size) { press(b); return }
+        if view.shapeTool != nil, !view.cropActive, recorder == nil, shapePress(p, viewport: vp) { return }
         guard vp.contains(p), !recordTakesPress(p, shift: shift) else { return }   // armed Record owns stage presses
+        if eyedropperPress(at: p) { needsDisplay?(); return }   // the stage eyedropper owns the next press
 
         if let e = selected {
             let ve = view.chromeElement(e, in: size)
@@ -199,6 +223,7 @@ public final class PlayerController {
                 }
                 return   // crop mode: the stage only edits the crop
             }
+            if pressMask(at: p) { return }
             if pressTransform(e, at: p) { return }
         }
         if view.cropActive { return }
@@ -255,10 +280,12 @@ public final class PlayerController {
     public func pointerMove(x: Double, y: Double, shift: Bool? = nil) {
         if let shift { shiftHeld = shift }
         let p = CanvasPoint(x, y); lastPointer = p
+        if view.colorKeyHold != nil, !modifiers.contains(.alt) { clearColorKeyHold() }   // Option let go: back to the keyed picture
         if recorder != nil { recordMove(p); return }   // only a held press on the layer drives it
         guard let g = gesture else { idleMove(p); return }
         let s = max(view.scale(in: size), 1e-9)
         switch g {
+        case .shape: updateShapeDraft(p)
         case .compare:
             let f = view.frameRect(in: size)
             view.toolbar.comparePosition = max(0, min(1, (x - f.x) / max(f.width, 1))); needsDisplay?()
@@ -275,7 +302,7 @@ public final class PlayerController {
                 return b.x < m.maxX && b.maxX > m.x && b.y < m.maxY && b.maxY > m.y
             }.map(\.id)
             needsDisplay?()
-        case .move, .group, .resize, .anchor:
+        case .move, .group, .resize, .anchor, .maskHandle:
             // Under the threshold a press is a click: nothing moves. Past it, deltas run from the press point, so the
             // grab offset holds for the whole drag.
             if !dragEngaged {
@@ -290,7 +317,8 @@ public final class PlayerController {
 
     func drag(_ g: Gesture, _ p: CanvasPoint, scale s: Double) {
         switch g {
-        case .pan, .marquee, .compare: break
+        case .pan, .marquee, .compare, .shape: break
+        case .maskHandle: dragMask(to: p)
         case let .move(id, start, x0, y0):
             let d = moveDelta(x0: x0, y0: y0, to: p, moving: [start])
             update(id) { $0.rect.x = start.rect.x + d.dx / s; $0.rect.y = start.rect.y + d.dy / s }
@@ -371,10 +399,12 @@ public final class PlayerController {
     }
 
     public func pointerUp(x: Double, y: Double) {
+        clearColorKeyHold()   // releasing the Option-press hold ends the source preview
         defer { gesture = nil; view.snapGuides = []; view.spacingGuides = []; endTransformGesture() }
         guard recorder == nil, let g = gesture else { finishTake(); return }   // release ends a take
         switch g {
         case .compare: needsDisplay?()
+        case .shape: finishShape(at: CanvasPoint(x, y))
         case .pan: zoomTouched(); return
         case let .marquee(_, _, additive):
             let picked = view.marqueeCandidates
@@ -385,6 +415,7 @@ public final class PlayerController {
                 setSelection(ids)
             }
             needsDisplay?()
+        case .maskHandle: finishMaskDrag()
         case .crop, .anchor:
             needsDisplay?()   // crop edits stay a draft until Apply; the anchor is stage state, not an edit
         case let .move(id, start, _, _), let .resize(id, _, start, _):
@@ -479,10 +510,15 @@ public final class PlayerController {
     /// G toggles the grid, R arms Record motion (when wired).
     public func keyDown(_ k: EditorKey) -> Bool {
         guard !k.command, !k.alt else { return false }
+        if maskNudgeKey(k) { return true }
+        if let handled = layoutMenuKey(k) { return handled }
+        if let handled = shapeToolKey(k) { return handled }
         if nudgeKey(k) { return true }
         flushNudge()
         switch k.code {
-        case .escape: return escapeKey()
+        case .escape:
+            if clearColorKeyHold() { return true }
+            return escapeKey()
         case .enter where view.cropActive: runCrop(.apply); return true
         case .char(let ch) where ch == "c" || ch == "C":
             guard view.cropAvailable || view.cropActive else { return false }

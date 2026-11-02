@@ -97,7 +97,7 @@ background loop.
   `PreviewMemoryTests` (frame cache budget and eviction, pressure, removed clips, grader budget, a long
   play / scrub / grade / reverse session, and a 600-frame read loop whose footprint must stay flat),
   `MetalPoolMemoryTests` (Metal pool within budget, emptied on pressure).
-- Preview benchmark (`tools/MpvfxPreviewBench`, run by `.github/workflows/bench.yml`): each scenario's line has
+- Preview benchmark (`tools/MpvfxPreviewBench`): each scenario's line has
   `peak_rss_mib`, `cache_bytes_mib` (frames cached plus in flight at their peak), `in_flight_mib`,
   `grader_bytes_mib`, `budget_sum_mib`, `start_rss_mib` (before any decoding) and `unaccounted_mib`
   (`peak_rss_mib` minus the caches' peaks: a lower bound on what the process held outside the caches at its peak,

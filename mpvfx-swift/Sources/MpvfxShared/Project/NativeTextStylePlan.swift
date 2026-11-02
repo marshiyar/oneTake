@@ -29,6 +29,10 @@ public func planNativeTextStyle(
         next = try planUpdate(document, styleId: styleId, clipId: clipId)
     case .detach(let clipIds):
         next = try planDetach(document, clipIds: clipIds)
+    case .create(let clipId, let styleId, let name):
+        next = try planApply(try planSave(document, clipId: clipId, styleId: styleId, name: name), styleId: styleId, clipIds: [clipId])
+    case .adopt(let style, let clipIds):
+        next = try planAdopt(document, style: style, clipIds: clipIds)
     }
     return try parseNativeProjectDocument(next, engine: engine)
 }
@@ -67,6 +71,19 @@ private func planApply(
     return next
 }
 
+private func planAdopt(
+    _ document: NativeProjectDocument, style: NativeTextStyle,
+    clipIds: [String]
+) throws -> NativeProjectDocument {
+    var next = document
+    if !(next.textStyles ?? []).contains(where: { $0.id == style.id }) {
+        guard style.isSupported else { throw NativeTextStyleError.unsupportedStyle }
+        guard !style.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw NativeTextStyleError.invalidName }
+        next.textStyles = (next.textStyles ?? []) + [style]
+    }
+    return try planApply(next, styleId: style.id, clipIds: clipIds)
+}
+
 private func planUpdate(
     _ document: NativeProjectDocument, styleId: String,
     clipId: String
@@ -78,6 +95,8 @@ private func planUpdate(
     var next = document
     var text = try sourceText(document, clipId: clipId)
     text.content = ""
+    text.reveal = nil
+    text.unreveal = nil
     next.textStyles?[index].text = text
     return next
 }

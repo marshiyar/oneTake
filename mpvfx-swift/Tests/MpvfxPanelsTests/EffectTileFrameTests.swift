@@ -76,6 +76,7 @@ final class EffectTileFrameTests: XCTestCase {
     func blankGradeTiles(_ mode: ThemeMode) throws -> [String] {
         Theme.setMode(mode); defer { Theme.setMode(.dark) }
         let r = try PanelSnapshotTests.rightFixture(open: "grade", h: 1400)
+        r.inspector.gradeSectionOpen["looks"] = true
         return blankTiles(r, id: "grade:presets", count: ColorGrading.gradePresets.count, "\(mode) grade")
     }
 
@@ -83,6 +84,7 @@ final class EffectTileFrameTests: XCTestCase {
     func requestedSizes(open group: String, family: String = "Retro & glitch") throws -> [(Int, Int)] {
         let r = try PanelSnapshotTests.rightFixture(open: group, h: 3000)
         r.inspector.effectsUI = EffectsUIState(clipId: "clip:a", catalogOpen: true, catalogFamily: family)
+        r.inspector.gradeSectionOpen["looks"] = true
         var sizes: [(Int, Int)] = []
         r.inspector.effectPreview = { sizes.append(($0.pixelWidth, $0.pixelHeight)); return .rendering }
         r.inspector.presetPreview = { sizes.append(($0.pixelWidth, $0.pixelHeight)); return .rendering }

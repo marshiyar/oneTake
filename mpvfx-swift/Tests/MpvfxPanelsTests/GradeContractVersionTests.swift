@@ -42,7 +42,7 @@ final class GradeContractVersionTests: XCTestCase {
             let editor = try TimelineEditor(json: TimelineEditor.demoJSON, engine: try? KeyframeRuntime())
             var g = grade; g.adjust["saturation"] = 0.2
             XCTAssertTrue(editor.setColorGrading(clipId: "clip:a", g))
-            let p = InspectorPanel(); p.editor = editor; p.selection = ["clip:a"]; p.openGroupId = "grade"
+            let p = InspectorPanel(); p.editor = editor; p.selection = ["clip:a"]; p.openGroupId = "grade"; p.gradeSectionOpen["looks"] = true
             var asked: [Int] = []
             p.presetPreview = { req in asked.append(req.version); return .unavailable }
             p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 380, height: 4000))

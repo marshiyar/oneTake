@@ -28,7 +28,7 @@ func validateNativeClipMoves(_ moves: NativeJSONValue?, clipDuration: Double?, _
     guard v == Double(NativeClipMoves.currentVersion) else { return }   // a newer version: kept, not drawn
     var edgeFrames = 0.0
     for edge in NativeMoveEdge.allCases {
-        if let f = validateNativeEdgeMove(moves[edge.rawValue], "\(path).\(edge.rawValue)", &issues) { edgeFrames += f }
+        if let f = validateNativeEdgeMove(moves[edge.rawValue], edge, "\(path).\(edge.rawValue)", &issues) { edgeFrames += f }
     }
     validateNativeLoopMove(moves["loop"], "\(path).loop", &issues)
     if let clipDuration, edgeFrames > clipDuration {
@@ -37,10 +37,11 @@ func validateNativeClipMoves(_ moves: NativeJSONValue?, clipDuration: Double?, _
 }
 
 /// Validates one In or Out; returns its frames when they are valid (for the In + Out length rule).
-private func validateNativeEdgeMove(_ move: NativeJSONValue?, _ path: String, _ issues: inout MoveIssues) -> Double? {
+private func validateNativeEdgeMove(_ move: NativeJSONValue?, _ edge: NativeMoveEdge, _ path: String, _ issues: inout MoveIssues) -> Double? {
     guard let move else { return nil }
     guard move.isRecord else { pushIssue(&issues, .invalidMove, path, "A move must be an object"); return nil }
     guard let kindName = moveKindName(move, path, &issues), let kind = NativeEdgeMoveKind(rawValue: kindName) else { return nil }
+    if kind == .draw && edge == .out { pushIssue(&issues, .invalidMove, "\(path).kind", "Draw-on is an In move") }
     let frames = move["frames"]
     let validFrames = isPositiveInteger(frames)
     if !validFrames { pushIssue(&issues, .invalidMove, "\(path).frames", "Move frames must be a positive integer") }

@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxPanels
 import MpvfxTheme
 import MpvfxTimeline
 
@@ -31,10 +32,14 @@ public struct FrameDrawContext: Equatable, Sendable {
     /// Selected clip shown raw left of the preview-only compare divider.
     public var compareClipId: String?
     public var comparePosition: Double
+    public var colorKeyClipId: String? = nil
+    public var colorKeyView: ColorKeyViewMode = .result
     public init(backingScale: Double = 1, isPlaying: Bool = false, speed: Double = 1, liveElementIds: Set<String>? = nil,
-                compareClipId: String? = nil, comparePosition: Double = 0.5) {
+                compareClipId: String? = nil, comparePosition: Double = 0.5,
+                colorKeyClipId: String? = nil, colorKeyView: ColorKeyViewMode = .result) {
         self.backingScale = backingScale; self.isPlaying = isPlaying; self.speed = speed; self.liveElementIds = liveElementIds
         self.compareClipId = compareClipId; self.comparePosition = comparePosition
+        self.colorKeyClipId = colorKeyClipId; self.colorKeyView = colorKeyView
     }
 }
 

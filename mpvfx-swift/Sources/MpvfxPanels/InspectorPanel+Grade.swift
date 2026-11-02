@@ -58,6 +58,8 @@ public struct GradeUIState: Equatable {
     public var showMatte = false
     var sampleRect = CanvasRect(x: 0, y: 0, width: 0, height: 0)
     var matteMemo: (key: ColorGrading.Secondary, image: CanvasImage)?
+    /// "Pick on stage": the host starts the stage eyedropper for the selected secondary (InspectorPanel+Eyedropper.swift).
+    public var onPickSecondaryColor: (() -> Void)?
     public static func == (a: GradeUIState, b: GradeUIState) -> Bool {
         a.curveTab == b.curveTab && a.selectedPoint == b.selectedPoint && a.selectedSecondary == b.selectedSecondary && a.lutOpen == b.lutOpen
             && a.finishSettings == b.finishSettings && a.copyToProject == b.copyToProject
@@ -86,18 +88,27 @@ extension InspectorPanel {
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
         let presets = ColorGrading.gradePresets
         let lut = g.lut, version = g.version
-        // Sections `space-y-3`: Scopes, then the preset block (`space-y-1.5`) whose "Retry look previews" link shows
-        // while the look frames are unavailable (an inline button on an 18px line).
+        // Sections `space-y-3`: Scopes, then the Looks section (closed by default; its header names the active look) whose
+        // "Retry look previews" link shows while the look frames are unavailable (an inline button on an 18px line).
+        // Every section below folds from its header (issue #175).
         rows.append(.init(.custom(scopesRow(s.id))))
         gap(12)
-        if presetPreview == nil || presetPreviewsAvailable?(s.id) == false {
-            rows.append(.init(.custom(retryPreviewsRow())))
+        let activeLook = Self.activeLook(g)
+        rows.append(gradeSectionRow("looks", detail: activeLook?.label ?? "Custom"))
+        if gradeSectionIsOpen("looks") {
             gap(6)
+            if presetPreview == nil || presetPreviewsAvailable?(s.id) == false {
+                rows.append(.init(.custom(retryPreviewsRow())))
+                gap(6)
+            }
+            rows.append(.init(.custom(presetGrid(presets, selected: activeLook?.id, preview: { [weak self] id, w, h in
+                guard let self else { return .failed(.noRenderer) }
+                let req = PresetPreviewRequest(clipId: s.id, presetId: id, lutSrc: lut?.src, lutIntensity: lut?.intensity ?? 1,
+                                               pixelWidth: w, pixelHeight: h, version: version)
+                guard let look = ColorGrading.preset(id) else { return self.lookPreview(req) }
+                return self.gradeLookPreview(look, base: g, clipId: s.id, req)
+            }, onPick: { p in commit(g.applying(p)) }))))
         }
-        rows.append(.init(.custom(presetGrid(presets, selected: g.preset, preview: { [weak self] id, w, h in
-            self?.lookPreview(PresetPreviewRequest(clipId: s.id, presetId: id, lutSrc: lut?.src, lutIntensity: lut?.intensity ?? 1,
-                                                   pixelWidth: w, pixelHeight: h, version: version)) ?? .failed(.noRenderer)
-        }, onPick: { p in commit(g.applying(p)) }))))
         gap(6)
         rows.append(.init(.slider(.init(key: "grade:amount", label: "Amount", position: g.intensity * 100, min: 0, max: 100,
                                         display: "\(Int((g.intensity * 100).rounded()))%", format: { "\(Int($0.rounded()))%" },
@@ -106,48 +117,56 @@ extension InspectorPanel {
                                         reset: { var n = g; n.intensity = 1; commit(n) },
                                         keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.intensityId], shown: g)))))
         gap(6)
-        rows.append(.init(.section("Primary")))
-        gap(4)
-        rows.append(autoBalanceRow(s.id))
-        rows += matchLookRows(s.id)
-        gap(4)
-        rows += primaryRows(editor, s, g, commit: commit)
+        rows.append(gradeSectionRow("primary"))
+        if gradeSectionIsOpen("primary") {
+            gap(4)
+            rows += primaryRows(editor, s, g, commit: commit)
+            // The sliders come first, the measuring tools under them, so Exposure is in view when Grade opens.
+            gap(4)
+            rows.append(autoBalanceRow(s.id))
+            rows += matchLookRows(s.id)
+        }
         gap(6)
-        rows.append(.init(.section("Color wheels")))
+        rows.append(gradeSectionRow("wheels"))
+        if gradeSectionIsOpen("wheels") {
+            gap(6)
+            rows.append(.init(.custom(colorWheels(g, .balance, commit: commit)), controls: wheelFieldControls(g, .balance, commit: commit)))
+            // Keep tonal wheels available so a neutral grade can start a wheel animation.
+            gap(12)
+            rows.append(.init(.heading("Tonal wheels", trailing: nil)))
+            rows.append(.init(.custom(colorWheels(g, .tonal, commit: commit)), controls: wheelFieldControls(g, .tonal, commit: commit)))
+            rows.append(wheelKeyframesRow(editor, s, shown: g))
+        }
         gap(6)
-        rows.append(.init(.custom(colorWheels(g, .balance, commit: commit)), controls: wheelFieldControls(g, .balance, commit: commit)))
-        // Keep tonal wheels available so a neutral grade can start a wheel animation.
-        gap(12)
-        rows.append(.init(.heading("Tonal wheels", trailing: nil)))
-        rows.append(.init(.custom(colorWheels(g, .tonal, commit: commit)), controls: wheelFieldControls(g, .tonal, commit: commit)))
-        rows.append(wheelKeyframesRow(editor, s, shown: g))
-        gap(6)
-        rows.append(.init(.section("Curves")))
-        gap(6)
-        rows.append(.init(.custom(curveTabsRow(g))))
-        gap(8)
-        rows.append(.init(.custom(curveGraph(g, commit: commit))))
-        gap(8)
-        rows.append(contentsOf: curveKeyframeRows(editor, s, shown: g))
-        rows.append(contentsOf: curvePointRows(g, commit: commit))
-        gap(6)
-        rows.append(.init(.custom(curveFooter(g, commit: commit))))
-        gap(2)
-        rows.append(.init(.custom(curveHintRow())))
+        rows.append(gradeSectionRow("curves"))
+        if gradeSectionIsOpen("curves") {
+            gap(6)
+            rows.append(.init(.custom(curveTabsRow(g))))
+            gap(8)
+            rows.append(.init(.custom(curveGraph(g, commit: commit))))
+            gap(8)
+            rows.append(contentsOf: curvePointRows(g, set: { editor.setColorGrading(clipId: s.id, $0) }))
+            gap(6)
+            rows.append(.init(.custom(curveFooter(g, commit: commit))))
+            gap(2)
+            rows.append(.init(.custom(curveHintRow())))
+        }
         gap(6)
         rows.append(contentsOf: secondaryRows(editor, s, g, commit: commit))
         gap(6)
         rows.append(contentsOf: lutRows(g, commit: commit))
         gap(6)
-        rows.append(.init(.section("Finish")))
-        gap(6)
-        for (i, key) in ["vignette", "grain"].enumerated() {
-            if i > 0 { gap(6) }
-            rows.append(detailSlider(g, key, commit: commit, gear: true,
-                                     keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.detailId(key)], shown: g)))
-            if grade.finishSettings == key {
-                let tune = key == "vignette" ? ["vignetteMidpoint", "vignetteRoundness", "vignetteFeather"] : ["grainSize", "grainRoughness"]
-                for t in tune { gap(2); rows.append(detailSlider(g, t, commit: commit, gear: false)) }
+        rows.append(gradeSectionRow("finish"))
+        if gradeSectionIsOpen("finish") {
+            gap(6)
+            for (i, key) in ["vignette", "grain"].enumerated() {
+                if i > 0 { gap(6) }
+                rows.append(detailSlider(g, key, commit: commit, gear: true,
+                                         keyframe: gradeKeyframe(editor, s, [NativeGradeParameter.detailId(key)], shown: g)))
+                if grade.finishSettings == key {
+                    let tune = key == "vignette" ? ["vignetteMidpoint", "vignetteRoundness", "vignetteFeather"] : ["grainSize", "grainRoughness"]
+                    for t in tune { gap(2); rows.append(detailSlider(g, t, commit: commit, gear: false)) }
+                }
             }
         }
         // Copy grade to: `flex justify-between border-t border-panel-hairline pt-1.5`, a 11px text-2 label with a
@@ -337,7 +356,7 @@ extension InspectorPanel {
             let h = 2 + (w - 2) * 9 / 16 + 27
             for (i, p) in presets.enumerated() {
                 let tr = CanvasRect(x: r.x + Double(i % cols) * (w + gap), y: r.y + Double(i / cols) * (h + gap), width: w, height: h)
-                let on = selected == p.id || (selected == nil && p.id == "neutral")
+                let on = selected == p.id
                 let hov = panel.hovered == .custom("grade:presets", i)
                 if on { c.fillRect(tr, PanelTheme.accent.withAlpha(0.1)) }
                 let sw = CanvasRect(x: tr.x + 1, y: tr.y + 1, width: tr.width - 2, height: (tr.width - 2) * 9 / 16)
@@ -375,7 +394,8 @@ extension InspectorPanel {
             guard !animated, let self, g.secondaries.indices.contains(self.grade.selectedSecondary) else { return }
             var n = g; n.secondaries.remove(at: self.grade.selectedSecondary); self.grade.selectedSecondary = max(0, self.grade.selectedSecondary - 1); commit(n)
         }
-        rows.append(.init(.section("Secondary color")))
+        rows.append(gradeSectionRow("secondary"))
+        guard gradeSectionIsOpen("secondary") else { return rows }
         rows.append(.init(.spacer(6)))
         // Selection chips left; 12px add and trash glyphs in separate 24pt cells at the right.
         let selIndex = min(grade.selectedSecondary, max(0, g.secondaries.count - 1))
@@ -498,9 +518,11 @@ extension InspectorPanel {
 /// padding box's farthest corner (72% of 55·√2 ≈ 56px). Drawn clipped to the wheel's circle.
 enum HueWheelImage {
     static let pixels = 448
+    /// Safe: `cached` is only read and written under `lock`; two threads racing the first call both render the same image.
+    private static let lock = NSLock()
     nonisolated(unsafe) private static var cached: CanvasImage?
     static func image() -> CanvasImage {
-        if let cached { return cached }
+        if let cached = lock.withLock({ cached }) { return cached }
         let n = pixels, scale = Double(n) / 112
         let stops: [(Double, Double, Double)] = [(1, 0.2, 0.2), (1, 0.2, 1), (0.2, 0.2, 1), (0.2, 1, 1), (0.2, 1, 0.2), (1, 1, 0.2), (1, 0.2, 0.2)]
         var px = [UInt8](repeating: 255, count: n * n * 4)
@@ -520,7 +542,7 @@ enum HueWheelImage {
             }
         }
         let img = CanvasImage(width: n, height: n, rgba: px)
-        cached = img
+        lock.withLock { cached = img }
         return img
     }
 

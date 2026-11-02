@@ -47,6 +47,8 @@ public final class TimelineEditor {
     /// `onNotice` hands it to the host's toast.
     public internal(set) var lastNotice: String?
     public var onNotice: ((String) -> Void)?
+    /// The length (frames) a new cut transition gets; the host sets it from Settings (1...120, 15 by default).
+    public var defaultTransitionFrames = TimelineEditor.standardTransitionFrames
     /// The undo/redo stacks changed (an edit, undo, redo, a reload); hosts persist them (usePersistentEditHistory).
     public var onHistoryChange: (() -> Void)?
     /// A media file's natural pixel size (default: the size cached on the asset); sizes untouched clips
@@ -94,6 +96,8 @@ public final class TimelineEditor {
                         m.sourceEndFraction = (c.sourceInFrame + c.durationFrames * rate) / srcFrames
                     }
                     m.hidden = c.hidden == true
+                    m.moveInSeconds = Double(c.moves?.inMove?.frames ?? 0) / f
+                    m.moveOutSeconds = Double(c.moves?.outMove?.frames ?? 0) / f
                     m.audioDetachedFrom = c.audioDetachedFrom
                     m.fxCount = Self.enabledFxNodeCount(c.audioFxChain)
                     let detached = document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == c.id } }
@@ -105,6 +109,7 @@ public final class TimelineEditor {
                 })
                 // A track belongs to the group of its first clip carrying one (resolveGroupMembership).
                 track.groupId = t.clips.first { $0.audioGroupId?.isEmpty == false }?.audioGroupId
+                track.transitions = Self.transitionModels(t, fps: f)
                 track.hidden = t.hidden == true
                 track.locked = t.locked == true
                 track.soloed = t.soloed == true
@@ -176,6 +181,7 @@ public final class TimelineEditor {
         return n
     }
     private static let fxCountLock = NSLock()
+    /// Safe: every read and write of the cache is between `fxCountLock.lock()` and `unlock()` (enabledFxNodeCount).
     nonisolated(unsafe) private static var fxCountCache: [String: Int] = [:]
 
     static func parseEnabledFxNodeCount(_ raw: String) -> Int {

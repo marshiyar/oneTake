@@ -40,11 +40,16 @@ public struct NativeClipText: Codable, Equatable, Hashable, Sendable {
     public var fontStyle: String?
     /// Outlines and a drop shadow around the letters (`NativeTextLook`); nil draws the plain fill.
     public var look: NativeTextLook?
+    /// How the content arrives at the start of the clip and leaves at its end (`NativeTextReveal`); nil shows the text
+    /// in full for the whole clip. Belongs to the clip, not to a text style.
+    public var reveal: NativeTextReveal?
+    public var unreveal: NativeTextReveal?
 
     public init(content: String, fontFamily: String? = nil, fontSize: Double? = nil, fontWeight: Int? = nil, color: String? = nil,
                 align: String? = nil, letterSpacing: Double? = nil, lineHeight: Double? = nil, textTransform: String? = nil,
-                fontStyle: String? = nil, look: NativeTextLook? = nil) {
-        self.look = look
+                fontStyle: String? = nil, look: NativeTextLook? = nil, reveal: NativeTextReveal? = nil,
+                unreveal: NativeTextReveal? = nil) {
+        self.look = look; self.reveal = reveal; self.unreveal = unreveal
         self.content = content; self.fontFamily = fontFamily; self.fontSize = fontSize; self.fontWeight = fontWeight
         self.color = color; self.align = align; self.letterSpacing = letterSpacing; self.lineHeight = lineHeight
         self.textTransform = textTransform; self.fontStyle = fontStyle
@@ -126,4 +131,6 @@ func validateNativeClipText(_ text: NativeJSONValue?, _ path: String, _ issues: 
         pushIssue(&issues, .invalidClip, "\(path).lineHeight", "Line height must be a positive number")
     }
     validateNativeTextLook(text["look"], "\(path).look", &issues)
+    validateNativeTextReveal(text["reveal"], "\(path).reveal", &issues)
+    validateNativeTextReveal(text["unreveal"], "\(path).unreveal", &issues)
 }

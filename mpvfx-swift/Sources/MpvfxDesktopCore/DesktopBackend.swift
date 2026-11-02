@@ -306,8 +306,15 @@ public struct DesktopRender: Equatable, Sendable {
     /// "complete" or "failed".
     public var status: String
     public var durationMs: Double?
-    public init(id: String, filename: String, path: String, size: Int64, createdAt: Double, status: String, durationMs: Double?) {
+    /// Loudness target and true-peak ceiling (LUFS, dBTP), and what the output measured; nil without a target.
+    public var loudnessTarget: Double?
+    public var loudnessCeiling: Double?
+    public var loudnessMeasured: Double?
+    public var loudnessMeasuredTruePeak: Double?
+    public init(id: String, filename: String, path: String, size: Int64, createdAt: Double, status: String, durationMs: Double?,
+                loudnessTarget: Double? = nil, loudnessCeiling: Double? = nil, loudnessMeasured: Double? = nil, loudnessMeasuredTruePeak: Double? = nil) {
         self.id = id; self.filename = filename; self.path = path; self.size = size; self.createdAt = createdAt; self.status = status; self.durationMs = durationMs
+        self.loudnessTarget = loudnessTarget; self.loudnessCeiling = loudnessCeiling; self.loudnessMeasured = loudnessMeasured; self.loudnessMeasuredTruePeak = loudnessMeasuredTruePeak
     }
 }
 
@@ -400,6 +407,9 @@ public protocol DesktopBackend: Sendable {
     func renders(projectId: String) throws -> [DesktopRender]
     /// Output path for a new export with this job id and format ("mp4", "webm", "mov").
     func renderOutputPath(projectId: String, jobId: String, format: String) throws -> String
+    /// The same with a file name of its own (`fileStem`, made safe and never taking a name another render has); nil
+    /// names the file after the job.
+    func renderOutputPath(projectId: String, jobId: String, fileStem: String?, format: String) throws -> String
     /// Records how an export ended so the history shows its duration and failures.
     func recordRender(projectId: String, jobId: String, failed: Bool, durationMs: Double?) throws
     func deleteRender(projectId: String, id: String) throws
@@ -477,6 +487,9 @@ public struct NotImplementedBackend: DesktopBackend {
     public func rendersDirectory(projectId: String) throws -> String { throw DesktopError.notImplemented("Renders") }
     public func renders(projectId: String) throws -> [DesktopRender] { throw DesktopError.notImplemented("Renders") }
     public func renderOutputPath(projectId: String, jobId: String, format: String) throws -> String { throw DesktopError.notImplemented("Renders") }
+    public func renderOutputPath(projectId: String, jobId: String, fileStem: String?, format: String) throws -> String {
+        throw DesktopError.notImplemented("Renders")
+    }
     public func recordRender(projectId: String, jobId: String, failed: Bool, durationMs: Double?) throws { throw DesktopError.notImplemented("Renders") }
     public func deleteRender(projectId: String, id: String) throws { throw DesktopError.notImplemented("Renders") }
     public func renderFrames(projectId: String, request: DesktopVideoFramesRequest) async throws -> DesktopVideoFrames {

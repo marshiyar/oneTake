@@ -19,13 +19,15 @@ import MpvfxPlayer
 import MpvfxPanels
 import MpvfxDesktopCore
 import MpvfxAudio
+import struct MpvfxAudioGraph.FxMeterSnapshot
 
 /// Host-side wiring of the side panels:
 /// the left sidebar (the Media panel) gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms
 /// and the library views; the Design panel's inspector edits the open document at the playhead for the current
 /// selection; the Renders panel exports; context-menu and navigator commands go to the backend. They draw into
 /// `shell.panes[.left]`, `[.right]` and `[.renders]`, three dock panels.
-final class SessionPanels {
+/// `@unchecked Sendable` for the same reason as `EditorSession`: UI-thread state that background tasks reach only through `postToUI`.
+final class SessionPanels: @unchecked Sendable {
     unowned let session: EditorSession
     let left: LeftSidebarPanel
     /// The Design panel (the inspector) and the Renders panel: one `RightPanel` each, docked to its tab.
@@ -74,6 +76,12 @@ final class SessionPanels {
                 try NativeDurableWrite().write(data, to: path)
             }
         } catch { session.onError("Saved looks unavailable", error.localizedDescription) }
+        let textStyles = TextStyleLibrary(path: URL(fileURLWithPath: userData).appendingPathComponent("text-styles.json").path) { data, path in
+            try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+            try NativeDurableWrite().write(data, to: path)
+        }
+        if let problem = textStyles.loadError { session.onError("Text styles unavailable", problem.localizedDescription) }
+        right.inspector.textStyleLibrary = textStyles
         right.inspector.resolveUserLookLut = { [weak session] source in session?.absoluteMediaPath(source) ?? source }
         wireLeft()
         wireRight()
@@ -85,7 +93,7 @@ final class SessionPanels {
     func redraw() { session.redraw() }
 
     /// Hops to the UI thread through whatever the shell installed by the time it is called.
-    var uiPost: (@escaping () -> Void) -> Void {
+    var uiPost: @Sendable (@escaping () -> Void) -> Void {
         { [weak session] body in session?.postToUI(body) }
     }
 
@@ -458,6 +466,13 @@ final class SessionPanels {
             self.session.playback.duration = self.session.editor.duration
             self.session.syncStage(); self.redraw()
         }
+        inspector.onPickKeyColor = { [weak self] in self?.session.pickKeyColorFromStage() }
+        inspector.onPickSecondaryColor = { [weak self] in self?.session.pickSecondaryColorFromStage() }
+        inspector.onColorKeyViewChange = { [weak self] mode in
+            guard let self else { return }
+            self.session.player.setColorKeyView(mode); self.right.inspector.colorKeyView = mode; self.redraw()
+        }
+        inspector.onEditMaskOnStage = { [weak self] clip, mask in self?.session.editMaskOnStage(clipId: clip, maskId: mask) }
         inspector.onSeek = { [weak self] t in
             guard let self else { return }
             self.session.playback.seek(t); self.session.timeline.syncFromPlayback(); self.session.syncStage(); self.redraw()
@@ -493,6 +508,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         inspector.lutStatus = { [weak self] src in LutStatusReader.status(src, projectDir: self?.session.projectDir?.path) }
+        inspector.clipLoudness = { [weak self] source in self?.session.clipLoudnessFeed?.reading(for: source) ?? .unavailable }
         wirePresetPreviews(inspector)
         wireCrop(inspector)
         wireEffectPreviews(inspector)
@@ -644,6 +660,15 @@ final class RightPanelInput: CanvasInput {
     func pointerDown(x: Double, y: Double, shift: Bool) { last = .init(x, y); if panel.pointerDown(.init(x, y)) { panels.redraw() } }
     func pointerMove(x: Double, y: Double) { last = .init(x, y); if panel.pointerMove(.init(x, y)) { panels.redraw() } }
     func pointerUp(x: Double, y: Double) { last = .init(x, y); panel.pointerUp(.init(x, y)); panels.redraw() }
+    /// The inspector reads the held modifiers (Alt-drag on an EQ band moves its Q).
+    func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
+        panel.inspector.pointerModifiers = modifiers
+        if button == PointerButton.primary { pointerDown(x: x, y: y, shift: modifiers.contains(.shift)) }
+    }
+    func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
+        panel.inspector.pointerModifiers = modifiers
+        pointerMove(x: x, y: y)
+    }
     func secondaryClick(x: Double, y: Double) {}
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false) }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {
@@ -699,8 +724,37 @@ extension EditorSession {
             try adoptProject(opened)
             watchOpenProject()
             timeline.view.selection = []
+            lastLayout = nil   // clip ids repeat from project to project
             playback.seek(0); timeline.syncFromPlayback()
             panels?.projectSwitched()
         } catch { onError("Could not open the project", "\(error)") }
+    }
+}
+
+extension EditorSession {
+    /// The Audio FX rack's levels and gain reduction for the sound being heard now (`AudioPlayback.currentTime`, not the
+    /// newest block the feeder has queued), refreshed at most 30 times a second. Nothing while stopped. Asking is what
+    /// switches the graph's meters on, so an export and a closed rack publish nothing.
+    func fxMeterSnapshot(owner: String) -> FxMeterSnapshot? {
+        guard let audio, audio.isPlaying, let graph else { fxMeterCache = nil; return nil }
+        graph.collectsFxMeters = true
+        let now = ProcessInfo.processInfo.systemUptime
+        if let cache = fxMeterCache, cache.owner == owner, now - cache.at < 1.0 / 30 { return cache.snapshot }
+        let snapshot = graph.fxMeters(owner: owner, at: audio.currentTime)
+        fxMeterCache = (owner, now, snapshot)
+        return snapshot
+    }
+
+    /// The output spectrum (`SpectrumAnalyzer.bandCount` bands, dBFS) of one module for the sound being heard now, which
+    /// is also what starts the analysis of that module; refreshed at most 30 times a second, nothing while stopped.
+    func fxSpectrumBands(owner: String, nodeIndex: Int) -> [Float]? {
+        guard let audio, audio.isPlaying, let graph else { fxSpectrumCache = nil; return nil }
+        graph.collectsFxMeters = true
+        let now = ProcessInfo.processInfo.systemUptime
+        if let cache = fxSpectrumCache, cache.owner == owner, cache.node == nodeIndex, now - cache.at < 1.0 / 30 { return cache.bands }
+        graph.watchSpectrum(owner: owner, nodeIndex: nodeIndex)
+        let bands = graph.fxSpectrum(owner: owner, at: audio.currentTime)?.output?.bands
+        fxSpectrumCache = (owner, nodeIndex, now, bands)
+        return bands
     }
 }

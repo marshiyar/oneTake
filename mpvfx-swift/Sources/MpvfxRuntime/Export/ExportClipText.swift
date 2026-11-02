@@ -14,8 +14,8 @@
 import Foundation
 import MpvfxShared
 
-/// A generated text or shape element needs no source media file.
+/// A generated text, shape or adjustment element needs no source media file.
 /// The frame renderer draws both through the preview's shared painter.
 func nativeIsTextClip(_ clip: NativeProjectClip, _ project: NativeProjectDocument) -> Bool {
-    (clip.text != nil || clip.shape?.isSupported == true) && project.assets.first(where: { $0.id == clip.assetId })?.kind == .element
+    (clip.text != nil || clip.shape?.isSupported == true || clip.adjustment == true) && project.assets.first(where: { $0.id == clip.assetId })?.kind == .element
 }

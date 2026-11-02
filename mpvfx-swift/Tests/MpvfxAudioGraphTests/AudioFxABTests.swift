@@ -46,7 +46,10 @@ internal final class AudioFxABTests: XCTestCase {
 
     internal func testFactoryDefaultsExistForEveryEffectAndPresetsKeepOtherSlot() throws {
         for def in AudioFx.definitions {
-            XCTAssertFalse(AudioFxPresets.modulePresets(def.id).isEmpty, def.id)
+            let presets = AudioFxPresets.modulePresets(def.id)
+            XCTAssertGreaterThan(presets.count, 1, "\(def.id) offers more than its defaults")
+            XCTAssertEqual(Set(presets.map(\.id)).count, presets.count, "\(def.id) preset ids are unique")
+            for preset in presets { XCTAssertEqual(preset.params, AudioFx.normalize(def.id, preset.params, version: 2), preset.id) }
         }
         var node = FxNode(
             type: "gain", version: 2, params: AudioFx.normalize("gain", ["gain": .number(-20)], version: 2))

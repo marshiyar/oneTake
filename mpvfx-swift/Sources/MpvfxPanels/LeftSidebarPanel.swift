@@ -18,7 +18,7 @@ import MpvfxShared
 
 /// One item of the media bin: a project asset with what the card shows.
 public struct MediaBinItem: Equatable {
-    public enum Category: String, CaseIterable { case video, images, audio, fonts }
+    public enum Category: String, CaseIterable, Sendable { case video, images, audio, fonts }
     public var id: String
     public var name: String
     public var path: String?
@@ -36,17 +36,17 @@ public struct MediaBinItem: Equatable {
 }
 
 /// What the library navigator shows (`LibraryView`), filled by the host from the backend.
-public struct LibraryNavModel: Equatable {
-    public struct Item: Equatable { public var id, name: String
+public struct LibraryNavModel: Equatable, Sendable {
+    public struct Item: Equatable, Sendable { public var id, name: String
         public init(id: String, name: String) { self.id = id; self.name = name } }
-    public struct Project: Equatable { public var id, name, eventId: String
+    public struct Project: Equatable, Sendable { public var id, name, eventId: String
         public init(id: String, name: String, eventId: String) { self.id = id; self.name = name; self.eventId = eventId } }
-    public struct Asset: Equatable { public var id, name, kind, eventId: String; public var available: Bool; public var linked: Bool
+    public struct Asset: Equatable, Sendable { public var id, name, kind, eventId: String; public var available: Bool; public var linked: Bool
         public init(id: String, name: String, kind: String, eventId: String, available: Bool = true, linked: Bool = false) {
             self.id = id; self.name = name; self.kind = kind; self.eventId = eventId; self.available = available; self.linked = linked } }
-    public struct Export: Equatable { public var id, label, status: String
+    public struct Export: Equatable, Sendable { public var id, label, status: String
         public init(id: String, label: String, status: String) { self.id = id; self.label = label; self.status = status } }
-    public struct Library: Equatable {
+    public struct Library: Equatable, Sendable {
         public var id, name: String
         public var events: [Item]
         public var projects: [Project]
@@ -57,7 +57,7 @@ public struct LibraryNavModel: Equatable {
         }
     }
     /// A recently opened project folder (the "Recent" group of the panel's "…" menu).
-    public struct RecentProject: Equatable { public var path, name: String
+    public struct RecentProject: Equatable, Sendable { public var path, name: String
         public init(path: String, name: String) { self.path = path; self.name = name } }
     public var available = false
     public var libraries: [Library] = []
@@ -70,7 +70,7 @@ public struct LibraryNavModel: Equatable {
 }
 
 /// Commands the navigator issues; the host runs them against `DesktopBackend.libraries` (LibraryCommand).
-public enum LibraryNavCommand: Equatable {
+public enum LibraryNavCommand: Equatable, Sendable {
     case createLibrary, openLibrary
     case createEvent(libraryId: String, name: String)
     case createProject(libraryId: String, eventId: String, name: String)
@@ -95,7 +95,7 @@ public enum LibraryNavCommand: Equatable {
 /// Import, and the "…" menu of library and project actions); search with the filter menu; then the grid of
 /// sections (Video, Images, Audio, Fonts, Library media, Exports). Spacing comes from `MediaPanelMetrics`.
 public final class LeftSidebarPanel {
-    public enum Hit: Hashable {
+    public enum Hit: Hashable, Sendable {
         case showSidebar, hideSidebar, panelMenu
         case tab(LeftSidebarTab)
         case switcher, importMedia, more
