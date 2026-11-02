@@ -10,6 +10,8 @@ Unreleased; nightly builds of `main` are published as pre-releases named `nightl
 Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binaries.lock`); no version tag yet.
 
 ### Editing
+- Camera moves: a `camera-moves` clip effect shakes, punches in and pushes a layer, the same in preview and export; a
+  shake is repeatable from its seed and covers its own edges. Controls and beat punch-ins follow (#308).
 - Nested sequences in the project file and the plans behind Nest, Un-nest and Make unique (no shortcut or screen yet;
   nested clips are not drawn until a later change).
 - Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels
