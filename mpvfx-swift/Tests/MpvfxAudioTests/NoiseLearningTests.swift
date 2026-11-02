@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import XCTest
 import MpvfxShared
 import MpvfxAudioGraph
@@ -49,25 +50,25 @@ final class NoiseLearningTests: XCTestCase {
         let load: (DocumentAudioGraph.StemKey) throws -> [[Float]] = { asked.append($0); return [Self.stem, Self.stem] }
         // On the timeline the clip runs 0.5 s to 2.5 s, so 1.5 s to 2.5 s is its noise-only second.
         let learned = try NoiseLearning.learn(.range, clipId: "c", document: try document(), projectDir: URL(fileURLWithPath: "/p"),
-                                              inPoint: 1.5, outPoint: 2.5, loadStem: load)
+                                              inPoint: 1.5, outPoint: 2.5, fileExists: { _ in true }, loadStem: load)
         let direct = try NoiseProfile.learnRange([Self.stem, Self.stem], sampleRate: 48_000, span: .init(start: 1, end: 2))
         XCTAssertEqual(learned, direct, "exactly the part of the clip under the I/O range")
         XCTAssertEqual(asked.count, 1)
         // The same numbers as clip time would be the wrong second: the tone is in the profile.
-        let wrong = try NoiseLearning.learn(.range, clipId: "c", document: try document(), projectDir: nil, inPoint: 1, outPoint: 2, loadStem: load)
+        let wrong = try NoiseLearning.learn(.range, clipId: "c", document: try document(), projectDir: nil, inPoint: 1, outPoint: 2, fileExists: { _ in true }, loadStem: load)
         XCTAssertGreaterThan(wrong[Self.toneBin] - learned[Self.toneBin], 10)
     }
 
     func testQuietestIgnoresTheRangeAndRangeNeedsOne() throws {
         let load: (DocumentAudioGraph.StemKey) throws -> [[Float]] = { _ in [Self.stem, Self.stem] }
-        let quietest = try NoiseLearning.learn(.quietest, clipId: "c", document: try document(), projectDir: nil, inPoint: nil, outPoint: nil, loadStem: load)
+        let quietest = try NoiseLearning.learn(.quietest, clipId: "c", document: try document(), projectDir: nil, inPoint: nil, outPoint: nil, fileExists: { _ in true }, loadStem: load)
         XCTAssertEqual(quietest, try NoiseProfile.learnQuietest([Self.stem, Self.stem], sampleRate: 48_000))
         for (i, o) in [(nil, nil), (1.5, nil), (9.0, 10.0), (2.5, 1.5)] as [(Double?, Double?)] {
-            XCTAssertThrowsError(try NoiseLearning.learn(.range, clipId: "c", document: try document(), projectDir: nil, inPoint: i, outPoint: o, loadStem: load)) {
+            XCTAssertThrowsError(try NoiseLearning.learn(.range, clipId: "c", document: try document(), projectDir: nil, inPoint: i, outPoint: o, fileExists: { _ in true }, loadStem: load)) {
                 XCTAssertEqual($0 as? NoiseLearning.Failure, .noRange)
             }
         }
-        XCTAssertThrowsError(try NoiseLearning.learn(.quietest, clipId: "nope", document: try document(), projectDir: nil, inPoint: nil, outPoint: nil, loadStem: load)) {
+        XCTAssertThrowsError(try NoiseLearning.learn(.quietest, clipId: "nope", document: try document(), projectDir: nil, inPoint: nil, outPoint: nil, fileExists: { _ in true }, loadStem: load)) {
             XCTAssertEqual($0 as? NoiseLearning.Failure, .noSuchClip)
         }
     }

@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxAudio
 import MpvfxAudioGraph
@@ -19,15 +20,17 @@ extension EditorSession {
     /// effect as one undo step. Learning again replaces it; nothing else ever does.
     func learnNoise(clipId: String, nodeIndex: Int, source: NoiseLearning.Source, post: @escaping (@escaping () -> Void) -> Void) {
         let document = editor.document, directory = projectDir
+        let nodeId = document.sequence.tracks.flatMap(\.clips).first { $0.id == clipId }?.audioFxChain
+            .flatMap { try? AudioFx.parseChain($0) }.flatMap { $0.nodes.indices.contains(nodeIndex) ? $0.nodes[nodeIndex].id : nil }
         let inPoint = playback.inPoint, outPoint = playback.outPoint
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result { try NoiseLearning.learn(source, clipId: clipId, document: document, projectDir: directory,
                                                           inPoint: inPoint, outPoint: outPoint) }
-            post { self?.finishLearningNoise(result, clipId: clipId, nodeIndex: nodeIndex) }
+            post { self?.finishLearningNoise(result, clipId: clipId, nodeIndex: nodeIndex, nodeId: nodeId) }
         }
     }
 
-    func finishLearningNoise(_ result: Result<[Double], Error>, clipId: String, nodeIndex: Int) {
+    func finishLearningNoise(_ result: Result<[Double], Error>, clipId: String, nodeIndex: Int, nodeId: String?) {
         let title = "Could not learn the noise"
         switch result {
         case .failure(let error):
@@ -35,10 +38,12 @@ extension EditorSession {
         case .success(let profile):
             guard let clip = editor.document.sequence.tracks.flatMap(\.clips).first(where: { $0.id == clipId }),
                   let text = clip.audioFxChain, var chain = try? AudioFx.parseChain(text),
-                  chain.nodes.indices.contains(nodeIndex), chain.nodes[nodeIndex].type == "denoise" else {
+                  // The module is found by its id, so a reorder while the noise was being read cannot send the profile elsewhere.
+                  let at = nodeId.flatMap({ id in chain.nodes.firstIndex { $0.id == id } }) ?? (nodeId == nil ? nodeIndex : nil),
+                  chain.nodes.indices.contains(at), chain.nodes[at].type == "denoise" else {
                 onError(title, "The effect changed while the noise was being read. Learn the noise again."); return
             }
-            chain.nodes[nodeIndex].noiseProfile = profile
+            chain.nodes[at].noiseProfile = profile
             guard editor.setClipFxChain(clipId: clipId, AudioFx.serializeChain(chain)) else {
                 onError(title, "The clip could not be changed. Unlock its track, then try again."); return
             }

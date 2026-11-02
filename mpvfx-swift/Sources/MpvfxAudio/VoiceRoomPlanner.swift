@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxShared
 import MpvfxAudioGraph
@@ -49,6 +50,8 @@ public enum VoiceRoomPlanner {
         case noVoice
         case noBeds
         case noSpeech
+        case noBedUnderSpeech
+        case unreadableSetting
         case noVoiceBands
         case unreadable(String)
         public var description: String {
@@ -56,6 +59,8 @@ public enum VoiceRoomPlanner {
             case .noVoice: return "There is no voice to make room for. Select the voice clips, or name them so they read as voice."
             case .noBeds: return "There are no music or sound clips to lower. Tick the clips to lower in the list."
             case .noSpeech: return "No speech was found in the voice clips, so nothing was lowered."
+            case .noBedUnderSpeech: return "None of the ticked clips play while someone speaks, so nothing was lowered."
+            case .unreadableSetting: return "A ticked clip has effects or automation that this version cannot read, so it was left alone. Remove them or update the app, then try again."
             case .noVoiceBands: return "The voice has no sound to carve around, so nothing was changed."
             case .unreadable(let why): return "The sound of a clip could not be read: \(why)"
             }
@@ -92,10 +97,12 @@ public enum VoiceRoomPlanner {
 
     /// The edits for `request`. `loadStem` decodes a clip's sound (the app's media engine; synthetic in tests).
     public static func plan(_ request: Request, document: NativeProjectDocument, projectDir: URL?, sampleRate: Int = 48_000,
-                            loadStem: (DocumentAudioGraph.StemKey) throws -> [[Float]] = { try DocumentAudioGraph.decodeStem($0) }) throws -> Outcome {
+                            fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+                            loadStem: ((DocumentAudioGraph.StemKey) throws -> [[Float]])? = nil) throws -> Outcome {
         guard !request.voiceClipIds.isEmpty else { throw Failure.noVoice }
         guard !request.bedClipIds.isEmpty else { throw Failure.noBeds }
-        let inputs = DocumentAudioGraph.inputs(document, duration: 0, projectDir: projectDir)
+        let load = loadStem ?? { try DocumentAudioGraph.decodeStem($0, sampleRate: sampleRate) }
+        let inputs = DocumentAudioGraph.inputs(document, duration: 0, projectDir: projectDir, fileExists: fileExists)
         let tracks = Dictionary(inputs.tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let clips = Dictionary(document.sequence.tracks.flatMap(\.clips).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let rate = Double(sampleRate)
@@ -106,7 +113,7 @@ public enum VoiceRoomPlanner {
         for id in request.voiceClipIds {
             guard let track = tracks[id], !track.muted else { continue }
             let stem: [[Float]]
-            do { stem = try loadStem(track.stem) } catch { throw Failure.unreadable("\(error)") }
+            do { stem = try load(track.stem) } catch { throw Failure.unreadable("\(error)") }
             regions += speechRegions(stem, sampleRate: rate).map { SpeechRegion(start: $0.start + track.start, end: $0.end + track.start) }
             if request.mode == .carve { voiceParts.append(.init(samples: mono(stem), offsetSeconds: track.start)) }
         }
@@ -123,13 +130,19 @@ public enum VoiceRoomPlanner {
                     let s = max(0, r.start - track.start), e = min(track.end - track.start, r.end - track.start)
                     return e > s ? SpeechRegion(start: s, end: e) : nil
                 }
-                let existing = clip.audioAutomation.flatMap { try? AudioAutomation.parse($0) }
+                var existing: Automation?
+                if let text = clip.audioAutomation, !text.isEmpty {
+                    guard let parsed = try? AudioAutomation.parse(text) else { throw Failure.unreadableSetting }
+                    existing = parsed
+                }
                 let next = VoiceRoom.apply(to: existing, regions: local, settings: request.settings)
                 result.automation[id] = next.lanes.isEmpty ? nil : AudioAutomation.serialize(next)
                 if !local.isEmpty { result.beds += 1 }
             }
         case .carve:
-            let mixed = AudioCarve.mixSources(voiceParts, sampleRate: rate)
+            // The bands depend on what the voice says, not on where it sits, so the silence before the first voice is not built.
+            let first = voiceParts.map(\.offsetSeconds).min() ?? 0
+            let mixed = AudioCarve.mixSources(voiceParts.map { .init(samples: $0.samples, offsetSeconds: $0.offsetSeconds - first) }, sampleRate: rate)
             let strength = min(1, max(0, (abs(request.settings.clamped.amountDb) - 2) / 16))
             let bands = AudioCarve.analyseBands(mixed, sampleRate: rate, profile: AudioCarve.profile(strength))
             guard !bands.isEmpty else { throw Failure.noVoiceBands }
@@ -139,7 +152,11 @@ public enum VoiceRoomPlanner {
             for id in request.bedClipIds {
                 guard let track = tracks[id], let clip = clips[id] else { continue }
                 guard regions.contains(where: { $0.end > track.start && $0.start < track.end }) else { continue }
-                var chain = clip.audioFxChain.flatMap { try? AudioFx.parseChain($0) } ?? FxChain()
+                var chain = FxChain()
+                if let text = clip.audioFxChain, !text.isEmpty {
+                    guard let parsed = try? AudioFx.parseChain(text) else { throw Failure.unreadableSetting }
+                    chain = parsed
+                }
                 chain.nodes.removeAll { $0.fromCarve == true }
                 chain.nodes = carve + chain.nodes
                 for i in chain.nodes.indices where chain.nodes[i].id == nil { chain.nodes[i].id = chain.mintNodeId() }
@@ -147,7 +164,7 @@ public enum VoiceRoomPlanner {
                 result.beds += 1
             }
         }
-        guard result.beds > 0 else { throw Failure.noSpeech }
+        guard result.beds > 0 else { throw Failure.noBedUnderSpeech }
         return result
     }
 

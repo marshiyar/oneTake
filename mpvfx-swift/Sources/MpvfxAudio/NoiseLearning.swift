@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxShared
 import MpvfxAudioGraph
@@ -40,15 +41,16 @@ public enum NoiseLearning {
     /// The profile for `clipId`. `loadStem` decodes a clip's sound (the app's media engine; synthetic in tests).
     public static func learn(_ source: Source, clipId: String, document: NativeProjectDocument, projectDir: URL?,
                              inPoint: Double?, outPoint: Double?, sampleRate: Int = 48_000,
-                             loadStem: (DocumentAudioGraph.StemKey) throws -> [[Float]] = { try DocumentAudioGraph.decodeStem($0) }) throws -> [Double] {
-        let inputs = DocumentAudioGraph.inputs(document, duration: 0, projectDir: projectDir)
+                             fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+                             loadStem: ((DocumentAudioGraph.StemKey) throws -> [[Float]])? = nil) throws -> [Double] {
+        let inputs = DocumentAudioGraph.inputs(document, duration: 0, projectDir: projectDir, fileExists: fileExists)
         guard let track = inputs.tracks.first(where: { $0.id == clipId }) else { throw Failure.noSuchClip }
         let span: NoiseProfile.Span?
         if source == .range {
             span = NoiseProfile.clipRange(inPoint: inPoint, outPoint: outPoint, clipStart: track.start, clipDuration: track.end - track.start)
             guard span != nil else { throw Failure.noRange }
         } else { span = nil }
-        let stem = try loadStem(track.stem)
+        let stem = try (loadStem ?? { try DocumentAudioGraph.decodeStem($0, sampleRate: sampleRate) })(track.stem)
         do {
             if let span { return try NoiseProfile.learnRange(stem, sampleRate: Double(sampleRate), span: span) }
             return try NoiseProfile.learnQuietest(stem, sampleRate: Double(sampleRate))

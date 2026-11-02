@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import XCTest
 import MpvfxCanvas
 import MpvfxAudioGraph
@@ -28,9 +29,7 @@ final class CleanUpNoiseRackTests: XCTestCase {
         var asked: [String] = []
         p.onLearnNoise = { clip, index, source in asked.append("\(clip) \(index) \(source)") }
         func draw() { p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 409, height: 4000)) }
-        draw()
-        let open = try XCTUnwrap(p.hits.rect { $0 == .button("fx:0:open") })
-        XCTAssertTrue(p.pointerDown(CanvasPoint(open.midX, open.midY))); p.pointerUp(CanvasPoint(open.midX, open.midY))
+        p.audioFxUI.openNode = 0       // the module is open, as a click on its name leaves it
         draw()
         func press(_ key: String) throws {
             draw()
@@ -50,22 +49,16 @@ final class CleanUpNoiseRackTests: XCTestCase {
     func testLearnIsOfferedOnlyWhereTheHostCanLearn() throws {
         let node = FxNode(type: "denoise", id: "n1", params: AudioFx.defaultParams("denoise"))
         let (_, p) = try AudioFxRackTests.makeFixture(FxChain(nodes: [node]))
-        let open = { () throws -> Void in
-            p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 409, height: 4000))
-            let r = try XCTUnwrap(p.hits.rect { $0 == .button("fx:0:open") })
-            _ = p.pointerDown(CanvasPoint(r.midX, r.midY)); p.pointerUp(CanvasPoint(r.midX, r.midY))
-            p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 409, height: 4000))
-        }
-        try open()
+        p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 409, height: 4000))
+        p.audioFxUI.openNode = 0
+        p.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 409, height: 4000))
         XCTAssertNil(p.hits.rect { $0 == .button("fx:0:learn") }, "no host, no Learn")
         var learned = node
         learned.noiseProfile = [Double](repeating: -50, count: NoiseProfile.bins)
         let (_, q) = try AudioFxRackTests.makeFixture(FxChain(nodes: [learned]))
         q.onLearnNoise = { _, _, _ in }
-        let canvas = PanelMeasureCanvas()
-        q.draw(canvas, in: CanvasRect(x: 0, y: 0, width: 409, height: 4000))
-        let r = try XCTUnwrap(q.hits.rect { $0 == .button("fx:0:open") })
-        _ = q.pointerDown(CanvasPoint(r.midX, r.midY)); q.pointerUp(CanvasPoint(r.midX, r.midY))
+        q.draw(PanelMeasureCanvas(), in: CanvasRect(x: 0, y: 0, width: 409, height: 4000))
+        q.audioFxUI.openNode = 0
         let shown = PanelMeasureCanvas()
         q.draw(shown, in: CanvasRect(x: 0, y: 0, width: 409, height: 4000))
         XCTAssertTrue(shown.texts.map(\.0).contains("Learn again"))

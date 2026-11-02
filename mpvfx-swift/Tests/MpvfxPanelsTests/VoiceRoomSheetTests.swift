@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import XCTest
 import MpvfxCanvas
 import MpvfxAudioGraph
@@ -42,8 +43,10 @@ final class VoiceRoomSheetTests: XCTestCase {
         XCTAssertFalse(found.beds.contains { $0.clip.clipId == "clip:music" })
         XCTAssertFalse(VoiceRoomSheet.open(doc, selection: ["clip:a"]).beds.contains { $0.clip.kind == .voice })
         // A track the editor cannot write to is not offered.
-        doc.sequence.tracks[2].locked = true
-        XCTAssertTrue(VoiceRoomSheet.open(doc, selection: ["clip:a"]).beds.isEmpty)
+        doc.sequence.tracks[1].locked = true; doc.sequence.tracks[2].locked = true
+        let locked = VoiceRoomSheet.open(doc, selection: ["clip:a"])
+        XCTAssertTrue(locked.beds.isEmpty, "a bed is written, so a locked track's clips are not offered")
+        XCTAssertEqual(locked.voices.map(\.clipId), ["clip:a"], "a voice is only read, so a locked track may hold it")
     }
 
     func testA1EveryFieldIsReachableByTabAndEnterRunsEscCancelsWithoutTouchingTheDocument() throws {

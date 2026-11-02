@@ -525,7 +525,8 @@ extension InspectorPanel {
             }])))
         }
         // Clean up noise learns its profile on request, from the clip it sits on.
-        let learnClip = ui.owner.hasPrefix("clip:") ? String(ui.owner.dropFirst("clip:".count)) : nil
+        let owner = ui.owner ?? ""
+        let learnClip = owner.hasPrefix("clip:") ? String(owner.dropFirst("clip:".count)) : nil
         let learnable = node.type == "denoise" && learnClip != nil && onLearnNoise != nil
         let learnLabel = node.noiseProfile == nil ? "Learn noise" : "Learn again"
         if node.type == "denoise" {

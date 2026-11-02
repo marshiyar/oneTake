@@ -10,10 +10,12 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxAudio
 import MpvfxAudioGraph
 import MpvfxPanels
+import MpvfxShared
 
 extension EditorSession {
     /// ⌥⌘D, the clip menu and the Audio FX rack: shows the Make room for voice sheet at the top of the inspector.
@@ -38,16 +40,19 @@ extension EditorSession {
         redraw()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result { try VoiceRoomPlanner.plan(request, document: document, projectDir: directory) }
-            self?.postToUI { self?.finishMakingRoom(result) }
+            self?.postToUI { self?.finishMakingRoom(result, snapshot: document) }
         }
     }
 
-    func finishMakingRoom(_ result: Result<VoiceRoomPlanner.Outcome, Error>) {
+    func finishMakingRoom(_ result: Result<VoiceRoomPlanner.Outcome, Error>, snapshot: NativeProjectDocument) {
         let title = "Could not make room for voice"
         switch result {
         case .failure(let error):
             onError(title, (error as? VoiceRoomPlanner.Failure)?.description ?? "The sound of a clip could not be read. Check that its file is still there, then try again.")
         case .success(let outcome):
+            guard editor.document == snapshot else {
+                onError(title, "The project changed while the speech was being found. Make room again."); return
+            }
             guard editor.setClipsAudio(automation: outcome.automation, fxChains: outcome.fxChains, label: "Make room for voice") else {
                 onError(title, "The clips could not be changed. Unlock their tracks, then try again."); return
             }

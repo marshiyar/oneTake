@@ -25,6 +25,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Clean up noise learns a clip's steady background noise from its quietest parts or from the in and out points you set
   over a noise-only stretch, keeps it with the effect, and can play only the noise it takes out so you can check that no
   voice goes with it. Playback and export agree; the removed-noise listening is never part of an export.
+- Make room for voice (clip menu, Audio FX rack or Option+Command+D) lowers the music and ambience under speech as ordinary
+  volume points on each bed, or carves out the bands the voice uses; choose the amount, ramps, hold and which clips,
+  run again any time, and undo it in one step.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

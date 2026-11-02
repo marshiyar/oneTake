@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import XCTest
 @testable import MpvfxAudioGraph
 
@@ -45,6 +46,12 @@ final class NoiseProfileTests: XCTestCase {
         XCTAssertEqual(Self.meanError(profile), 0, accuracy: 0.6, "mean profile level against the known noise")
         XCTAssertLessThan(profile[Self.toneBin] - Self.expectedDb, 4, "the tone must not be in the profile")
         XCTAssertTrue(profile.allSatisfy { abs($0 * 10 - ($0 * 10).rounded()) < 1e-6 }, "values are in 0.1 dB steps")
+    }
+
+    func testA1StereoNoiseThatDiffersBetweenChannelsIsLearnedAtTheSameLevel() throws {
+        let left = Self.signal(seconds: 4, tones: [1..<3], seed: 11), right = Self.signal(seconds: 4, tones: [1..<3], seed: 23)
+        let profile = try NoiseProfile.learnQuietest([left, right], sampleRate: Self.sr)
+        XCTAssertEqual(Self.meanError(profile), 0, accuracy: 0.6)
     }
 
     func testA1TheMedianIsOfTheQuietestTenthOnly() throws {
@@ -89,9 +96,15 @@ final class NoiseProfileTests: XCTestCase {
         XCTAssertThrowsError(try NoiseProfile.learnQuietest([], sampleRate: Self.sr)) { XCTAssertEqual($0 as? NoiseProfile.Failure, .noChannels) }
         XCTAssertThrowsError(try NoiseProfile.learnQuietest([[1, 2, 3]], sampleRate: Self.sr)) { XCTAssertEqual($0 as? NoiseProfile.Failure, .tooShort) }
         XCTAssertThrowsError(try NoiseProfile.learnQuietest([x, [1]], sampleRate: Self.sr)) { XCTAssertEqual($0 as? NoiseProfile.Failure, .noChannels) }
-        let silent = try? NoiseProfile.learnQuietest([[Float](repeating: 0, count: 8_000)], sampleRate: Self.sr)
-        XCTAssertEqual(silent?.count, NoiseProfile.bins)
-        XCTAssertTrue(silent?.allSatisfy { $0 == -180 } ?? false)
+        XCTAssertThrowsError(try NoiseProfile.learnQuietest([[Float](repeating: 0, count: 8_000)], sampleRate: Self.sr)) {
+            XCTAssertEqual($0 as? NoiseProfile.Failure, .silent)
+        }
+        // A gap cut out to digital silence is not the noise floor: the quietest tenth is taken from what still sounds.
+        var gapped = Self.signal(seconds: 4, tones: [])
+        for i in 0..<Int(1.0 * Self.sr) { gapped[i] = 0 }
+        let withGap = try? NoiseProfile.learnQuietest([gapped], sampleRate: Self.sr)
+        XCTAssertEqual(withGap.map(Self.meanError) ?? 99, 0, accuracy: 1)
+        XCTAssertNotNil(try? NoiseProfile.learnRange([gapped], sampleRate: Self.sr, span: .init(start: 0, end: 1e300)), "a huge span is cut to the audio")
     }
 
     // MARK: the unit and the chain document
@@ -153,7 +166,9 @@ final class NoiseProfileTests: XCTestCase {
         let saved = AudioFx.serializeChain(FxChain(nodes: [node]))
         XCTAssertTrue(saved.contains("\"learn_source\":\"range\"") && saved.contains("\"listen\":\"on\"") && saved.contains("\"profile\":["))
         XCTAssertEqual(try AudioFx.parseChain(saved).nodes.first?.noiseProfile, profile)
-        XCTAssertEqual(try AudioFx.parseChain(saved), FxChain(nodes: [node]))
+        var parsedBack = node
+        parsedBack.enabled = true     // a chain read from disk says so for every module
+        XCTAssertEqual(try AudioFx.parseChain(saved), FxChain(nodes: [parsedBack]))
         let bad = saved.replacingOccurrences(of: "\"profile\":[", with: "\"profile\":[1,")
         XCTAssertThrowsError(try AudioFx.parseChain(bad)) { XCTAssertTrue("\($0)".contains("noise profile")) }
     }

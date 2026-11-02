@@ -36,6 +36,7 @@ public final class InspectorPanel {
         willSet { if newValue != selection { cancelFxGesture() } }
         didSet {
             if selection != oldValue {
+                if voiceRoom != nil { closeVoiceRoomSheet() }   // its clips were chosen for the old selection
                 endWheelKeyHold()
                 cancelLookMatch()
                 cancelAutoBalance()
@@ -64,6 +65,8 @@ public final class InspectorPanel {
     /// from (`quietest` or `range`). The host learns off the UI thread and writes the profile as one edit.
     /// Make room for voice: the open sheet, the last run (offered again as Re-run), and the host's runner.
     public internal(set) var voiceRoom: VoiceRoomSheet?
+    var groupBeforeVoiceRoom = "audio-fx"
+
     public internal(set) var lastVoiceRoomRun: VoiceRoomSheet.Run?
     public var onMakeRoomForVoice: ((VoiceRoomSheet.Run) -> Void)?
     public var onLearnNoise: ((_ clipId: String, _ nodeIndex: Int, _ source: String) -> Void)?

@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import Foundation
 
 // Learning a noise profile for the Clean up noise effect (issue #312).
@@ -29,16 +30,21 @@ public enum NoiseProfile {
     /// Frames are taken every half window, which covers every sample twice and keeps long clips cheap.
     static let hop = DenoiseUnit.size / 2
     static let floorDb = -180.0
+    /// Mean square below which a frame is digital silence (−120 dBFS).
+    static let silentPower = 1e-12
 
     public enum Failure: Error, Equatable, CustomStringConvertible {
         case tooShort
         case noChannels
         case invalidRange
+        /// Every frame is digital silence, so there is no noise to learn.
+        case silent
         public var description: String {
             switch self {
             case .tooShort: return "There is not enough audio to learn the noise from. Choose a longer part."
             case .noChannels: return "There is no audio to learn the noise from."
             case .invalidRange: return "The range to learn from is not valid. Set an in point before the out point."
+            case .silent: return "This part of the clip is completely silent, so there is no noise to learn. Choose another part."
             }
         }
     }
@@ -71,15 +77,23 @@ public enum NoiseProfile {
             for channel in channels { for i in start..<(start + size) { let v = Double(channel[i]); sum += v * v } }
             energy.append((f, sum))
         }
-        energy.sort { $0.energy != $1.energy ? $0.energy < $1.energy : $0.index < $1.index }
-        let take = max(1, Int((Double(count) * quietestShare).rounded(.up)))
-        let spectra = energy.prefix(take).map { framePower(channels, start: $0.index * hop) }
+        // Frames of digital silence say nothing about the noise (a gap an editor cut out), so the quietest tenth is taken
+        // from the frames that carry any sound at all.
+        let sounding = energy.filter { $0.energy / Double(size * channels.count) > silentPower }
+        guard !sounding.isEmpty else { throw Failure.silent }
+        let ordered = sounding.sorted { $0.energy != $1.energy ? $0.energy < $1.energy : $0.index < $1.index }
+        let take = max(1, Int((Double(ordered.count) * quietestShare).rounded(.up)))
+        // The median of a bin's power is ln 2 times its mean for noise (an exponential spread), so it is taken per channel
+        // and the channels are then averaged.
         var power = [Double](repeating: 0, count: bins)
-        for k in 0..<bins {
-            let sorted = spectra.map { $0[k] }.sorted()
-            let mid = sorted.count / 2
-            let median = sorted.count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-            power[k] = median / M_LN2
+        let frames = ordered.prefix(take).map { framePowers(channels, start: $0.index * hop) }
+        for c in 0..<channels.count {
+            for k in 0..<bins {
+                let sorted = frames.map { $0[c][k] }.sorted()
+                let mid = sorted.count / 2
+                let median = sorted.count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+                power[k] += median / M_LN2 / Double(channels.count)
+            }
         }
         return encode(power)
     }
@@ -88,7 +102,8 @@ public enum NoiseProfile {
     public static func learnRange(_ channels: [[Float]], sampleRate: Double, span: Span) throws -> [Double] {
         let length = try checked(channels)
         guard sampleRate.isFinite, sampleRate > 0, span.start.isFinite, span.end.isFinite, span.end > span.start else { throw Failure.invalidRange }
-        let from = max(0, Int((span.start * sampleRate).rounded())), to = min(length, Int((span.end * sampleRate).rounded()))
+        let from = Int(min(Double(length), max(0, (span.start * sampleRate).rounded())))
+        let to = Int(min(Double(length), max(0, (span.end * sampleRate).rounded())))
         let count = frameCount(length, from: from, to: to)
         guard count > 0 else { throw Failure.tooShort }
         var power = [Double](repeating: 0, count: bins)
@@ -126,16 +141,20 @@ public enum NoiseProfile {
 
     private static let window: [Double] = (0..<size).map { sqrt(0.5 - 0.5 * cos(2 * Double.pi * Double($0) / Double(size))) }
 
-    /// The power of the frame at `start`, averaged over the channels.
-    private static func framePower(_ channels: [[Float]], start: Int) -> [Double] {
-        var total = [Double](repeating: 0, count: bins)
+    /// The power of the frame at `start` in each channel.
+    private static func framePowers(_ channels: [[Float]], start: Int) -> [[Double]] {
         var re = [Double](repeating: 0, count: size), im = [Double](repeating: 0, count: size)
-        for channel in channels {
+        return channels.map { channel in
             for i in 0..<size { re[i] = Double(channel[start + i]) * window[i]; im[i] = 0 }
             AudioCarve.fft(&re, &im)
-            for k in 0..<bins { total[k] += re[k] * re[k] + im[k] * im[k] }
+            return (0..<bins).map { re[$0] * re[$0] + im[$0] * im[$0] }
         }
-        return total.map { $0 / Double(channels.count) }
+    }
+
+    /// The power of the frame at `start`, averaged over the channels.
+    private static func framePower(_ channels: [[Float]], start: Int) -> [Double] {
+        let perChannel = framePowers(channels, start: start)
+        return (0..<bins).map { k in perChannel.reduce(0) { $0 + $1[k] } / Double(channels.count) }
     }
 }
 

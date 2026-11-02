@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import XCTest
 import MpvfxCanvas
 import OneTakeKeyframes
@@ -29,12 +30,14 @@ final class TimelineMakeRoomTests: XCTestCase {
         func rows() -> [TimelineClipMenu.Item] { c.view.clipMenu?.itemRects().map(\.0) ?? [] }
         c.openClipMenu("clip:music", x: 10, y: 10)
         XCTAssertFalse(rows().contains { $0.action == .makeRoomForVoice }, "no host, no row")
+        c.view.clipMenu = nil
         XCTAssertFalse(c.keyDown(EditorKey(.char("d"), alt: true, meta: true)))
         var asked = 0
         c.onMakeRoomForVoice = { asked += 1 }
         c.openClipMenu("clip:music", x: 10, y: 10)
         XCTAssertEqual(rows().first { $0.action == .makeRoomForVoice }?.hint, "⌥⌘D")
         XCTAssertEqual(rows().first { $0.action == .makeRoomForVoice }?.label, "Make room for voice…")
+        c.view.clipMenu = nil
         c.view.selection = []
         XCTAssertTrue(c.runClipMenu(.makeRoomForVoice, clipId: "clip:music"))
         XCTAssertEqual(asked, 1); XCTAssertEqual(c.view.selection, ["clip:music"], "the menu's clip is the voice")

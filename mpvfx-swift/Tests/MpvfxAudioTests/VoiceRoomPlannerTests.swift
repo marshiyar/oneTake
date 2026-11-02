@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import XCTest
 import MpvfxShared
 import MpvfxAudioGraph
@@ -74,7 +75,7 @@ final class VoiceRoomPlannerTests: XCTestCase {
     func testVolumeModeWritesTaggedPointsInTheBedsOwnTimeAndKeepsHandDrawnOnes() throws {
         let hand = #","audioAutomation":"{\"version\":1,\"lanes\":[{\"target\":\"volume\",\"points\":[{\"t\":7,\"v\":0.5}]}]}""#
         let outcome = try VoiceRoomPlanner.plan(.init(voiceClipIds: ["voice"], bedClipIds: ["music", "room"]), document: try document(automation: hand),
-                                                projectDir: nil, loadStem: Self.loader(["Narration.wav": Self.speech()]))
+                                                projectDir: nil, fileExists: { _ in true }, loadStem: Self.loader(["Narration.wav": Self.speech()]))
         XCTAssertEqual(outcome.phrases, 2)
         XCTAssertEqual(outcome.beds, 2)
         XCTAssertEqual(outcome.summary, "Lowered 2 clips at 2 phrases")
@@ -83,7 +84,8 @@ final class VoiceRoomPlannerTests: XCTestCase {
         XCTAssertEqual(try db(music, at: 1), -12, accuracy: 0.05)
         XCTAssertEqual(try db(music, at: 3), 0, accuracy: 0.05)
         XCTAssertEqual(try db(music, at: 4.5), -12, accuracy: 0.05)
-        XCTAssertEqual(try db(music, at: 6.5), 0, accuracy: 0.05)
+        XCTAssertEqual(try db(music, at: 5.4), 0, accuracy: 0.05)
+        XCTAssertLessThan(try db(music, at: 7), -5, "and the hand-drawn dip at 7 s is still there")
         let lane = try XCTUnwrap(AudioAutomation.parse(music).lanes.first)
         XCTAssertTrue(lane.points.contains { $0.t == 7 && $0.v == 0.5 && $0.origin == nil }, "the hand-drawn point stays")
         XCTAssertTrue(lane.points.filter { $0.t != 7 }.allSatisfy { $0.origin == "voice-room" })
@@ -94,15 +96,15 @@ final class VoiceRoomPlannerTests: XCTestCase {
     func testRunningAgainReplacesItsOwnPointsAndTheRequestedAmountApplies() throws {
         var doc = try document()
         let request = VoiceRoomPlanner.Request(settings: .init(amountDb: -20), voiceClipIds: ["voice"], bedClipIds: ["music"])
-        let first = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, loadStem: Self.loader(["Narration.wav": Self.speech()]))
+        let first = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, fileExists: { _ in true }, loadStem: Self.loader(["Narration.wav": Self.speech()]))
         let written = try XCTUnwrap(first.automation["music"] ?? nil)
         XCTAssertEqual(try db(written, at: 1), -20, accuracy: 0.05)
         for ti in doc.sequence.tracks.indices { for ci in doc.sequence.tracks[ti].clips.indices where doc.sequence.tracks[ti].clips[ci].id == "music" {
             doc.sequence.tracks[ti].clips[ci].audioAutomation = written
         } }
-        let again = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, loadStem: Self.loader(["Narration.wav": Self.speech()]))
+        let again = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, fileExists: { _ in true }, loadStem: Self.loader(["Narration.wav": Self.speech()]))
         XCTAssertEqual(again.automation["music"] ?? nil, written, "the same settings give the same points, not twice as many")
-        let shorter = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, loadStem: Self.loader(["Narration.wav": Self.speech([1..<2])]))
+        let shorter = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, fileExists: { _ in true }, loadStem: Self.loader(["Narration.wav": Self.speech([1..<2])]))
         let lane = try XCTUnwrap(AudioAutomation.parse(try XCTUnwrap(shorter.automation["music"] ?? nil)).lanes.first)
         XCTAssertEqual(lane.points.filter { $0.origin == "voice-room" }.count, 3, "the old phrases' points are gone")
     }
@@ -110,12 +112,17 @@ final class VoiceRoomPlannerTests: XCTestCase {
     func testFailuresSayWhatToDo() throws {
         let load = Self.loader(["Narration.wav": Self.speech()])
         func fail(_ r: VoiceRoomPlanner.Request, _ f: VoiceRoomPlanner.Failure, _ stems: @escaping (DocumentAudioGraph.StemKey) throws -> [[Float]]) throws {
-            XCTAssertThrowsError(try VoiceRoomPlanner.plan(r, document: try document(), projectDir: nil, loadStem: stems)) { XCTAssertEqual($0 as? VoiceRoomPlanner.Failure, f) }
+            XCTAssertThrowsError(try VoiceRoomPlanner.plan(r, document: try document(), projectDir: nil, fileExists: { _ in true }, loadStem: stems)) { XCTAssertEqual($0 as? VoiceRoomPlanner.Failure, f) }
         }
         try fail(.init(voiceClipIds: [], bedClipIds: ["music"]), .noVoice, load)
         try fail(.init(voiceClipIds: ["voice"], bedClipIds: []), .noBeds, load)
         try fail(.init(voiceClipIds: ["voice"], bedClipIds: ["music"]), .noSpeech, Self.loader([:]))
-        try fail(.init(voiceClipIds: ["voice"], bedClipIds: ["music"]), .unreadable("boom"), { _ in throw NSError(domain: "boom", code: 1) })
+        XCTAssertThrowsError(try VoiceRoomPlanner.plan(.init(voiceClipIds: ["voice"], bedClipIds: ["music"]), document: try document(), projectDir: nil,
+                                                       fileExists: { _ in true }, loadStem: { _ in throw NSError(domain: "boom", code: 1) })) {
+            guard case .unreadable? = $0 as? VoiceRoomPlanner.Failure else { return XCTFail("\($0)") }
+        }
+        // Speech that no ticked clip plays under is not "no speech".
+        try fail(.init(voiceClipIds: ["voice"], bedClipIds: ["music"]), .noBedUnderSpeech, Self.loader(["Narration.wav": Self.speech([0..<0.5], seconds: 0.5)]))
     }
 
     // MARK: A3, carve mode
@@ -142,7 +149,7 @@ final class VoiceRoomPlannerTests: XCTestCase {
             return Float(0.25 * sin(2 * Double.pi * 1000 * t) + 0.25 * sin(2 * Double.pi * 2500 * t))
         }
         let request = VoiceRoomPlanner.Request(mode: .carve, settings: .init(amountDb: -12), voiceClipIds: ["voice"], bedClipIds: ["music"])
-        let outcome = try VoiceRoomPlanner.plan(request, document: try document(), projectDir: nil,
+        let outcome = try VoiceRoomPlanner.plan(request, document: try document(), projectDir: nil, fileExists: { _ in true },
                                                 loadStem: Self.loader(["Narration.wav": [voice, voice], "Music.wav": [noise, noise]]))
         XCTAssertEqual(outcome.beds, 1)
         XCTAssertTrue(outcome.automation.isEmpty, "carve writes the chain, not volume points")
@@ -173,11 +180,11 @@ final class VoiceRoomPlannerTests: XCTestCase {
         } }
         let request = VoiceRoomPlanner.Request(mode: .carve, voiceClipIds: ["voice"], bedClipIds: ["music"])
         let load = Self.loader(["Narration.wav": Self.speech(), "Music.wav": Self.speech()])
-        let first = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, loadStem: load)
+        let first = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, fileExists: { _ in true }, loadStem: load)
         for ti in doc.sequence.tracks.indices { for ci in doc.sequence.tracks[ti].clips.indices where doc.sequence.tracks[ti].clips[ci].id == "music" {
             doc.sequence.tracks[ti].clips[ci].audioFxChain = first.fxChains["music"] ?? nil
         } }
-        let second = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, loadStem: load)
+        let second = try VoiceRoomPlanner.plan(request, document: doc, projectDir: nil, fileExists: { _ in true }, loadStem: load)
         let chain = try AudioFx.parseChain(try XCTUnwrap(second.fxChains["music"] ?? nil))
         XCTAssertEqual(chain.nodes.filter { $0.fromCarve == true }.count, try AudioFx.parseChain(try XCTUnwrap(first.fxChains["music"] ?? nil)).nodes.filter { $0.fromCarve == true }.count)
         XCTAssertTrue(chain.nodes.contains { $0.type == "gain" && $0.id == "n1" }, "the bed's own effect stays")

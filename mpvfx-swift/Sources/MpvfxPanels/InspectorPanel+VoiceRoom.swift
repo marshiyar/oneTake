@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
+//===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxAudioGraph
 import MpvfxShared
@@ -53,19 +54,20 @@ public struct VoiceRoomSheet: Equatable, Sendable {
     public static func open(_ doc: NativeProjectDocument, selection: [String], previous: Run? = nil) -> VoiceRoomSheet {
         let fps = max(1e-9, doc.frameRate.numerator / max(doc.frameRate.denominator, 1e-9))
         let assets = Dictionary(doc.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        var all: [Clip] = []
-        for track in doc.sequence.tracks where track.hidden != true && track.locked != true {
+        var all: [(clip: Clip, writable: Bool)] = []
+        for track in doc.sequence.tracks where track.hidden != true {
             for clip in track.clips where clip.hidden != true && clip.holdSourceFrame == nil {
                 guard let asset = assets[clip.assetId], asset.kind == .audio || asset.kind == .video else { continue }
-                all.append(Clip(clipId: clip.id, name: clip.name?.isEmpty == false ? clip.name! : asset.name,
-                                kind: AudioCarve.classify([clip.name, asset.name]), start: clip.startFrame / fps))
+                all.append((Clip(clipId: clip.id, name: clip.name?.isEmpty == false ? clip.name! : asset.name,
+                                 kind: AudioCarve.classify([clip.name, asset.name]), start: clip.startFrame / fps), track.locked != true))
             }
         }
+        // A voice is only read, so it may sit on a locked track; a bed is written, so it may not.
         let chosen = Set(selection)
-        var voices = all.filter { chosen.contains($0.clipId) }
-        if voices.isEmpty { voices = all.filter { $0.kind == .voice } }
+        var voices = all.map(\.clip).filter { chosen.contains($0.clipId) }
+        if voices.isEmpty { voices = all.map(\.clip).filter { $0.kind == .voice } }
         let voiceIds = Set(voices.map(\.clipId))
-        let beds = all.filter { $0.kind != .voice && !voiceIds.contains($0.clipId) }
+        let beds = all.filter { $0.writable && $0.clip.kind != .voice && !voiceIds.contains($0.clip.clipId) }.map(\.clip)
             .map { Bed(clip: $0, checked: $0.kind == .music || $0.kind == .sfx) }
         var sheet = VoiceRoomSheet(voices: voices, beds: beds)
         if let previous { sheet.settings = previous.settings; sheet.mode = previous.mode }
@@ -96,6 +98,7 @@ extension InspectorPanel {
     public func openVoiceRoomSheet() {
         guard let editor else { return }
         voiceRoom = VoiceRoomSheet.open(editor.document, selection: selection, previous: lastVoiceRoomRun)
+        if openGroupId != Self.voiceRoomGroupId { groupBeforeVoiceRoom = openGroupId }
         openGroupId = Self.voiceRoomGroupId
         onEdited?()
     }
@@ -104,7 +107,7 @@ extension InspectorPanel {
     public func closeVoiceRoomSheet() {
         guard voiceRoom != nil else { return }
         voiceRoom = nil
-        if openGroupId == Self.voiceRoomGroupId { openGroupId = "audio-fx" }
+        if openGroupId == Self.voiceRoomGroupId { openGroupId = groupBeforeVoiceRoom }
         onEdited?()
     }
 
@@ -117,7 +120,7 @@ extension InspectorPanel {
         }
         lastVoiceRoomRun = run
         voiceRoom = nil
-        if openGroupId == Self.voiceRoomGroupId { openGroupId = "audio-fx" }
+        if openGroupId == Self.voiceRoomGroupId { openGroupId = groupBeforeVoiceRoom }
         onMakeRoomForVoice?(run)
         onEdited?()
     }
