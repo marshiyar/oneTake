@@ -204,14 +204,14 @@ final class SettingsPanelKeyboardTests: XCTestCase {
         XCTAssertEqual(s.focus.ringRect(s.hits), s.hits.rect { $0 == .appearance(.dark) }, "the ring is drawn on it")
 
         // Interface size (#106) is the stop after Appearance.
-        let forward: [SettingsPanel.Hit] = [.interfaceSize, .audio, .cache, .chooseFolder, .resetFolder, .hold, .input, .countIn, .preRoll, .close,
+        let forward: [SettingsPanel.Hit] = [.interfaceSize, .audio, .cache, .chooseFolder, .resetFolder, .hold, .input, .countIn, .readingRate, .close,
                                             .appearance(.dark), .interfaceSize]   // past Close, round to the first control
         for want in forward {
             XCTAssertTrue(press(s, c, EditorKey(.tab)), "Tab is taken by the modal card")
             XCTAssertEqual(s.focus.current, want)
             XCTAssertTrue(s.focus.visible)
         }
-        let backward: [SettingsPanel.Hit] = [.appearance(.dark), .close, .preRoll, .countIn, .input, .hold]
+        let backward: [SettingsPanel.Hit] = [.appearance(.dark), .close, .readingRate, .countIn, .input, .hold]
         for want in backward {
             XCTAssertTrue(press(s, c, EditorKey(.tab, shift: true)))
             XCTAssertEqual(s.focus.current, want)
@@ -483,7 +483,7 @@ final class SettingsPanelFocusSnapshotTests: XCTestCase {
     }
 
     /// At 1440×900 the card holds the interface-size row above the audio field (issue #106): the audio field is
-    /// (612, 381, 348, 28), so the 2px ring covers y 379…381 above it; without the ring that pixel is the card (`popover`: #252525 dark, #FFFFFF light).
+    /// (612, 358, 348, 28), so the 2px ring covers y 356…358 above it; without the ring that pixel is the card (`popover`: #252525 dark, #FFFFFF light).
     func testFocusRingOnTheAudioFieldInDarkAndLight() throws {
         let modes: [(ThemeMode, String, String)] = [(.dark, "#4c8df0", "#252525"), (.light, "#1a5fcc", "#ffffff")]
         for (mode, accent, card) in modes {
@@ -499,7 +499,7 @@ final class SettingsPanelFocusSnapshotTests: XCTestCase {
                 XCTAssertEqual(s.focus.current, .audio)
                 var t = render(s, "settings-focus-\(mode.rawValue)", scale: scale)
                 let field = try XCTUnwrap(s.hits.rect { $0 == .audio })
-                XCTAssertEqual(field, CanvasRect(x: 612, y: 381, width: 348, height: 28))
+                XCTAssertEqual(field, CanvasRect(x: 612, y: 358, width: 348, height: 28))
                 assertPixel(t, field.midX, field.y - 1, scale: scale, accent, tol: 30)
                 s.focus.pointerPressed()
                 t = render(s, "settings-nofocus-\(mode.rawValue)", scale: scale)

@@ -405,6 +405,9 @@ public protocol DesktopBackend: Sendable {
     func renders(projectId: String) throws -> [DesktopRender]
     /// Output path for a new export with this job id and format ("mp4", "webm", "mov").
     func renderOutputPath(projectId: String, jobId: String, format: String) throws -> String
+    /// The same with a file name of its own (`fileStem`, made safe and never taking a name another render has); nil
+    /// names the file after the job.
+    func renderOutputPath(projectId: String, jobId: String, fileStem: String?, format: String) throws -> String
     /// Records how an export ended so the history shows its duration and failures.
     func recordRender(projectId: String, jobId: String, failed: Bool, durationMs: Double?) throws
     func deleteRender(projectId: String, id: String) throws
@@ -482,6 +485,9 @@ public struct NotImplementedBackend: DesktopBackend {
     public func rendersDirectory(projectId: String) throws -> String { throw DesktopError.notImplemented("Renders") }
     public func renders(projectId: String) throws -> [DesktopRender] { throw DesktopError.notImplemented("Renders") }
     public func renderOutputPath(projectId: String, jobId: String, format: String) throws -> String { throw DesktopError.notImplemented("Renders") }
+    public func renderOutputPath(projectId: String, jobId: String, fileStem: String?, format: String) throws -> String {
+        throw DesktopError.notImplemented("Renders")
+    }
     public func recordRender(projectId: String, jobId: String, failed: Bool, durationMs: Double?) throws { throw DesktopError.notImplemented("Renders") }
     public func deleteRender(projectId: String, id: String) throws { throw DesktopError.notImplemented("Renders") }
     public func renderFrames(projectId: String, request: DesktopVideoFramesRequest) async throws -> DesktopVideoFrames {

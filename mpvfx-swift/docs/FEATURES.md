@@ -8,9 +8,53 @@ editor commands with undo/redo. Cross-project clip paste detaches a resolved typ
 colliding style IDs cannot change the appearance; same-project paste keeps the live style link. Inspector edits
 override only the changed fields; nil can explicitly restore a field's default, and Reset removes the override to
 follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
-style/link versions and kinds remain serialized and undrawn with an open notice. The style browser is a later UI
-slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
-and `TextStyleRenderingTests`.
+style/link versions and kinds remain serialized and undrawn with an open notice. Covered by `NativeTextStyleTests`,
+`TextStyleEditTests` and `TextStyleRenderingTests`.
+Look section in the Text group (#281): up to two outlines (width, colour, outside or centre), a drop shadow (offset x and y, blur,
+colour), a glow (radius, strength, colour), a plate (per line or whole block, padding, corner radius, opacity, colour) and a two-colour
+gradient fill (colours, angle). Every row is a slider or hex field reached by Tab; sliders nudge with the arrow keys (Shift for ten),
+take typed values and reset. Outline widths, shadow offset and blur, glow strength, plate opacity and the gradient angle carry the keyframe
+gutter: a value is stored in the look until it is animated, then in a clip parameter track (`text.look.outline.0.width`,
+`text.look.shadow.x`, `text.look.glow.strength`, `text.look.plate.opacity`, `text.look.fill.angle` and so on); preview and export read the
+track at each frame through the same composition and the exporter accepts these ids. Stopping the stopwatch keeps the value at the
+playhead in the look as one undo step; removing a part removes its keys; only the last outline can be removed. A linked text style keeps its
+link and the look becomes a local override. Values that overshoot their range between keys are held to it when drawn. Covered by
+`TextLookRowsTests`, `NativeTextLookParameterTests`, `TextLookAnimationRenderingTests` and `TextLookExportAuditTests`.
+Starter text styles (#284): eight styles ship with the app (Lower third, Bold title, Subtitle plate, Quote, Label, Outline title,
+Soft shadow, Mono caption) as a JSON document with the copyright block (`TextStarterStyles`). They use the generic Sans and Monospace
+families only, so no font file is added, and each sets its text against an outline or a plate that keeps a 4.5:1 contrast on a white, a
+black and a mid-grey frame. They follow the user's own styles in the Style menu (and in ⌥⌘1…9), and a project copies one on first use.
+The JSON is embedded in the source rather than a Swift Package resource, because the resource bundle is unverified on Windows and Linux.
+Covered by `TextStarterStylesTests` and `TextStarterStylesRenderingTests`; Swift tests pending compilation.
+Text style library and Style menu (#283): `<userData>/text-styles.json` (written through the durable writer) keeps the user's
+styles for every project. The Text group's Style button opens a menu of those styles, each drawn as a sample with the text
+painter, then the project's own styles the library lacks; picking one applies it to the selected text layers and copies it
+into the project on first use (the project's copy of the same id wins afterwards), as one undo step. Save current as style
+(named by the Style name field, else "Text style N"), Update style, Detach and Delete from my styles (the project keeps its
+copy and layers keep their look) complete the menu. A corrupt or newer file is reported with its path, left untouched, and
+the menu still opens. ⌥⌘S saves the selected text layer as a style (with no text layer selected it still splits scenes) and
+⌥⌘1…9 apply the first nine styles; all are listed in the shortcuts card. Covered by `TextStyleLibraryTests` and
+`NativeTextStyleTests`; Swift tests pending compilation.
+
+Text reveals (#277): `clip.text.reveal` and `clip.text.unreveal` (`"v": 1`; unit characters, words or lines; style fade,
+rise, grow or typeOn with an optional blinking cursor; stagger and unit length in frames; order forward, backward, center
+or random with a seed) make a text layer arrive at the start of its clip and leave at its end. Units come from
+`TextLayout.units`, so wrapping, letter spacing and right-to-left reading order match the static text; punctuation
+arrives with the word before it. When the two reveals do not fit the clip both are compressed by the same factor
+(`NativeTextRevealTiming.isCompressed`). A frame that shows every letter is drawn as plain text, so a layer without
+a cursor is drawn unit by unit only while it animates. Reveals belong to the layer, not to a text style. Values outside the document rules
+are typed validator issues; a reveal from a newer version is kept unchanged, not drawn, and noticed on open.
+`TimelineEditor.setTextReveal` edits them in one undo step; the Moves-group rows are a later slice. Covered by
+`NativeTextRevealTests`, `TextRevealTests` and `InspectorTextAuditTests`.
+
+Text look, glow, plate and gradient (#280): `clip.text.look` also holds `glow` (radius, strength 0 to 1, colour), `plate`
+(mode line or block, horizontal and vertical padding, corner radius, colour with alpha) and `fill` (a two-colour gradient
+with an angle). The plate follows the line boxes of `TextLayout`: a line with no text gets none, and plates of neighbouring
+lines that touch or overlap join without a seam. The gradient spans the ink of the whole text, so a
+letter keeps its colour while the rest of a reveal arrives. A glow of strength 0 draws exactly as no glow. A look
+that holds only an idle glow is no look at all. Sizes are in composition pixels and scale with the layer and the export
+resolution. `TimelineEditor.setTextLook` validates and applies them in one undo step; the Look section is a later slice.
+Covered by `NativeTextLookTests` and `TextLookFinishTests`.
 
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript
@@ -151,6 +195,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Dockable Mixer (`mixer`): per audio track gain in dB, pan, mute/solo, and live peak/RMS | done: Window/Panels; persisted gain/pan and undo; same graph for playback/export | n/a |
 | Renders tab: format / output size / frame rate / quality, custom width, Export | done (settings in `preferences.json`; export through `RenderRun`, 38d06b3). Output size scales the composition with its aspect kept: "Composition" (its own size), 720p … 8K by the short edge (720p of a 9:16 composition is 720×1280), or a custom width with the height following (`CompositionRenderResolution.swift`); a fixed preset saved earlier reads as its short edge. Formats are the media engine's: MP4 and MOV (PNG, alpha); WebM is not offered (a saved WebM setting shows "WebM (not supported yet)" and Export refuses it) | close |
 | Renders tab: named export presets | implemented: save or update a name, apply all settings, and delete; per-user `render-presets.json` uses the durable writer. Unreadable or malformed files are reported with their path and preserved; unsupported formats remain visible with a reason and cannot be applied | close |
+| Renders tab: export several versions in one run (⇧⌘R) | implemented: a checklist of the export presets; one render per checked preset, one after another, named `<project> – <preset>` without replacing a file; per-version cancel and retry; a preset may render at its own composition size without changing the project | close |
 | Render list: progress, stage, cancel, delete, reveal, retry, hide finished, history across launches, thumbnails | done (38d06b3; real-render test) | close |
 | Render list: ETA | missing (panels) | n/a |
 | Caption property panel (style, animation entrance/exit/highlight, transform) | missing (unowned) | n/a |
@@ -259,7 +304,9 @@ The timeline lane's 314d72a added its own filmstrip cache; 71fdbd6 moved strips 
 | --- | --- |
 | Record motion (Record control with armed and recording states, stage outline and banner, trail, auto-stop, one undo step) | done (preview) |
 | Captions: caption track in the document, SRT import and export (backend) | partial: no menu entry yet (see `STATUS.md`) |
-| Captions: overlay, caption timeline, caption editing, caption property panel, Edit captions entry in the preview | missing (unowned) |
+| Captions: caption timeline lane, cue move, trim and text editing | done (#91, see section 13) |
+| Captions: caption look (font, size, outline, plate, position, safe area) stored on the track and drawn in the preview | done (#285, see section 13) |
+| Captions: caption property panel to edit the look, Edit captions entry in the preview | missing (unowned) |
 | Telemetry, crash prompt, feedback card | not part of the product |
 | Packaging and installers | partial: macOS disk image, Windows per-user setup.exe and Linux .deb; CI has built, installed and launched all three, and their smoke checks passed (see `STATUS.md`) |
 
@@ -386,6 +433,9 @@ captures cover dark/light at 1440×900 and 1280×800; full application screensho
 
 | Ability | Swift status | Visual |
 | --- | --- | --- |
+| Caption lane (#91) | done: the caption track shows as a band under the last track, only while the project has a caption track, with one block per cue and its text. Drag a block to move it, or drag an end to trim it; both clamp against the neighbouring cues and a one-frame minimum. Double-click a cue, or press Enter or F2 on the selected cue, to open a text field: Enter saves, Shift+Enter adds a line, Escape cancels. The + in the lane label adds a 2 s cue at the playhead, or up to the next cue. Every edit is one undo step and persists in the edit history (`Tests/MpvfxTimelineTests/CaptionEditPlanTests.swift`, `Tests/MpvfxTimelineTests/CaptionEditorTests.swift`, `Tests/MpvfxTimelineTests/CaptionLaneTests.swift`) | n/a |
+| Caption look (#285) | done: `sequence.captions.look` (`"v": 1`) gives every cue one look: font, size (a fraction of the short edge), weight, colour, up to two outlines, a shadow, a plate, position (bottom, top or custom) and a safe-area margin; a cue may override its position. Lines wrap at 80% of the frame width, a cue over two lines gets a warning badge on the lane and is still shown whole, and the text stays inside the safe area at any composition size. The preview draws it over the picture (`Tests/MpvfxSharedTests/Project/NativeCaptionLookTests.swift`, `Tests/MpvfxSharedTests/Project/NativeCaptionLayoutTests.swift`, `Tests/MpvfxPlayerTests/PreviewCaptionTests.swift`, `Tests/MpvfxTimelineTests/CaptionLookTests.swift`) | n/a |
+| Caption list (#287) | done: the Captions panel (Window menu, docked) lists every cue with its in and out time and text. ↑/↓ move between cues and put the playhead on the cue; Enter edits the text in place; ⌥[ and ⌥] nudge the in or out point one frame (add ⇧ for the other way); ⌘Enter splits at the caret and the playhead, keeping the two cues contiguous; ⌘J joins with the next cue; ⌘F and ⌥⌘F find and replace across every cue with a case-sensitive option, Replace all one undo step. A row read faster than the reading-rate limit (Settings, default 17 characters per second) shows a badge (`Tests/MpvfxTimelineTests/CaptionListEditTests.swift`, `Tests/MpvfxPanelsTests/CaptionsPanelTests.swift`) | n/a |
 | Background generator clips (#452) | done: the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn | n/a |
 | Cut transitions (dissolve, dip, wipe, push) | done: select either clip at a touching cut and open Design > Transition. Add/remove a transition, choose Dissolve, Dip, Wipe or Push, and edit duration in frames. Wipe and Push have Left/Right/Up/Down directions; Wipe has edge softness; Dip offers black or white. Tab reaches every control; Space selects an option and Enter commits duration. Each edit is one undo step. Wipe and Push need source handles on both sides, with shared picture/audio timing. Preview and export use the same canvas-space painter. Still missing: timeline handles to add, resize or remove a transition, and a Transitions tab | close |
 | Sequence markers (#409) | done: M in the focused timeline adds a named marker at the playhead. The Window menu opens the dockable Markers panel (`markers`), initially closed. Click/Enter jumps; double-click/F2 edits the name, Tab chooses time in seconds, #RRGGBB color and note, Enter saves, Escape cancels, Delete removes. Add/edit/delete each undo in one step. Optional `sequence.markers` preserves older projects and unknown marker fields (`Tests/MpvfxPanelsTests/MarkersPanelTests.swift`) | n/a |

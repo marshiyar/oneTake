@@ -78,6 +78,8 @@ final class EditorSession {
     var appearance: AppearanceSettings?
     /// The Settings card (Cmd/Ctrl+,, MpVFX > Settings… on macOS); EditorSession+Settings.
     let settingsPanel = SettingsPanel()
+    /// The Captions dock panel, kept so the Settings card can push the reading rate to it (EditorSession+DockedPanels).
+    var captionsPanel: CaptionsPanel?
     /// Shared media frames/peaks cache (MediaThumbnails.swift): bin cards, audio rows, timeline filmstrips.
     lazy var mediaThumbnails: MediaThumbnails = {
         let t = MediaThumbnails(post: { [weak self] body in self?.postToUI(body) })
@@ -391,6 +393,7 @@ final class EditorSession {
     /// a project folder (EditorSession+OpenProject); Cmd+, / Ctrl+, opens and closes Settings (EditorSession+Settings).
     func commandKey(_ k: EditorKey) -> Bool {
         if k.command, k.shift, !k.alt, case .char(let c) = k.code, c.lowercased() == "e" { return requestSaveFrame() }
+        if k.command, k.shift, !k.alt, case .char(let c) = k.code, c.lowercased() == "r" { return requestExportVersions() }
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
         case "s":
@@ -406,6 +409,15 @@ final class EditorSession {
             toggleSettings(); return true
         default: return false
         }
+    }
+
+    /// ⇧⌘R and File > Export versions…: the Renders tab with its checklist of export presets. False without a project.
+    @discardableResult
+    func requestExportVersions() -> Bool {
+        guard let panels, project != nil else { return false }
+        panels.rendersPanel.openExportVersions()
+        redraw()
+        return true
     }
 
     /// Copies files into the project, then adds each video, audio and image file to the document's assets

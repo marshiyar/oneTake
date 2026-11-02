@@ -15,7 +15,8 @@
 // `<userData>/preferences.json`: the export dialog's last render settings ("hf-studio-render-settings") and,
 // per project, the renders the user removed from the Renders list ("hf-studio-hidden-renders:<projectId>",
 // at most the 200 newest ids), the appearance ("mpvfx-appearance") and the Settings window's interface size,
-// audio output device, preview cache size default export folder and default hold length. Unreadable or malformed files fall back to nothing stored;
+// audio output device, preview cache size, default export folder, default hold length and caption reading rate.
+// Unreadable or malformed files fall back to nothing stored;
 // values are opaque JSON that the reading feature validates. Every change rewrites the whole file through
 // `NativeDurableWrite` (temp file, fsync, rename, folder fsync), the same path a project save takes, so a crash
 // mid-write leaves the previous file, never a torn one.
@@ -88,12 +89,15 @@ public final class DesktopPreferences: @unchecked Sendable {
         }
         set { set("mpvfx-voice-count-in", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
     }
-    public var voicePreRoll: Int {
+    /// Characters per second a caption may run before it is badged; 17 is the default and 5...40 the range (the same
+    /// as `NATIVE_CAPTION_READING_RATE_DEFAULT` and `NATIVE_CAPTION_READING_RATE_RANGE` in MpvfxShared, which this
+    /// module does not import).
+    public var captionReadingRate: Int {
         get {
-            guard let n = value("mpvfx-voice-pre-roll")?.number, n.isFinite, (0...5).contains(n), n == n.rounded() else { return 2 }
+            guard let n = value("mpvfx-caption-reading-rate")?.number, n.isFinite, (5...40).contains(n), n == n.rounded() else { return 17 }
             return Int(n)
         }
-        set { set("mpvfx-voice-pre-roll", (0...5).contains(newValue) ? .number(Double(newValue)) : nil) }
+        set { set("mpvfx-caption-reading-rate", (5...40).contains(newValue) ? .number(Double(newValue)) : nil) }
     }
 
     public static let audioOutputDeviceKey = "mpvfx-audio-output-device"

@@ -74,6 +74,12 @@ final class SessionPanels {
                 try NativeDurableWrite().write(data, to: path)
             }
         } catch { session.onError("Saved looks unavailable", error.localizedDescription) }
+        let textStyles = TextStyleLibrary(path: URL(fileURLWithPath: userData).appendingPathComponent("text-styles.json").path) { data, path in
+            try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+            try NativeDurableWrite().write(data, to: path)
+        }
+        if let problem = textStyles.loadError { session.onError("Text styles unavailable", problem.localizedDescription) }
+        right.inspector.textStyleLibrary = textStyles
         right.inspector.resolveUserLookLut = { [weak session] source in session?.absoluteMediaPath(source) ?? source }
         wireLeft()
         wireRight()
