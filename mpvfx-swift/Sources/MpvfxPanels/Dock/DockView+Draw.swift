@@ -79,7 +79,12 @@ extension DockView {
     }
 
     func drawFocusRing(_ c: CanvasContext) {
-        guard focusVisible, let f = focused, let rect = tabs.values.joined().first(where: { $0.panel == f })?.rect else { return }
+        guard focusVisible, let f = focused else { return }
+        // The pane that takes the keys: a 2 pt accent outline just inside its content, and the ring on its tab.
+        if let content = contentRect(of: f), content.width > 4, content.height > 4 {
+            c.strokeRect(content.insetBy(1), PanelTheme.accent, width: 2)
+        }
+        guard let rect = tabs.values.joined().first(where: { $0.panel == f })?.rect else { return }
         PanelDraw.focusRing(c, rect.insetBy(3), radius: PanelTheme.radius)
     }
 

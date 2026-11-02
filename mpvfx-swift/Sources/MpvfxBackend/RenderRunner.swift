@@ -50,7 +50,8 @@ public final class RenderRun: @unchecked Sendable {
         let plan = planExport(request.document, settings: request.settings)
         guard plan.canStart else { throw DesktopError(plan.issues.joined(separator: " ")) }
         guard NativeExportFrames.defaultRenderer != nil else { throw DesktopError("Can't export: \(EXPORT_NO_FRAME_RENDERER_MESSAGE)") }
-        let outputPath = try backend.renderOutputPath(projectId: request.projectId, jobId: request.jobId, format: request.settings.format.rawValue)
+        let outputPath = try backend.renderOutputPath(projectId: request.projectId, jobId: request.jobId, fileStem: request.fileStem,
+                                                      format: request.settings.format.rawValue)
         let run = RenderRun(id: request.jobId, outputPath: outputPath)
         let requestBox = UncheckedBox(request)
         Task {
@@ -102,6 +103,9 @@ public struct RenderRequest {
     public var settings: ExportSettings
     public var settingsJSON: JSONValue
     public var jobId = "render-" + UUID().uuidString.lowercased()
+    /// Names the output file (without extension) instead of the job id, e.g. "My film – Square"; a name another
+    /// render already has gets a number. Nil keeps `<jobId>.<format>`.
+    public var fileStem: String?
     public var keyframeEngine: KeyframeEngine?
     public init(projectId: String, document: NativeProjectDocument, settings: ExportSettings, settingsJSON: JSONValue) {
         self.projectId = projectId; self.document = document; self.settings = settings; self.settingsJSON = settingsJSON

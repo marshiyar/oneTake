@@ -75,7 +75,9 @@ final class TimelineInput: CanvasInput {
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { region.scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift) }
     func keyDown(_ k: EditorKey) -> Bool {
         // Record's Esc comes before the timeline, which consumes Esc.
-        let h = s.player.recordEscapeKey(k) || s.textStyleKey(k) || s.sceneSplitKey(k) || s.commandKey(k) || s.keyframeKey(k) || s.timeline.keyDown(k) || s.player.globalKey(k)
+        // The caption text field takes every key while it is open.
+        let h = s.timeline.view.captions.edit != nil ? s.timeline.keyDown(k)
+            : s.player.recordEscapeKey(k) || s.textStyleKey(k) || s.sceneSplitKey(k) || s.commandKey(k) || s.keyframeKey(k) || s.timeline.keyDown(k) || s.player.globalKey(k)
         afterKey(); return h
     }
     func keyUp(_ k: EditorKey) { s.playback.keyUp(k) }

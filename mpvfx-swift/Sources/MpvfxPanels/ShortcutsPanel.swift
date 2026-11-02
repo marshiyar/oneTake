@@ -22,7 +22,7 @@ public struct ShortcutSection: Equatable, Sendable { public let title: String; p
 public let shortcutSections: [ShortcutSection] = {
     func s(_ t: String, _ h: [(String, String)]) -> ShortcutSection { ShortcutSection(title: t, hints: h.map { ShortcutHint(key: $0.0, label: $0.1) }) }
     return [
-        s("File", [("⇧⌘E", "Save frame… (JPEG)")]),
+        s("File", [("⇧⌘E", "Save frame… (JPEG)"), ("⇧⌘R", "Export versions… (one render per export preset)")]),
         s("Playback", [("⌥Space", "Record / stop voice"), ("Esc", "Discard voice take"), ("Space", "Play / Pause; keep voice take"), ("J", "Play backward"), ("K", "Stop"), ("L", "Play forward"), ("M", "Add sequence marker"),
                        ("⇧L", "Toggle loop"), ("←/→", "Step 1 frame"), ("⇧←/⇧→", "Step 10 frames"), ("F", "Toggle fullscreen")]),
         s("Keyframes (when an element is selected)", [("K", "Toggle position keyframe at playhead"),
@@ -44,7 +44,7 @@ public let shortcutSections: [ShortcutSection] = {
                                           ("⌥ Drag", "Record rotation"), ("⌘ Drag↕", "Record opacity"), ("⌘ Scroll", "Record scale")]),
         s("Canvas", [("\\", "Toggle before / after compare"), ("Drag", "Move element / add keyframe"), ("⌥ Drag", "Move entire animation path"), ("⇧ Drag", "Uniform resize")]),
         s("Crop", [("Drag edge", "Crop a side"), ("Drag center", "Reposition the crop")]),
-        s("Panels", [("⌘1", "Compositions tab"), ("⌘2", "Assets tab")]),
+        s("Panels", [("⌘1", "Compositions tab"), ("⌘2", "Assets tab"), ("F6 / ⇧F6", "Next / previous panel")]),
         s("Work area", [("I", "Set in-point"), ("⇧I", "Clear in-point"), ("O", "Set out-point"), ("⇧O", "Clear out-point"),
                         ("A", "Jump to in-point"), ("E", "Jump to out-point")]),
     ]

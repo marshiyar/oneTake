@@ -42,6 +42,25 @@ final class RenderPresetStoreTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir), ["render-presets.json"])
     }
 
+    /// #334: a preset's composition size is saved with it, survives an update from the Renders tab, can be cleared, and a
+    /// bad one is refused without touching the file.
+    func testCompositionSizeIsSavedKeptOnUpdateAndClearedAndABadOneIsRefused() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let store = RenderPresetStore(userData: dir)
+        try store.save(name: "Tall", settings: RenderSettingsModel())
+        let tall = RenderPresetComposition(width: 1080, height: 1920)
+        XCTAssertEqual(try store.setComposition(name: "Tall", tall).first?.composition, tall)
+        var settings = RenderSettingsModel(); settings.fps = 60
+        XCTAssertEqual(try store.save(name: "Tall", settings: settings).first?.composition, tall, "updating the settings keeps the size")
+        XCTAssertEqual(try RenderPresetStore(userData: dir).load().first?.composition, tall)
+        let bytes = try Data(contentsOf: URL(fileURLWithPath: store.path))
+        XCTAssertThrowsError(try store.setComposition(name: "Tall", RenderPresetComposition(width: 0, height: 1920)))
+        XCTAssertThrowsError(try store.setComposition(name: "Missing", tall))
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: store.path)), bytes, "a refused size leaves the file as it was")
+        XCTAssertNil(try store.setComposition(name: "Tall", nil).first?.composition)
+    }
+
     func testA1CorruptFileIsReportedWithItsPathAndNeitherSaveNorDeleteOverwritesIt() throws {
         let dir = try directory()
         defer { try? FileManager.default.removeItem(atPath: dir) }

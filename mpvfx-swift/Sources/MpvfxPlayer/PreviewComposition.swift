@@ -184,6 +184,8 @@ public struct PreviewComposition {
     /// statted once per build, never per frame; a rebuild after the file comes back clears its mark.
     public let offlineAssetIds: Set<String>
     public let engine: KeyframeEngine?
+    /// The sequence's caption track: drawn over the picture in the preview (PreviewComposition+Captions.swift).
+    public let captions: NativeCaptionTrack?
 
     /// `naturalSize`: the media's natural pixel size (default: the size cached on the asset). A clip with no size
     /// of its own takes the default box for it (nativeClipNaturalLayout), as export does.
@@ -196,6 +198,7 @@ public struct PreviewComposition {
         let rate = document.frameRate.denominator != 0 ? document.frameRate.numerator / document.frameRate.denominator : 30
         fps = rate > 0 && rate.isFinite ? rate : 30
         self.engine = engine
+        captions = document.sequence.captions
         let assets = Dictionary(document.assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var ordered: [(Entry, Int)] = []
         var n = 0
