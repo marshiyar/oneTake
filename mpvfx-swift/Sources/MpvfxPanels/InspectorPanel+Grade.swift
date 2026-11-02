@@ -118,10 +118,11 @@ extension InspectorPanel {
         rows.append(gradeSectionRow("primary"))
         if gradeSectionIsOpen("primary") {
             gap(4)
+            rows += primaryRows(editor, s, g, commit: commit)
+            // The sliders come first, the measuring tools under them, so Exposure is in view when Grade opens.
+            gap(4)
             rows.append(autoBalanceRow(s.id))
             rows += matchLookRows(s.id)
-            gap(4)
-            rows += primaryRows(editor, s, g, commit: commit)
         }
         gap(6)
         rows.append(gradeSectionRow("wheels"))

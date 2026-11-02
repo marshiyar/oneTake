@@ -49,21 +49,27 @@ final class GradeSectionsTests: XCTestCase {
 
     func shown(_ r: RightPanel) throws -> ColorGrading { try XCTUnwrap(r.inspector.editor).gradeShown(clipId: "clip:a", time: 0) }
 
-    /// A1: at 1280x800 the right column is 364 wide and, under the status line, the timeline row and the panel's tab strip, about
-    /// 520 tall. Opening Grade shows Amount and the first four Primary rows inside the body without scrolling.
-    func testA1AmountAndFirstFourPrimaryRowsAreInViewAt1280x800() throws {
+    /// A1: at 1280x800 the right column is 364 wide and, under the status line (22), the timeline group (360 + its 32 tab
+    /// strip), the panel's own tab strip (32) and the 48 clip header, its body is about 350 tall. Opening Grade puts Amount
+    /// and the first Primary sliders inside it without scrolling. (The first four fit only with unstacked sliders; at this
+    /// width each slider stacks its label over the track, 56 pt a row, so Exposure and Contrast fit.)
+    func testA1AmountAndExposureAreInViewAt1280x800() throws {
         let width = PanelFit.fit(1280, PanelFit.defaults(1280)).right
         XCTAssertEqual(width, 364)
         let r = try rightPanel(width: 1280)
-        draw(r, width: width, height: 520)
+        // The dock gives the timeline group (360 + its tab strip) the share it has of the 1440x900 reference's container.
+        let container = 800 - ShellStatusLine.height - PanelTheme.seamWidth
+        let height = container * (1 - (360 + PanelTabStrip.height) / DockDefaults.referenceContainerHeight)
+        draw(r, width: width, height: height)
         let body = r.inspector.bodyRect
-        XCTAssertGreaterThan(body.height, 0)
-        for key in ["grade:amount"] + ColorGrading.adjustSliders.prefix(4).map({ "grade:adj:\($0.key)" }) {
+        XCTAssertEqual(body.height, height - 32 - 48, accuracy: 1)
+        for key in ["grade:amount", "grade:adj:exposure", "grade:adj:contrast"] {
             let rect = try XCTUnwrap(r.inspector.hits.rect { $0 == .slider(key) }, key)
             XCTAssertGreaterThanOrEqual(rect.y, body.y, key)
             XCTAssertLessThanOrEqual(rect.maxY, body.maxY, "\(key) is inside the body without scrolling")
         }
-        XCTAssertEqual(r.inspector.bodyScroll, 0, accuracy: 1, "the group header sits at the body's top, nothing scrolled past it")
+        let groupHeader = try XCTUnwrap(r.inspector.hits.rect { $0 == .group("grade") })
+        XCTAssertEqual(groupHeader.y, body.y, accuracy: 1, "the Grade header sits at the body's top")
     }
 
     func testLooksStartClosedAndEveryOtherSectionOpen() throws {
@@ -153,7 +159,6 @@ final class GradeSectionsTests: XCTestCase {
         XCTAssertNil(InspectorPanel.activeLook(try shown(r)), "any later edit of the look's own values")
         c.reset(); r.draw(c, size: CanvasSize(409, 4000))
         XCTAssertTrue(c.drawnStrings.contains("Custom"))
-        XCTAssertEqual(ColorGrading.gradePresets.filter { InspectorPanel.activeLook(try! shown(r))?.id == $0.id }.count, 0)
 
         var amount = ColorGrading().applying(warm); amount.intensity = 0.5
         XCTAssertNil(InspectorPanel.activeLook(amount), "Amount moved off the look's")
