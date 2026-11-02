@@ -28,7 +28,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   reads (the preview used to step through the source at a constant rate once playback started); editing a ramp
   point shows the old picture until the new frames are ready.
 - Frame mixing for slow motion: a speed ramp (or a constant speed below 1x) can blend the two source frames around
-  each position in linear light, in preview and export, so slow sections of normal-rate footage do not step.
+  each position in linear light, in preview and export, so slow sections of normal-rate footage do not step; the Media
+  group has a Frame mix switch for it.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

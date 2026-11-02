@@ -45,6 +45,33 @@ public extension TimelineEditor {
     /// Whether the clip's sound keeps its pitch at a speed other than 1x (absent in the document means it does).
     func preservesPitch(clipId: String) -> Bool { clip(clipId)?.clip.preservesPitch ?? true }
 
+    /// Whether the clip mixes the two source frames around each position where it plays slower than 1x: its ramp's
+    /// `blend`, or `frameBlend` on a constant speed.
+    func mixesFrames(clipId: String) -> Bool {
+        guard let c = clip(clipId)?.clip else { return false }
+        if let ramp = c.speedRamp, ramp.isSupported { return ramp.mixesFrames }
+        return c.frameBlend == NativeSpeedRamp.blendMix
+    }
+
+    /// Turns frame mixing on or off (a speed ramp's `blend`, else the clip's `frameBlend`; off is stored as an absent key).
+    /// One undo step ("Mix frames" / "Show whole frames"); refused on a locked track.
+    @discardableResult
+    func setMixesFrames(clipId: String, _ on: Bool) -> Bool {
+        guard !isClipLocked(clipId), mixesFrames(clipId: clipId) != on else { return false }
+        var d = document
+        for t in d.sequence.tracks.indices {
+            guard let i = d.sequence.tracks[t].clips.firstIndex(where: { $0.id == clipId }) else { continue }
+            if var ramp = d.sequence.tracks[t].clips[i].speedRamp, ramp.isSupported {
+                ramp.blend = on ? NativeSpeedRamp.blendMix : nil
+                d.sequence.tracks[t].clips[i].speedRamp = ramp
+            } else {
+                d.sequence.tracks[t].clips[i].frameBlend = on ? NativeSpeedRamp.blendMix : nil
+            }
+            return commit(d, on ? "Mix frames" : "Show whole frames")
+        }
+        return false
+    }
+
     /// Keeps the pitch (tempo change) or lets it follow the speed (resampled). One undo step ("Keep pitch" /
     /// "Pitch follows speed"); refused on a locked track. The default (true) is stored as an absent key.
     @discardableResult

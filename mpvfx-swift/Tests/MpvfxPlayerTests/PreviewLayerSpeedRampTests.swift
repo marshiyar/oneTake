@@ -15,6 +15,7 @@ import XCTest
 import MpvfxCanvas
 import MpvfxShared
 import OneTakeMedia
+import MpvfxTimeline
 @testable import MpvfxPlayer
 
 /// The source frame a ramped layer shows: export asks `sourceTime(at:)` for every output frame.
@@ -151,5 +152,57 @@ final class PreviewLayerSpeedRampTests: XCTestCase {
             XCTAssertLessThanOrEqual(worst, 1, "timeline frame \(frame)")
         }
         cx.stopAll()
+    }
+
+    /// A3: editing a ramp point while the preview plays never stops it. The edited clip draws its previous picture until
+    /// the new lane's frame is ready (the compositor signals `frameReady`, awaited here with a gate, no sleeps), then
+    /// shows the frame the edited map gives, and the frames after it keep arriving. The latency is printed, as in
+    /// PreviewEditLatencyTests; the assertion is that the edit lands.
+    func testEditingARampPointWhilePlayingRedrawsWithTheNewMappingAndPlaybackContinues() throws {
+        let dir = try TestMedia.scratch("ramp-playing"); defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try numberedSource(in: dir)
+        func document(speed: Double) throws -> NativeProjectDocument {
+            try parseNativeProjectDocument(try NativeJSONValue.parse(#"""
+            {"schemaVersion":1,"id":"project:p","revision":1,"frameRate":{"numerator":30,"denominator":1},
+             "canvas":{"width":32,"height":18,"background":"#000000"},
+             "assets":[{"id":"asset:a","kind":"video","name":"n.mov","source":"numbered.mov","durationFrames":120}],
+             "sequence":{"id":"sequence:main","name":"Main","tracks":[{"id":"track:v1","kind":"video","clips":[
+              {"id":"clip:a","assetId":"asset:a","startFrame":0,"durationFrames":40,"sourceInFrame":0,"muted":true,
+               "speedRamp":{"v":1,"kind":"speed-ramp","points":[{"t":0,"speed":\#(speed)}]},
+               "effects":[],"parameterTracks":[]}]}]}}
+            """#), engine: nil)
+        }
+        let cx = PreviewCompositor()
+        defer { cx.stopAll() }
+        let canvas = PreviewEditLatencyTests.LastImageCanvas()
+        let rect = CanvasRect(x: 0, y: 0, width: 32, height: 18)
+        let gate = DispatchSemaphore(value: 0)
+        cx.frameReady = { gate.signal() }
+        func play(_ frame: Int) { cx.draw(canvas, in: rect, time: Double(frame) / 30, elements: [],
+                                          context: FrameDrawContext(backingScale: 1, isPlaying: true, speed: 1)) }
+        func shown() -> Int { canvas.image.map(sourceFrame) ?? -1 }
+        func settle(_ frame: Int) throws {   // draw until this frame's picture is the exact one
+            for _ in 0..<200 {
+                play(frame)
+                if cx.lastShown.first?.exact == true { return }
+                XCTAssertEqual(gate.wait(timeout: .now() + 5), .success, "frame \(frame) never arrived")
+            }
+            XCTFail("frame \(frame) never became exact")
+        }
+        cx.composition = PreviewComposition(document: try document(speed: 1), projectDir: dir, engine: nil)
+        for f in 8...10 { try settle(f) }
+        XCTAssertEqual(shown(), 10, "at 1x timeline frame 10 shows source frame 10")
+
+        // The edit: the same instant now maps to source frame 20.
+        cx.composition = PreviewComposition(document: try document(speed: 2), projectDir: dir, engine: nil)
+        let started = DispatchTime.now().uptimeNanoseconds
+        play(10)
+        XCTAssertEqual(cx.lastShown.first?.exact, false, "the first draw after the edit still shows the previous picture")
+        XCTAssertEqual(shown(), 10)
+        try settle(10)
+        let milliseconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6
+        print("Preview edit latency, ramp point while playing: \(milliseconds) ms")
+        XCTAssertEqual(shown(), 20, "the edited map's frame")
+        for f in 11...13 { try settle(f); XCTAssertEqual(shown(), f * 2, "playback continues on the edited map, frame \(f)") }
     }
 }
