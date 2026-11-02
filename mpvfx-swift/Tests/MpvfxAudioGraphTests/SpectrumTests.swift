@@ -90,6 +90,7 @@ final class SpectrumTests: XCTestCase {
         let analyzer = SpectrumAnalyzer(sampleRate: sampleRate)
         var trueCount = 0
         var pushed = 0
+        var emissionPositions: [Int] = []
         let total = 4096 + 2048 * 3
         var phase: Float = 0
         while pushed < total {
@@ -99,10 +100,14 @@ final class SpectrumTests: XCTestCase {
                 phase += 2 * .pi * 440 / 48_000
             }
             pushed += 128
-            if analyzer.push([frame]) { trueCount += 1 }
+            if analyzer.push([frame]) {
+                trueCount += 1
+                emissionPositions.append(pushed)
+            }
         }
         XCTAssertEqual(pushed, total)
-        XCTAssertEqual(trueCount, 4)
+        XCTAssertEqual(trueCount, 5)
+        XCTAssertEqual(emissionPositions, [2048, 4096, 6144, 8192, 10240])
     }
 
     func testAllBandsStayInRange() {
