@@ -20,8 +20,16 @@ public struct PreviewSpatialTransition: Equatable, Sendable {
     public var kind: NativeCutTransitionKind
     public var direction: NativeTransitionDirection
     public var softness: Double
+    /// Eased progress, 0 at the start of the range and 1 at its end.
     public var progress: Double
     public var incoming: Bool
+    /// Wipe edge angle in degrees (0 right, 90 down, 180 left, 270 up); nil: `direction`.
+    public var angle: Double? = nil
+    public var irisShape: NativeIrisShape = .circle
+    /// Iris centre as a fraction of the frame.
+    public var centreX = 0.5, centreY = 0.5
+    /// Zoom-through factor.
+    public var strength = NativeCutTransition.defaultStrength
 }
 
 extension PreviewPainter {

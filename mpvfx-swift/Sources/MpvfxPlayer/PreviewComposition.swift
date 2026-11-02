@@ -515,9 +515,11 @@ public struct PreviewComposition {
         if let s = t.incoming, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.incomingMix(atFrame: frame) }
         else if let s = t.outgoing, frame >= s.startFrame, frame < s.endFrame { span = s; mix = s.outgoingMix(atFrame: frame) }
         else { return }
-        if span.kind == .wipe || span.kind == .push {
+        if span.kind.isSpatial {
             layer.spatialTransition = .init(kind: span.kind, direction: span.direction, softness: span.softness,
-                                            progress: span.progress(atFrame: frame), incoming: span.toClipId == layer.clipId)
+                                            progress: span.easedProgress(atFrame: frame), incoming: span.toClipId == layer.clipId,
+                                            angle: span.angle, irisShape: span.irisShape, centreX: span.centreX,
+                                            centreY: span.centreY, strength: span.strength)
         }
         layer.opacity *= mix.opacity
         if mix.colorAmount > 0 { layer.transitionColor = CanvasColor(hex: span.color); layer.transitionColorAmount = mix.colorAmount }

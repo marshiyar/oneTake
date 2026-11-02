@@ -42,6 +42,7 @@ public extension TimelineEditor {
         switch command {
         case .add(let trackId, _): return trackId
         case .setLength(let i, _), .setKind(let i, _), .setAlignment(let i, _), .setColor(let i, _), .setDirection(let i, _), .setSoftness(let i, _), .remove(let i): id = i
+        case .setAngle(let i, _), .setIris(let i, _, _, _), .setStrength(let i, _), .setEase(let i, _): id = i
         }
         return document.sequence.tracks.first { $0.cutTransitions.contains { $0.id == id } }?.id
     }
@@ -56,6 +57,8 @@ public extension TimelineEditor {
         case .setDirection: "Change transition direction"
         case .setSoftness: "Change transition softness"
         case .setColor: "Change transition colour"
+        case .setAngle, .setIris, .setStrength: "Change transition options"
+        case .setEase: "Change transition ease"
         }
     }
 
