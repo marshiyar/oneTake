@@ -118,7 +118,9 @@ extension InspectorPanel {
 
     func writeCurve(_ g: ColorGrading, _ pts: [[Double]]) -> ColorGrading {
         var n = g
-        let tab = openCurveTab, stored = curveEditing.stored(pts)
+        // Animated coordinates still need addressable points when the curve becomes identity / flat.
+        // Only static curves may collapse their default shape to an absent value.
+        let tab = openCurveTab, stored = activeCurveIsAnimated ? pts : curveEditing.stored(pts)
         if tab.hue { n.hueCurves[tab.key] = stored } else { n.curves[tab.key] = stored }
         return n
     }

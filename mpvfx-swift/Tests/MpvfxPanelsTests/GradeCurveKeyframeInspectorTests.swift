@@ -155,7 +155,7 @@ final class GradeCurveKeyframeInspectorTests: XCTestCase {
         try click(p, .stopwatch("grade:curvekey"))
         try click(p, .custom("grade:curvetabs", 1))
         XCTAssertFalse(p.activeCurveIsAnimated)
-        XCTAssertEqual(p.keyframe("grade:curvekey")?.state, .none)
+        XCTAssertEqual(p.keyframe("grade:curvekey")?.state, InspectorRow.KeyframeState.none)
         XCTAssertTrue(p.keyDown(EditorKey(.enter)))
         XCTAssertEqual(e.colorGrading(clipId: "clip:a")?.curves["red"]?.count, 4)
         XCTAssertEqual(e.colorGrading(clipId: "clip:a")?.curves["master"]?.count, 3)
@@ -220,4 +220,104 @@ final class GradeCurveKeyframeInspectorTests: XCTestCase {
         for id in Self.ids { XCTAssertTrue(try keys(e, id).isEmpty) }
         XCTAssertTrue(p.activeCurveIsAnimated)
     }
+
+    func testNumberFieldKeysAnAnimatedEndpointReturningToIdentity() throws {
+        let (p, e) = try make()
+        var g = try XCTUnwrap(e.colorGrading(clipId: "clip:a"))
+        let initial: [[Double]] = [[0, 0], [1, 0.8]]
+        g.curves["master"] = initial
+        XCTAssertTrue(e.setColorGrading(clipId: "clip:a", g))
+        redraw(p)
+        try click(p, .stopwatch("grade:curvekey"))
+        p.time = 3; p.grade.selectedPoint = 1; redraw(p)
+        try XCTUnwrap(p.number("grade:curve:output")).commit("100")
+        let id = NativeGradeParameter.curveId("master", 1, "y")
+        XCTAssertEqual(try keys(e, id).map(\.frame), [30, 90])
+        XCTAssertEqual(try keys(e, id).last?.value, .number(1))
+        XCTAssertEqual(e.gradeShown(clipId: "clip:a", time: 3).curves["master"], GradeCurve.identity)
+        XCTAssertEqual(e.colorGrading(clipId: "clip:a")?.curves["master"], initial)
+    }
+
+    func testDraggingAnimatedEndpointToIdentityKeysOnlyItsOutput() throws {
+        let (p, e) = try make()
+        var g = try XCTUnwrap(e.colorGrading(clipId: "clip:a"))
+        let initial: [[Double]] = [[0, 0], [1, 0.8]]
+        g.curves["master"] = initial
+        XCTAssertTrue(e.setColorGrading(clipId: "clip:a", g))
+        redraw(p)
+        try click(p, .stopwatch("grade:curvekey"))
+        p.time = 3; redraw(p)
+        try drag(p, from: [1, 0.8], to: [1, 1])
+        let output = NativeGradeParameter.curveId("master", 1, "y")
+        for id in NativeGradeParameter.curveIds("master", count: 2) {
+            XCTAssertEqual(try keys(e, id).map(\.frame), id == output ? [30, 90] : [30])
+        }
+        XCTAssertEqual(try keys(e, output).last?.value, .number(1))
+        XCTAssertEqual(e.gradeShown(clipId: "clip:a", time: 3).curves["master"], GradeCurve.identity)
+        XCTAssertEqual(e.colorGrading(clipId: "clip:a")?.curves["master"], initial)
+    }
+
+    func testNumberFieldKeysAnAnimatedDeltaCurveReturningToFlat() throws {
+        let (p, e) = try make()
+        var g = try XCTUnwrap(e.colorGrading(clipId: "clip:a"))
+        let initial: [[Double]] = [[0, 0], [1, 0.2]]
+        g.curves["lumaVsSaturation"] = initial
+        XCTAssertTrue(e.setColorGrading(clipId: "clip:a", g))
+        redraw(p)
+        try click(p, .custom("grade:curvetabs", 7))
+        try click(p, .stopwatch("grade:curvekey"))
+        p.time = 3; p.grade.selectedPoint = 1; redraw(p)
+        try XCTUnwrap(p.number("grade:curve:output")).commit("0")
+        let id = NativeGradeParameter.curveId("lumaVsSaturation", 1, "y")
+        XCTAssertEqual(try keys(e, id).map(\.frame), [30, 90])
+        XCTAssertEqual(try keys(e, id).last?.value, .number(0))
+        XCTAssertEqual(e.gradeShown(clipId: "clip:a", time: 3).curves["lumaVsSaturation"], GradeCurve.flatDelta)
+        XCTAssertEqual(e.colorGrading(clipId: "clip:a")?.curves["lumaVsSaturation"], initial)
+    }
+
+    func testCurveKeyframeControlsAreDrawnForEachStoredTab() throws {
+        let (p, e) = try make()
+        var g = try XCTUnwrap(e.colorGrading(clipId: "clip:a"))
+        for tab in InspectorPanel.curveTabs {
+            if tab.hue { g.hueCurves[tab.key] = [[0, 0], [120, 0], [240, 0]] }
+            else { g.curves[tab.key] = Self.points }
+        }
+        XCTAssertTrue(e.setColorGrading(clipId: "clip:a", g))
+        for (index, tab) in InspectorPanel.curveTabs.enumerated() {
+            redraw(p)
+            try click(p, .custom("grade:curvetabs", index))
+            XCTAssertNotNil(p.hits.rect { $0 == .stopwatch("grade:curvekey") }, tab.key)
+            XCTAssertNotNil(p.keyframe("grade:curvekey"), tab.key)
+            try click(p, .stopwatch("grade:curvekey"))
+            for id in NativeGradeParameter.curveIds(tab.key, count: 3, hue: tab.hue) {
+                XCTAssertEqual(try keys(e, id).map(\.frame), [30], tab.key)
+            }
+        }
+    }
+
+    func testFooterIgnoresDragAndReleaseAndLocksOnlyAffectedActions() throws {
+        let (p, e) = try make()
+        p.grade.selectedPoint = 1; redraw(p)
+        let footer = try XCTUnwrap(p.customRow("grade:curvefoot"))
+        let before = e.colorGrading(clipId: "clip:a"), undo = e.undoStack.count
+        for phase in [1, 2] {
+            for part in 0...2 { footer.pointer(part, CanvasPoint(0, 0), phase) }
+        }
+        XCTAssertEqual(e.colorGrading(clipId: "clip:a"), before)
+        XCTAssertEqual(e.undoStack.count, undo)
+        // A retained footer must check animation live after its row was built.
+        try click(p, .stopwatch("grade:curvekey"))
+        for part in 0...2 { footer.pointer(part, CanvasPoint(0, 0), 0) }
+        XCTAssertEqual(e.colorGrading(clipId: "clip:a"), before)
+        try click(p, .custom("grade:curvetabs", 1))
+        p.grade.selectedPoint = 1; redraw(p)
+        let shown = e.gradeShown(clipId: "clip:a", time: p.time)
+        XCTAssertEqual(p.curveFooterButtons(shown).map(\.enabled), [true, true, false])
+        // Reset all affects animated channels too, so it stays disabled; Reset curve edits Red.
+        try click(p, .custom("grade:curvefoot", 0))
+        XCTAssertNil(e.colorGrading(clipId: "clip:a")?.curves["red"])
+        XCTAssertEqual(e.colorGrading(clipId: "clip:a")?.curves["master"], Self.points)
+        for id in Self.ids { XCTAssertEqual(try keys(e, id).map(\.frame), [30]) }
+    }
+
 }
