@@ -34,12 +34,9 @@ final class InspectorTransitionKindsTests: XCTestCase {
     """#
 
     func panel(kind: NativeCutTransitionKind = .dissolve) throws -> (InspectorPanel, TimelineEditor) {
-        let editor = try TimelineEditor(json: Self.json)
+        // The transition starts as `kind`, so the editor's undo history is empty.
+        let editor = try TimelineEditor(json: Self.json.replacingOccurrences(of: #""kind":"dissolve""#, with: #""kind":"\#(kind.rawValue)""#))
         let panel = InspectorPanel(); panel.editor = editor; panel.selection = ["A"]; panel.openGroupId = "transitions"
-        if kind != .dissolve {
-            try pick(panel, "transition:kind", kind.rawValue)
-            editor.clearHistory()
-        }
         return (panel, editor)
     }
 
@@ -140,7 +137,6 @@ final class InspectorTransitionKindsTests: XCTestCase {
         let (panel, editor) = try panel(kind: .wipe)
         try commitNumber(panel, "transition:angle", "90")
         XCTAssertEqual(transition(editor).angle, 90)
-        editor.clearHistory()
         try commitNumber(panel, "transition:angle", "")
         XCTAssertNil(transition(editor).angle, "empty text clears back to the direction")
     }
