@@ -214,6 +214,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var narration: NativeClipNarrationRecord? = nil
     /// Hand-placed beat marks in original source frames; absent means none.
     public var beats: NativeClipBeats? = nil
+    /// Corner-pin distort of the clip's box (`NativeClipCorners`); absent means undistorted.
+    public var corners: NativeClipCorners? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.

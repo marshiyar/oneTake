@@ -17,12 +17,12 @@ import Foundation
 import MpvfxShared
 
 /// Parameters the exporter renders, static or keyframed, with the value type each one takes.
-let EXPORT_VISUAL_PARAMETERS: Set<String> = [
+let EXPORT_VISUAL_PARAMETERS: Set<String> = Set<String>([
     "transform.position", "transform.position.x", "transform.position.y", "transform.rotation",
     "transform.scale", "transform.scaleX", "transform.scaleY", "transform.opacity",
     "visual.opacity", "visual.autoAlpha", "layout.width", "layout.height", "layout.left", "layout.top",
     NativeTransform3D.zId, NativeTransform3D.rotationXId, NativeTransform3D.rotationYId, NativeTransform3D.perspectiveId,
-]
+] + NativeClipCorners.parameterIds)
 let EXPORT_AUDIO_PARAMETERS: Set<String> = ["audio.volume"]
 
 /// Parameters whose keyframes are rendered. layout.zIndex orders layers and stays static-only.

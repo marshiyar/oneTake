@@ -49,7 +49,7 @@ public final class PreviewToolbar {
     public var onToggleRecording: (() -> Void)?
 
     public enum Item: Equatable {
-        case record, crop, cropReset, cropCancel, cropApply, compare, snap, grid, gridOptions
+        case record, crop, distort, cropReset, cropCancel, cropApply, compare, snap, grid, gridOptions
         case gridPreset(Int), snapToGridToggle, popover, cropGroup
     }
 
@@ -88,6 +88,7 @@ public final class PreviewToolbar {
             x -= Self.gap
         } else if cropAvailable && !cropApplying {
             place(.crop, textWidth(c, "Crop", Self.label) + 16, 28.5)
+            place(.distort, textWidth(c, "Distort", Self.label) + 16, 28.5)
         }
         if onToggleRecording != nil { out.append((.record, recordRect(c))) }
         if gridPopoverOpen, let r = popoverRect(width: width, c) {
@@ -141,6 +142,7 @@ public final class PreviewToolbar {
         case .cropReset: return cropApplying ? nil : .reset
         case .cropCancel: return cropApplying ? nil : .cancel
         case .cropApply: return cropApplying ? nil : .apply
+        case .distort: break   // the stage opens the distort tool (PlayerController.pointerDown)
         case .popover, .cropGroup: break
         }
         return nil
@@ -187,6 +189,11 @@ public final class PreviewToolbar {
             let hov = hovered == .crop
             c.fillRoundedRect(r, radius: 6, Self.wash(hov ? 0.6 : 0.4))
             c.drawText("Crop", at: .init(r.x + 8, r.y + (r.height - 11) / 2), font: Self.label, color: white.withAlpha(hov ? 1 : 0.7))
+        }
+        if let r = rect(.distort) {
+            let hov = hovered == .distort
+            c.fillRoundedRect(r, radius: 6, Self.wash(hov ? 0.6 : 0.4))
+            c.drawText("Distort", at: .init(r.x + 8, r.y + (r.height - 11) / 2), font: Self.label, color: white.withAlpha(hov ? 1 : 0.7))
         }
         if let r = rect(.compare) {
             let hov = hovered == .compare

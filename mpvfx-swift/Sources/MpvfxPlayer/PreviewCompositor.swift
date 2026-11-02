@@ -331,6 +331,7 @@ public final class PreviewCompositor: FrameSource {
                 l.hiddenByFade = layer.fadeGain == 0 && keyed > 0
             }
             if let k = e.scale { l.scaleX = k; l.scaleY = k }
+            if let c = e.corners { l.corners = c.isIdentity ? nil : c }   // the distort tool's draft
             return l
         }
     }

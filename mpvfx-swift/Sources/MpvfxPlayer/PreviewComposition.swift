@@ -70,6 +70,8 @@ public struct PreviewLayer: Equatable, Sendable {
     public var text: NativeClipText?
     /// Depth, tilt and lens (the inspector's 3D transform), applied about the box centre after scale and rotation.
     public var transform3D = NativeTransform3D.identity
+    /// Corner-pin distort of the box (nil: none), drawn through `NativeCornerPin` before the transform above.
+    public var corners: NativeClipCorners?
     /// A dip transition's colour laid over the picture (nil: none), and how much of it (0…1).
     public var transitionColor: CanvasColor?
     public var transitionColorAmount = 0.0
@@ -469,6 +471,7 @@ public struct PreviewComposition {
         }
         out.transform3D = NativeTransform3D(rotationX: num(NativeTransform3D.rotationXId) ?? 0, rotationY: num(NativeTransform3D.rotationYId) ?? 0,
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
+        out.corners = Self.evaluatedCorners(c.corners, num)
         applyTransitions(e.transitions, to: &out, atFrame: Double(frameIndex(at: time)))
         // Moves go over the static and keyframed values (before fades, which multiply the result).
         return out.moved(by: moveOffsets(c, local: local))
@@ -613,7 +616,7 @@ public enum PreviewPainter {
         let cx = box.x + box.width / 2, cy = box.y + box.height / 2
         let t3 = layer.transform3D
         guard t3.isIdentity else {
-            draw3D(layer, t3, box: box, frame: frame, scale: s, on: c) { drawContent(layer, image: image, on: c, frame: frame, scale: s, axisAligned: false) }
+            draw3D(layer, t3, box: box, frame: frame, scale: s, on: c) { drawPinned(layer, box: box, scale: s, on: c) { drawContent(layer, image: image, on: c, frame: frame, scale: s, axisAligned: false) } }
             return
         }
         c.withState {
@@ -622,8 +625,10 @@ public enum PreviewPainter {
             if layer.scaleX != 1 || layer.scaleY != 1 { c.scale(layer.scaleX, layer.scaleY) }
             c.translate(-cx, -cy)
             // Square crop mask; with no rotation or scale its edges sit on device pixels, like the stage outline.
-            drawContent(layer, image: image, on: c, frame: frame, scale: s,
-                        axisAligned: layer.rotation == 0 && layer.scaleX == 1 && layer.scaleY == 1)
+            drawPinned(layer, box: box, scale: s, on: c) {
+                drawContent(layer, image: image, on: c, frame: frame, scale: s,
+                            axisAligned: layer.corners == nil && layer.rotation == 0 && layer.scaleX == 1 && layer.scaleY == 1)
+            }
         }
     }
 

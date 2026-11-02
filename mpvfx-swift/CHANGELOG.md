@@ -16,6 +16,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   them, each edit one undo step.
 - Cut transitions grow up: directional wipe and push join dissolve and dip, with direction, softness and duration
   in Design > Transition.
+- Corner-pin distort: a Distort tool beside Crop (or D) drags the four corners of a picture into a perspective
+  shape; Apply is one undo step, Shift+Enter keys the corners, and preview and export draw the same shape.
 - Background generator clips (solid, linear gradient, radial gradient) from the Media panel menu, edited under
   Design > Background; canvas fills behind clips that do not cover the frame.
 - Align and distribute selected visual clips against the frame or the selection.
