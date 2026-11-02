@@ -15,6 +15,7 @@
 // handle to trim it, double-click (or Enter / F2 on the selected cue) to retype it, "+" to add one at the playhead.
 // A drag only changes the view's preview; the release commits one edit, so each gesture is one undo step.
 import Foundation
+import MpvfxCanvas
 import MpvfxShared
 
 /// A press on a cue that may grow into a move (the block) or a trim (a handle).

@@ -70,11 +70,11 @@ public func planCaptionTrim(_ track: NativeCaptionTrack, cueId: String, edge: Na
     switch edge {
     case .start:
         let lower = i > 0 ? track.cues[i - 1].endMs : 0
-        let upper = max(lower, cue.endMs - minimum)
+        let upper = max(lower, cue.endMs - min(minimum, cue.endMs - cue.startMs))
         cue.startMs = min(max(ms, lower), upper)
     case .end:
-        let lower = cue.startMs + minimum
-        let upper = max(lower, i + 1 < track.cues.count ? track.cues[i + 1].startMs : NATIVE_CAPTION_MAX_MILLISECONDS)
+        let upper = i + 1 < track.cues.count ? track.cues[i + 1].startMs : NATIVE_CAPTION_MAX_MILLISECONDS
+        let lower = min(cue.startMs + minimum, upper)
         cue.endMs = min(max(ms, lower), upper)
     }
     if nativeCaptionWordsProblem(cue) != nil { cue.words = nil }

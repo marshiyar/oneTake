@@ -340,4 +340,14 @@ final class CaptionEditPlanTests: XCTestCase {
         XCTAssertFalse(issues.isEmpty)
         XCTAssertNotNil(nativeCaptionTimingProblem(overlapping.cues[1], after: overlapping.cues[0]))
     }
+
+    func testTrimNeverOverlapsANeighbourWhenTheCueIsShorterThanAFrame() throws {
+        // 10 ms cue touching the next cue: a 30 fps frame (34 ms) does not fit, so the end stays at the next cue's start.
+        let track = makeTrack(makeCue("a", 1000, 1010, "a"), makeCue("b", 1010, 2000, "b"))
+        let out = try planCaptionTrim(track, cueId: "a", edge: .end, toMs: 1500, frameRate: 30)
+        XCTAssertEqual(out.cues[0].endMs, 1010)
+        XCTAssertNil(nativeCaptionTimingProblem(out.cues[1], after: out.cues[0]))
+        let start = try planCaptionTrim(track, cueId: "a", edge: .start, toMs: 1005, frameRate: 30)
+        XCTAssertEqual(start.cues[0].startMs, 1000)
+    }
 }
