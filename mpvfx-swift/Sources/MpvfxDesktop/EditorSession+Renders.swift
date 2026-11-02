@@ -30,18 +30,29 @@ struct RenderQueueState {
         var view: RenderJobView
         var settings: RenderSettingsModel
         var outputPath: String
+        /// The export preset this render is a version of (Export versions…); retrying renders it again the same way.
+        var preset: RenderPreset?
     }
     var active: [Active] = []
+    /// The versions of the current "Export versions" run, rendering one after another; nil when none is running.
+    var batch: RenderBatch?
     var history: [DesktopRender] = []
     var hidden: Set<String> = []
     var loadError: String?
+
+    /// The history id of an export of this session: the output file's name, which is the job id unless the export
+    /// named its file (a version of an export run). Not started yet: the id itself.
+    func fileId(_ id: String) -> String {
+        guard let path = active.first(where: { $0.id == id })?.outputPath, !path.isEmpty else { return id }
+        return ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+    }
 
     mutating func reset() { active.removeAll { $0.view.status != .rendering && $0.view.status != .queued }; history = []; hidden = []; loadError = nil }
 
     /// Newest first: this session's exports, then history entries they do not already cover.
     var rows: [RenderJobView] { rows(thumbnail: { _ in nil }) }
     func rows(thumbnail: (String) -> CanvasImage?) -> [RenderJobView] {
-        let mine = Set(active.map(\.id))
+        let mine = Set(active.map(\.id) + active.filter { !$0.outputPath.isEmpty }.map { fileId($0.id) })
         let fromHistory = history.filter { !mine.contains($0.id) }.map { r -> RenderJobView in
             RenderJobView(id: r.id, name: r.filename, status: r.status == "failed" ? .failed : .complete, stage: "",
                           progress: 1, detail: RenderQueueState.detail(size: r.size, durationMs: r.durationMs),
@@ -143,6 +154,23 @@ extension SessionPanels {
             }
             self.redraw()
         }
+        rendersPanel.onSetPresetComposition = { [weak self] name, composition in
+            guard let self else { return }
+            do {
+                let presets = try store.setComposition(name: name, composition)
+                self.rendersPanel.renderPresets = presets
+                self.rendersPanel.versions.setPresets(presets)
+                self.rendersPanel.actionError = nil
+            } catch {
+                self.rendersPanel.actionError = (error as? RenderPresetStoreError)?.reason ?? "The preset could not be saved."
+            }
+            self.redraw()
+        }
+        rendersPanel.onExportVersions = { [weak self] names in
+            guard let self else { return }
+            // In the order of the list, whatever order the card names them in.
+            self.startVersions(self.rendersPanel.renderPresets.filter { names.contains($0.name) })
+        }
         rendersPanel.onSettingsChanged = { [weak self] m in self?.preferences.renderSettings = RenderSettingsBridge.json(m) }
         rendersPanel.onRender = { [weak self] action in self?.renderAction(action) }
     }
@@ -182,9 +210,14 @@ extension SessionPanels {
         switch action {
         case .start(let settings): startRender(settings)
         case .retry(let id):
+            if let preset = renders.active.first(where: { $0.id == id })?.preset { startVersions([preset]); break }
             let settings = renders.active.first { $0.id == id }?.settings ?? rendersPanel.settings
             startRender(settings)
-        case .cancel(let id): renders.active.first { $0.id == id }?.run?.cancel()
+        case .cancel(let id):
+            // A version still waiting never starts; one that renders stops. The others in the run carry on.
+            if renders.batch?.cancelQueued(id) == true {
+                updateActive(id) { $0.view.status = .cancelled; $0.view.stage = "Cancelled" }
+            } else { renders.active.first { $0.id == id }?.run?.cancel() }
         case .delete(let id): deleteRender(id)
         case .reveal(let id):
             if let path = renders.active.first(where: { $0.id == id })?.outputPath ?? renders.history.first(where: { $0.id == id })?.path {
@@ -193,8 +226,9 @@ extension SessionPanels {
         case .hideFinished:
             guard let projectId else { return }
             let finished = rendersPanel.jobs.filter { $0.status != .rendering && $0.status != .queued }.map(\.id)
-            renders.hidden.formUnion(finished)
-            preferences.setHiddenRenders(projectId: projectId, preferences.hiddenRenders(projectId: projectId) + finished)
+            let fileIds = finished.map { renders.fileId($0) }
+            renders.hidden.formUnion(finished + fileIds)
+            preferences.setHiddenRenders(projectId: projectId, preferences.hiddenRenders(projectId: projectId) + fileIds)
             publishRenders()
         case .publish:
             rendersPanel.actionError = "Publishing is not part of the desktop app."
@@ -205,13 +239,15 @@ extension SessionPanels {
     func deleteRender(_ id: String) {
         guard let backend, let projectId else { return }
         renders.active.first { $0.id == id }?.run?.cancel()
+        _ = renders.batch?.cancelQueued(id)
+        let fileId = renders.fileId(id)
         do {
-            try backend.deleteRender(projectId: projectId, id: id)
+            try backend.deleteRender(projectId: projectId, id: fileId)
             if let path = renders.active.first(where: { $0.id == id })?.outputPath ?? renders.history.first(where: { $0.id == id })?.path {
                 session.mediaThumbnails.forget(path: path)
             }
             renders.active.removeAll { $0.id == id }
-            renders.history.removeAll { $0.id == id }
+            renders.history.removeAll { $0.id == fileId }
             publishRenders()
         } catch {
             rendersPanel.actionError = "Couldn't delete the render — it's still on disk."
@@ -230,16 +266,12 @@ extension SessionPanels {
         if let failure = session.flushSave() { rendersPanel.actionError = "Save the project before rendering: \(failure)"; redraw(); return }
         let settings = RenderSettingsBridge.exportSettings(model, canvas: session.editor.document.canvas)
         let jobId = "render-" + UUID().uuidString.lowercased()
-        let post = uiPost
         let run: RenderRun
         do {
             var request = RenderRequest(projectId: projectId, document: session.editor.document, settings: settings,
                                         settingsJSON: RenderSettingsBridge.json(model))
             request.jobId = jobId; request.keyframeEngine = session.engine
-            var callbacks = RenderCallbacks { [weak self] outcome, ms in post { self?.renderFinished(jobId, outcome, durationMs: ms) } }
-            callbacks.started = { [weak self] _ in post { self?.updateActive(jobId) { $0.view.status = .rendering; $0.view.stage = "Rendering" } } }
-            callbacks.progress = { [weak self] p in post { self?.renderProgress(jobId, p) } }
-            run = try RenderRun.start(backend: backend, request, callbacks)
+            run = try launchRender(backend, request)
         } catch {
             let message = (error as? DesktopError)?.message ?? "\(error)"
             FileHandle.standardError.write(Data("[MpVFX] export could not start: \(message)\n".utf8))
@@ -249,6 +281,95 @@ extension SessionPanels {
         renders.active.append(.init(id: jobId, run: run, view: RenderJobView(id: jobId, name: name, status: .queued, stage: "Preparing", createdAt: Date().timeIntervalSince1970),
                                     settings: model, outputPath: run.outputPath))
         publishRenders()
+    }
+
+    /// Starts `request` and reports its progress and end to the queue under the request's job id.
+    private func launchRender(_ backend: DesktopBackend, _ request: RenderRequest) throws -> RenderRun {
+        let jobId = request.jobId, post = uiPost
+        var callbacks = RenderCallbacks { [weak self] outcome, ms in post { self?.renderFinished(jobId, outcome, durationMs: ms) } }
+        callbacks.started = { [weak self] _ in post { self?.updateActive(jobId) { $0.view.status = .rendering; $0.view.stage = "Rendering" } } }
+        callbacks.progress = { [weak self] p in post { self?.renderProgress(jobId, p) } }
+        return try RenderRun.start(backend: backend, request, callbacks)
+    }
+
+    /// The open project's folder name, which names its exports.
+    var projectName: String {
+        let name = session.project.map { ($0.directory as NSString).lastPathComponent } ?? ""
+        return name.isEmpty ? "Project" : name
+    }
+
+    /// Export versions (⇧⌘R): one render per preset, named "<project> – <preset>", run one after another. Every
+    /// version is queued at once so each has its own row with its own cancel and retry; the project is saved and
+    /// read once, so every version renders the same edit.
+    func startVersions(_ presets: [RenderPreset]) {
+        rendersPanel.actionError = nil
+        guard backend != nil, let projectId else {
+            rendersPanel.actionError = "Nothing to export from: open or create a project first (the demo timeline has no project folder)."
+            redraw(); return
+        }
+        guard !presets.isEmpty else { rendersPanel.actionError = "Choose at least one preset to export."; redraw(); return }
+        guard !rendersPanel.isRendering else { return }
+        if let failure = session.flushSave() { rendersPanel.actionError = "Save the project before rendering: \(failure)"; redraw(); return }
+        let document = session.editor.document
+        let versions: [RenderVersion]
+        do {
+            versions = try presets.map {
+                try RenderVersion.make($0, project: projectName, document: document, natural: session.editor.naturalSize, engine: session.engine)
+            }
+        } catch {
+            rendersPanel.actionError = (error as? RenderVersionError)?.message ?? "The versions could not be prepared."
+            redraw(); return
+        }
+        let batch = RenderBatch(projectId: projectId, versions: versions)
+        let now = Date().timeIntervalSince1970
+        // The list shows the newest render first, so the first version goes in last.
+        for item in batch.items.reversed() {
+            let file = item.version.fileStem + "." + item.version.settings.format.rawValue
+            renders.active.append(.init(id: item.jobId, run: nil,
+                                        view: RenderJobView(id: item.jobId, name: file, status: .queued, stage: "Waiting", createdAt: now),
+                                        settings: item.version.model, outputPath: "", preset: item.version.preset))
+        }
+        renders.batch = batch
+        advanceBatch()
+    }
+
+    /// Starts the next waiting version once the one before it has ended. Versions queued for another project than
+    /// the open one are dropped (they would render the wrong document).
+    func advanceBatch() {
+        guard let started = renders.batch else { return }
+        if started.projectId != projectId || backend == nil {
+            for item in started.items where renders.batch?.cancelQueued(item.jobId) == true {
+                updateActive(item.jobId) { $0.view.status = .cancelled; $0.view.stage = "Cancelled" }
+            }
+        }
+        guard let batch = renders.batch, let next = batch.nextToStart else {
+            if renders.batch?.isFinished == true { renders.batch = nil }
+            return
+        }
+        startVersion(next)
+    }
+
+    private func startVersion(_ item: RenderBatch.Item) {
+        guard let backend, let projectId else { return }
+        let run: RenderRun
+        do {
+            var request = RenderRequest(projectId: projectId, document: item.version.document, settings: item.version.settings,
+                                        settingsJSON: RenderSettingsBridge.json(item.version.model))
+            request.jobId = item.jobId; request.keyframeEngine = session.engine; request.fileStem = item.version.fileStem
+            run = try launchRender(backend, request)
+        } catch {
+            let message = (error as? DesktopError)?.message ?? "The export could not start."
+            FileHandle.standardError.write(Data("[MpVFX] export version could not start: \(error)\n".utf8))
+            renders.batch?.set(item.jobId, .failed)
+            renderFailed(item.jobId, message)
+            advanceBatch()
+            return
+        }
+        renders.batch?.set(item.jobId, .rendering)
+        updateActive(item.jobId) {
+            $0.run = run; $0.outputPath = run.outputPath
+            $0.view.name = (run.outputPath as NSString).lastPathComponent; $0.view.stage = "Preparing"
+        }
     }
 
     private func updateActive(_ id: String, _ body: (inout RenderQueueState.Active) -> Void) {
@@ -284,6 +405,14 @@ extension SessionPanels {
             updateActive(id) { $0.view.status = .cancelled; $0.view.stage = "Cancelled" }
         case .failed(let message):
             renderFailed(id, message)
+        }
+        if renders.batch?.item(id) != nil {
+            switch outcome {
+            case .completed: renders.batch?.set(id, .complete)
+            case .cancelled: renders.batch?.set(id, .cancelled)
+            case .failed: renders.batch?.set(id, .failed)
+            }
+            advanceBatch()
         }
         refreshRenders()
     }
