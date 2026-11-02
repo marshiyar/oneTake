@@ -85,6 +85,31 @@ private func num(_ key: String, _ label: String, _ unit: String, _ min: Double, 
     .number(key: key, label: label, unit: unit, min: min, max: max, step: step, defaultValue: def, scale: scale, automatable: automatable)
 }
 
+/// The parametric EQ's parameters: the number of bands in use, then each of the eight bands' own settings
+/// (`band<k>.type`, `.freq`, `.gain`, `.q`, `.slope`, `.bypass`), so automation reaches `fx.<node>.band<k>.<param>`.
+private func eqParams() -> [FxParamDef] {
+    let starts: [(String, Double)] = [
+        ("lowshelf", 100), ("bell", 400), ("bell", 2500), ("highshelf", 8000),
+        ("bell", 200), ("bell", 1000), ("bell", 5000), ("bell", 12000),
+    ]
+    var out = [num("bands", "Bands", "", 1, Double(AudioFxEq.maxBands), 1, 4)]
+    for (i, start) in starts.enumerated() {
+        let k = i + 1
+        out += [
+            .enumeration(key: AudioFxEq.key(k, "type"), label: "Band \(k) shape", options: [
+                ("bell", "Bell"), ("lowshelf", "Low shelf"), ("highshelf", "High shelf"),
+                ("lowcut", "Low cut"), ("highcut", "High cut"), ("notch", "Notch"),
+            ], defaultValue: start.0),
+            freq(AudioFxEq.key(k, "freq"), "Band \(k) frequency", start.1),
+            .number(key: AudioFxEq.key(k, "gain"), label: "Band \(k) gain", unit: "dB", min: -24, max: 24, step: 0.1, defaultValue: 0, scale: nil, automatable: true),
+            .number(key: AudioFxEq.key(k, "q"), label: "Band \(k) Q", unit: "", min: 0.1, max: 18, step: 0.01, defaultValue: start.0 == "bell" ? 1 : 0.707, scale: .log, automatable: true),
+            .enumeration(key: AudioFxEq.key(k, "slope"), label: "Band \(k) slope", options: [("12", "12 dB/oct"), ("24", "24 dB/oct"), ("48", "48 dB/oct")], defaultValue: "12"),
+            .enumeration(key: AudioFxEq.key(k, "bypass"), label: "Band \(k) bypass", options: [("off", "On"), ("on", "Bypassed")], defaultValue: "off"),
+        ]
+    }
+    return out
+}
+
 public enum AudioFx {
     public static let attribute = "data-fx-chain"
     public static let chainVersion = 2
@@ -101,6 +126,7 @@ public enum AudioFx {
         FxDef(id: "highshelf", label: "High Shelf", group: "filter", params: [freq("frequency", "Frequency", 4000, 500, 20000), gainDb(-40, 40, 0)], implementation: "biquad-highshelf"),
         FxDef(id: "highpass", label: "High-pass", group: "filter", params: [freq("frequency", "Cutoff", 300, 20, 20000), qParam(0.707), poles], implementation: "biquad-highpass"),
         FxDef(id: "lowpass", label: "Low-pass", group: "filter", params: [freq("frequency", "Cutoff", 8000, 100, 20000), qParam(0.707), poles], implementation: "biquad-lowpass"),
+        FxDef(id: "eq", label: "Parametric EQ", group: "filter", params: eqParams(), implementation: "parametric-eq"),
         FxDef(id: "compressor", label: "Compressor", group: "dynamics", params: [
             num("threshold", "Threshold", "dB", -60, 0, 0.5, -24), num("ratio", "Ratio", ":1", 1, 20, 0.1, 4),
             num("attack", "Attack", "ms", 0.01, 2000, 0.1, 20, scale: .log), num("release", "Release", "ms", 0.01, 9000, 1, 250, scale: .log),

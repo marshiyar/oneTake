@@ -226,6 +226,6 @@ let package = Package(
                                                                     keyframeEngine, "MpvfxAudio", "MpvfxAudioGraph", "MpvfxRuntime", mediaEngine]),
         .testTarget(name: "MpvfxPlayerTests", dependencies: playerTestDependencies),
     ] + platformTargets + engineTargets,
-    swiftLanguageModes: [.v5],
+    swiftLanguageModes: [.v6],
     cxxLanguageStandard: .cxx20
 )

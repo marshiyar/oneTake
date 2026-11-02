@@ -12,8 +12,12 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 ### Editing
 - Camera moves: a `camera-moves` clip effect shakes, punches in and pushes a layer, the same in preview and export; a
   shake is repeatable from its seed and covers its own edges. Controls and beat punch-ins follow (#308).
+- Nested sequences in the project file and the plans behind Nest, Un-nest and Make unique (no shortcut or screen yet;
+  nested clips are not drawn until a later change).
 - Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels
   and dock beside the preview; Design groups can be dragged out into their own panels.
+- A Transitions browser: a dockable panel with a search field and stars lists dissolve, dip, wipe and push, plays each
+  one on the clips around the selected cut, and applies it on Return, a double click or a drop on a cut.
 - Sequence markers: M drops a named marker at the playhead; the Markers panel jumps, renames, recolours and deletes
   them, each edit one undo step.
 - Caption lane: the caption track shows under the tracks; drag a cue to move it, drag its ends to trim it,
@@ -35,6 +39,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - A per-user text style library: the Text group's Style menu shows each saved style as a sample, applies it to the
   selected text layers (⌥⌘1…9), and saves the current layer as a style (⌥⌘S).
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Parametric EQ in the audio rack: up to eight bands (bell, shelves, low and high cut at 12, 24 or 48 dB per octave,
+  notch), each with its own frequency, gain and Q; drag a band's point on the graph, Alt-drag it for Q, double-click
+  the graph to add a band, Delete to remove one.
 - Voice-over punch-in: with the I and O points set, Record voice plays from a pre-roll before I (Settings > Voice
   pre-roll, default 2 s), records exactly I to O and stops at O, landing as one clip covering that range.
 - Even Out: a new effect in the audio rack's Dynamics family that lifts quiet passages and holds loud ones down with a
@@ -57,6 +64,10 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.
+- The Grade group opens on its controls: Looks, Primary, Color wheels, Curves, Secondary color, Custom LUT and Finish fold
+  from their headers (mouse, or Tab then Enter / Space) and remember it between launches; Looks start folded and name the
+  active look. A look shows as active only while the grade still matches it ("Custom" after any edit), and its tile
+  previews what a click applies on top of the clip's own grade.
 - Auto balance and reference-clip look matching fit exposure, warmth, tint, contrast and offset from frame
   statistics in one undo step.
 - Clip blend modes, a colour key with hue-following spill, and spill/GPU parity coverage.

@@ -91,7 +91,7 @@ public final class RenderCancellationRegistry: @unchecked Sendable {
 
 // MARK: staging
 
-public struct ExportStagingPaths: Equatable { public let directory: String; public let nativeOutputPath: String; public let encodedOutputPath: String }
+public struct ExportStagingPaths: Equatable, Sendable { public let directory: String; public let nativeOutputPath: String; public let encodedOutputPath: String }
 
 public func createExportStagingPaths(_ outputPath: String, _ jobId: String) -> ExportStagingPaths {
     let ext = PosixPath.extname(outputPath).isEmpty ? ".mp4" : PosixPath.extname(outputPath)

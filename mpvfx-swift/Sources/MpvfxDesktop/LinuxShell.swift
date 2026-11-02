@@ -24,7 +24,8 @@ import MpvfxTheme
 /// save barrier). No web view: the window hosts native GTK widgets.
 /// Lifecycle decisions live in MpvfxDesktopCore.ShellLifecycle.
 final class LinuxShell: EditorSaveChannel, @unchecked Sendable {
-    static var current: LinuxShell!
+    /// Safe: main.swift assigns it once, on the main thread, before `run()`; nothing writes it afterwards.
+    nonisolated(unsafe) static var current: LinuxShell!
 
     let paths: AppPaths
     let backend: DesktopBackend

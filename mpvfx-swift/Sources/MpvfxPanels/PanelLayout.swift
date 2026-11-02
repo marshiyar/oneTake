@@ -89,6 +89,9 @@ public struct PanelPreferences: Codable, Equatable, Sendable {
     public var scopeSource: ColorScopes.Source?
     /// The dockable Scopes panel's selected scope; unknown future names fall back without discarding the layout.
     public var scopePanelKind: String?
+    /// The Transitions browser's starred entries (`TransitionEntry.id`), in the order starred. Plain strings, so an
+    /// id from a newer version cannot fail the whole file; unknown ids are skipped when read.
+    public var favouriteTransitions: [String]?
     public init() {}
 }
 

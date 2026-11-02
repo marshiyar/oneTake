@@ -347,7 +347,8 @@ extension InspectorPanel {
             }
         }
         if s.kind == .video || s.kind == .audio {
-            rows.append(rateRow(editor, s))
+            rows.append(contentsOf: speedRampRows(editor, s))
+            if !editor.isRamped(s.id) { rows.append(rateRow(editor, s)) }
             // A detached video plays no sound (its linked audio clip does, with its own pitch option), like the clip menu.
             let detached = s.kind == .video && editor.document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == s.id } }
             if !detached {
