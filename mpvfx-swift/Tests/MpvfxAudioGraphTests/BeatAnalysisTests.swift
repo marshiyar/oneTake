@@ -295,7 +295,8 @@ final class BeatAnalysisTests: XCTestCase {
         XCTAssertTrue(envelope.allSatisfy { $0 >= 0 && $0.isFinite })
         let strongest = envelope.max() ?? 0
         XCTAssertGreaterThan(strongest, 0)
-        let strong = envelope.indices.filter { envelope[$0] > 0.5 * strongest }
+        // A click between two frame centres reaches each through the window's slope, so its flux is well under the best click's.
+        let strong = envelope.indices.filter { envelope[$0] > 0.2 * strongest }
         let positions = (0..<12).map { 14_400 + $0 * clickGap }
         // Every strong frame is centred within one frame of a click, and every click has a strong frame.
         for k in strong {

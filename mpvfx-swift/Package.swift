@@ -169,7 +169,9 @@ let package = Package(
         // Audio output (PulseAudio / Core Audio / WASAPI) + stem decode through the media engine (OneTakeMedia) + mixer + audio master clock.
         .target(name: "MpvfxAudio", dependencies: audioTargetDependencies),
         // Pure-Swift audio bus/FX graph (Float32, deterministic) shared by playback and export.
-        .target(name: "MpvfxAudioGraph", swiftSettings: swift6),
+        // Optimised in debug builds too: the beat analysis runs 14 thousand 1024-point FFTs for five minutes of audio, which
+        // took 108 s at -Onone against the 3 s budget of #290.
+        .target(name: "MpvfxAudioGraph", swiftSettings: swift6 + [.unsafeFlags(["-O"], .when(configuration: .debug))]),
         // Video scopes on RGBA8 frames (waveform, parade, vectorscope, histogram, false colour); Foundation only.
         // Optimised in debug builds too: its per-pixel loop is 9x slower at -Onone (118 ms vs 13 ms for a 1080p
         // frame, measured 2026-10-21), too slow for live scopes in a debug app and for its frame-budget test.
