@@ -69,14 +69,15 @@ extension InspectorPanel {
     func canvasFillRows(_ scope: CanvasFillScope) -> [InspectorRow] {
         let kinds = Self.canvasFillKinds(allowsInherit: scope.allowsInherit)
         let shown = Self.canvasFillShownKind(scope.fill, allowsInherit: scope.allowsInherit)
-        let segmented = InspectorRow.Segmented(
-            key: "\(scope.key).kind", label: "Fill",
-            options: kinds.map { (key: $0, label: Self.canvasFillLabel($0), active: $0 == shown) },
-            select: { kind in
+        let kindRow = dropdownRow(
+            id: "\(scope.key).kind", label: "Fill",
+            options: kinds.map { PanelDropdown.Option(value: $0, label: Self.canvasFillLabel($0)) }, current: shown,
+            tier: scope.fill == nil ? .default : .explicitCustom, reset: scope.fill == nil ? nil : { scope.set(nil) },
+            pick: { kind in
                 if kind == "inherit" { scope.set(nil); return }
                 if let next = Self.canvasFillStart(kind: kind, from: scope.fill, images: scope.images) { scope.set(next) }
             })
-        var rows = [InspectorRow(.segmented(segmented))]
+        var rows = [kindRow]
         guard let fill = scope.fill else { return rows }
         guard fill.isSupported else {
             rows.append(InspectorRow(.note("This fill is from a newer version of the editor: it is kept in the project and not drawn.")))
@@ -100,9 +101,10 @@ extension InspectorPanel {
                 scope.set(Self.canvasGradient(fill, first: nil, last: nil, angle: v))
             })
         case "image":
-            let options = scope.images.map { (key: $0.id, label: $0.name, active: $0.id == fill.assetId) }
-            rows.append(InspectorRow(.segmented(.init(key: "\(scope.key).image", label: "Image", options: options,
-                                                      select: { id in scope.set(NativeFill(kind: "image", assetId: id)) }))))
+            rows.append(dropdownRow(
+                id: "\(scope.key).image", label: "Image",
+                options: scope.images.map { PanelDropdown.Option(value: $0.id, label: $0.name) }, current: fill.assetId ?? "",
+                tier: .explicitCustom, pick: { id in scope.set(NativeFill(kind: "image", assetId: id)) }))
         case "blur":
             rows.append(fillNumber("\(scope.key).blur", "Blur", fill.resolvedBlur, def: NativeFill.defaultBlur,
                                    range: NativeFill.blurRange) { v in
