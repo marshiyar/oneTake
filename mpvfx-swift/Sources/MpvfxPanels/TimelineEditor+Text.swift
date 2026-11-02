@@ -32,6 +32,8 @@ public extension TimelineEditor {
         case .apply: label = "Apply text style"
         case .update: label = "Update text style"
         case .detach: label = "Detach text style"
+        case .create: label = "Save text style"
+        case .adopt: label = "Apply text style"
         }
         return withHistory(label) { commitValidated(next) }
     }
@@ -44,6 +46,19 @@ public extension TimelineEditor {
     @discardableResult
     func applyTextStyle(styleId: String, clipIds: [String]) -> Bool {
         applyTextStyleCommand(.apply(styleId: styleId, clipIds: clipIds))
+    }
+
+    /// Saves the layer as a new project style and links it to the style, as one undo step.
+    @discardableResult
+    func createTextStyle(clipId: String, styleId: String, name: String) -> Bool {
+        applyTextStyleCommand(.create(clipId: clipId, styleId: styleId, name: name))
+    }
+
+    /// Applies a style from the user's library. The project's own copy of the same id wins; otherwise the
+    /// library's copy is added to the project first. One undo step.
+    @discardableResult
+    func applyLibraryTextStyle(_ style: NativeTextStyle, clipIds: [String]) -> Bool {
+        applyTextStyleCommand(.adopt(style: style, clipIds: clipIds))
     }
 
     @discardableResult

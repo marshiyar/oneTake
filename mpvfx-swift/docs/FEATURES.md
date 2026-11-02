@@ -8,9 +8,17 @@ editor commands with undo/redo. Cross-project clip paste detaches a resolved typ
 colliding style IDs cannot change the appearance; same-project paste keeps the live style link. Inspector edits
 override only the changed fields; nil can explicitly restore a field's default, and Reset removes the override to
 follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
-style/link versions and kinds remain serialized and undrawn with an open notice. The style browser is a later UI
-slice; these commands are available to editor integrations. Covered by `NativeTextStyleTests`, `TextStyleEditTests`
-and `TextStyleRenderingTests`.
+style/link versions and kinds remain serialized and undrawn with an open notice. Covered by `NativeTextStyleTests`,
+`TextStyleEditTests` and `TextStyleRenderingTests`.
+Text style library and Style menu (#283): `<userData>/text-styles.json` (written through the durable writer) keeps the user's
+styles for every project. The Text group's Style button opens a menu of those styles, each drawn as a sample with the text
+painter, then the project's own styles the library lacks; picking one applies it to the selected text layers and copies it
+into the project on first use (the project's copy of the same id wins afterwards), as one undo step. Save current as style
+(named by the Style name field, else "Text style N"), Update style, Detach and Delete from my styles (the project keeps its
+copy and layers keep their look) complete the menu. A corrupt or newer file is reported with its path, left untouched, and
+the menu still opens. ⌥⌘S saves the selected text layer as a style (with no text layer selected it still splits scenes) and
+⌥⌘1…9 apply the first nine styles; all are listed in the shortcuts card. Covered by `TextStyleLibraryTests` and
+`NativeTextStyleTests`; Swift tests pending compilation.
 
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript

@@ -46,7 +46,7 @@ extension InspectorPanel {
             }
             return .init(.number(row))
         }
-        var rows: [InspectorRow] = []
+        var rows: [InspectorRow] = textStyleRows(editor, s)
         // Content: one line in the field; "\n" types a line break.
         rows.append(field("textContent", "Content", t.content.replacingOccurrences(of: "\n", with: "\\n"), explicit: false,
                           commit: { editor.setTextContent(clipId: id, $0.replacingOccurrences(of: "\\n", with: "\n")) },
