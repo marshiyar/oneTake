@@ -45,6 +45,13 @@ extension EditorSession {
             self.syncStage(); self.redraw()
             return id
         }
+        player.onCreateShape = { [weak self] draft, time in
+            guard let self, let id = self.editor.addShapeClip(draft.shape, left: draft.box.x, top: draft.box.y, width: draft.box.width,
+                                                              height: draft.box.height, at: time) else { return nil }
+            self.timeline.view.selection = [id]
+            self.syncStage(); self.redraw()
+            return id
+        }
         player.onZOrder = { [weak self] ids, action in self?.applyZOrderShowingCrossed(ids, action) }
     }
 

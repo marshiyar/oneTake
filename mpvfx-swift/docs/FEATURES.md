@@ -364,6 +364,11 @@ dashes and arrow heads aligned to the line's end tangent. `TimelineEditor.setCli
 whole edit, records one undo step, and persists it through the normal project save path. Unknown
 shape versions and kinds are kept unchanged, skipped in preview/export, and included in the existing
 single unsupported-element notice. Schema version stays 1; projects without shapes gain no field.
+
+Shape tool (#324): Shift+S on the stage, then 1 to 4 (or the chips) for rectangle, ellipse, line or arrow, and a drag or
+click. Shift keeps a rectangle square, an ellipse round and a line on a 45° step; Option draws from the centre; a click
+makes a 200×120 shape centred on it. The layer is 5 seconds long at the playhead and the tool turns off after it. The Shape
+group in Design edits the kind and its values (corner radius, sides, inner radius, head length), stroke width, dash and colours.
 - Design inspector legibility (#173): labels, hints, state tags and summaries use AA secondary ink in both appearances; text/values are at least 11 px, section headings 11.5 px below 12 px group titles, and essential slider/field edges reach 3:1.
 Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
 Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.

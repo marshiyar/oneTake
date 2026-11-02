@@ -118,6 +118,14 @@ has not been measured in the contribution environment (no Swift toolchain).
   triangle, diamond, polygon, star, line and arrow. Focused tests cover legacy save stability,
   opaque future contracts, invalid values, analytic rounded corners, diagonal arrow tangents,
   and preview/export pixels with dashes at 1× and 2× output scale.
+- #324 Shapes 2: the Shape tool on the stage. Shift+S (with the stage focused) turns it on; 1 to 4 or the chips pick
+  rectangle, ellipse, line or arrow; a drag draws the shape at the playhead for 5 seconds, Shift makes a square or circle
+  (45° lines) and Option draws from the centre; a click makes 200×120 centred on the point. The inspector's Shape group
+  (`InspectorPanel+Shape.swift`) edits the kind, corner radius, sides, inner radius, arrow head length, stroke width, dash,
+  fill and stroke, each one undo step with a reset. Tests cover the geometry, the controller and the group's keyboard
+  access; stage snapshots (dark and light) are not added: the snapshot tests only run on Linux and were not run here.
+  The tool has no callout (#256), the new layer goes on the first free video row rather than the selected track, and
+  Shift+S still splits when the timeline has the keys.
 Clip source navigation (#446): the clip menu offers Reveal in media bin (Cmd/Ctrl+Alt+F) and Show in file manager (Cmd/Ctrl+Alt+Shift+F). Reveal reopens Media, clears filters and scrolls to the selected source. File navigation uses Finder, Files or Explorer through the existing shell hook; missing files report `SourceMissingError` with restore/relink guidance. Navigation changes no document or undo state. Regression coverage: `RevealClipSourceTests`, `TimelineSourceNavigationTests`, `MediaSourceRevealTests`.
 Reference-look matching waits for exact source/reference frames, cancels pending work on selection/editor/playhead changes even with Grade closed, reports terminal decode failures, preserves alpha-weighted colour when reducing frames, and accounts for existing pivoted Contrast and Offset during primary correction. No-op completion refreshes the action without adding undo history.
 Background generator clips (#452): the Media panel menu adds Solid colour, Linear gradient or Radial gradient at the playhead (keyboard: Tab to the menu, Enter, arrows, Enter). Design > Background edits alpha-capable colours, linear angle in degrees, and radial centre coordinates from 0 to 1. Every insertion/edit is one undo step. The generator is saved on its element clip in `project.json`, validates and round-trips, and preview/export/scopes share the procedural painter. Transform, crop, masks and opacity use the ordinary clip path; unrelated element layers stay undrawn.

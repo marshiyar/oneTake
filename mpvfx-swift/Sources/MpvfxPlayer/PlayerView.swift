@@ -78,6 +78,9 @@ public final class PlayerView {
     public var marquee: CanvasRect?
     public var marqueeCandidates: [String] = []
     public var contextMenu: StageContextMenu?
+    /// The Shape tool (⇧S, issue #324): the kind it draws while it is on, nil when it is off, and the shape being dragged.
+    public var shapeTool: String?
+    public var shapeDraft: StageShapeDraft?
     /// Seconds clock for animations (zoom readout fade, play/pause morph).
     public var now: () -> Double = { ProcessInfo.processInfo.systemUptime }
     /// Called at the end of a draw while an animation still runs; the host schedules another draw.
@@ -336,6 +339,7 @@ public final class PlayerView {
             Self.fillSquare(c, m, theme.accent.withAlpha(0.10))
             Self.strokeSquare(c, m, theme.accent, width: 1)
         }
+        drawShapeTool(c, size: size, frame: frame)
         drawGuides(c, frame: frame)
         drawTransformFeedback(c, size: size)
     }
