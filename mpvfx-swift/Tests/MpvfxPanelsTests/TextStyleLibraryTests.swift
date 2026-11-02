@@ -185,7 +185,8 @@ internal final class TextStyleLibraryTests: XCTestCase {
         XCTAssertNil(panel.customRow("textStyle:pick:lib:1"), "closed menu draws no samples")
         open(panel)
         for id in ["lib:1", "lib:2", "proj:1"] { XCTAssertNotNil(panel.customRow("textStyle:pick:\(id)"), id) }
-        XCTAssertEqual(panel.textStyleChoices(editor).map(\.id), ["lib:1", "lib:2", "proj:1"])
+        XCTAssertEqual(panel.textStyleChoices(editor).map(\.id), ["lib:1", "lib:2"] + TextStarterStyles.styles.map(\.id) + ["proj:1"],
+                       "the user's styles, then the starter set, then the project's own")
         let target = try XCTUnwrap(panel.hits.rect(where: { $0 == .custom("textStyle:pick:lib:2", 0) }))
         XCTAssertTrue(panel.press(.custom("textStyle:pick:lib:2", 0)), "\(target)")
         XCTAssertEqual(editor.clip(ids[1])?.1.textStyle?.styleId, "lib:2")
@@ -254,10 +255,10 @@ internal final class TextStyleLibraryTests: XCTestCase {
         XCTAssertTrue(panel.canSaveTextStyle)
         XCTAssertTrue(panel.applyTextStyle(number: 2))
         XCTAssertEqual(editor.clipText(clipId: ids[0])?.fontSize, 22)
-        XCTAssertFalse(panel.applyTextStyle(number: 4), "there is no fourth style")
+        XCTAssertFalse(panel.applyTextStyle(number: 12), "three of the user's and eight starter styles: there is no twelfth")
         XCTAssertFalse(panel.applyTextStyle(number: 0))
         XCTAssertTrue(panel.saveTextStyleFromLayer())
-        XCTAssertEqual(lib.menuStyles.last?.name, "Text style 4")
+        XCTAssertEqual(lib.menuStyles.last?.name, "Text style 12")
         XCTAssertTrue(panel.applyTextStyle(number: 4), "applying the style a layer already follows is not an error")
         panel.selection = []
         XCTAssertFalse(panel.canSaveTextStyle, "without a text layer ⌥⌘S stays scene splitting")

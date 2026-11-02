@@ -23,6 +23,12 @@ track at each frame through the same composition and the exporter accepts these 
 playhead in the look as one undo step; removing a part removes its keys; only the last outline can be removed. A linked text style keeps its
 link and the look becomes a local override. Values that overshoot their range between keys are held to it when drawn. Covered by
 `TextLookRowsTests`, `NativeTextLookParameterTests`, `TextLookAnimationRenderingTests` and `TextLookExportAuditTests`.
+Starter text styles (#284): eight styles ship with the app (Lower third, Bold title, Subtitle plate, Quote, Label, Outline title,
+Soft shadow, Mono caption) as a JSON document with the copyright block (`TextStarterStyles`). They use the generic Sans and Monospace
+families only, so no font file is added, and each sets its text against an outline or a plate that keeps a 4.5:1 contrast on a white, a
+black and a mid-grey frame. They follow the user's own styles in the Style menu (and in ⌥⌘1…9), and a project copies one on first use.
+The JSON is embedded in the source rather than a Swift Package resource, because the resource bundle is unverified on Windows and Linux.
+Covered by `TextStarterStylesTests` and `TextStarterStylesRenderingTests`; Swift tests pending compilation.
 Text style library and Style menu (#283): `<userData>/text-styles.json` (written through the durable writer) keeps the user's
 styles for every project. The Text group's Style button opens a menu of those styles, each drawn as a sample with the text
 painter, then the project's own styles the library lacks; picking one applies it to the selected text layers and copies it

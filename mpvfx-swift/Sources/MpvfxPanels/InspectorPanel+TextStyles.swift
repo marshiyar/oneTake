@@ -56,14 +56,17 @@ enum TextStyleSample {
 }
 
 extension InspectorPanel {
-    /// What the Style menu lists and ⌥⌘1…9 apply: the user's library, then the project's own styles it lacks.
+    /// What the Style menu lists and ⌥⌘1…9 apply: the user's library, then the starter styles it lacks, then the
+    /// project's own styles neither has. The project's copy of a style replaces the listed one of the same id.
     func textStyleChoices(_ editor: TimelineEditor) -> [NativeTextStyle] {
         let library = textStyleLibrary?.menuStyles ?? []
-        let ids = Set(library.map(\.id))
-        let projectOnly = (editor.document.textStyles ?? []).filter { $0.isSupported && !ids.contains($0.id) }
-        // The project's copy wins inside the project, so it replaces the library's entry of the same id.
-        let projectCopy = Dictionary((editor.document.textStyles ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return library.map { projectCopy[$0.id].flatMap { $0.isSupported ? $0 : nil } ?? $0 } + projectOnly
+        let libraryIds = Set(library.map(\.id))
+        let starters = TextStarterStyles.styles.filter { !libraryIds.contains($0.id) }
+        let listed = Set(library.map(\.id) + starters.map(\.id))
+        let projectStyles = (editor.document.textStyles ?? [])
+        let projectOnly = projectStyles.filter { $0.isSupported && !listed.contains($0.id) }
+        let projectCopy = Dictionary(projectStyles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return (library + starters).map { projectCopy[$0.id].flatMap { $0.isSupported ? $0 : nil } ?? $0 } + projectOnly
     }
 
     /// Selected layers that hold text.
