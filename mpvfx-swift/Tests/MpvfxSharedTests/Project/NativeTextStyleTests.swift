@@ -184,4 +184,63 @@ internal final class NativeTextStyleTests: XCTestCase {
         XCTAssertNil(try NativeJSONValue.from(newLink)["overrides"])
     }
 
+
+    // MARK: Library styles (issue #283)
+
+    private func libraryStyle(id: String = "text-style:quote", size: Double = 64) -> NativeTextStyle {
+        NativeTextStyle(id: id, name: "Quote", text: NativeClipText(content: "", fontSize: size, color: "#ff0000"))
+    }
+
+    internal func testCreateSavesAndLinksTheLayerInOneCommand() throws {
+        let document = try run(document(), .create(clipId: "text:2", styleId: "style:new", name: "New"))
+        XCTAssertEqual(document.textStyles?.map(\.id), ["style:new"])
+        XCTAssertEqual(document.sequence.tracks[0].clips[2].textStyle?.styleId, "style:new")
+        XCTAssertNil(document.sequence.tracks[0].clips[1].textStyle)
+        XCTAssertThrowsError(try run(document, .create(clipId: "text:3", styleId: "style:new", name: "Again"))) {
+            XCTAssertEqual($0 as? NativeTextStyleError, .duplicateStyle)
+        }
+        XCTAssertThrowsError(try run(document, .create(clipId: "text:3", styleId: "style:other", name: "  "))) {
+            XCTAssertEqual($0 as? NativeTextStyleError, .invalidName)
+        }
+    }
+
+    internal func testAdoptCopiesALibraryStyleIntoTheProjectOnFirstUse() throws {
+        let base = try document()
+        XCTAssertNil(base.textStyles)
+        let adopted = try run(base, .adopt(style: libraryStyle(), clipIds: ["text:1", "text:3"]))
+        XCTAssertEqual(adopted.textStyles?.map(\.id), ["text-style:quote"])
+        XCTAssertEqual(adopted.textStyles?.first?.name, "Quote")
+        XCTAssertEqual(resolvedText(adopted.sequence.tracks[0].clips[1], adopted.textStyles ?? [])?.fontSize, 64)
+        XCTAssertEqual(resolvedText(adopted.sequence.tracks[0].clips[1], adopted.textStyles ?? [])?.content, "Words 1")
+        XCTAssertNil(adopted.sequence.tracks[0].clips[2].textStyle)
+        // A second use finds the project's copy and adds nothing.
+        let again = try run(adopted, .adopt(style: libraryStyle(), clipIds: ["text:2"]))
+        XCTAssertEqual(again.textStyles?.count, 1)
+        XCTAssertEqual(again.sequence.tracks[0].clips[2].textStyle?.styleId, "text-style:quote")
+    }
+
+    internal func testAdoptKeepsTheProjectsOwnCopyOfTheSameStyleId() throws {
+        let adopted = try run(document(), .adopt(style: libraryStyle(size: 64), clipIds: ["text:1"]))
+        let changedLibrary = libraryStyle(size: 90)
+        let result = try run(adopted, .adopt(style: changedLibrary, clipIds: ["text:2"]))
+        XCTAssertEqual(result.textStyles?.first?.text?.fontSize, 64)
+        XCTAssertEqual(resolvedText(result.sequence.tracks[0].clips[2], result.textStyles ?? [])?.fontSize, 64)
+    }
+
+    internal func testAdoptRefusesAFutureStyleAndAMissingLayerWithoutChangingTheDocument() throws {
+        let base = try document()
+        var future = libraryStyle()
+        future.version = 2
+        XCTAssertThrowsError(try run(base, .adopt(style: future, clipIds: ["text:1"]))) {
+            XCTAssertEqual($0 as? NativeTextStyleError, .unsupportedStyle)
+        }
+        XCTAssertThrowsError(try run(base, .adopt(style: libraryStyle(), clipIds: ["text:1", "text:9"]))) {
+            XCTAssertEqual($0 as? NativeTextStyleError, .missingClip)
+        }
+        var unnamed = libraryStyle()
+        unnamed.name = " "
+        XCTAssertThrowsError(try run(base, .adopt(style: unnamed, clipIds: ["text:1"]))) {
+            XCTAssertEqual($0 as? NativeTextStyleError, .invalidName)
+        }
+    }
 }

@@ -1,7 +1,7 @@
 <!--
 Thanks for the pull request. Fill in what applies and delete what does not. Plain words are best: say what changes
 for someone using MpVFX. Never paste passwords, tokens, keys or personal data here; this page is public.
-How the checks work: .github/CHECKS.md. How pull requests land: CONTRIBUTING.md.
+How pull requests land: CONTRIBUTING.md.
 -->
 
 Closes #

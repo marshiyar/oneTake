@@ -67,6 +67,11 @@ public final class InspectorPanel {
     public var onCopyGrade: (() -> Bool)?
     /// Durable user-data look catalogue, supplied by the host; ordinary effects remain in the project.
     public var userLookStore: UserLookStore?
+    /// The user's text styles (`<userData>/text-styles.json`), supplied by the host; the project copies a style on first use.
+    public var textStyleLibrary: TextStyleLibrary?
+    var textStyleMenuOpen = false
+    var textStyleNameDraft: String?
+    var textStyleError: String?
     public var resolveUserLookLut: (String) -> String = { $0 }
     public var userLookLutExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     var selectedUserLook: String?
@@ -281,6 +286,8 @@ public final class InspectorPanel {
     public var lutAssets: () -> [String] = { [] }
     /// The grid size of the grade's LUT (its `src`), or why it could not be read; nil while unknown (InspectorPanel+Lut).
     public var lutStatus: (String) -> LutStatus? = { _ in nil }
+    /// The Loudness row's reading for a clip's source path (Media group). Nil hides the row (InspectorPanel+Groups).
+    public var clipLoudness: ((_ source: String) -> ClipLoudnessReading)?
     /// Opens a select popover under `anchor` (the right panel's PanelDropdown); `pick` gets the chosen value.
     public var onOpenDropdown: ((_ key: String, _ options: [PanelDropdown.Option], _ selected: String?, _ anchor: CanvasRect,
                                  _ pick: @escaping (String) -> Void) -> Void)?

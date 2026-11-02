@@ -34,6 +34,9 @@ public final class VoiceRecorder {
 
     /// Optional leading silence, evaluated after opening the input so measured latency is available.
     public var leadingSilenceFrames: () -> Int = { 0 }
+    /// Total frames the file may hold, leading silence included; capture ends by itself once it is full (a punch-in's
+    /// take is exactly as long as its range). nil records until `stop`.
+    public var maxFrames: Int?
     private let input: AudioInput
     public let destination: String
     private let temporaryPath: String
@@ -51,6 +54,7 @@ public final class VoiceRecorder {
     }
     private var captureFailure: AudioInputError?
     private var writeFailure: AudioInputError?
+    private var full = false
 
     /// `destination` is the WAV the finished recording appears at (its folder must exist and the name must be free).
     public init(input: AudioInput, destination: String, checkpointSeconds: Double = 1) {
@@ -64,6 +68,8 @@ public final class VoiceRecorder {
     /// Frames captured so far.
     public var framesRecorded: Int { lock.lock(); defer { lock.unlock() }; return recordedFrames }
     public var isRecording: Bool { lock.lock(); defer { lock.unlock() }; return running }
+    /// Capture stopped because `maxFrames` was reached (the file is complete; `stop` publishes it).
+    public var reachedLimit: Bool { lock.lock(); defer { lock.unlock() }; return full }
     /// The error that ended capture early, if any (the recording so far is kept).
     public var failure: AudioInputError? { lock.lock(); defer { lock.unlock() }; return writeFailure ?? captureFailure }
 
@@ -81,9 +87,9 @@ public final class VoiceRecorder {
         do { file = try WavStreamWriter(path: temporaryPath, sampleRate: input.format.sampleRate, channels: input.format.channels) }
         catch { input.stop(); throw error }
         do {
-            let silence = max(0, leadingSilenceFrames())
+            let silence = min(max(0, leadingSilenceFrames()), max(0, maxFrames ?? .max))
             if silence > 0 { try file.append([Int16](repeating: 0, count: silence * input.format.channels)) }
-            lock.lock(); recordedFrames = silence; writer = file; running = true; lock.unlock()
+            lock.lock(); recordedFrames = silence; writer = file; running = true; full = silence == maxFrames; lock.unlock()
         } catch { input.stop(); file.abandon(); throw error }
         let loop = Thread { [weak self] in self?.capture(file) }
         loop.name = "mpvfx.voice-recorder"; thread = loop; loop.start()
@@ -94,20 +100,32 @@ public final class VoiceRecorder {
         var sinceCheckpoint = 0
         while isRecording {
             do {
-                let block: [Float] = try withAutoreleasePool { try input.read(frames: Self.blockFrames) }
+                let room = lock.withLock { maxFrames.map { max(0, $0 - recordedFrames) } }
+                if room == 0 { end(full: true); return }
+                let want = min(Self.blockFrames, room ?? Self.blockFrames)
+                var block: [Float] = try withAutoreleasePool { try input.read(frames: want) }
                 if block.isEmpty { return }
+                // A converting input can hand out a frame or two more than asked: keep them, cut only what overruns the file.
+                if let room, block.count > room * input.format.channels { block.removeLast(block.count - room * input.format.channels) }
                 try file.append(block.map(Self.sample))
                 let frames = block.count / input.format.channels
                 let level = block.filter { $0.isFinite }.map { abs($0) }.max() ?? 0
                 lock.lock(); recordedFrames += frames; peak = min(1, level); clipped = clipped || level >= 1; lock.unlock()
                 sinceCheckpoint += frames
                 if sinceCheckpoint >= checkpointFrames { try file.checkpoint(); sinceCheckpoint = 0 }
+                if let cap = maxFrames, framesRecorded >= cap { end(full: true); return }
             } catch let error as AudioInputError {
                 record(error); return
             } catch {
                 record(.deviceError("\(error)")); return
             }
         }
+    }
+
+    /// Capture is over without an error: the file holds everything it was meant to.
+    private func end(full reached: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        full = reached; running = false
     }
 
     private func record(_ error: AudioInputError) {
