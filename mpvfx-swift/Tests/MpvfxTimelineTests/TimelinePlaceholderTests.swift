@@ -89,4 +89,41 @@ final class TimelinePlaceholderTests: XCTestCase {
         XCTAssertFalse(newer.clearPlaceholder(clipId: "clip:a"))
         XCTAssertEqual(newer.document, d)
     }
+
+    func controller() throws -> (TimelineController, TimelineEditor) {
+        let e = try make()
+        let c = TimelineController(view: TimelineView(tracks: [], duration: 0), playback: PlaybackState(duration: 0), editor: e)
+        c.viewport = CanvasSize(1200, 600)
+        return (c, e)
+    }
+
+    func testTheClipModelAndTheClipMenuFollowTheMarker() throws {
+        let (c, e) = try controller()
+        func model(_ id: String) -> TimelineClipModel? { c.view.tracks.flatMap(\.clips).first { $0.id == id } }
+        func label() -> String? {
+            c.view.clipMenu?.entries.compactMap { entry -> TimelineClipMenu.Item? in
+                if case .item(let item) = entry, item.action == .placeholder { return item }; return nil
+            }.first?.label
+        }
+        XCTAssertNil(model("clip:a")?.placeholder)
+        c.openClipMenu("clip:a", x: 10, y: 10)
+        XCTAssertEqual(label(), "Mark as placeholder")
+        XCTAssertTrue(c.runClipMenu(.placeholder, clipId: "clip:a"))
+        XCTAssertEqual(model("clip:a")?.placeholder, 1)
+        c.openClipMenu("clip:a", x: 10, y: 10)
+        XCTAssertEqual(label(), "Unmark placeholder")
+        XCTAssertTrue(c.runClipMenu(.placeholder, clipId: "clip:a"))
+        XCTAssertNil(model("clip:a")?.placeholder)
+        XCTAssertNil(e.clip("clip:a")?.clip.placeholder)
+    }
+
+    func testOptionCommandPTogglesTheSelectedClips() throws {
+        let (c, e) = try controller()
+        c.view.selection = ["clip:m1", "clip:a"]
+        XCTAssertTrue(c.keyDown(EditorKey(.char("p"), meta: true, alt: true)))
+        XCTAssertEqual(e.clip("clip:a")?.clip.placeholder?.number, 1, "numbered in timeline order")
+        XCTAssertEqual(e.clip("clip:m1")?.clip.placeholder?.number, 2)
+        XCTAssertTrue(c.keyDown(EditorKey(.char("p"), meta: true, alt: true)), "all marked: unmark them")
+        XCTAssertEqual(e.document.unfilledPlaceholderNumbers, [])
+    }
 }

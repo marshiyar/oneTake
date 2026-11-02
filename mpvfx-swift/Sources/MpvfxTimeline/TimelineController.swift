@@ -434,6 +434,7 @@ public final class TimelineController {
             case "=", "+", "-", "0": return zoomKey(Character(ch.lowercased()))
             case "a" where !k.shift && !k.alt: return selectAll()
             case "d" where !k.shift && !k.alt: return duplicateSelection()
+            case "p" where k.alt && !k.shift: return togglePlaceholderSelection()
             case "c" where k.alt: return copyGradeSelection()
             case "v" where k.alt: return pasteGradeSelection()
             case "c": return copySelection()
@@ -521,6 +522,19 @@ public final class TimelineController {
     @discardableResult public func copySelection() -> Bool {
         guard let editor, !view.selection.isEmpty, let board = editor.copyClips(view.selection) else { return false }
         clipboard = board; return true
+    }
+
+    /// ⌥⌘P: marks the selected clips as template placeholders, or unmarks them when every one of them already is.
+    @discardableResult public func togglePlaceholderSelection() -> Bool {
+        guard let editor, !view.selection.isEmpty else { return false }
+        let clips = view.selection.compactMap { editor.clip($0)?.clip }
+        guard !clips.isEmpty else { return false }
+        let unmark = clips.allSatisfy { $0.placeholder != nil }
+        var changed = false
+        for clip in clips.sorted(by: { $0.startFrame < $1.startFrame }) {
+            changed = (unmark ? editor.clearPlaceholder(clipId: clip.id) : (clip.placeholder == nil && editor.markPlaceholder(clipId: clip.id))) || changed
+        }
+        return changed
     }
 
     @discardableResult public func copyGradeSelection() -> Bool {

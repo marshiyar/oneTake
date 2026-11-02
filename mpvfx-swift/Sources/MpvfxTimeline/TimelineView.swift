@@ -202,6 +202,8 @@ public struct TimelineClipModel: Sendable, Equatable {
     /// Enabled nodes in the clip's audio FX chain (TimelineFxButton nodeCount: enabledAudioFxNodes).
     public var fxCount = 0
     public var beatTimes: [Double] = []
+    /// The number of the template placeholder this clip is (outlined with a dashed line and numbered); nil on every other clip.
+    public var placeholder: Int?
     public var end: Double { start + duration }
     public init(id: String? = nil, name: String, start: Double, duration: Double, kind: TimelineClipKind = .video,
                 keyframes: [Double] = [], effectCount: Int = 0) {
@@ -611,6 +613,17 @@ public final class TimelineView {
                 let tcColor = offline ? Self.offlineLabelColor : CanvasColor(ThemeTokens.white.alpha(ThemeTokens.clipTimecodeAlpha))
                 if tcY >= header.maxY + 1, let tcs = Self.ellipsize(c, tc, font: tf, maxWidth: r.width - 12) {
                     c.drawText(tcs, at: .init(r.x + 12, tcY), font: tf, color: tcColor)
+                }
+            }
+            if let number = clip.placeholder {
+                // A template placeholder: a dashed outline inside the bar and its number at the bottom right.
+                c.stroke(Self.clipPath(r.insetBy(1.5), radius: max(0, t.clipRadius - 1), squareLeft: squareLeft),
+                         CanvasColor(ThemeTokens.white.alpha(0.85)), StrokeStyle(width: 1.5, dash: [4, 3]))
+                let nf = CanvasFont(family: Self.clipMonoFamily, size: 9, weight: .semibold)
+                let numberLabel = "#\(number)"
+                let nw = c.measureText(numberLabel, font: nf).width
+                if r.width >= nw + 20, r.height >= 28 {
+                    c.drawText(numberLabel, at: .init(r.maxX - nw - 8, r.maxY - 6 - 9), font: nf, color: CanvasColor(ThemeTokens.white.alpha(0.95)))
                 }
             }
             if clip.effectCount > 0 {

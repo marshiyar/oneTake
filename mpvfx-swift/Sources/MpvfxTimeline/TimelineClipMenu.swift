@@ -18,7 +18,7 @@ import MpvfxTheme
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
-        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
+        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, placeholder, delete
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -79,7 +79,7 @@ public struct TimelineClipMenu: Equatable, Sendable {
     public static func entries(kind: TimelineClipKind, splitEnabled: Bool, thumbnails: Bool, muted: Bool,
                                canReattach: Bool, canDetach: Bool, canMute: Bool = true,
                                canPaste: Bool = false, canPasteGrade: Bool = false, gradePasteReason: String? = nil,
-                               keepsPitch: Bool? = nil, disabled: Bool = false) -> [Entry] {
+                               keepsPitch: Bool? = nil, disabled: Bool = false, placeholder: Bool = false) -> [Entry] {
         var e: [Entry] = []
         let hasSplit = kind == .video || kind == .audio || kind == .image
         if hasSplit { e.append(.item(Item(action: .split, label: "Split", hint: "S", enabled: splitEnabled))); e.append(.divider) }
@@ -97,6 +97,10 @@ public struct TimelineClipMenu: Equatable, Sendable {
         if kind == .video || kind == .audio || kind == .image {
             e.append(.item(Item(action: .revealSource, label: "Reveal in media bin")))
             e.append(.item(Item(action: .showSourceFile, label: "Show in file manager")))
+            e.append(.divider)
+        }
+        if kind == .video || kind == .audio || kind == .image {
+            e.append(.item(Item(action: .placeholder, label: placeholder ? "Unmark placeholder" : "Mark as placeholder", hint: "⌥⌘P", checked: placeholder)))
             e.append(.divider)
         }
         if kind == .video || kind == .image {
