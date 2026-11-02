@@ -22,6 +22,10 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- F6 and Shift+F6 move the keyboard focus between panels, the focused panel is outlined, and Tab past the last
+  control of a side panel moves on to the next panel instead of stopping.
+- Export versions (⇧⌘R): tick several export presets and render them one after another, each saved as
+  "<project> – <preset>" without replacing an existing file; a preset can render at its own composition size.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

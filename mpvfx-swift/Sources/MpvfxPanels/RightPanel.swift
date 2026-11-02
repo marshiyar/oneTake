@@ -79,6 +79,13 @@ public final class RightPanel {
     public var presetName = ""
     public var onSavePreset: ((String, RenderSettingsModel) -> Void)?
     public var onDeletePreset: ((String) -> Void)?
+    /// The "Export versions" card (⇧⌘R) and what the host renders when it exports: the chosen presets' names.
+    public let versions = ExportVersionsCard()
+    public var onExportVersions: (([String]) -> Void)? { get { versions.onExport } set { versions.onExport = newValue } }
+    /// The composition size picked for a preset in that card (nil: the project's own size).
+    public var onSetPresetComposition: ((String, RenderPresetComposition?) -> Void)? {
+        get { versions.onSetComposition } set { versions.onSetComposition = newValue }
+    }
     public var canvasSize = CanvasSize(1920, 1080)
     public var lastRenderSeconds: Double?
     public var actionError: String?
@@ -210,6 +217,21 @@ public final class RightPanel {
             }
         }
         dropdown.draw(c)
+        versions.draw(c, size: size)
+    }
+
+    /// Shows the Renders tab with the "Export versions" checklist (⇧⌘R). While renders are running it says so instead:
+    /// one run of versions at a time.
+    public func openExportVersions() {
+        layout.setRightCollapsed(false)
+        layout.setRightTab(.renders)
+        if isRendering {
+            actionError = "Wait for the renders in progress to finish, then export versions."
+        } else {
+            actionError = nil
+            versions.open(presets: renderPresets)
+        }
+        onChange?()
     }
 
     /// The shown tab's content in `rect`.
@@ -585,6 +607,7 @@ public final class RightPanel {
     }
 
     public func pointerDown(_ p: CanvasPoint) -> Bool {
+        if versions.isOpen { _ = versions.pointerDown(p); onChange?(); return true }
         focus.pointerPressed()
         if dropdown.pointerDown(p) { onChange?(); return true }
         if let r = contentPointerDown(p) { return r }
@@ -649,6 +672,7 @@ public final class RightPanel {
     }
 
     public func pointerMove(_ p: CanvasPoint) -> Bool {
+        if versions.isOpen { return versions.pointerMove(p) }
         if dropdown.isOpen { return dropdown.pointerMove(p) }
         var changed = false
         changed = contentPointerMove(p)
@@ -666,6 +690,7 @@ public final class RightPanel {
     /// `dy` in points from the host: precise (trackpad) deltas move 1:1, wheel line steps glide (PanelScroller).
     /// `zoom` (the command key held) zooms the Easing tab's graph instead of panning it.
     public func scroll(_ p: CanvasPoint, dy: Double, precise: Bool = false, zoom: Bool = false) -> Bool {
+        if versions.isOpen { versions.scrollBy(dy); onChange?(); return true }
         if dropdown.isOpen { dropdown.scrollBy(dy); return true }
         if shownTab == .design { return inspector.scroll(p, dy: dy, precise: precise) }
         if shownTab == .easing { return easing.scroll(p, dy: dy, zoom: zoom) }
@@ -681,7 +706,7 @@ public final class RightPanel {
         return a || b || e
     }
 
-    public var isEditingText: Bool { field != nil || inspector.isEditingText || easing.isEditingText }
+    public var isEditingText: Bool { versions.isOpen || field != nil || inspector.isEditingText || easing.isEditingText }
 
     /// Release reaches the inspector even if a tab or field changed during a held arrow.
     public func keyUp(_ key: EditorKey) { inspector.keyUp(key) }
@@ -690,6 +715,7 @@ public final class RightPanel {
     /// hide, panel menu) comes first in the Tab order and the inspector after it; on the Renders tab one focus covers
     /// the header and the tab's controls.
     public func keyDown(_ k: EditorKey) -> Bool {
+        if versions.isOpen { let handled = versions.keyDown(k); onChange?(); return handled }
         if dropdown.key(k) { onChange?(); return true }
         if field != nil { return fieldKey(k) }
         if shownTab == .design && !layout.effectiveRightCollapsed { return designKey(k) }

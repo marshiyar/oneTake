@@ -106,7 +106,7 @@ merge train's comments and labels and turns on auto-merge (`.github/workflows/me
 
 ## Project board
 
-The board is the owner's GitHub Project "oneTake launch" (https://github.com/users/marshiyar/projects/5). It shows
+The board is the owner's private GitHub Project "oneTake launch". It shows
 every open issue and pull request, and those closed in the last 14 days, on a kanban by **Status**: Backlog, Ready
 (label `buildable`), In progress (label `in-progress`, or a draft pull request), Blocked (label `blocked`), In review
 (an open pull request) and Done (closed or merged). Where the project has these fields, it also fills **Priority**

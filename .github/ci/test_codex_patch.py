@@ -41,7 +41,7 @@ class Extract(unittest.TestCase):
 
     def test_workflows_token_scripts_policy_and_lock_are_refused(self):
         for p in (".github/workflows/mpvfx-ci.yml", ".github/ci/codex_patch.py", ".github/ci/codacy_to_codex.py",
-                  ".github/sentinel.toml",
+                  ".github/ci/merge_train.py", ".github/sentinel.toml",
                   "mpvfx-swift/binaries.lock", ".claude/settings.json", ".codex/hooks.json",
                   ".github/ci/publish.sh", ".github/ci/metal-toolchain.sh", "mpvfx-swift/packaging/macos/package.sh",
                   "mpvfx-swift/packaging/macos/import-cert.sh", "mpvfx-swift/packaging/macos/check-signing.sh",
