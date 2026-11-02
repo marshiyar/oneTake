@@ -70,7 +70,7 @@ public struct DockRegistry: Equatable, Sendable {
     public static let maxExtent = 4096.0
     public init() {}
 
-    /// The built-in editor panels: Media, Preview, Design, Renders, Timeline, History, Info, Effects.
+    /// The built-in editor panels: Media, Preview, Design, Renders, Timeline, History, Info, Effects, Transitions.
     public static var editor: DockRegistry {
         var r = DockRegistry()
         for spec in DockPanels.builtIn + DesignGroups.specs { r.specs.append(spec) }
@@ -117,6 +117,7 @@ public enum DockPanels {
     public static let history: DockPanelID = "history"
     public static let info: DockPanelID = "info"
     public static let effects: DockPanelID = "effects"
+    public static let transitions: DockPanelID = "transitions"
     public static let scopes: DockPanelID = "scopes"
     public static let markers: DockPanelID = "markers"
 
@@ -138,6 +139,7 @@ public enum DockPanels {
         DockPanelSpec(id: mixer, title: "Mixer", defaultDock: .bottom, minSize: CanvasSize(280, 180)).closedByDefault(),
         DockPanelSpec(id: info, title: "Info", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)),
         DockPanelSpec(id: effects, title: "Effects", defaultDock: .left, minSize: CanvasSize(PanelFit.minLeft, 160)),
+        DockPanelSpec(id: transitions, title: "Transitions", defaultDock: .left, minSize: CanvasSize(PanelFit.minLeft, 160)),
         DockPanelSpec(id: scopes, title: "Scopes", defaultDock: .right, minSize: CanvasSize(240, 180))
             .preferring(CanvasSize(360, 0)).closedByDefault(),
         DockPanelSpec(id: markers, title: "Markers", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)).closedByDefault(),

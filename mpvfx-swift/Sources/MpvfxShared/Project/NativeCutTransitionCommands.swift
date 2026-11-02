@@ -20,6 +20,9 @@ import Foundation
 public enum NativeCutTransitionCommand: Equatable {
     /// Adds `transition` (its `fromClipId` / `toClipId` name two touching clips of the track).
     case add(trackId: String, transition: NativeCutTransition)
+    /// Adds `transition`, first dropping the one already on that cut (the same two clips) if there is one: choosing a
+    /// kind in the Transitions browser for a cut that has a transition is one edit, so one undo step.
+    case replace(trackId: String, transition: NativeCutTransition)
     case setLength(id: String, durationFrames: Double)
     case setKind(id: String, kind: NativeCutTransitionKind)
     case setDirection(id: String, direction: NativeTransitionDirection)
@@ -62,12 +65,18 @@ private func locateTransition(_ d: NativeProjectDocument, _ id: String) -> (trac
 private func editedTransitions(_ d: NativeProjectDocument, _ command: NativeCutTransitionCommand)
     -> Result<(document: NativeProjectDocument, id: String), NativeProjectClipFailure> {
     var next = d
-    if case let .add(trackId, transition) = command {
+    switch command {
+    case .add(let trackId, let transition), .replace(let trackId, let transition):
         guard let t = d.sequence.tracks.firstIndex(where: { $0.id == trackId }) else {
             return .failure(.init(code: .missingSourceTrack, message: "Track \(trackId) does not exist"))
         }
-        next.sequence.tracks[t].transitions = d.sequence.tracks[t].cutTransitions + [transition]
+        var list = d.sequence.tracks[t].cutTransitions
+        if case .replace = command {
+            list.removeAll { $0.isKnown && $0.fromClipId == transition.fromClipId && $0.toClipId == transition.toClipId }
+        }
+        next.sequence.tracks[t].transitions = list + [transition]
         return .success((next, transition.id ?? ""))
+    default: break
     }
     let id = transitionId(of: command)
     guard let at = locateTransition(d, id) else {
@@ -81,7 +90,7 @@ private func editedTransitions(_ d: NativeProjectDocument, _ command: NativeCutT
 
 private func transitionId(of command: NativeCutTransitionCommand) -> String {
     switch command {
-    case .add(_, let t): t.id ?? ""
+    case .add(_, let t), .replace(_, let t): t.id ?? ""
     case .setLength(let id, _), .setKind(let id, _), .setAlignment(let id, _), .setColor(let id, _), .setDirection(let id, _), .setSoftness(let id, _), .remove(let id): id
     }
 }
@@ -94,7 +103,7 @@ private func edit(_ t: inout NativeCutTransition, _ command: NativeCutTransition
     case .setColor(_, let color): t.color = color
     case .setDirection(_, let direction): t.direction = direction
     case .setSoftness(_, let softness): t.softness = softness
-    case .add, .remove: break
+    case .add, .replace, .remove: break
     }
 }
 

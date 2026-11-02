@@ -74,6 +74,7 @@ extension EditorSession {
         installDockedPanel(router, id: DockPanels.info, panel: feed.panel) { [weak feed] in feed?.refresh() }
         clipInfoFeed = feed
         installEffectsPanel(router)
+        installTransitionsPanel(router)
         let scopes = ScopesPanel(layout: router.layout)
         let program = ProgramScopeRenderer(compositor: compositor)
         let refresh: () -> Void = { [weak self] in self?.postToUI { [weak self] in self?.redraw() } }
@@ -109,6 +110,42 @@ extension EditorSession {
         let group = CrossPaneDragGroup(drags)
         crossPaneDrags = group
         router.crossPaneDrag = group
+    }
+}
+
+extension EditorSession {
+    /// The Transitions browser: tiles play on the clips around the selected cut; Return, a double click or a drop on a
+    /// cut applies. Stars are saved in the panel preferences.
+    fileprivate func installTransitionsPanel(_ router: EditorShellRouter) {
+        let transitions = TransitionsPanel(favourites: router.layout.prefs.favouriteTransitions ?? [])
+        transitions.editor = editor
+        transitions.selection = { [weak self] in self?.timeline.view.selection ?? [] }
+        transitions.clipPicture = { [weak self] req in self?.panels?.right.inspector.effectPreview?(req) ?? .unavailable }
+        transitions.onEdited = { [weak self] in self?.redraw() }
+        transitions.onFavouritesChange = { [weak router] ids in router?.layout.update { $0.favouriteTransitions = ids.isEmpty ? nil : ids } }
+        transitions.onAnimate = { [weak self, weak transitions] in self?.animateTransitions(transitions) }
+        installDockedPanel(router, id: DockPanels.transitions, panel: transitions)
+        let drag = TransitionDrag(self, panel: transitions)
+        var drags: [CrossPaneDrag] = []
+        if let existing = router.crossPaneDrag { drags.append(existing) }
+        drags.append(drag)
+        let group = CrossPaneDragGroup(drags)
+        crossPaneDrags = group
+        router.crossPaneDrag = group
+    }
+
+    /// Runs the playing tile at ~60 Hz on the shell's timer, then stops when nothing plays.
+    private func animateTransitions(_ panel: TransitionsPanel?) {
+        guard let panel, !panel.animating, let schedule else { return }
+        panel.animating = true
+        var last = Date()
+        func step() {
+            let now = Date(), dt = now.timeIntervalSince(last); last = now
+            let more = panel.tick(dt)
+            redraw()
+            if more { _ = schedule(1.0 / 60, step) } else { panel.animating = false }
+        }
+        _ = schedule(1.0 / 60, step)
     }
 }
 
@@ -177,6 +214,61 @@ final class EffectDrag: CrossPaneDrag {
         let r = CanvasRect(x: w.x + 10, y: w.y + 10, width: width, height: 22)
         c.fillRoundedRect(r, radius: 4, PanelTheme.neutral900.withAlpha(0.92))
         c.strokeRoundedRect(r.insetBy(0.5), radius: 3.5, overClip != nil ? PanelTheme.accent : PanelTheme.panelBorderInput, width: 1)
+        PanelDraw.text(c, e.label, in: CanvasRect(x: r.x + 8, y: r.y, width: r.width - 16, height: r.height), font: font, color: PanelTheme.text1)
+    }
+}
+
+/// Dragging a tile out of the Transitions browser onto a cut in the timeline.
+final class TransitionDrag: CrossPaneDrag {
+    unowned let session: EditorSession
+    let panel: TransitionsPanel
+    private var window: CanvasPoint?
+    private(set) var overCut: TimelineCut?
+
+    init(_ session: EditorSession, panel: TransitionsPanel) { self.session = session; self.panel = panel }
+
+    func isDragging(from region: EditorShellRouter.Region) -> Bool {
+        region == .of(DockPanels.transitions) && panel.draggingEntry != nil
+    }
+
+    func dragMoved(over region: EditorShellRouter.Region?, local: CanvasPoint, window: CanvasPoint) {
+        self.window = window
+        overCut = region == .timeline ? cut(atTimelinePoint: local) : nil
+    }
+
+    func dragEnded(over region: EditorShellRouter.Region?, local: CanvasPoint) {
+        defer { window = nil; overCut = nil }
+        guard region == .timeline, let entry = panel.lastDraggedEntry, let cut = cut(atTimelinePoint: local) else { return }
+        panel.apply(entry, to: cut)
+        session.timeline.view.selection = [cut.fromClipId, cut.toClipId]
+        session.redraw()
+    }
+
+    /// The cut under a timeline-local point: within 12 px of a boundary between two touching clips of the track
+    /// there; nil over the toolbar, a gap or open space.
+    func cut(atTimelinePoint p: CanvasPoint) -> TimelineCut? {
+        let view = session.timeline.view
+        let y = p.y - TimelineToolbar.height
+        guard y >= 0, !view.tracks.isEmpty else { return nil }
+        let track = view.tracks[min(max(0, view.trackIndex(nearY: y)), view.tracks.count - 1)]
+        let fps = session.editor.fps
+        let tolerance = max(1, (view.time(forX: p.x + 12) - view.time(forX: p.x)) * fps)
+        return session.editor.cut(nearFrame: view.time(forX: p.x) * fps, toleranceFrames: tolerance, trackId: track.id)
+    }
+
+    func drawDrag(_ c: CanvasContext) {
+        guard let w = window, let e = panel.draggingEntry else { return }
+        if let cut = overCut, let router = session.shell, let f = router.frames {
+            // The drop outline: a line through the tracks at the cut (window coordinates).
+            let t = router.rect(.timeline, f)
+            let x = t.x + session.timeline.view.x(for: cut.frame / session.editor.fps)
+            c.fillRect(CanvasRect(x: x - 1, y: t.y + TimelineToolbar.height, width: 2, height: max(0, t.height - TimelineToolbar.height)), PanelTheme.accent)
+        }
+        let font = PanelTheme.font(11, .medium)
+        let width = min(220, c.measureText(e.label, font: font).width + 16)
+        let r = CanvasRect(x: w.x + 10, y: w.y + 10, width: width, height: 22)
+        c.fillRoundedRect(r, radius: 4, PanelTheme.neutral900.withAlpha(0.92))
+        c.strokeRoundedRect(r.insetBy(0.5), radius: 3.5, overCut != nil ? PanelTheme.accent : PanelTheme.panelBorderInput, width: 1)
         PanelDraw.text(c, e.label, in: CanvasRect(x: r.x + 8, y: r.y, width: r.width - 16, height: r.height), font: font, color: PanelTheme.text1)
     }
 }
