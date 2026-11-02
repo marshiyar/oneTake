@@ -34,7 +34,7 @@ final class ClipLoudnessFeedTests: XCTestCase {
 
     /// A feed on `folder`; its redraw runs `redraw`, and background results come back on the main queue.
     func feed(_ folder: URL, redraw: @escaping () -> Void = {}) -> ClipLoudnessFeed {
-        ClipLoudnessFeed(projectDir: { folder.path }, postToUI: { DispatchQueue.main.async($0) }, redraw: redraw)
+        ClipLoudnessFeed(projectDir: { folder.path }, postToUI: { work in DispatchQueue.main.async { work() } }, redraw: redraw)
     }
 
     /// The integrated loudness of the tone as the decoder hands it over: 16-bit mono, duplicated to both channels.
