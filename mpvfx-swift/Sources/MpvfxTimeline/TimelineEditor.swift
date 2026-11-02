@@ -88,6 +88,7 @@ public final class TimelineEditor {
                     }
                     m.effects = c.effects.filter(\.enabled).map { TimelineEffectModel(id: "native:\($0.id)", label: Self.titleCase($0.effectId)) }
                     m.beatTimes = c.visibleBeatFrames.map { $0.timeline / f }
+                    m.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
                     m.muted = c.muted
                     m.assetId = c.assetId
                     if let srcFrames = a?.durationFrames, srcFrames > 0 {

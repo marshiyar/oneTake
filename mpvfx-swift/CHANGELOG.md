@@ -12,6 +12,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 ### Editing
 - Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels
   and dock beside the preview; Design groups can be dragged out into their own panels.
+- Transitions on the timeline: Cmd/Ctrl+T adds one at the cut nearest the playhead, the band drags by its edges, Option+arrows
+  walk from cut to cut, and Settings sets the default length.
+- Speed ramps get an editor: a speed graph with six starting shapes in the Media group, and Shift+R to turn a ramp on or off.
 - A Transitions browser: a dockable panel with a search field and stars lists dissolve, dip, wipe and push, plays each
   one on the clips around the selected cut, and applies it on Return, a double click or a drop on a cut.
 - Sequence markers: M drops a named marker at the playhead; the Markers panel jumps, renames, recolours and deletes

@@ -202,6 +202,8 @@ public struct TimelineClipModel: Sendable, Equatable {
     /// Enabled nodes in the clip's audio FX chain (TimelineFxButton nodeCount: enabledAudioFxNodes).
     public var fxCount = 0
     public var beatTimes: [Double] = []
+    /// The clip's speed ramp when it has one this build understands; the clip draws a speed strip along its foot.
+    public var speedRamp: NativeSpeedRamp?
     public var end: Double { start + duration }
     public init(id: String? = nil, name: String, start: Double, duration: Double, kind: TimelineClipKind = .video,
                 keyframes: [Double] = [], effectCount: Int = 0) {
@@ -656,6 +658,7 @@ public final class TimelineView {
                 c.fillRoundedRect(CanvasRect(x: r.maxX - 6, y: r.y + 6, width: 2, height: r.height - 12), radius: 1, col)
             }
         }
+        drawSpeedStrip(c, r, clip)
         // Hidden track: the lane renders at opacity 0.35 (TimelineLanes isTrackHidden). Painting the row
         // background at 1 - opacity over the clip composites to the same result. Locked tracks (native
         // addition) fade less.
