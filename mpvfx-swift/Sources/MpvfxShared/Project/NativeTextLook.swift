@@ -73,7 +73,7 @@ public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
     }
 
     /// A glow: a halo `radius` px (0…200, default 12) wide that reaches `strength` (0…1, default 1) of `color` at the
-    /// letter edge. A strength of 0 draws nothing.
+    /// edge of a large letter shape (a thin stroke gives a fainter halo). A strength of 0 draws nothing.
     public struct Glow: Codable, Equatable, Hashable, Sendable {
         public var radius: Double?
         public var strength: Double?
@@ -87,8 +87,8 @@ public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
 
     /// A plate behind the text: `mode` `line` (the default) puts one rounded rectangle behind each line, `block` one
     /// behind all of them. `paddingX` and `paddingY` px (0…500, default 0) grow it past the text; `radius` px (0…500,
-    /// default 0) rounds its corners; `color` may carry alpha. Plates of neighbouring lines whose gap is no more than the
-    /// vertical padding join into one shape, and a line with no text gets none.
+    /// default 0) rounds its corners; `color` may carry alpha. Plates of neighbouring lines that touch or overlap (the gap
+    /// between the lines is at most twice the vertical padding) join into one shape, and a line with no text gets none.
     public struct Plate: Codable, Equatable, Hashable, Sendable {
         public var mode: String?
         public var paddingX: Double?
@@ -102,6 +102,8 @@ public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
         public var resolvedPaddingX: Double { paddingX ?? 0 }
         public var resolvedPaddingY: Double { paddingY ?? 0 }
         public var resolvedRadius: Double { radius ?? 0 }
+        /// True when the plate changes the picture (its colour is not fully clear).
+        public var isActive: Bool { !(color.count == 9 && color.lowercased().hasSuffix("00")) }
     }
 
     /// A gradient fill from `from` to `to` along `angle` degrees (0 runs left to right, 90 top to bottom; −360…360,
@@ -122,7 +124,7 @@ public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
     public var isSupported: Bool { unsupported == nil }
     /// A supported look that draws nothing extra.
     public var isEmpty: Bool {
-        isSupported && (outlines ?? []).isEmpty && shadow == nil && glow?.isActive != true && plate == nil && fill == nil
+        isSupported && (outlines ?? []).isEmpty && shadow == nil && glow?.isActive != true && plate?.isActive != true && fill == nil
     }
 
     private enum Keys: String, CodingKey { case v, outlines, shadow, glow, plate, fill }

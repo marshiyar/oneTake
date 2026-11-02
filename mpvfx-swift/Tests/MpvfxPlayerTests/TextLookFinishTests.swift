@@ -111,19 +111,34 @@ final class TextLookFinishTests: XCTestCase {
     }
 
     func testAGradientKeepsItsColoursWhileTheTextRevealsLeftToRight() throws {
-        let look = NativeTextLook(fill: .init(from: "#ff0000", to: "#0000ff"))
         var whole = gradientLayer(angle: 0)
-        let still = try render(whole)
         whole.text?.reveal = NativeTextReveal(unit: "characters", staggerFrames: 10, unitFrames: 4)
+        let still = try render(whole)   // fills the ink bounds cache with the plain look's inset
         whole.textFrame = TextRevealFrame(frame: 12, clipFrames: 120, fps: 30)
-        whole.text?.look = look
         let part = try render(whole)
-        // The first letter is shown in both; the colour of its pixels does not change as the others arrive.
+        XCTAssertLessThan(total(part), total(still))
+        // The first letter is shown in both, at the same place in each picture; its colours do not change as the others arrive.
         var compared = 0
         for y in 0..<still.height { for x in 0..<120 where pixel(part, x, y)[3] == 255 && pixel(still, x, y)[3] == 255 {
             XCTAssertEqual(Int(pixel(part, x, y)[0]), Int(pixel(still, x, y)[0]), accuracy: 1); compared += 1
         } }
         XCTAssertGreaterThan(compared, 100)
+    }
+
+    func testNeighbouringPlatesWithNoPaddingLeaveNoSeamAtAFractionalEdge() throws {
+        // A 41 px font gives 49.2 px lines, so the lines meet at y 89.2 and no pixel boundary.
+        let l = layer(NativeTextLook(plate: .init(paddingX: 12, color: "#ff0000")), content: "Line one\nLine two", size: 41,
+                      box: CanvasRect(x: 60, y: 40, width: 300, height: 200), align: "left")
+        let image = try render(l)
+        // Column 50 is in the side padding, clear of the letters; no vertical padding, so the plates meet at y 89.2.
+        for y in 41..<138 { XCTAssertEqual(pixel(image, 50, y), [255, 0, 0, 255], "row \(y)") }
+    }
+
+    func testAPlateBelowTheEdgeOfTheBoxDoesNotCrash() throws {
+        let l = layer(NativeTextLook(plate: .init(paddingX: 4, paddingY: 4, radius: 6, color: "#00ff00")),
+                      content: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10", size: 30, box: CanvasRect(x: 20, y: 20, width: 100, height: 60), align: "left")
+        let image = try render(l)
+        XCTAssertGreaterThan(total(image), 0)
     }
 
     // MARK: glow
@@ -193,7 +208,14 @@ final class TextLookFinishTests: XCTestCase {
             let worst = zip(canvas.image().rgba, exported.rgba).map { abs(Int($0) - Int($1)) }.max() ?? 0
             XCTAssertLessThanOrEqual(worst, 1, "frame \(frame)")
         }
-        XCTAssertTrue(try XCTUnwrap(composition.layers(at: 0).first { $0.kind == .text }?.text?.look?.isSupported))
+        // Not vacuous: the look is drawn, so the export differs from the same project without it.
+        var plain = raw
+        plain["sequence"]?["tracks"]?[0]?["clips"]?[0]?["text"]?["look"] = nil
+        let flat = PreviewComposition(document: try parseNativeProjectDocument(plain, engine: engine), projectDir: nil, engine: engine)
+        let flatPainter = try ExportFramePainter(composition: flat, width: 320, height: 180, pad: .transparent)
+        let withLook = try painter.paint(time: 50.0 / 30) { _, _, _, _ in nil }.rgba
+        let without = try flatPainter.paint(time: 50.0 / 30) { _, _, _, _ in nil }.rgba
+        XCTAssertGreaterThan(zip(withLook, without).filter { $0 != $1 }.count, 500)
     }
 }
 #endif

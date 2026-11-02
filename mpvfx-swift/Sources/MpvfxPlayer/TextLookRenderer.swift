@@ -87,11 +87,12 @@ enum TextLookRenderer {
             if planned == nil {
                 bounds = inkBounds(coverage, width: imageWidth, height: imageHeight)
             } else if let hit = inkBoundsCache.get(still) {
-                bounds = hit
+                bounds = CanvasRect(x: hit.x + Double(inset), y: hit.y + Double(inset), width: hit.width, height: hit.height)
             } else if let whole = NativeTextRendering.rasterize(letters, width: width, height: height, scale: pxPerCanvas, inset: inset) {
                 bounds = inkBounds(stride(from: 3, to: whole.count, by: 4).map { whole[$0] }, width: imageWidth, height: imageHeight)
             }
-            if let bounds { inkBoundsCache.put(still, bounds) }
+            // Kept relative to the text box, so a frame with a different inset (a reveal needs room to rise) can use it.
+            if let bounds { inkBoundsCache.put(still, CanvasRect(x: bounds.x - Double(inset), y: bounds.y - Double(inset), width: bounds.width, height: bounds.height)) }
             if let bounds { gradient = .init(from: from, to: to, angle: f.resolvedAngle, bounds: bounds) }
         }
         let plate = look.plate.flatMap { plateShape($0, block: revealBlock, width: Double(width), inset: Double(inset), pxPerCanvas: pxPerCanvas) }
@@ -137,12 +138,14 @@ enum TextLookRenderer {
             return .init(rects: [.init(rect: grown(all), radius: radius)], color: color)
         }
         var shapes = lines.map { TextLookCompositor.PlateRect(rect: grown($0), radius: radius) }
-        for (upper, lower) in zip(lines, lines.dropFirst()) where lower.y - upper.maxY <= padY {
-            // Fill the corners the two rounded rectangles leave between them, across the width both lines share.
+        for (upper, lower) in zip(lines, lines.dropFirst()) where lower.y - upper.maxY <= 2 * padY {
+            // The two plates touch or overlap: fill the corners their rounded rectangles leave between them, across the
+            // width both lines share, and a pixel past the meeting edge so a fractional edge leaves no seam.
             let left = max(upper.x, lower.x) - padX + inset, right = min(upper.maxX, lower.maxX) + padX + inset
             guard right > left else { continue }
             let join = min(grown(upper).maxY, grown(lower).y), end = max(grown(upper).maxY, grown(lower).y)
-            let top = max(grown(upper).y, join - radius), bottom = min(grown(lower).maxY, end + radius)
+            let reach = max(radius, 1)
+            let top = max(grown(upper).y, join - reach), bottom = min(grown(lower).maxY, end + reach)
             shapes.append(.init(rect: CanvasRect(x: left, y: top, width: right - left, height: bottom - top), radius: 0))
         }
         return .init(rects: shapes, color: color)

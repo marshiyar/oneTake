@@ -50,7 +50,7 @@ are typed validator issues; a reveal from a newer version is kept unchanged, not
 Text look, glow, plate and gradient (#280): `clip.text.look` also holds `glow` (radius, strength 0 to 1, colour), `plate`
 (mode line or block, horizontal and vertical padding, corner radius, colour with alpha) and `fill` (a two-colour gradient
 with an angle). The plate follows the line boxes of `TextLayout`: a line with no text gets none, and plates of neighbouring
-lines whose gap is within the vertical padding join without a seam. The gradient spans the ink of the whole text, so a
+lines that touch or overlap join without a seam. The gradient spans the ink of the whole text, so a
 letter keeps its colour while the rest of a reveal arrives. A glow of strength 0 draws exactly as no glow. A look
 that holds only an idle glow is no look at all. Sizes are in composition pixels and scale with the layer and the export
 resolution. `TimelineEditor.setTextLook` validates and applies them in one undo step; the Look section is a later slice.

@@ -99,8 +99,11 @@ enum TextRevealCompositor {
             minX = min(minX, p.x); maxX = max(maxX, p.x); minY = min(minY, p.y); maxY = max(maxY, p.y)
         }
         let opacity = Float(atom.opacity)
-        for y in max(0, Int(minY.rounded(.down)) - 1)..<min(height, Int(maxY.rounded(.up)) + 1) {
-            for x in max(0, Int(minX.rounded(.down)) - 1)..<min(width, Int(maxX.rounded(.up)) + 1) {
+        let y0 = max(0, Int(minY.rounded(.down)) - 1), y1 = min(height, Int(maxY.rounded(.up)) + 1)
+        let x0 = max(0, Int(minX.rounded(.down)) - 1), x1 = min(width, Int(maxX.rounded(.up)) + 1)
+        guard y0 < y1, x0 < x1 else { return }
+        for y in y0..<y1 {
+            for x in x0..<x1 {
                 let s = inverse(atom.moves, Double(x) + 0.5, Double(y) + 0.5)
                 let p = sample(cut, width: bw, height: bh, x: s.x - Double(bx) - 0.5, y: s.y - Double(by) - 0.5)
                 let a = p.3 * opacity
@@ -157,9 +160,13 @@ enum TextRevealCompositor {
     private static func fill(_ rect: CanvasRect, color: [UInt8], in out: inout [UInt8], width: Int, height: Int) {
         guard color.count == 4, color[3] > 0 else { return }
         let ca = Float(color[3]) / 255
-        for y in max(0, Int(rect.y.rounded(.down)))..<min(height, Int(rect.maxY.rounded(.up))) {
+        let y0 = max(0, Int(rect.y.rounded(.down))), y1 = min(height, Int(rect.maxY.rounded(.up)))
+        let x0 = max(0, Int(rect.x.rounded(.down))), x1 = min(width, Int(rect.maxX.rounded(.up)))
+        guard y0 < y1, x0 < x1 else { return }
+        let columns = x0..<x1
+        for y in y0..<y1 {
             let vy = Float(min(rect.maxY, Double(y + 1)) - max(rect.y, Double(y)))
-            for x in max(0, Int(rect.x.rounded(.down)))..<min(width, Int(rect.maxX.rounded(.up))) {
+            for x in columns {
                 let a = vy * Float(min(rect.maxX, Double(x + 1)) - max(rect.x, Double(x))) * ca
                 guard a > 0 else { continue }
                 let i = (y * width + x) * 4
