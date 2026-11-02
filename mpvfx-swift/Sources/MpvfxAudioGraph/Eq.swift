@@ -103,7 +103,8 @@ final class EqUnit: FxUnit {
     /// The glides that move a band's `name` (freq, gain or q) to `value`; nil when that cannot happen in place.
     /// A band that is not built (bypassed or beyond `bands`) has nothing to move, which is not an error.
     func liveEdit(band k: Int, name: String, value: Double, glideFrames: Int) -> [() -> Void]? {
-        guard let band = bands[k] else { return [] }
+        // A band that is not built has nothing to move; changing what it is (bypass, shape, slope) needs a rebuild.
+        guard let band = bands[k] else { return ["freq", "gain", "q"].contains(name) ? [] : nil }
         var edits: [() -> Void] = []
         for (i, filter) in band.filters.enumerated() {
             let param: ParamTimeline, target: Float

@@ -318,7 +318,7 @@ extension InspectorPanel {
             let bw = c.measureText("BOOST", font: PanelTheme.mono(11)).width + 1
             PanelDraw.tracked(c, "BOOST", in: CanvasRect(x: foot.maxX - bw, y: foot.y, width: bw, height: 12), font: PanelTheme.mono(11),
                               tracking: 0.2, color: PanelTheme.text2)
-        }, pointer: graphPointer, key: graphKey)), controls: controls)
+        }, pointer: graphPointer)), controls: controls)
     }
 
     /// One fader column: the 74px travel (centre detent line, 3px accent fill from 0 dB to the value, the cap), the
@@ -539,7 +539,7 @@ extension InspectorPanel {
         else if let primary, let d = def?.params.first(where: { $0.key == primary }) {
             face = [AfxParam(key: primary, label: AudioFxCopy.paramLabel(node.type, primary, fallback: d.label), def: d)]
         }
-        let eqShown = node.type == "eq" ? Self.afxEqShownKeys(params, selected: ui.selectedBand) : nil
+        let eqShown = node.type == "eq" ? Self.afxEqShownKeys(AudioFx.normalize("eq", params, version: node.version ?? chain.version), selected: ui.selectedBand) : nil
         let all = (def?.params ?? []).filter { eqShown?.contains($0.key) ?? true }
             .map { AfxParam(key: $0.key, label: AudioFxCopy.paramLabel(node.type, $0.key, fallback: $0.label), def: $0) }
         let shownFace = details ? [] : face
@@ -675,7 +675,7 @@ extension InspectorPanel {
             if oneKnob { self.addHit(dr, .button("\(fxKey):details")) }
             y += detailsH
             drawParams(shownAll)
-        }, pointer: graphPointer)), controls: controls)
+        }, pointer: graphPointer, key: graphKey)), controls: controls)
     }
 
     /// Width of `PanelDraw.tracked` text (no tracking after the last glyph).

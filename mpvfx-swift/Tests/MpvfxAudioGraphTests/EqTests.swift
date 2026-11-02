@@ -20,8 +20,12 @@ import XCTest
 final class EqTests: XCTestCase {
     let sr = 48000.0
 
-    func eq(_ values: [String: JSONValue]) -> FxNode {
-        FxNode(type: "eq", version: 2, id: "eq1", params: AudioFx.normalize("eq", values, version: 2))
+    /// Settings as written in a test: numbers and strings by key.
+    func json(_ values: [String: Any]) -> [String: JSONValue] {
+        values.mapValues { v in (v as? String).map(JSONValue.string) ?? .number((v as? Double) ?? Double((v as? Int) ?? 0)) }
+    }
+    func eq(_ values: [String: Any]) -> FxNode {
+        FxNode(type: "eq", version: 2, id: "eq1", params: AudioFx.normalize("eq", json(values), version: 2))
     }
 
     /// Steady-state gain in dB of a 0.25 sine at `f` through the unit built for `n` (the same probe as `FxResponseTests`).
@@ -42,7 +46,7 @@ final class EqTests: XCTestCase {
     var probes: [Double] { (0...25).map { 40 * pow(2, Double($0) / 3) }.filter { $0 < 16000 } }
 
     func testDrawnResponseIsWhatTheUnitDoesForEveryBandShape() {
-        let cases: [(String, [String: JSONValue])] = [
+        let cases: [(String, [String: Any])] = [
             ("bell", ["bands": 1, "band1.type": "bell", "band1.freq": 1000, "band1.gain": 8, "band1.q": 1.6]),
             ("bell cut", ["bands": 1, "band1.type": "bell", "band1.freq": 250, "band1.gain": -12, "band1.q": 0.5]),
             ("low shelf", ["bands": 1, "band1.type": "lowshelf", "band1.freq": 200, "band1.gain": -9]),
@@ -55,9 +59,11 @@ final class EqTests: XCTestCase {
             ("high cut 24", ["bands": 1, "band1.type": "highcut", "band1.freq": 3000, "band1.slope": "24"]),
             ("high cut 48", ["bands": 1, "band1.type": "highcut", "band1.freq": 3000, "band1.slope": "48", "band1.q": 1.2]),
             ("four bands", ["bands": 4, "band1.type": "lowshelf", "band1.gain": 4, "band2.gain": -6, "band3.gain": 5, "band4.type": "highcut", "band4.freq": 9000]),
-            ("eight bands", Dictionary(uniqueKeysWithValues: (1...8).flatMap { k in
-                [("band\(k).gain", JSONValue.number(k.isMultiple(of: 2) ? 3 : -3)), ("band\(k).freq", .number(150 * pow(1.9, Double(k))))]
-            } + [("bands", .number(8))])),
+            ("eight bands", { () -> [String: Any] in
+                var v: [String: Any] = ["bands": 8]
+                for k in 1...8 { v["band\(k).gain"] = k.isMultiple(of: 2) ? 3.0 : -3.0; v["band\(k).freq"] = 150 * pow(1.9, Double(k)) }
+                return v
+            }()),
         ]
         for (name, values) in cases {
             let n = eq(values)
@@ -91,12 +97,12 @@ final class EqTests: XCTestCase {
     func testDefaultsAreFlatAndBandCountClamps() {
         let node = eq([:])
         for f in probes { XCTAssertEqual(AudioFxResponse.gainDb(node, at: f) ?? .nan, 0, accuracy: 1e-9) }
-        let p = AudioFx.normalize("eq", ["bands": 99, "band3.gain": 99, "band3.q": 0, "band3.type": "wobble"], version: 2)
+        let p = AudioFx.normalize("eq", json(["bands": 99, "band3.gain": 99, "band3.q": 0, "band3.type": "wobble"]), version: 2)
         XCTAssertEqual(p.num("bands"), 8)
         XCTAssertEqual(p.num("band3.gain"), 24)
         XCTAssertEqual(p.num("band3.q"), 0.1)
         XCTAssertEqual(p["band3.type"]?.string, "bell")
-        XCTAssertEqual(AudioFx.normalize("eq", ["bands": 0], version: 2).num("bands"), 1)
+        XCTAssertEqual(AudioFx.normalize("eq", json(["bands": 0]), version: 2).num("bands"), 1)
     }
 
     func testChainFileKeepsEveryBandSetting() throws {
@@ -116,7 +122,7 @@ final class EqTests: XCTestCase {
         XCTAssertEqual(range?.min, -24)
         XCTAssertEqual(range?.max, 24)
         XCTAssertNil(AudioAutomation.resolveRange("fx.eq1.band2.type", chain), "a shape is not automatable")
-        let processor = FxChainProcessor(chain, automation: Automation(lanes: [AudioAutomationLane(target: "fx.eq1.band2.gain", points: [.init(time: 0, value: 12), .init(time: 1, value: 12)])]))
+        let processor = FxChainProcessor(chain, automation: Automation(lanes: [AutomationLane(target: "fx.eq1.band2.gain", points: [AutomationPoint(t: 0, v: 12), AutomationPoint(t: 1, v: 12)])]))
         XCTAssertFalse(processor.isEmpty)
     }
 
@@ -137,6 +143,10 @@ final class EqTests: XCTestCase {
         XCTAssertNil(processor.parameterEdits(to: next { $0["band1.type"] = .string("notch") }), "a shape change rebuilds")
         XCTAssertNil(processor.parameterEdits(to: next { $0["bands"] = .number(3) }), "a band count change rebuilds")
         XCTAssertNil(processor.parameterEdits(to: next { $0["band2.bypass"] = .string("on") }), "bypass rebuilds")
+        let bypassedFirst = FxChainProcessor(FxChain(nodes: [eq(["bands": 2, "band2.bypass": "on"])]), sampleRate: sr)
+        var back = node
+        back.params = AudioFx.normalize("eq", json(["bands": 2, "band2.bypass": "off"]), version: 2)
+        XCTAssertNil(bypassedFirst.parameterEdits(to: FxChain(nodes: [back])), "bringing a bypassed band back rebuilds")
         XCTAssertNil(processor.parameterEdits(to: next { $0["band1.type"] = .string("lowcut"); $0["band1.slope"] = .string("48") }), "slope rebuilds")
     }
 

@@ -91,7 +91,11 @@ public enum AudioFxCopy {
     ]
 
     public static func title(_ type: String) -> String { effects[type]?.title ?? AudioFx.definition(type)?.label ?? type }
-    public static func paramLabel(_ type: String, _ key: String, fallback: String) -> String { effects[type]?.params[key] ?? fallback }
+    /// A parametric EQ band's keys (`band2.freq`) take the plain name of the setting (`freq`).
+    public static func paramLabel(_ type: String, _ key: String, fallback: String) -> String {
+        let plain = type == "eq" ? key.split(separator: ".").last.map(String.init) ?? key : key
+        return effects[type]?.params[plain] ?? fallback
+    }
 
     /// The real parameter a module opens on (nil for the derived-knob effects and anything unknown).
     public static func primaryParam(_ type: String) -> String? {
