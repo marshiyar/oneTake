@@ -239,6 +239,6 @@ final class AudioFxEqRackTests: XCTestCase {
         XCTAssertTrue(asked.isEmpty, "a closed module draws no graph: \(asked)")
         p.audioFxUI.openNode = 0
         draw(p)
-        XCTAssertTrue(asked.contains("clip:music/0"), "\(asked)")
+        XCTAssertTrue(asked.contains("clip:clip:music/0"), "\(asked)")
     }
 }
