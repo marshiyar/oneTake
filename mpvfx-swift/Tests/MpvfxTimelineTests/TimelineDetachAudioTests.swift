@@ -74,7 +74,7 @@ final class TimelineDetachAudioTests: XCTestCase {
         // muteAvailable false and no audio action on the detached video; Reattach on its audio.
         XCTAssertEqual(row(c, id)?.canDetachAudio, false)
         c.openClipMenu(id, x: 10, y: 10)
-        XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Copy grade", "Paste grade", "Duplicate", "Rename…", "Disable", "—", "Reveal in media bin", "Show in file manager", "—", "Show thumbnails", "—", "Delete"])
+        XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Copy grade", "Paste grade", "Duplicate", "Rename…", "Disable", "—", "Reveal in media bin", "Show in file manager", "—", "Show thumbnails", "—", "Fade In", "Fade Out", "Remove Fades", "—", "Cut to beats", "—", "Delete"])
         c.openClipMenu(a.id, x: 10, y: 10)
         XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Duplicate", "Rename…", "Disable", "—", "Reveal in media bin", "Show in file manager", "—", "Mute", "Keep audio pitch", "—", "Fade In", "Fade Out", "Remove Fades", "—", "Reattach audio", "—", "Delete"])
         XCTAssertEqual(row(c, a.id)?.assetId, audioAsset.id, "waveform loads by the audio asset (same file as the video)")

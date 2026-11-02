@@ -98,11 +98,11 @@ public extension TimelineEditor {
         }
         var trims: [NativeProjectClipCommand] = [], moves: [NativeProjectClipMove] = []
         for item in plan.items {
-            guard let a = address(clipId: item.clipId), let (_, clip) = clip(item.clipId) else { return nil }
-            if item.durationFrames != clip.durationFrames {
-                trims.append(.trimOut(address: a, endFrameExclusive: clip.startFrame + item.durationFrames))
+            guard let a = address(clipId: item.clipId), let (_, current) = self.clip(item.clipId) else { return nil }
+            if item.durationFrames != current.durationFrames {
+                trims.append(.trimOut(address: a, endFrameExclusive: current.startFrame + item.durationFrames))
             }
-            if item.startFrame != clip.startFrame {
+            if item.startFrame != current.startFrame {
                 moves.append(.init(address: a, destination: .init(trackId: a.trackId, startFrame: item.startFrame)))
             }
         }

@@ -91,10 +91,13 @@ final class TimelineFadeTests: XCTestCase {
         let (_, e) = try make()
         XCTAssertTrue(e.addDefaultFade(clipId: "clip:a", edge: .start))
         XCTAssertEqual(clip(e, "clip:a")?.fadeInFrames, 30)
+        XCTAssertTrue(e.removeFades(clipId: "clip:a"))
         XCTAssertTrue(e.setClipFade(clipId: "clip:a", edge: .end, frames: 160))
         XCTAssertTrue(e.addDefaultFade(clipId: "clip:a", edge: .start), "the 20 frames that are left")
         XCTAssertEqual(clip(e, "clip:a")?.fadeInFrames, 20)
-        XCTAssertTrue(e.setClipFade(clipId: "clip:a", edge: .start, frames: 20))
+        XCTAssertTrue(e.addDefaultFade(clipId: "clip:a", edge: .end), "replaces the long fade-out with the default")
+        XCTAssertEqual(clip(e, "clip:a")?.fadeOutFrames, 30)
+        XCTAssertEqual(clip(e, "clip:a")?.fadeInFrames, 20)
     }
 
     func testRemoveFadesClearsBothInOneStep() throws {
@@ -166,7 +169,7 @@ final class TimelineFadeTests: XCTestCase {
         drag(c, from: r.x + 4, to: r.x + 4 + 5000, y: r.y + 6)
         XCTAssertEqual(clip(e, "clip:a")?.fadeInFrames, 180, "stops at the clip's end")
         r = try rect(c)
-        drag(c, from: r.x + 4, to: r.x - 300, y: r.y + 6)
+        drag(c, from: r.maxX - 4, to: r.x - 300, y: r.y + 6)    // the handle now sits at the clip's end
         XCTAssertNil(clip(e, "clip:a")?.fadeInFrames, "dragged back past the start: no fade")
     }
 
@@ -188,18 +191,19 @@ final class TimelineFadeTests: XCTestCase {
         let r = try rect(c)
         let before = e.document
         c.pointerDown(x: r.x + 4, y: r.y + 6)
+        let steps = e.undoStack.count
         XCTAssertNil(c.gesture, "no drag starts, the way a trim is refused")
         c.pointerMove(x: r.x + 104, y: r.y + 6); c.pointerUp(x: r.x + 104, y: r.y + 6)
         XCTAssertEqual(e.document, before)
-        XCTAssertTrue(e.undoStack.isEmpty)
+        XCTAssertEqual(e.undoStack.count, steps)
     }
 
     func testTheTrimHandleBelowTheCornerStillTrims() throws {
         let (c, e) = try make()
         let r = try rect(c, "clip:b")
         let before = clip(e, "clip:b")?.durationFrames
-        drag(c, from: r.maxX - 3, to: r.maxX - 33, y: r.y + r.height - 4)
-        XCTAssertEqual(clip(e, "clip:b")?.durationFrames, (before ?? 0) - 9)
+        drag(c, from: r.maxX - 3, to: r.maxX - 33, y: r.y + r.height - 4)    // the edge goes to the pointer: 0.33 s earlier
+        XCTAssertEqual(clip(e, "clip:b")?.durationFrames, (before ?? 0) - 10)
         XCTAssertNil(clip(e, "clip:b")?.fadeOutFrames)
     }
 

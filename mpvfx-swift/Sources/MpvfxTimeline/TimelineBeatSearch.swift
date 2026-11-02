@@ -87,12 +87,13 @@ public final class TimelineBeatSearch {
         queue.async { [weak self] in
             let outcome: Result<[(seconds: Double, strength: Double)]?, Error>
             do {
-                outcome = .success(try analysis(source, options, { job.isCancelled }, { fraction in
+                let marks = try analysis(source, options, { job.isCancelled }, { fraction in
                     deliver { [weak self] in
                         guard let self, self.job === job, !job.isCancelled else { return }
                         self.progress = fraction; self.onProgress?(fraction)
                     }
-                }))
+                })
+                outcome = .success(marks)
             } catch {
                 outcome = .failure(error)
             }

@@ -148,6 +148,10 @@ Grade and Effects small controls (#185): reset/remove/add/refresh cells and scop
 
 Select an audio clip and press B or Add beat to store a mark at the audio clock time. Marks stay on their source frames when clips move or trim, support one-step undo, snap clip edges, and persist in project.json. Drag a mark to move it, Option-click to delete, or Option-comma / Option-period to jump. Unknown beat versions remain in the project with an open notice.
 
+### Find beats (#290)
+
+The audio clip menu's Find beats analyses the part of the media the clip plays, off the main thread, and stores the beats it finds as the clip's analysed marks (`beats.analysis` in project.json, kept apart from hand-placed marks). Nothing in the project changes until the analysis finishes; a clip trimmed meanwhile discards the result, and a second Find beats cancels the first. Re-running replaces only the analysed marks. Analysed marks are drawn, snapped to and used by Cut to beats like hand-placed ones; deleting one removes it and moving one makes it a hand-placed mark. The sensitivity and the every-2nd / every-4th choice are in the project format and the analysis, with no control for them yet (`BeatAnalysis.swift`, `BeatAnalysisRun.swift`, `TimelineBeatSearch.swift`).
+
 ### Cut to beats (#291)
 
 Select clips on one track and press Shift+Command+B (or Cut to beats in the clip menu). The clips are laid end to end from the first one's start and each cut lands on the last beat mark of the music clip under them that falls inside the clip: its out point is trimmed back to the mark, never extended. A clip with no mark inside it keeps its length and a notice names it. One undo step. The command is refused, with the reason in the menu row and a message, when no music clip with beat marks lies under the selection, the selection spans tracks, the track is locked or an unselected clip is in the way (`TimelineEditor+CutToBeats.swift`, `TimelineCutToBeatsTests`).

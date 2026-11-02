@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import MpvfxCanvas
 import MpvfxShared
 
 /// The fade handles at a clip's top corners: a press on one starts a drag that sets the clip's fade-in or fade-out.

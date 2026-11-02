@@ -243,7 +243,7 @@ final class TimelineClipboardTests: XCTestCase {
         c.openClipMenu("clip:a", x: 1100, y: 590)
         let m = try XCTUnwrap(c.view.clipMenu)
         XCTAssertEqual(m.x, 900)
-        XCTAssertEqual(m.y, 590 - m.height)
+        XCTAssertEqual(m.y, max(0, 590 - m.height), "flips up by its own height, held inside the pane")
         XCTAssertLessThanOrEqual(m.rect.maxY, 600)
     }
     // MARK: Review findings (PR #63)
