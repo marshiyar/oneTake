@@ -16,7 +16,7 @@ import MpvfxCanvas
 import MpvfxTheme
 
 /// A vertical slice of the track area: an audio-group header row or a track row.
-public enum TimelineBand: Equatable, Sendable { case group(String), track(Int) }
+public enum TimelineBand: Equatable, Sendable { case group(String), track(Int), captions }
 
 /// Content-space frame of a band (add -scrollY for view coordinates).
 public struct TimelineBandFrame: Equatable, Sendable {
@@ -58,6 +58,7 @@ extension TimelineView {
             for a in groupAnchors where a.beforeTrack == i { out.append(.group(a.groupId)) }
             if i < tracks.count { out.append(.track(i)) }
         }
+        if captions.isShown { out.append(.captions) }
         return out
     }
 
@@ -65,7 +66,7 @@ extension TimelineView {
         var y = BL.rulerHeight + BL.tracksTopPad
         return bands.map { b in
             let h: Double
-            switch b { case .group: h = BL.groupHeaderHeight; case .track(let i): h = trackRowHeight(i) }
+            switch b { case .group: h = BL.groupHeaderHeight; case .track(let i): h = trackRowHeight(i); case .captions: h = BL.laneHeight }
             defer { y += h }
             return TimelineBandFrame(band: b, top: y, height: h)
         }

@@ -370,7 +370,7 @@ public extension NativeProjectDocument {
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
-         unsupportedTextStylesNotice, unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice,
+         unsupportedTextRevealsNotice, unsupportedTextStylesNotice, unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice,
          unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
     }
 }
