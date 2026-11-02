@@ -67,7 +67,11 @@ extension InspectorPanel {
         if let generator = generatorGroup(editor, s) { groups.append(generator) }
         if let text = textGroup(editor, s) { groups.append(text) }
         if let shape = shapeGroup(editor, s) { groups.append(shape) }
-        if s.isVisual { groups.append(transformGroup(editor, s)); groups.append(styleGroup(editor, s)) }
+        if s.isVisual {
+            groups.append(transformGroup(editor, s))
+            if let moves = movesGroup(editor, s) { groups.append(moves) }
+            groups.append(styleGroup(editor, s))
+        }
         if let transition = transitionGroup(editor, s) { groups.append(transition) }
         if s.kind == .video || s.kind == .image {
             groups.append(gradeGroup(editor, s))

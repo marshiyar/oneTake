@@ -47,6 +47,8 @@ public final class TimelineController {
     public internal(set) var clipboard: TimelineClipboard?
     /// The last grade copied with ⌥⌘C. It is intentionally separate from the ordinary clip clipboard.
     public internal(set) var gradeClipboard: TimelineGradeClipboard?
+    /// The moves last copied with the clip menu's Copy moves (a separate clipboard, like the grade's).
+    public internal(set) var movesClipboard: NativeClipMoves?
     /// Actionable status for menus, tooltips, and the host status line.
     public private(set) var gradePasteStatus = "Copy a grade before pasting"
     /// Timeline snapping (clip edges, playhead, beats) for moves and trims; N toggles it.

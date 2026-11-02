@@ -18,7 +18,7 @@ import MpvfxTheme
 /// Drawn clip context menu.
 public struct TimelineClipMenu: Equatable, Sendable {
     public enum Action: String, Sendable {
-        case split, cut, copy, paste, copyGrade, pasteGrade, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
+        case split, cut, copy, paste, copyGrade, pasteGrade, copyMoves, pasteMoves, removeMoves, duplicate, rename, disable, thumbnails, mute, keepPitch, detachAudio, reattachAudio, revealSource, showSourceFile, delete
     }
     public struct Item: Equatable, Sendable {
         public var action: Action; public var label: String; public var hint: String?
@@ -75,11 +75,12 @@ public struct TimelineClipMenu: Equatable, Sendable {
     }
 
     /// Entries for a clip of `kind`: split, the clipboard group, thumbnails, mute and pitch, the audio link, delete.
-    /// `keepsPitch` is the clip's pitch option, nil for a clip without sound (no row).
+    /// `keepsPitch` is the clip's pitch option, nil for a clip without sound (no row). `hasMoves` is whether the clip has moves to copy or remove, `canPasteMoves` whether moves were copied.
     public static func entries(kind: TimelineClipKind, splitEnabled: Bool, thumbnails: Bool, muted: Bool,
                                canReattach: Bool, canDetach: Bool, canMute: Bool = true,
                                canPaste: Bool = false, canPasteGrade: Bool = false, gradePasteReason: String? = nil,
-                               keepsPitch: Bool? = nil, disabled: Bool = false) -> [Entry] {
+                               keepsPitch: Bool? = nil, disabled: Bool = false,
+                               hasMoves: Bool = false, canPasteMoves: Bool = false) -> [Entry] {
         var e: [Entry] = []
         let hasSplit = kind == .video || kind == .audio || kind == .image
         if hasSplit { e.append(.item(Item(action: .split, label: "Split", hint: "S", enabled: splitEnabled))); e.append(.divider) }
@@ -89,6 +90,11 @@ public struct TimelineClipMenu: Equatable, Sendable {
         if kind == .video || kind == .image {
             e.append(.item(Item(action: .copyGrade, label: "Copy grade", hint: "⌥⌘C")))
             e.append(.item(Item(action: .pasteGrade, label: "Paste grade", hint: canPasteGrade ? "⌥⌘V" : gradePasteReason, enabled: canPasteGrade)))
+        }
+        if kind == .video || kind == .image || kind == .element {
+            e.append(.item(Item(action: .copyMoves, label: "Copy moves", enabled: hasMoves)))
+            e.append(.item(Item(action: .pasteMoves, label: "Paste moves", enabled: canPasteMoves)))
+            e.append(.item(Item(action: .removeMoves, label: "Remove moves", enabled: hasMoves)))
         }
         e.append(.item(Item(action: .duplicate, label: "Duplicate", hint: "⌘D")))
         e.append(.item(Item(action: .rename, label: "Rename…", hint: "F2")))
