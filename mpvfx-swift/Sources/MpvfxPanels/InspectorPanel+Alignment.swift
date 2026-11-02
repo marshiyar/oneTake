@@ -34,10 +34,10 @@ extension InspectorPanel {
             .init(.buttons([button(.left, "Left"), button(.centre, "Centre"), button(.right, "Right")])),
             .init(.buttons([button(.top, "Top"), button(.middle, "Middle"), button(.bottom, "Bottom")])),
             .init(.buttons([
-                .init(key: "distribute:horizontal", label: "Distribute H", style: .muted, action: { [weak self] in
+                .init(key: "distribute:horizontal", label: "Distribute horizontally", style: .muted, action: { [weak self] in
                     self?.edited(editor.distributeClips(ids, along: .horizontal, time: t), label: "Distribute clips")
                 }, disabled: !enabled || ids.count < 3),
-                .init(key: "distribute:vertical", label: "Distribute V", style: .muted, action: { [weak self] in
+                .init(key: "distribute:vertical", label: "Distribute vertically", style: .muted, action: { [weak self] in
                     self?.edited(editor.distributeClips(ids, along: .vertical, time: t), label: "Distribute clips")
                 }, disabled: !enabled || ids.count < 3),
             ])),

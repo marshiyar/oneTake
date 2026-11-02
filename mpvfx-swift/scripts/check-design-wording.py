@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "Sources" / "MpvfxPanels"
-# Coordinate names and established abbreviations retain their spelling.
-PROPER = {"ASCII", "CRT", "LUT", "RGB", "FX", "X", "Y", "Z", "3D"}
+# Coordinate names, A/B slot names and established abbreviations retain their spelling.
+PROPER = {"ASCII", "CRT", "LUT", "RGB", "FX", "X", "Y", "Z", "3D", "A", "B"}
 PATTERNS = [r'\("[a-z][a-zA-Z0-9-]*", "([^"\\]+)"',r'(?:label|masterLabel|title): "([^"\\]+)"',
             r'(?:row|slider|field|percent|degrees)\("[^"\\]+", "([^"\\]+)"']
 
