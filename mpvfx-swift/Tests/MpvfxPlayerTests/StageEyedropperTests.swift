@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import MpvfxCanvas
 import MpvfxShared
+import MpvfxTimeline
 import XCTest
 
 @testable import MpvfxPlayer
