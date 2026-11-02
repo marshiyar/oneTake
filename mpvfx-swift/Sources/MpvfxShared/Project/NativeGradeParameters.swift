@@ -150,15 +150,18 @@ public enum NativeGradeParameter {
         return out
     }
 
-    /// `node` with the number at `path` set to `v`, or nil when a step of the path does not exist. Objects take a new last
-    /// key; an array position must already be there.
+    /// `node` with the number at `path` set to `v`, or nil when the path cannot be written. A missing object on the way
+    /// is created (a secondary stored without its `saturation` range still animates `satMin`), but an array position
+    /// must already be there, and a number as a key never makes an object, so nothing is invented for a point or a
+    /// secondary the grade does not have.
     static func replacing(_ node: NativeJSONValue, _ path: ArraySlice<String>, _ v: Double) -> NativeJSONValue? {
         guard let key = path.first else { return .number(v) }
         switch node {
         case .object(let o):
+            guard Int(key) == nil else { return nil }
             var out = o
             if path.count == 1 { out[key] = .number(v); return .object(out) }
-            guard let child = o[key], let next = replacing(child, path.dropFirst(), v) else { return nil }
+            guard let next = replacing(o[key] ?? .object(NativeJSONObject()), path.dropFirst(), v) else { return nil }
             out[key] = next
             return .object(out)
         case .array(let a):
