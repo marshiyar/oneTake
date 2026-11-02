@@ -172,12 +172,12 @@ final class TargetSizeTests: XCTestCase {
             let r = try design(open: group)
             r.draw(c, size: rightSize)
             maps.append(regions("design", r.hits, in: rightBounds) { $0 == .content })
-            maps.append(regions("design/\(group)", r.inspector.hits, in: rightBounds) { $0 == .body })
+            maps.append(regions("design/\(group)", r.inspector.hits, in: rightBounds) { Self.isTrackOrBody($0) })
         }
         for group in keyedGroups {
             let r = try design(open: group, keyed: true)
             r.draw(c, size: rightSize)
-            maps.append(regions("design/\(group)/keyed", r.inspector.hits, in: rightBounds) { $0 == .body })
+            maps.append(regions("design/\(group)/keyed", r.inspector.hits, in: rightBounds) { Self.isTrackOrBody($0) })
         }
         for variant in ["done", "mixed", "error"] {
             let r = renders(variant), size = CanvasSize(409, 900)
@@ -193,6 +193,11 @@ final class TargetSizeTests: XCTestCase {
         maps.append(regions("settings", settings.hits, in: CanvasRect(x: 0, y: 0, width: window.width, height: window.height)) { $0 == .card })
         return maps
     }
+
+    /// The body and its scrollbar track are containers, not targets: the track is as tall as the body (10 pt wide), so
+    /// the spacing rule, which judges a region from its centre, would flag it whenever a control happens to sit there,
+    /// and the wheel, trackpad and keys scroll the body without it.
+    static func isTrackOrBody(_ hit: InspectorPanel.Hit) -> Bool { hit == .body || hit == .scrollbar }
 
     /// The groups whose rows carry keyframe controls (transform, opacity, volume).
     static let keyedGroups = ["layout", "style", "media"]
