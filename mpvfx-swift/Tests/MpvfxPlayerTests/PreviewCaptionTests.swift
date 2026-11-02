@@ -20,7 +20,7 @@ import MpvfxShared
 /// the rule that captions never enter the picture's layer list (export burns them in on its own).
 final class PreviewCaptionTests: XCTestCase {
     /// Half an em per character: a fixed advance, so the layout is the same on every machine.
-    static let measure: (String, CanvasFont) -> Double = { text, font in Double(text.count) * font.size * 0.5 }
+    static let measure: @Sendable (String, CanvasFont) -> Double = { text, font in Double(text.count) * font.size * 0.5 }
 
     static let cues = [
         NativeCaptionCue(id: "cue:1", startMs: 0, endMs: 1000, text: "one"),

@@ -22,7 +22,7 @@ import OneTakeMedia
 import OneTakeKeyframes
 
 final class ExportLoudnessTests: XCTestCase {
-    static var root = ""
+    nonisolated(unsafe) static var root = ""
     override class func setUp() {
         super.setUp()
         guard let dir = try? makeMediaTempDir("export-loudness-") else { return }

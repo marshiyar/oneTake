@@ -120,7 +120,10 @@ final class RegionTrackerTests: XCTestCase {
                 return f
             })
         }
-        await Task.detached { reached.wait() }.value
+        // Blocks a GCD thread, not the test's executor, until the tracker is parked on frame 3.
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async { reached.wait(); done.resume() }
+        }
         task.cancel()
         gate.signal()
         do { _ = try await task.value; XCTFail("expected cancellation") } catch { XCTAssertTrue(error is MediaAbortError) }

@@ -65,7 +65,7 @@ final class ClipLoudnessFeed {
         readings[source] = (stamp, .measuring)
         let gen = generation
         let post = postToUI
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let reading = Self.measure(dir, source)
             post { [weak self] in
                 guard let self, gen == self.generation else { return }

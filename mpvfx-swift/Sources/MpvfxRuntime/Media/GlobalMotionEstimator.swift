@@ -10,9 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Global camera motion between two luma pictures (steady shot, issue #304): block matching on a luma pyramid, coarse
-// to fine, then a robust similarity fit (translation, rotation, scale) over the block vectors. Pure CPU code on
-// plain arrays, so it runs the same on every platform and is tested with synthetic pictures.
+//===----------------------------------------------------------------------===//
 import Foundation
 
 /// One luma picture as Float (0...255).

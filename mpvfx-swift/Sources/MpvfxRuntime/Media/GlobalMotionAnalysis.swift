@@ -10,13 +10,7 @@
 //
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Steady shot, slice 1 (issue #304): analyse a clip range into per-frame global motion and keep the result in a
-// cache file in the project's `.motion-cache/`, keyed by the media and the range. The project document will store only
-// the key (slice 2), so a missing or unreadable cache simply means "analyse again".
-//
-// The analysis runs on a background task (`GlobalMotionAnalysisJob`), checks its `MediaCancellation` between frames
-// and writes the cache through `DurableWrite` (temporary file, fsync, rename, folder fsync), so a crash or a cancel
-// never leaves a half-written cache.
+//===----------------------------------------------------------------------===//
 import Foundation
 import OneTakeMedia
 import MpvfxShared

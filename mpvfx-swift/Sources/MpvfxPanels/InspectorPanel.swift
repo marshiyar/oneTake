@@ -65,6 +65,14 @@ public final class InspectorPanel {
     /// shows no meters. Set by the app, which refreshes it at 30 Hz while playing and returns nothing when stopped.
     public var fxMeterProvider: ((String) -> FxMeterSnapshot?)?
     public var onEdited: (() -> Void)?
+    /// "Edit on stage" in the Masks group: (clip id, mask id) of the mask to put on the stage.
+    public var onEditMaskOnStage: ((String, String) -> Void)?
+    /// The Colour key controls (#300): the preview view the host shows, a change of it, and the stage eyedropper
+    /// that picks the key colour (`keyEyedropperActive` while it waits for a click on the stage).
+    public var colorKeyView: ColorKeyViewMode = .result
+    public var onColorKeyViewChange: ((ColorKeyViewMode) -> Void)?
+    public var onPickKeyColor: (() -> Void)?
+    public var keyEyedropperActive = false
     /// The Media group's speed graph and whether a ramp edit keeps the clip's length (the Keep length switch).
     let speedGraph = SpeedGraph()
     var speedKeepLength = true
