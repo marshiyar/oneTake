@@ -182,6 +182,9 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var crop: NativeClipCrop? = nil
     /// Hidden clip (timeline eye toggle): kept on the timeline but meant to be left out of preview and export.
     public var hidden: Bool? = nil
+    /// True on an element clip that has no picture: its grade and effects apply to the composite of the tracks below it
+    /// (`NativeClipAdjustment.swift`); absent means an ordinary clip.
+    public var adjustment: Bool? = nil
     /// Fill, stroke and shadow (the inspector's Style section); absent means none.
     public var style: NativeClipStyle? = nil
     /// A text layer's words and typography (the inspector's Text section); only on clips of a text element asset.

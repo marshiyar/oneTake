@@ -90,6 +90,10 @@ public final class ExportFramePainter {
         }
         let frameIndex = composition.frameIndex(at: time)
         for (layer, w, h) in layers {
+            if layer.kind == .adjustment {
+                PreviewPainter.applyAdjustment(layer, on: canvas, frame: rect, grader: grader, time: Double(frameIndex) / composition.fps)
+                continue
+            }
             if layer.isProcedural {
                 PreviewPainter.drawText(layer, on: canvas, frame: rect, scale: s)
                 continue
