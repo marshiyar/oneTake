@@ -23,6 +23,9 @@ public final class MediaFrameStream {
     let reader: VideoFrameReader
     let still: Bool
     public private(set) var framesRead = 0
+    /// Source seconds of the stream's n-th frame when playback is not at the constant `rate` (a speed ramp's time
+    /// map); nil: the frame n is `startSeconds + n * rate / fps`.
+    public var sourceTimeOfFrame: ((Int) -> Double)?
 
     /// Which frames a stream returns: from `start` (source seconds), `fps` per timeline second, fitted to
     /// width×height. `rate` is the clip playback rate (frames are 1/fps apart in timeline time, rate/fps in source
@@ -60,7 +63,7 @@ public final class MediaFrameStream {
     }
 
     /// Source time of the next frame this stream will return.
-    public var nextTime: Double { startSeconds + Double(framesRead) * rate / fps }
+    public var nextTime: Double { sourceTimeOfFrame?(framesRead) ?? startSeconds + Double(framesRead) * rate / fps }
 
     /// Passes over the next `count` frames without returning them (a lane that fell behind the playhead). The engine
     /// reader then decodes forward to the frame after them, converting none of the ones passed over.

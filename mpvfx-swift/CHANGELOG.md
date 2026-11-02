@@ -22,6 +22,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Clips on a speed ramp play and scrub in the preview at the source frames the ramp maps to, the same ones export
+  reads (the preview used to step through the source at a constant rate once playback started); editing a ramp
+  point shows the old picture until the new frames are ready.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

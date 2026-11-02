@@ -254,7 +254,14 @@ public final class PreviewDecodeLane: @unchecked Sendable {
         let seconds = layer.sourceTime(at: Double(frame) / fps)
         guard let reader = openReader() else { deadFrom = min(deadFrom, frame); return false }
         let frames = MediaFrameStream.Frames(from: max(0, seconds), fps: fps, width: sz.width, height: sz.height)
-        stream = MediaFrameStream(reader: reader, frames: frames.playing(at: layer.rate))
+        let s = MediaFrameStream(reader: reader, frames: frames.playing(at: layer.rate))
+        // A speed ramp moves the source by a different amount every frame: the stream follows the layer's time map
+        // (the one export reads), not a constant rate.
+        if layer.speedRamp != nil {
+            let layer = layer, fps = fps
+            s.sourceTimeOfFrame = { layer.sourceTime(at: Double(frame + $0) / fps) }
+        }
+        stream = s
         streamSize = sz; streamNext = frame; restarts += 1
         return true
     }

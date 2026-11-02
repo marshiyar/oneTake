@@ -36,7 +36,9 @@ import CoreGraphics
 //   MpvfxPreviewBench <scenario> <fixtures dir> <results file> [frames] [--no-realtime]
 //   MpvfxPreviewBench --make-clips <fixtures dir>   (writes the clips with the media engine's encoder; Clips.swift)
 //   (--no-realtime: playback only, for allocation counts under valgrind --tool=dhat)
-//   scenarios: 1080p, 4k, stacked, dissolve (Dissolve.swift), graded, scrub, export, export-serial
+//   scenarios: 1080p, 4k, stacked, dissolve (Dissolve.swift), graded, ramp, scrub, export, export-serial
+//   (ramp: 8 s of 1080p30 on a speed ramp 1x -> 0.25x -> 1x; its forward playback also counts, measured, the repeated
+//   source frames where speed >= 1 and the skipped ones where speed <= 1 across consecutive draws: RampCounts)
 //   (export: 10 s of 1080p30 exported to MP4 through renderNativeTimeline, frames painted by PreviewExportFrames as
 //   the app installs it; export_fps, paint_ms and encode_ms per frame, peak RSS. export-serial: the same export
 //   painting and encoding in turn on one thread, the baseline measured on the same machine in the same run)
@@ -95,7 +97,7 @@ final class Screen {
     #endif
 }
 
-struct Clip { var file: String; var track: Int; var opacity = 1.0; var grade: String? = nil }
+struct Clip { var file: String; var track: Int; var opacity = 1.0; var grade: String? = nil; var ramp: String? = nil }
 
 /// A 1920x1080 30 fps project with `clips` stacked bottom first, each covering `seconds` from frame 0. The sources
 /// are `<dir>/<file>`, or just `<file>` when `relative` (export reads project-relative media only, `dir` the project).
@@ -107,7 +109,8 @@ func document(_ clips: [Clip], dir: String, seconds: Double, relative: Bool = fa
     }
     let tracks = clips.enumerated().reversed().map { i, c in
         let fx = c.grade.map { #"{"id":"g","effectId":"color-grading","enabled":true,"parameters":\#($0)}"# } ?? ""
-        return #"{"id":"t\#(i)","kind":"video","lane":{"authoredTrack":\#(i + 1),"displayTrack":\#(clips.count - 1 - i)},"clips":[{"id":"c\#(i)","assetId":"a\#(i)","startFrame":0,"durationFrames":\#(frames),"sourceInFrame":0,"muted":false,"staticParameters":{"visual.opacity":\#(c.opacity)},"effects":[\#(fx)],"parameterTracks":[]}]}"#
+        let speedRamp = c.ramp.map { #","speedRamp":\#($0)"# } ?? ""
+        return #"{"id":"t\#(i)","kind":"video","lane":{"authoredTrack":\#(i + 1),"displayTrack":\#(clips.count - 1 - i)},"clips":[{"id":"c\#(i)","assetId":"a\#(i)","startFrame":0,"durationFrames":\#(frames),"sourceInFrame":0,"muted":false,"staticParameters":{"visual.opacity":\#(c.opacity)},"effects":[\#(fx)],"parameterTracks":[]\#(speedRamp)}]}"#
     }
     let json = ##"{"schemaVersion":1,"id":"project:bench","revision":1,"frameRate":{"numerator":30,"denominator":1},"canvas":{"width":1920,"height":1080,"background":"#000000"},"assets":[\##(assets.joined(separator: ","))],"sequence":{"id":"s","name":"Main","tracks":[\##(tracks.joined(separator: ","))]}}"##
     return try parseNativeProjectDocument(try NativeJSONValue.parse(json))
@@ -115,6 +118,10 @@ func document(_ clips: [Clip], dir: String, seconds: Double, relative: Bool = fa
 
 /// A typical primary grade: exposure, contrast, temperature, saturation and a midtone wheel.
 let typicalGrade = #"{"adjust":{"exposure":0.3,"contrast":0.2,"temperature":0.15,"saturation":0.2},"wheels":{"midtones":{"hue":30,"amount":0.2,"level":0.05}}}"#
+
+/// The ramp scenario's time map (clip frames, 30 fps): 1x, down to a quarter speed at 3 s, back to 1x at 6 s, then 1x.
+/// The ease is left out: a point's default is linear.
+let rampCurve = #"{"v":1,"kind":"speed-ramp","points":[{"t":0,"speed":1},{"t":90,"speed":0.25},{"t":180,"speed":1}]}"#
 
 /// Drives a compositor the way the preview view does and times each part.
 final class Run {
@@ -194,10 +201,10 @@ struct CachePeaks {
 }
 
 /// Unthrottled forward playback: every frame shown exactly, as fast as the pipeline delivers them.
-func playback(_ run: Run, frames: Int) -> [String: String] {
+func playback(_ run: Run, frames: Int, after: (Double) -> Void = { _ in }) -> [String: String] {
     _ = run.draw(0, playing: false); run.show(0, playing: false)
     let t0 = now(), paint0 = run.paintSeconds, draws0 = run.draws
-    for f in 0..<frames { run.show(Double(f) / 30, playing: true) }
+    for f in 0..<frames { let t = Double(f) / 30; run.show(t, playing: true); after(t) }
     let wall = now() - t0
     let e = run.engineTotals()
     let n = Double(max(1, e.frames))
@@ -209,6 +216,39 @@ func playback(_ run: Run, frames: Int) -> [String: String] {
     out["paint_ms_per_draw"] = fmt((run.paintSeconds - paint0) / Double(max(1, run.draws - draws0)) * 1000)
     out["frames_decoded"] = "\(e.frames)"; out["pictures_decoded"] = "\(e.pictures)"; out["stalls"] = "\(run.stalls)"
     return out
+}
+
+/// The ramp scenario's counters, sampled after each displayed frame of the forward playback. The picture a draw shows
+/// is identified by its timeline frame (`Shown.frame`), so its source frame is the time map's source frame of that
+/// frame: floor(layer.sourceTime(at:) * sourceFps). Consecutive draws are compared on those source frames: a source
+/// frame shown again where speed >= 1 is repeated, and source frames passed over where speed <= 1 are skipped.
+struct RampCounts {
+    static let sourceFps = 30.0   // the benchmark clips are 30 fps (Clips.swift)
+    private(set) var repeated = 0, skipped = 0, pairs = 0
+    private var last: Int?
+
+    /// Compares what the last draw showed at timeline time `t` with the draw before it.
+    mutating func record(_ run: Run, at t: Double) {
+        guard let comp = run.compositor.composition,
+              let layer = comp.layers(at: t).first(where: { $0.speedRamp != nil }), let ramp = layer.speedRamp,
+              let key = run.compositor.lastShown.first(where: { $0.clipId == layer.clipId })?.frame else {
+            last = nil; return
+        }
+        let source = Int((layer.sourceTime(at: Double(key) / comp.fps) * Self.sourceFps + 1e-6).rounded(.down))
+        let speed = ramp.speed(atClipFrame: (t - layer.start) * comp.fps)
+        if let previous = last {
+            pairs += 1
+            if speed >= 1 && source == previous { repeated += 1 }
+            if speed <= 1 && source > previous + 1 { skipped += source - previous - 1 }
+        }
+        last = source
+    }
+
+    /// The counters, labelled as measured.
+    var fields: [String: String] {
+        ["measured_repeated_source_frames_speed_ge_1": "\(repeated)", "measured_skipped_source_frames_speed_le_1": "\(skipped)",
+         "measured_frame_pairs": "\(pairs)"]
+    }
 }
 
 /// Sleeps until `deadline` (a `now()` value), rounding the wait up a microsecond so the wake is never early.
@@ -333,6 +373,7 @@ func scenario(_ name: String) -> (clips: [Clip], seconds: Double)? {
     case "4k": return ([Clip(file: "clip2160.mp4", track: 0)], 6)
     case "stacked": return ([Clip(file: "clip1080.mp4", track: 0), Clip(file: "clip1080b.mp4", track: 1, opacity: 0.6)], 10)
     case "graded": return ([Clip(file: "clip1080.mp4", track: 0, grade: typicalGrade)], 10)
+    case "ramp": return ([Clip(file: "clip1080.mp4", track: 0, ramp: rampCurve)], 8)
     case "scrub": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
     case "export", "export-serial": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
     case "dissolve": return ([Clip(file: "clip1080.mp4", track: 0), Clip(file: "clip1080b.mp4", track: 0)], 10)
@@ -344,7 +385,7 @@ func main() throws {
     let args = CommandLine.arguments
     if args.count == 3 && args[1] == "--make-clips" { try makeClips(args[2]); return }
     guard args.count >= 4, let sc = scenario(args[1]) else {
-        print("usage: MpvfxPreviewBench <1080p|4k|stacked|dissolve|graded|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
+        print("usage: MpvfxPreviewBench <1080p|4k|stacked|dissolve|graded|ramp|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
         print("       MpvfxPreviewBench --make-clips <fixtures dir>"); exit(2)
     }
     let (width, height) = (1280, 720)
@@ -362,6 +403,10 @@ func main() throws {
     let run = Run(doc, width: width, height: height)
     if args[1] == "scrub" {
         result.merge(scrub(run, seeks: min(frames, 40), duration: sc.seconds)) { $1 }
+    } else if args[1] == "ramp" {
+        var counts = RampCounts()
+        result.merge(playback(run, frames: frames) { counts.record(run, at: $0) }) { $1 }
+        result.merge(counts.fields) { $1 }
     } else {
         result.merge(playback(run, frames: frames)) { $1 }
     }

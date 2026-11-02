@@ -134,7 +134,13 @@ public struct PreviewLayer: Equatable, Sendable {
     /// The grade is not part of it: lanes cache raw decoded frames and the grade is applied when drawing, so a grade
     /// edit never restarts a decoder.
     public var laneKey: String {
-        let key = "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)"
+        var key = "\(clipId)|\(source)|\(sourceIn)|\(rate)|\(startFrame)"
+        // A ramp's points are part of the lane: editing one starts a new lane for this clip, and the old lane's
+        // frames stay on screen until the new ones arrive.
+        if let ramp = speedRamp {
+            let points = ramp.points.map { "\($0.t)@\($0.speed)~\($0.ease)" }.joined(separator: ",")
+            key += "|ramp:\(ramp.isSupported ? points : "-")|\(rampStart ?? start)|\(timelineFPS)"
+        }
         return holdSourceTime.map { "\(key)|hold:\($0)" } ?? key
     }
 }
