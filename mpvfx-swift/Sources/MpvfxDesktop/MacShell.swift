@@ -85,12 +85,13 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
                 switch item.command {
                 case .about: selector = #selector(NSApplication.orderFrontStandardAboutPanel(_:))
                 case .services, .openRecent, .panels, .newFromTemplate: continue
-                case .openProject, .saveFrame, .saveAsTemplate, .settings, .closePanel, .keyframeEasing:
+                case .openProject, .saveFrame, .exportVersions, .saveAsTemplate, .settings, .closePanel, .keyframeEasing:
                     let action = item.command == .settings ? #selector(openSettings(_:))
                         : item.command == .closePanel ? #selector(closePanel(_:))
                         : item.command == .keyframeEasing ? #selector(openKeyframeEasing(_:))
                         : item.command == .saveAsTemplate ? #selector(saveAsTemplate(_:))
-                        : item.command == .saveFrame ? #selector(saveFrame(_:)) : #selector(openProject(_:))
+                        : item.command == .saveFrame ? #selector(saveFrame(_:))
+                        : item.command == .exportVersions ? #selector(exportVersions(_:)) : #selector(openProject(_:))
                     let mi = NSMenuItem(title: item.label, action: action, keyEquivalent: item.key ?? "")
                     mi.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
                     mi.target = self
@@ -158,6 +159,8 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
 
     /// File > Save frame… and ⇧⌘E use the same snapshot command.
     @objc func saveFrame(_ sender: NSMenuItem) { session?.requestSaveFrame() }
+    /// File > Export versions… and ⇧⌘R open the same checklist.
+    @objc func exportVersions(_ sender: NSMenuItem) { session?.requestExportVersions() }
     /// File > Save as Template…: the open project without its media, its placeholders kept.
     @objc func saveAsTemplate(_ sender: NSMenuItem) { session?.requestSaveAsTemplate() }
     /// File > New from Template > <name>.
