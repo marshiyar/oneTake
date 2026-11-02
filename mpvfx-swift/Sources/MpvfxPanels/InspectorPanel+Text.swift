@@ -96,6 +96,7 @@ extension InspectorPanel {
                                              s.clip.textStyle == nil ? editor.setTextColor(clipId: id, nil)
                                                  : editor.resetTextStyleOverride(clipId: id, field: "color")
                                          }) { editor.setTextColor(clipId: id, $0) }, clipId: id)
+        rows += textLookRows(editor, s, t)
         let preview = t.preview
         return InspectorGroup(id: "text", title: "Text", summary: preview.isEmpty ? "empty" : preview, rows: rows)
     }
