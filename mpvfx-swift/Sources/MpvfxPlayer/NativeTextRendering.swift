@@ -31,15 +31,27 @@ public enum NativeTextRendering {
                          letterSpacing: t.resolvedLetterSpacing * s, lineHeight: t.resolvedLineHeight * t.resolvedFontSize * s)
     }
 
+    /// Draws the text in `box` at `scale` view units per canvas px. While a reveal or unreveal changes the letters at
+    /// `frame` the frame is built by `TextRevealRenderer` and drawn as one picture; otherwise this is `TextLayout.draw`.
+    public static func draw(_ t: NativeClipText, in box: CanvasRect, scale s: Double, on c: CanvasContext, opacity: Double = 1,
+                            frame: TextRevealFrame? = nil) {
+        if let frame, let revealed = TextRevealRenderer.image(t, box: box, scale: s, deviceScale: c.deviceScale, frame: frame) {
+            c.drawImage(revealed.image, in: revealed.rect, opacity: opacity)
+        } else {
+            TextLayout.draw(block(t, scale: s), in: box, on: c, opacity: opacity)
+        }
+    }
+
     /// Straight-alpha RGBA8 (`width` × `height`) of the text drawn in a box of that size at `scale` px per canvas px;
     /// nil when this platform has no offscreen text backend or (Windows) the Direct2D target failed, which is logged.
     /// `inset` extra px on every side (the box stays `width` × `height`, the bitmap grows to hold glyph effects that
-    /// reach outside it).
-    public static func rasterize(_ t: NativeClipText, width boxWidth: Int, height boxHeight: Int, scale: Double, inset: Int = 0) -> [UInt8]? {
+    /// reach outside it). `layoutWidth` is the width the lines wrap at when that is not the bitmap's (default `width`).
+    public static func rasterize(_ t: NativeClipText, width boxWidth: Int, height boxHeight: Int, scale: Double, inset: Int = 0,
+                                 layoutWidth: Double? = nil) -> [UInt8]? {
         guard boxWidth > 0, boxHeight > 0, inset >= 0 else { return nil }
         let width = boxWidth + 2 * inset, height = boxHeight + 2 * inset
         let b = block(t, scale: scale)
-        let box = CanvasRect(x: Double(inset), y: Double(inset), width: Double(boxWidth), height: Double(boxHeight))
+        let box = CanvasRect(x: Double(inset), y: Double(inset), width: layoutWidth ?? Double(boxWidth), height: Double(boxHeight))
         #if os(Linux)
         let target = CairoImageTarget(width: width, height: height)
         TextLayout.draw(b, in: box, on: target.canvas)
@@ -56,7 +68,7 @@ public enum NativeTextRendering {
         }
         #elseif canImport(CoreGraphics) && canImport(CoreText)
         // CoreGraphicsCanvas caches fonts in a main-thread dictionary: draw there.
-        if !Thread.isMainThread { return DispatchQueue.main.sync { rasterize(t, width: boxWidth, height: boxHeight, scale: scale, inset: inset) } }
+        if !Thread.isMainThread { return DispatchQueue.main.sync { rasterize(t, width: boxWidth, height: boxHeight, scale: scale, inset: inset, layoutWidth: layoutWidth) } }
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
               let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }

@@ -42,8 +42,10 @@ public struct NativeClipMask: Codable, Equatable, Sendable {
     public var expansion: Double?
     public var opacity: Double?
     public var invert: Bool?
+    /// Outline of a `path` mask (see `NativeMaskPath`); omitted for every other kind.
+    public var path: NativeMaskPath?
     public var spread = NativeSpreadKeys()
-    static let known = ["v", "id", "kind", "mode", "x", "y", "width", "height", "angle", "feather", "expansion", "opacity", "invert"]
+    static let known = ["v", "id", "kind", "mode", "x", "y", "width", "height", "angle", "feather", "expansion", "opacity", "invert", "path"]
 
     public init(v: Int = 1, id: String, kind: String, configuration: Configuration = .init()) {
         self.v = v; self.id = id; self.kind = kind; mode = configuration.mode; x = configuration.x; y = configuration.y
@@ -68,6 +70,7 @@ public struct NativeClipMask: Codable, Equatable, Sendable {
         width = try c.opt(Double.self, "width"); height = try c.opt(Double.self, "height"); angle = try c.opt(Double.self, "angle")
         feather = try c.opt(Double.self, "feather"); expansion = try c.opt(Double.self, "expansion")
         opacity = try c.opt(Double.self, "opacity"); invert = try c.opt(Bool.self, "invert")
+        path = try c.opt(NativeMaskPath.self, "path")
         spread = try decodeSpread(decoder, known: Self.known)
     }
 
@@ -78,12 +81,14 @@ public struct NativeClipMask: Codable, Equatable, Sendable {
             case "mode": try c.put(mode, key); case "x": try c.put(x, key); case "y": try c.put(y, key)
             case "width": try c.put(width, key); case "height": try c.put(height, key); case "angle": try c.put(angle, key)
             case "feather": try c.put(feather, key); case "expansion": try c.put(expansion, key)
-            case "opacity": try c.put(opacity, key); default: try c.put(invert, key)
+            case "opacity": try c.put(opacity, key); case "path": try c.put(path, key); default: try c.put(invert, key)
             }
         }
     }
 
-    public var isSupported: Bool { v == 1 && ["rectangle", "ellipse", "linear", "band"].contains(kind) }
+    public var isSupported: Bool {
+        v == 1 && (["rectangle", "ellipse", "linear", "band"].contains(kind) || (kind == "path" && path?.v == 1))
+    }
     public var resolvedMode: String { mode ?? "add" }
 }
 
@@ -101,7 +106,8 @@ func validateNativeClipMasks(_ value: NativeJSONValue?, _ path: String,
         collectDuplicateId(&ids, mask["id"], "\(p).id", &issues)
         // Unknown versions and kinds are forward-compatible opaque objects.
         guard mask["v"] == .number(1), let kind = mask["kind"]?.stringValue,
-              ["rectangle", "ellipse", "linear", "band"].contains(kind) else { continue }
+              ["rectangle", "ellipse", "linear", "band", "path"].contains(kind) else { continue }
+        if kind == "path" { validateNativeMaskPath(mask["path"], "\(p).path", &issues) }
         if let mode = mask["mode"], !["add", "subtract", "intersect"].contains(mode.stringValue ?? "") {
             pushIssue(&issues, .invalidMask, "\(p).mode", "Mask mode must be add, subtract, or intersect")
         }

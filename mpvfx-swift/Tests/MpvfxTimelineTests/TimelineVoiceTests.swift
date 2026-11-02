@@ -46,4 +46,21 @@ final class TimelineVoiceTests: XCTestCase {
         XCTAssertEqual(e.document.sequence.tracks[i], locked.sequence.tracks[i])
         XCTAssertEqual(e.document.sequence.tracks.filter { $0.id.hasPrefix("track:voice:") }.count, 2)
     }
+
+    func testA1PunchTakeCoversExactlyTheRange() throws {
+        // A take of 72 000 samples at 48 kHz is 1.5 s: with the range 2.0 s to 3.5 s it is frames 60 to 105 at 30 fps.
+        let e = try TimelineEditor(json: TimelineEditor.demoJSON)
+        XCTAssertEqual(e.fps, 30)
+        XCTAssertTrue(e.addVoiceTake(source: "media/punch.wav", seconds: 72_000.0 / 48_000.0, at: 60.0 / 30.0))
+        let clip = try XCTUnwrap(e.document.sequence.tracks.first { $0.id.hasPrefix("track:voice:") }?.clips.first)
+        XCTAssertEqual(clip.startFrame, 60)
+        XCTAssertEqual(clip.durationFrames, 45)
+        // Frame counts that do not divide evenly into seconds stay whole frames, never one short.
+        for frames in [1.0, 7, 29, 31, 89, 91, 301] {
+            let t = try TimelineEditor(json: TimelineEditor.demoJSON)
+            XCTAssertTrue(t.addVoiceTake(source: "media/n.wav", seconds: frames / 30, at: 0))
+            let c = try XCTUnwrap(t.document.sequence.tracks.first { $0.id.hasPrefix("track:voice:") }?.clips.first)
+            XCTAssertEqual(c.durationFrames, frames)
+        }
+    }
 }

@@ -370,8 +370,8 @@ public extension NativeProjectDocument {
     /// Notices presented once when opening or exporting content deliberately retained but not drawn.
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
-         unsupportedTextStylesNotice, unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice,
-         unreadableMovesNotice, unsupportedFillsNotice, unreadableCameraMovesNotice].compactMap { $0 }
+         unsupportedTextRevealsNotice, unsupportedTextStylesNotice, unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice,
+         unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
     }
 }
 
@@ -387,6 +387,7 @@ public enum NativeProjectDocumentValidationCode: String, Codable, Sendable {
     case invalidTransition = "invalid-transition", transitionClipsNotAdjacent = "transition-clips-not-adjacent"
     case duplicateTransition = "duplicate-transition"
     case invalidFade = "invalid-fade", fadeExceedsClip = "fade-exceeds-clip", invalidMask = "invalid-mask"
+    case invalidMaskPath = "invalid-mask-path"
     case invalidSpeedRamp = "invalid-speed-ramp", invalidMove = "invalid-move"
     case invalidNarration = "invalid-narration", invalidFill = "invalid-fill"
 }

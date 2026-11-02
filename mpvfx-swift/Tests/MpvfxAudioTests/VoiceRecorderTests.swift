@@ -247,6 +247,117 @@ final class VoiceRecorderTests: XCTestCase {
         XCTAssertEqual(try input.read(frames: 2), [0.3])
         XCTAssertEqual(try input.read(frames: 2), [])
     }
+
+    // MARK: maxFrames
+
+    func testAMaxFramesLimitEndsCaptureByItselfAndTheFileHoldsExactlyThatMany() throws {
+        let source = Array(tone(seconds: 2).prefix(50_000))
+        let input = ScriptedAudioInput(samples: source)
+        var lastTotal = 0
+        input.onRead = { total in lastTotal = total }
+        let recorder = VoiceRecorder(input: input, destination: dir.path + "/limit.wav")
+        recorder.maxFrames = 10_000
+        try recorder.start()
+        var limited = false
+        let deadline = Date().addingTimeInterval(20)
+        while !limited, Date() < deadline { limited = recorder.reachedLimit; usleep(1000) }
+        XCTAssertTrue(limited, "capture ends by itself once the file holds maxFrames")
+        XCTAssertFalse(recorder.isRecording)
+        let recording = try recorder.stop()
+        XCTAssertTrue(recorder.reachedLimit)
+        XCTAssertEqual(recording.frames, 10_000)
+        XCTAssertLessThanOrEqual(lastTotal, 10_000, "the input never hands out past the limit")
+        XCTAssertEqual(try names(), ["limit.wav"])
+        let bytes = try Data(contentsOf: URL(fileURLWithPath: recording.path))
+        XCTAssertEqual(bytes.count, 44 + 10_000 * 2)
+        XCTAssertEqual(String(decoding: bytes.subdata(in: 0..<4), as: UTF8.self), "RIFF")
+        XCTAssertEqual(String(decoding: bytes.subdata(in: 8..<12), as: UTF8.self), "WAVE")
+        XCTAssertEqual(String(decoding: bytes.subdata(in: 36..<40), as: UTF8.self), "data")
+        let riff = bytes.subdata(in: 4..<8).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
+        let dataSize = bytes.subdata(in: 40..<44).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
+        XCTAssertEqual(dataSize, 20_000, "the data size counts the 10_000 frames")
+        XCTAssertEqual(riff, 36 + 20_000, "the RIFF size is the file size minus 8")
+        let decoded = try decode(recording.path)
+        XCTAssertEqual(decoded.samples.count, 10_000)
+        let want = expected(Array(source.prefix(10_000)))
+        XCTAssertEqual(zip(decoded.samples, want).map { abs($0 - $1) }.max() ?? 1, 0, accuracy: 1.0 / 32_768)
+    }
+
+    func testAMaxFramesThatIsNotAMultipleOfTheBlockIsHitExactly() throws {
+        let source = tone(seconds: 1)
+        let input = ScriptedAudioInput(samples: source)
+        var lastTotal = 0
+        input.onRead = { total in lastTotal = total }
+        let recorder = VoiceRecorder(input: input, destination: dir.path + "/odd.wav")
+        recorder.maxFrames = 5_000
+        XCTAssertNotEqual(5_000 % VoiceRecorder.blockFrames, 0, "the premise: the limit falls inside a block")
+        try recorder.start()
+        let deadline = Date().addingTimeInterval(20)
+        while !recorder.reachedLimit, Date() < deadline { usleep(1000) }
+        XCTAssertTrue(recorder.reachedLimit)
+        let recording = try recorder.stop()
+        XCTAssertEqual(recording.frames, 5_000)
+        XCTAssertEqual(lastTotal, 5_000, "the last block is cut to the 200 frames that were left")
+        XCTAssertEqual(try names(), ["odd.wav"])
+        let bytes = try Data(contentsOf: URL(fileURLWithPath: recording.path))
+        XCTAssertEqual(bytes.count, 44 + 5_000 * 2)
+        let decoded = try decode(recording.path)
+        XCTAssertEqual(decoded.samples.count, 5_000)
+        let want = expected(Array(source.prefix(5_000)))
+        XCTAssertEqual(zip(decoded.samples, want).map { abs($0 - $1) }.max() ?? 1, 0, accuracy: 1.0 / 32_768)
+    }
+
+    func testAMaxFramesSmallerThanTheLeadingSilenceGivesExactlyThatMuchSilence() throws {
+        let input = ScriptedAudioInput(samples: tone(seconds: 1))
+        var reads = 0
+        input.onRead = { _ in reads += 1 }
+        let recorder = VoiceRecorder(input: input, destination: dir.path + "/lead.wav")
+        recorder.leadingSilenceFrames = { 4_800 }
+        recorder.maxFrames = 3_000
+        try recorder.start()
+        XCTAssertTrue(recorder.reachedLimit, "the leading silence alone fills the file")
+        let recording = try recorder.stop()
+        XCTAssertTrue(recorder.reachedLimit)
+        XCTAssertEqual(recording.frames, 3_000)
+        XCTAssertEqual(reads, 0, "the input is never read once the file is full")
+        let decoded = try decode(recording.path)
+        XCTAssertEqual(decoded.samples.count, 3_000)
+        XCTAssertTrue(decoded.samples.allSatisfy { $0 == 0 }, "every sample is silence")
+        XCTAssertEqual(try names(), ["lead.wav"])
+    }
+
+    func testWithoutMaxFramesTheLimitStaysOffAndTheTakeRunsUntilTheInputEndsOrStop() throws {
+        let source = tone(seconds: 1)
+        let input = ScriptedAudioInput(samples: source)
+        let recorder = VoiceRecorder(input: input, destination: dir.path + "/open.wav")
+        XCTAssertNil(recorder.maxFrames)
+        try recorder.start()
+        let deadline = Date().addingTimeInterval(20)
+        while recorder.framesRecorded < source.count, Date() < deadline { usleep(1000) }
+        XCTAssertEqual(recorder.framesRecorded, source.count, "the take runs to the end of the scripted samples")
+        XCTAssertFalse(recorder.reachedLimit)
+        let recording = try recorder.stop()
+        XCTAssertFalse(recorder.reachedLimit)
+        XCTAssertEqual(recording.frames, 48_000)
+        XCTAssertEqual(try decode(recording.path).samples.count, 48_000)
+        XCTAssertEqual(try names(), ["open.wav"])
+    }
+
+    func testCancelAfterTheLimitRemovesTheHiddenFileAndLeavesNoDestination() throws {
+        let input = ScriptedAudioInput(samples: tone(seconds: 1))
+        let destination = dir.path + "/limit.wav"
+        let recorder = VoiceRecorder(input: input, destination: destination)
+        recorder.maxFrames = 4_800
+        try recorder.start()
+        let deadline = Date().addingTimeInterval(20)
+        while !recorder.reachedLimit, Date() < deadline { usleep(1000) }
+        XCTAssertTrue(recorder.reachedLimit)
+        XCTAssertEqual(try names(), [".limit.wav.recording"], "the hidden file holds the full take")
+        recorder.cancel()
+        XCTAssertEqual(try names(), [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination))
+        XCTAssertThrowsError(try recorder.stop(), "the cancelled take can't be published")
+    }
 }
 
 #if canImport(CPulse)

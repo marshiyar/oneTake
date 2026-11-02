@@ -182,6 +182,19 @@ final class DockShellTests: XCTestCase {
         XCTAssertEqual(router.focused, .player)
     }
 
+    /// #103: Tab past the last control of a side panel moves to the next pane instead of stopping there.
+    func testTabPastTheLastControlOfASidePanelMovesFocusOnAndF6CyclesToo() throws {
+        let (_, router) = try session(try userData())
+        let f = try XCTUnwrap(router.frames)
+        click(router, CanvasPoint(f.left.cx, f.left.maxY - 12))
+        XCTAssertEqual(router.focused, .left)
+        var guardCount = 0
+        while router.focused == .left, guardCount < 200 { _ = router.keyDown(EditorKey(.tab)); guardCount += 1 }
+        XCTAssertNotEqual(router.focused, .left, "focus is not trapped in the Media panel")
+        XCTAssertTrue(router.keyDown(EditorKey(.function(6))))
+        XCTAssertTrue(router.keyDown(EditorKey(.function(6), shift: true)))
+    }
+
     // MARK: The side panels' own hide and reveal
 
     func testTheBinsHideCommandClosesTheMediaPanelAndARevealOpensDesign() throws {

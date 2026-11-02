@@ -9,44 +9,14 @@ Thanks for helping. A few rules keep the history readable and the project releas
    runs the fetch-script tests, checks copyright blocks and the generated GPU shaders, then builds and tests with
    warnings as errors). `sh mpvfx-swift/scripts/check.sh --fast` skips the build and tests;
    `sh mpvfx-swift/scripts/doctor.sh` names anything a full run still needs.
-3. `ci-ok` is the only required check. Documentation-only pull requests skip the build and tests; the others build
-   and test only the platforms their files can affect (`.github/ci/platforms.py`), and macOS only with the `macos`
-   label.
-4. `main` needs one approving review and a green `ci-ok`. Pull requests are squash merged into `main`, by a
-   reviewer other than the pull request's author.
+3. CI runs the same checks on Linux ([ci.yml](.github/workflows/ci.yml)). Windows runs nightly ([windows.yml](.github/workflows/windows.yml)), and macOS runs them locally.
+4. `main` takes changes through the maintainer's merge system once they build and pass.
 5. Keep a pull request to one change. Say what changed and why in the description, in plain words a user of the
    app would understand where possible.
 
-Every check, what its failure means, how to fix or re-run it, and the rules for adding one:
-[.github/CHECKS.md](.github/CHECKS.md). Documentation changes are checked too: `doc-refs` verifies that every path,
-link and issue reference in the tracked Markdown files exists, and `doc-links` checks the external links weekly.
 Keep the docs you touch in step with the code in the same pull request: [STATUS.md](mpvfx-swift/docs/STATUS.md) for
 what works now, [FEATURES.md](mpvfx-swift/docs/FEATURES.md) for the full inventory, and
 [CHANGELOG.md](mpvfx-swift/CHANGELOG.md) under Unreleased for anything a user would notice.
-
-## Landing pull requests
-
-CI is slow, so pull requests can land in batches instead of one at a time:
-
-1. When a pull request is ready, the bot adds the label `queue` itself: `ci-ok`, Codacy and `names-issue` have passed
-   on its latest commit, it merges cleanly, no Codex P0 or P1 review comment is left without a reply, and it is not
-   stacked on another open pull request (it waits until that one lands). The maintainer can also add `queue` by hand.
-   The bot notes which commit was queued; pushing new commits afterwards takes the pull request out of the queue,
-   and it is queued again once the new commit is ready. Add the label `hold` to keep a pull request out of the queue
-   (and out of a batch already being tested).
-2. Every few minutes the merge train takes up to eight queued pull requests, merges them onto `main` in the order they
-   were queued, and opens one pull request for the batch (`Merge train: #a, #b, #c`). CI runs once for the whole batch.
-3. If CI passes, the batch lands as one commit, and each pull request in it is closed with a comment
-   saying where it landed.
-4. If CI fails, the batch is split in half and each half is tried in turn, until the pull request that breaks the
-   build is found. That one leaves the queue with the label `train-failed` and a comment linking the failed run; fix it
-   and add `queue` again.
-
-A pull request that conflicts with `main` or with another one in the batch is left out of that batch with a comment
-and stays queued; update it from `main`. A pull request that changes workflow files is landed on its own.
-
-Pull requests can still be merged directly at any time. The train simply drops a queued pull request that was merged
-or closed elsewhere; a batch whose `main` moved underneath it is closed and tried again on the new `main`.
 
 ## Commits
 

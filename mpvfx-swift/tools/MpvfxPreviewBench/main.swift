@@ -274,7 +274,7 @@ func laneTotals(_ run: Run) -> [String: String] {
 }
 
 /// Mean, 95th percentile and maximum of `seconds` in milliseconds, as `<prefix>_mean_ms`, `_p95_ms` and `_max_ms`.
-/// The percentile is the nearest rank, `ceil(0.95 n) - 1` in the sorted samples, as `.github/ci/bench.py` takes it.
+/// The percentile is the nearest rank, `ceil(0.95 n) - 1` in the sorted samples.
 func latencyKeys(_ prefix: String, _ seconds: [Double]) -> [String: String] {
     guard !seconds.isEmpty else { return [:] }
     let sorted = seconds.sorted()
