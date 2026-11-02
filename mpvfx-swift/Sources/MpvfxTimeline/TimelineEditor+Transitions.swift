@@ -69,7 +69,7 @@ public extension TimelineEditor {
 
 /// A cut: two clips of one track where the second starts as the first ends. Cuts are not stored; a transition
 /// belongs to the cut it names.
-public struct TimelineCut: Equatable, Sendable {
+public struct TimelineCut: Equatable, Hashable, Sendable {
     public var trackId: String
     public var fromClipId: String
     public var toClipId: String
@@ -93,8 +93,8 @@ public enum TransitionApplyOutcome: Equatable, Sendable {
 }
 
 public extension TimelineEditor {
-    /// The length a new transition gets (frames), until the Settings default of the timeline slice replaces it.
-    static var defaultTransitionFrames: Double { 15 }
+    /// The length a new transition gets when Settings has not set one (frames).
+    static var standardTransitionFrames: Double { 15 }
 
     /// Every cut of the document in track and time order: each pair of clips on one track that touch.
     var allCuts: [TimelineCut] {
@@ -192,7 +192,7 @@ public extension TimelineEditor {
         }
         let existing = transition(on: cut)
         let alignment = existing?.alignment ?? .centre
-        let wanted = lengthFrames ?? existing?.durationFrames ?? Self.defaultTransitionFrames
+        let wanted = lengthFrames ?? existing?.durationFrames ?? defaultTransitionFrames
         let assets = { (c: NativeProjectClip) in self.document.assets.first { $0.id == c.assetId } }
         let limit = nativeMaxTransitionLength(kind: kind, alignment: alignment, from: NativeTransitionSide(from, asset: assets(from)),
                                               to: NativeTransitionSide(to, asset: assets(to)))
@@ -213,4 +213,93 @@ public extension TimelineEditor {
 struct TransitionPlanFailure: Error {
     let message: String
     init(_ message: String) { self.message = message }
+}
+
+// MARK: Adding, resizing and walking cuts from the keyboard
+
+public extension TimelineEditor {
+    /// The transitions of `track` the timeline draws: known entries on clips that still touch.
+    internal static func transitionModels(_ track: NativeProjectTrack, fps: Double) -> [TimelineTransitionModel] {
+        track.cutTransitions.compactMap { t in
+            guard t.isKnown, let id = t.id, let kind = t.kind, let alignment = t.alignment, let length = t.durationFrames,
+                  let to = track.clips.first(where: { $0.id == t.toClipId }), let from = track.clips.first(where: { $0.id == t.fromClipId }),
+                  from.startFrame + from.durationFrames == to.startFrame else { return nil }
+            let range = nativeCutTransitionRange(cut: to.startFrame, length: length, alignment: alignment)
+            return TimelineTransitionModel(id: id, fromClipId: from.id, toClipId: to.id, start: range.start / fps, end: range.end / fps,
+                                           cut: to.startFrame / fps, kind: kind.rawValue, durationFrames: length, alignment: alignment.rawValue)
+        }
+    }
+
+    /// The cut a transition belongs to.
+    func cut(ofTransition id: String) -> TimelineCut? {
+        for track in document.sequence.tracks {
+            guard let t = track.cutTransitions.first(where: { $0.id == id }), let from = t.fromClipId, let to = t.toClipId,
+                  let toClip = track.clips.first(where: { $0.id == to }) else { continue }
+            return TimelineCut(trackId: track.id, fromClipId: from, toClipId: to, frame: toClip.startFrame)
+        }
+        return nil
+    }
+
+    /// The track ⌘T acts on: the first selected clip's, else the topmost unlocked video track.
+    func transitionTrackId(selection: Set<String>) -> String? {
+        for track in document.sequence.tracks where track.clips.contains(where: { selection.contains($0.id) }) { return track.id }
+        return tracks.first { $0.kind == "video" && !$0.locked }?.id
+    }
+
+    /// The cut nearest `frame` on the track ⌘T acts on (`transitionTrackId`).
+    func nearestCut(toFrame frame: Double, selection: Set<String>) -> TimelineCut? {
+        guard let trackId = transitionTrackId(selection: selection) else { return nil }
+        return allCuts.filter { $0.trackId == trackId }.min { abs($0.frame - frame) < abs($1.frame - frame) }
+    }
+
+    /// ⌘T: the default transition (a dissolve, `defaultTransitionFrames`, centred) on the cut nearest `frame`, one undo
+    /// step. A cut that already has a transition keeps its kind and length (nothing changes).
+    @discardableResult
+    func addDefaultTransition(nearFrame frame: Double, selection: Set<String>) -> TransitionApplyOutcome {
+        guard let cut = nearestCut(toFrame: frame, selection: selection) else {
+            return .refused("There is no cut on this track: clips must touch to take a transition.")
+        }
+        if let existing = transition(on: cut), existing.isKnown { return .refused("This cut already has a transition.") }
+        return applyTransition(.dissolve, to: cut)
+    }
+
+    /// ⇧⌘T: the default transition on every cut between two selected clips, one undo step; cuts that already have
+    /// one are left as they are.
+    @discardableResult
+    func addDefaultTransitions(forSelection selection: Set<String>) -> [TransitionApplyOutcome] {
+        let cuts = allCuts.filter { selection.contains($0.fromClipId) && selection.contains($0.toClipId) && transition(on: $0) == nil }
+        guard !cuts.isEmpty else { return [] }
+        return applyTransition(.dissolve, to: cuts)
+    }
+
+    /// The longest `id` can be: the clips and, for a dissolve, their media beyond the in and out points allow.
+    func maxTransitionLength(id: String) -> Double? {
+        guard let cut = cut(ofTransition: id), let kind = document.sequence.tracks.lazy.flatMap(\.cutTransitions).first(where: { $0.id == id })?.kind,
+              let fit = transitionFit(kind, on: cut, lengthFrames: 1_000_000) else { return nil }
+        return fit.length
+    }
+
+    /// Sets the length of transition `id` to `frames`, shortened to `maxTransitionLength`, one undo step; the outcome
+    /// says what it ended up as.
+    @discardableResult
+    func setTransitionLength(id: String, frames: Double) -> TransitionApplyOutcome {
+        guard let limit = maxTransitionLength(id: id) else { return .refused("The transition no longer exists.") }
+        let length = min(max(2, frames.rounded()), limit)
+        guard length >= 2 else { return .refused("Not enough media to make this transition longer.") }
+        let current = document.sequence.tracks.lazy.flatMap(\.cutTransitions).first { $0.id == id }?.durationFrames
+        if current == length { return .applied(lengthFrames: length, shortenedFrom: length < frames ? frames : nil) }
+        guard applyTransition(.setLength(id: id, durationFrames: length)) else {
+            return .refused(lastFailure?.message ?? "The transition could not be changed.")
+        }
+        return .applied(lengthFrames: length, shortenedFrom: length < frames ? frames : nil)
+    }
+
+    /// The cut after (`forward`) or before the one at `frame` on `trackId` (the first or last when none is current),
+    /// for walking cut to cut with ⌥← / ⌥→.
+    func adjacentCut(from current: TimelineCut?, atFrame frame: Double, forward: Bool, trackId: String?) -> TimelineCut? {
+        let id = current?.trackId ?? trackId ?? transitionTrackId(selection: [])
+        let cuts = allCuts.filter { $0.trackId == id }.sorted { $0.frame < $1.frame }
+        let at = current?.frame ?? frame
+        return forward ? cuts.first { $0.frame > at + 0.5 } : cuts.last { $0.frame < at - 0.5 }
+    }
 }

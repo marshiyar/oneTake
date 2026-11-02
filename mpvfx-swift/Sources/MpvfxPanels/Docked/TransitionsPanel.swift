@@ -191,7 +191,7 @@ public final class TransitionsPanel: DockedPanelView {
 
     /// The length a tile plays for: the transition's fitted length on the selected cut, else the default.
     private func length(of e: TransitionEntry, cut: TimelineCut?) -> Double {
-        cut.flatMap { editor?.transitionFit(e.kind, on: $0)?.length } ?? TimelineEditor.defaultTransitionFrames
+        cut.flatMap { editor?.transitionFit(e.kind, on: $0)?.length } ?? (editor?.defaultTransitionFrames ?? TimelineEditor.standardTransitionFrames)
     }
 
     private func drawTile(_ c: CanvasContext, _ t: Placed, shifted dy: Double, cut: TimelineCut?,
