@@ -120,6 +120,7 @@ public enum DockPanels {
     public static let transitions: DockPanelID = "transitions"
     public static let scopes: DockPanelID = "scopes"
     public static let markers: DockPanelID = "markers"
+    public static let captions: DockPanelID = "captions"
 
     public static let mixer: DockPanelID = "mixer"
 
@@ -143,5 +144,6 @@ public enum DockPanels {
         DockPanelSpec(id: scopes, title: "Scopes", defaultDock: .right, minSize: CanvasSize(240, 180))
             .preferring(CanvasSize(360, 0)).closedByDefault(),
         DockPanelSpec(id: markers, title: "Markers", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)).closedByDefault(),
+        DockPanelSpec(id: captions, title: "Captions", defaultDock: .right, minSize: CanvasSize(PanelFit.minRight, 120)).closedByDefault(),
     ]
 }

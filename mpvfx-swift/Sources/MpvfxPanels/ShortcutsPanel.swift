@@ -22,7 +22,7 @@ public struct ShortcutSection: Equatable, Sendable { public let title: String; p
 public let shortcutSections: [ShortcutSection] = {
     func s(_ t: String, _ h: [(String, String)]) -> ShortcutSection { ShortcutSection(title: t, hints: h.map { ShortcutHint(key: $0.0, label: $0.1) }) }
     return [
-        s("File", [("⇧⌘E", "Save frame… (JPEG)")]),
+        s("File", [("⇧⌘E", "Save frame… (JPEG)"), ("⇧⌘R", "Export versions… (one render per export preset)")]),
         s("Playback", [("⌥Space", "Record / stop voice"), ("Esc", "Discard voice take"), ("Space", "Play / Pause; keep voice take"), ("J", "Play backward"), ("K", "Stop"), ("L", "Play forward"), ("M", "Add sequence marker"),
                        ("⇧L", "Toggle loop"), ("←/→", "Step 1 frame"), ("⇧←/⇧→", "Step 10 frames"), ("F", "Toggle fullscreen")]),
         s("Keyframes (when an element is selected)", [("K", "Toggle position keyframe at playhead"),
@@ -33,6 +33,7 @@ public let shortcutSections: [ShortcutSection] = {
                        ("⇧F9", "Easy ease in"), ("⌘⇧F9", "Easy ease out"), ("U", "Expand / collapse properties"), ("R", "Arm Record motion")]),
         s("Editing", [("⌘C", "Copy element"), ("⌘V", "Paste element"), ("⌥⌘C", "Copy grade"), ("⌥⌘V", "Paste grade"), ("⌘X", "Cut element"), ("S", "Split clip at playhead"),
                       ("⌥⌘F", "Reveal clip in media bin"), ("⌥⇧⌘F", "Show clip in file manager"),
+                      ("⌥⌘S", "Save text layer as style"), ("⌥⌘1–9", "Apply text style 1–9"),
                       ("⇧H", "Hold frame at playhead"), ("⌥⇧H", "Hold frame, overwriting what follows"),
                       ("Shift + click/drag", "Selection tool: add clips to selection"), ("⌥ Drag clip", "Drop without swapping"), ("⇧Click", "Razor tool: split all tracks"),
                       ("Y", "Slip tool"), ("⌘⌥ Drag clip", "Slip: change which media plays"),
@@ -47,7 +48,7 @@ public let shortcutSections: [ShortcutSection] = {
                                           ("⌥ Drag", "Record rotation"), ("⌘ Drag↕", "Record opacity"), ("⌘ Scroll", "Record scale")]),
         s("Canvas", [("\\", "Toggle before / after compare"), ("Drag", "Move element / add keyframe"), ("⌥ Drag", "Move entire animation path"), ("⇧ Drag", "Uniform resize")]),
         s("Crop", [("Drag edge", "Crop a side"), ("Drag center", "Reposition the crop")]),
-        s("Panels", [("⌘1", "Compositions tab"), ("⌘2", "Assets tab")]),
+        s("Panels", [("⌘1", "Compositions tab"), ("⌘2", "Assets tab"), ("F6 / ⇧F6", "Next / previous panel")]),
         s("Work area", [("I", "Set in-point"), ("⇧I", "Clear in-point"), ("O", "Set out-point"), ("⇧O", "Clear out-point"),
                         ("A", "Jump to in-point"), ("E", "Jump to out-point")]),
     ]

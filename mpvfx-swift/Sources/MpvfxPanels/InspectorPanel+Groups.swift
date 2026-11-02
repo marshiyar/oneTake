@@ -339,6 +339,12 @@ extension InspectorPanel {
                 reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.volumeId)) },
                 keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol)), parseInput: Self.gainSliderInput))))
             if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
+            // The source's loudness at the clip's static gain (read-only; measured off the UI thread by the host).
+            if let clipLoudness, let source = s.asset?.source, !source.isEmpty {
+                let keyed = editor.isAnimated(clipId: s.id, TimelineEditor.volumeId)
+                let text = ClipLoudnessReading.label(reading: clipLoudness(source), volume: editor.clipVolume(clipId: s.id), keyframed: keyed)
+                rows.append(.init(.number(.init(key: "loudness", label: "Loudness", text: text, tier: .default, commit: { _ in }, readOnly: true))))
+            }
         }
         if s.kind == .video || s.kind == .audio {
             rows.append(contentsOf: speedRampRows(editor, s))

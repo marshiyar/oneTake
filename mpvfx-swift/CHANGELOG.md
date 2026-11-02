@@ -10,12 +10,20 @@ Unreleased; nightly builds of `main` are published as pre-releases named `nightl
 Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binaries.lock`); no version tag yet.
 
 ### Editing
+- Nested sequences in the project file and the plans behind Nest, Un-nest and Make unique (no shortcut or screen yet;
+  nested clips are not drawn until a later change).
 - Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels
   and dock beside the preview; Design groups can be dragged out into their own panels.
 - A Transitions browser: a dockable panel with a search field and stars lists dissolve, dip, wipe and push, plays each
   one on the clips around the selected cut, and applies it on Return, a double click or a drop on a cut.
 - Sequence markers: M drops a named marker at the playhead; the Markers panel jumps, renames, recolours and deletes
   them, each edit one undo step.
+- Caption lane: the caption track shows under the tracks; drag a cue to move it, drag its ends to trim it,
+  double-click to retype it, + adds one at the playhead.
+- Caption look: the preview shows the caption on screen with the track's font, size, outline, plate, position and
+  safe area; a cue over two lines is badged on the lane.
+- Caption list: a Captions panel with a row per cue; keyboard edits, frame nudges, split and join, and find and replace
+  across all cues (Replace all is one undo step); rows read too fast are badged.
 - Cut transitions grow up: directional wipe and push join dissolve and dip, with direction, softness and duration
   in Design > Transition.
 - Background generator clips (solid, linear gradient, radial gradient) from the Media panel menu, edited under
@@ -23,7 +31,31 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Align and distribute selected visual clips against the frame or the selection.
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
+- A Look section in the Text group: outlines, drop shadow, glow, plate and gradient fill, with keyframes on outline
+  width, shadow offset and blur, glow strength, plate opacity and the gradient angle.
+- Eight starter text styles (lower third, bold title, subtitle plate, quote, label, outline title, soft shadow, mono caption).
+- A per-user text style library: the Text group's Style menu shows each saved style as a sample, applies it to the
+  selected text layers (⌥⌘1…9), and saves the current layer as a style (⌥⌘S).
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Voice-over punch-in: with the I and O points set, Record voice plays from a pre-roll before I (Settings > Voice
+  pre-roll, default 2 s), records exactly I to O and stops at O, landing as one clip covering that range.
+- Even Out: a new effect in the audio rack's Dynamics family that lifts quiet passages and holds loud ones down with a
+  single Amount (default 65 %), the same in preview and export.
+- Each clip with sound shows its integrated loudness in the Media group, measured in the background and updated when the
+  clip volume changes.
+- Export loudness: the Renders tab takes a Loudness target (Off, −14, −16, −18, −23, −24 LUFS) and a true-peak ceiling
+  (−0.5 to −3 dBTP, default −1). Export measures the exported span (only the range for a range export), applies one gain
+  to reach the target, and the limiter with a 4x true-peak check keeps the mix under the ceiling; if the ceiling stops it
+  reaching the target, the file is quieter than asked. Off leaves the mix and its history record unchanged.
+- Text reveals: a text layer can arrive and leave per character, word or line (fade, rise, grow or type on, with an
+  optional blinking cursor), in forward, backward, centre-out or seeded random order, the same in preview and export.
+  The controls come in a later change; the project file already stores them.
+- Text look grows a glow, a background plate (behind each line or the whole block, with padding and rounded corners)
+  and a two-colour gradient fill, drawn the same in preview and export. The controls come in a later change.
+- F6 and Shift+F6 move the keyboard focus between panels, the focused panel is outlined, and Tab past the last
+  control of a side panel moves on to the next panel instead of stopping.
+- Export versions (⇧⌘R): tick several export presets and render them one after another, each saved as
+  "<project> – <preset>" without replacing an existing file; a preset can render at its own composition size.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

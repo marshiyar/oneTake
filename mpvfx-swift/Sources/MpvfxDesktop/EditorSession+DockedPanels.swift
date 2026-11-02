@@ -60,6 +60,17 @@ extension EditorSession {
         }
         installDockedPanel(router, id: DockPanels.markers, panel: markers)
 
+        let captions = CaptionsPanel()
+        captions.editor = editor
+        captions.onJump = { [weak self] time in
+            guard let self else { return }
+            self.timeline.playback.seek(time); self.timeline.syncFromPlayback()
+        }
+        captions.playheadMs = { [weak self] in Int(((self?.timeline.playback.currentTime ?? 0) * 1000).rounded()) }
+        captions.readingRateLimit = desktopPreferences?.captionReadingRate ?? NATIVE_CAPTION_READING_RATE_DEFAULT
+        captionsPanel = captions
+        installDockedPanel(router, id: DockPanels.captions, panel: captions)
+
         let mixer = MixerPanel()
         mixer.editor = editor
         installDockedPanel(router, id: DockPanels.mixer, panel: mixer) { [weak self, weak mixer] in
@@ -73,6 +84,9 @@ extension EditorSession {
         feed.panel.onCopy = { [weak self] text in self?.panels?.copyToClipboard?(text) }
         installDockedPanel(router, id: DockPanels.info, panel: feed.panel) { [weak feed] in feed?.refresh() }
         clipInfoFeed = feed
+        clipLoudnessFeed = ClipLoudnessFeed(projectDir: { [weak self] in self?.projectDir?.path ?? "" },
+                                            postToUI: { [weak self] body in self?.postToUI(body) },
+                                            redraw: { [weak self] in self?.redraw() })
         installEffectsPanel(router)
         installTransitionsPanel(router)
         let scopes = ScopesPanel(layout: router.layout)

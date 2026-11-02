@@ -33,6 +33,8 @@ func exportAnimatableValueTypes(_ id: String) -> Set<NativeValueType>? {
     case _ where EXPORT_VISUAL_PARAMETERS.contains(id) || EXPORT_AUDIO_PARAMETERS.contains(id): return [.number]
     // Keyframed grade values (issue #179): the export frame painter grades each frame at its values, as the preview.
     case _ where NativeGradeParameter.isGradeParameter(id): return [.number]
+    // Keyframed text look values (issue #281): the exporter draws each frame's text at its values, as the preview.
+    case _ where NativeTextLookParameter.isTextLookParameter(id): return [.number]
     default: return nil
     }
 }
