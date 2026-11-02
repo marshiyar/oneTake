@@ -192,14 +192,15 @@ extension InspectorPanel {
                        color: PanelTheme.text2.withAlpha(alpha))
     }
 
-    /// The spectrum as a faint filled area on the plot, -90 dBFS at the bottom and 0 at the top.
+    /// The spectrum as a faint filled area on the plot, -90 dBFS at the bottom and 0 at the top; `levels` are spread
+    /// evenly on the log axis from 20 Hz to 20 kHz.
     static func afxGraphSpectrum(_ c: CanvasContext, _ g: AfxGraphFrame, levels: [Double]) {
         guard levels.count > 1 else { return }
         let box = g.box
-        let floor = AudioFxSpectrum.floorDb
+        let floor = -90.0
         var area = CanvasPath(); area.move(to: CanvasPoint(box.x, box.maxY))
         for (k, db) in levels.enumerated() {
-            let x = AfxGraphScale.x(AudioFxSpectrum.frequency(k, of: levels.count), in: box)
+            let x = AfxGraphScale.x(AfxGraphScale.minHz * pow(AfxGraphScale.maxHz / AfxGraphScale.minHz, Double(k) / Double(levels.count - 1)), in: box)
             area.line(to: CanvasPoint(x, box.maxY - max(0, min(1, (db - floor) / -floor)) * box.height))
         }
         area.line(to: CanvasPoint(box.maxX, box.maxY)); area.close()
