@@ -214,6 +214,8 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var narration: NativeClipNarrationRecord? = nil
     /// Hand-placed beat marks in original source frames; absent means none.
     public var beats: NativeClipBeats? = nil
+    /// Marks the clip as a slot a project template fills with media (`NativeClipPlaceholder`); absent on every other clip.
+    public var placeholder: NativeClipPlaceholder? = nil
 }
 
 /// Crop insets in canvas pixels, measured from the edges of the clip's untransformed box.
@@ -371,7 +373,7 @@ public extension NativeProjectDocument {
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
          unsupportedTextStylesNotice, unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice,
-         unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
+         unreadableMovesNotice, unsupportedFillsNotice, unsupportedPlaceholderNotice].compactMap { $0 }
     }
 }
 

@@ -80,6 +80,9 @@ public struct PreviewLayer: Equatable, Sendable {
     public var masks: [NativeClipMask] = []
     /// File name of an offline layer's missing media (kind .offline), shown on its slate.
     public var offlineFileName: String?
+    /// The number of the template placeholder an offline layer stands for (kind .offline); its slate says
+    /// "Placeholder N" instead of "Media offline".
+    public var placeholderNumber: Int?
     /// How the picture fills the box (`clip.fit`; nil: Fit, contain).
     public var fit: NativeMediaFit?
     /// The media's natural width over height when known: sizes the decode so a Fill or Stretch picture, larger than
@@ -160,6 +163,8 @@ public struct PreviewComposition {
         public var gradeAnimation: PreviewGradeAnimation? = nil
         /// The missing file's name when the clip is offline (kind .offline).
         public var offlineFileName: String? = nil
+        /// The template placeholder number when the clip is an unfilled placeholder (kind .offline).
+        public var placeholderNumber: Int? = nil
         /// The media's natural width over height (PreviewLayer.mediaAspect), nil when unknown.
         public var mediaAspect: Double? = nil
         /// The clip's colour, gradient or blurred-copy fill (an image fill is `fillImagePath`).
@@ -286,12 +291,16 @@ public struct PreviewComposition {
 
         /// The entry of a video or image clip; sound-only clips are checked (so they are marked offline) but not drawn.
         mutating func entry(_ clip: NativeProjectClip, asset: NativeProjectAsset, layer: Double) -> Entry? {
+            // An unfilled placeholder references no file: a card with its number in the clip's box.
+            if let number = clip.placeholder?.number, asset.kind != .audio, asset.kind != .element, (asset.source ?? "").isEmpty {
+                return Entry(clip: laidOut(clip, asset), kind: .offline, path: "", layer: layer, placeholderNumber: number)
+            }
             guard let found = check(asset), asset.kind != .audio, let src = asset.source else { return nil }
             let path = found.path
             guard found.present else {
                 // Missing media: a slate in the clip's box (the known natural size, else the default box).
                 return Entry(clip: laidOut(clip, asset), kind: .offline, path: path, layer: layer,
-                             offlineFileName: URL(fileURLWithPath: src).lastPathComponent)
+                             offlineFileName: URL(fileURLWithPath: src).lastPathComponent, placeholderNumber: clip.placeholder?.number)
             }
             // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
             guard !sizePending(asset) else { return nil }
@@ -448,6 +457,7 @@ public struct PreviewComposition {
         out.generator = e.kind == .generator ? c.generator : nil
         out.text = e.kind == .text ? c.text : nil
         out.offlineFileName = e.offlineFileName
+        out.placeholderNumber = e.placeholderNumber
         out.fit = c.fit
         out.mediaAspect = e.mediaAspect
         out.fill = e.fill
