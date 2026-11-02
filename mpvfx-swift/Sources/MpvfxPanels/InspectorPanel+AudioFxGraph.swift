@@ -235,8 +235,15 @@ extension InspectorPanel {
     }
 
     /// An open module's picture: its response with one draggable point, or its static curve.
-    func afxDrawModuleGraph(_ c: CanvasContext, _ r: CanvasRect, _ item: (i: Int, node: FxNode), alpha: Double) {
-        guard AudioFxResponse.filterTypes.contains(item.node.type) else { Self.afxDrawTransfer(c, r, item.node, alpha: alpha); return }
+    func afxDrawModuleGraph(_ c: CanvasContext, _ r: CanvasRect, _ item: (i: Int, node: FxNode), alpha: Double, reading: FxMeterReading? = nil) {
+        guard AudioFxResponse.filterTypes.contains(item.node.type) else {
+            guard fxMeterProvider != nil else { Self.afxDrawTransfer(c, r, item.node, alpha: alpha); return }
+            // The curve leaves a strip on the right for its gain-reduction bar.
+            Self.afxDrawTransfer(c, CanvasRect(x: r.x, y: r.y, width: Swift.max(0, r.width - Self.afxReductionBarW), height: r.height),
+                                 item.node, alpha: alpha)
+            afxDrawReductionBar(c, r, key: "afx:node:\(item.i)", reading, alpha: alpha)
+            return
+        }
         afxDrawResponse(c, r, AfxGraphSpec(row: "afx:node:\(item.i)", nodes: [item], handles: [Self.afxFilterHandle(item.node, item.i)],
                                            alpha: alpha))
     }

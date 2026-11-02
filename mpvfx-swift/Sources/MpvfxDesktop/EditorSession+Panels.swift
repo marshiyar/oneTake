@@ -19,6 +19,7 @@ import MpvfxPlayer
 import MpvfxPanels
 import MpvfxDesktopCore
 import MpvfxAudio
+import MpvfxAudioGraph
 
 /// Host-side wiring of the side panels:
 /// the left sidebar (the Media panel) gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms
@@ -452,6 +453,7 @@ final class SessionPanels {
             self.session.playback.duration = self.session.editor.duration
             self.session.syncStage(); self.redraw()
         }
+        inspector.fxMeterProvider = { [weak self] owner in self?.session.fxMeterSnapshot(owner: owner) }
         inspector.onSeek = { [weak self] t in
             guard let self else { return }
             self.session.playback.seek(t); self.session.timeline.syncFromPlayback(); self.session.syncStage(); self.redraw()
@@ -696,5 +698,20 @@ extension EditorSession {
             playback.seek(0); timeline.syncFromPlayback()
             panels?.projectSwitched()
         } catch { onError("Could not open the project", "\(error)") }
+    }
+}
+
+extension EditorSession {
+    /// The Audio FX rack's levels and gain reduction for the sound being heard now (`AudioPlayback.currentTime`, not the
+    /// newest block the feeder has queued), refreshed at most 30 times a second. Nothing while stopped. Asking is what
+    /// switches the graph's meters on, so an export and a closed rack publish nothing.
+    func fxMeterSnapshot(owner: String) -> FxMeterSnapshot? {
+        guard let audio, audio.isPlaying, let graph else { fxMeterCache = nil; return nil }
+        graph.collectsFxMeters = true
+        let now = ProcessInfo.processInfo.systemUptime
+        if let cache = fxMeterCache, cache.owner == owner, now - cache.at < 1.0 / 30 { return cache.snapshot }
+        let snapshot = graph.fxMeters(owner: owner, at: audio.currentTime)
+        fxMeterCache = (owner, now, snapshot)
+        return snapshot
     }
 }

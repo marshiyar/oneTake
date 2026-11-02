@@ -557,6 +557,8 @@ final class EditorSession {
     // document and pulled in 128-frame blocks; master volume and mute come from the transport.
     var audio: AudioPlayback?
     var graph: GraphAudioSource?
+    /// The Audio FX rack's last meter reading, so it is taken at 30 Hz however often the rack draws (`fxMeterSnapshot`).
+    var fxMeterCache: (owner: String, at: Double, snapshot: FxMeterSnapshot?)?
     var graphInputs: DocumentAudioGraph.Inputs?
     var graphDocument: NativeProjectDocument?
     /// Builds and swaps the graph off the UI thread (decode, FX parse, pre-roll); edits only hand it inputs.

@@ -14,7 +14,8 @@
 import Foundation
 
 /// One detector and one gain for all channels, preserving the stereo image.
-internal final class LinkedDynamicsProcessor: BlockProcessor {
+internal final class LinkedDynamicsProcessor: BlockProcessor, GainReducing {
+    private(set) var lowestGain: Double = 1
     private var params: FxParams
     private var envelope: EnvelopeFollowers
     private let gate: Bool
@@ -33,6 +34,7 @@ internal final class LinkedDynamicsProcessor: BlockProcessor {
         envelope.set(self.params.num("attack"), self.params.num("release"))
     }
     internal func process(_ input: [[Float]], _ output: inout [[Float]]) {
+        lowestGain = 1
         guard let first = input.first else {
             return
         }
@@ -51,10 +53,14 @@ internal final class LinkedDynamicsProcessor: BlockProcessor {
                 let coefficient: Double = target < held ? envelope.r : envelope.a
                 held = target + coefficient * (held - target)
                 gain = held
+                lowestGain = min(lowestGain, gain)
             } else {
                 let reduction: Double = currentKneeGain(level, threshold, ratio, width)
                 let compressed: Double = pow(10, (reduction + params.num("makeup")) / decibelsPerAmplitude)
                 gain = compressed * params.num("mix") + 1 - params.num("mix")
+                // The meter shows the reduction, not the make-up gain that follows it.
+                let reduced: Double = pow(10, reduction / decibelsPerAmplitude)
+                lowestGain = min(lowestGain, reduced * params.num("mix") + 1 - params.num("mix"))
             }
             for channel in input.indices {
                 output[channel][frameIndex] = Float(Double(input[channel][frameIndex]) * gain)

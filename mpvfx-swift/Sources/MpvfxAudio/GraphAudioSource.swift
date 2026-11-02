@@ -38,7 +38,7 @@ public final class GraphAudioSource: AudioRenderSource {
     public let format: AudioFormat
     let lock = NSLock()
     public private(set) var project: AudioGraphProject
-    var renderer: AudioGraphRenderer
+    var renderer: AudioGraphRenderer { didSet { publishFxMeters() } }
     var gain = 1.0, isMuted = false
     var lastPreRoll_: PreRoll?
 
@@ -47,6 +47,7 @@ public final class GraphAudioSource: AudioRenderSource {
         format = AudioFormat(sampleRate: Int(project.sampleRate), channels: 2)
         self.project = project
         renderer = Self.liveRenderer(project)
+        publishFxMeters()
     }
 
     private static func liveRenderer(_ project: AudioGraphProject) -> AudioGraphRenderer {
@@ -77,6 +78,41 @@ public final class GraphAudioSource: AudioRenderSource {
     private var metersStopped = false
 
     public func playbackStopped() { resetMeters(stopped: true) }
+
+    // MARK: FX rack meters
+
+    private var fxMeterOwners: [String: AudioGraphRenderer.FxMeterOwner] = [:]
+    private var fxMetersOn = false
+
+    /// Whether the chains publish their levels and gain reduction while they render. Off until the Audio FX rack is
+    /// showing; an export never turns it on.
+    public var collectsFxMeters: Bool {
+        get { meterLock.lock(); defer { meterLock.unlock() }; return fxMetersOn }
+        set {
+            meterLock.lock(); defer { meterLock.unlock() }
+            fxMetersOn = newValue
+            for owner in fxMeterOwners.values { owner.meters.isEnabled = newValue }
+        }
+    }
+
+    /// The running graph's chains, after every swap of the renderer. The feeder only ever writes into each chain's
+    /// rings; this registry is what the UI looks a rack up by, under its own small lock.
+    private func publishFxMeters() {
+        let owners = renderer.fxMeterOwners
+        meterLock.lock(); defer { meterLock.unlock() }
+        fxMeterOwners = owners
+        for owner in owners.values { owner.meters.isEnabled = fxMetersOn }
+    }
+
+    /// The levels and gain reduction of one rack (`clip:<id>` or `bus:<id>`) for the sound being heard at `time`
+    /// seconds, which is `AudioPlayback.currentTime`, not the newest block the feeder has queued. Safe to call from
+    /// the UI thread while the feeder renders: it takes only the registry lock and reads the lock-free rings.
+    public func fxMeters(owner: String, at time: Double) -> FxMeterSnapshot? {
+        meterLock.lock(); let entry = fxMeterOwners[owner]; meterLock.unlock()
+        guard let entry, time.isFinite else { return nil }
+        let frame = Int((max(0, time) * Double(format.sampleRate)).rounded()) - entry.startFrame
+        return entry.meters.snapshot(atOrBefore: frame)
+    }
 
     private func resetMeters(stopped: Bool) {
         meterLock.lock()

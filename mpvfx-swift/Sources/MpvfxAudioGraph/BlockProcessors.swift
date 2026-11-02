@@ -59,7 +59,8 @@ protocol BlockProcessor: AnyObject {
     func post(_ params: FxParams)
 }
 
-final class CompressorProcessor: BlockProcessor {
+final class CompressorProcessor: BlockProcessor, GainReducing {
+    private(set) var lowestGain = 1.0
     var p: FxParams
     var env: EnvelopeFollowers
     init(_ p: FxParams, sampleRate: Double) {
@@ -68,6 +69,7 @@ final class CompressorProcessor: BlockProcessor {
     }
     func post(_ params: FxParams) { for (k, v) in params.entries { p[k] = v }; env.set(p["attack"]?.number ?? 20, p["release"]?.number ?? 250) }
     func process(_ i: [[Float]], _ o: inout [[Float]]) {
+        lowestGain = 1
         if i.isEmpty { return }
         let makeup = dbToLin(p["makeup"]?.number ?? 0)
         let mix = p["mix"]?.number ?? 1
@@ -84,13 +86,15 @@ final class CompressorProcessor: BlockProcessor {
                 if e <= kneeStartLin { o[ch][n] = Float(x * makeup * mix + x * dry); continue }
                 let envDb = 20 * log10(e)
                 let g = dbToLinFast(kneeGain(envDb, thresholdDb, ratio, kneeDb))
+                lowestGain = min(lowestGain, g * mix + dry)
                 o[ch][n] = Float(x * g * makeup * mix + x * dry)
             }
         }
     }
 }
 
-final class LimiterProcessor: BlockProcessor {
+final class LimiterProcessor: BlockProcessor, GainReducing {
+    private(set) var lowestGain = 1.0
     var p: FxParams
     var env: EnvelopeFollowers
     init(_ p: FxParams, sampleRate: Double) {
@@ -99,6 +103,7 @@ final class LimiterProcessor: BlockProcessor {
     }
     func post(_ params: FxParams) { for (k, v) in params.entries { p[k] = v }; env.set(p["attack"]?.number ?? 5, p["release"]?.number ?? 50) }
     func process(_ i: [[Float]], _ o: inout [[Float]]) {
+        lowestGain = 1
         if i.isEmpty { return }
         let ceiling = dbToLin(p["limit"]?.number ?? -1)
         let outGain = dbToLin(p["level_out"]?.number ?? 0)
@@ -108,13 +113,15 @@ final class LimiterProcessor: BlockProcessor {
                 let x = Double(inp[n])
                 let e = env.push(ch, x)
                 let g = e > ceiling ? ceiling / e : 1
+                lowestGain = min(lowestGain, g)
                 o[ch][n] = Float(x * g * outGain)
             }
         }
     }
 }
 
-final class GateProcessor: BlockProcessor {
+final class GateProcessor: BlockProcessor, GainReducing {
+    private(set) var lowestGain = 1.0
     var p: FxParams
     var env: EnvelopeFollowers
     var gains: [Double] = []
@@ -124,6 +131,7 @@ final class GateProcessor: BlockProcessor {
     }
     func post(_ params: FxParams) { for (k, v) in params.entries { p[k] = v }; env.set(p["attack"]?.number ?? 1, p["release"]?.number ?? 100) }
     func process(_ i: [[Float]], _ o: inout [[Float]]) {
+        lowestGain = 1
         if i.isEmpty { return }
         let threshold = dbToLin(p["threshold"]?.number ?? -35)
         let floor = dbToLin(p["range"]?.number ?? -24)
@@ -146,6 +154,7 @@ final class GateProcessor: BlockProcessor {
                 let c = target < held ? env.r : env.a
                 let smoothed = target + c * (held - target)
                 gains[ch] = smoothed
+                lowestGain = min(lowestGain, smoothed)
                 o[ch][n] = Float(x * smoothed)
             }
         }

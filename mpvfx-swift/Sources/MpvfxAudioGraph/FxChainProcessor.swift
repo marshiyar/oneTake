@@ -78,9 +78,10 @@ final class OnePoleUnit: FxUnit {
     var automation: [String: [ParamTarget]] { [:] }
 }
 
-final class ProcessorUnit: FxUnit {
+final class ProcessorUnit: FxUnit, GainReducing {
     let proc: BlockProcessor
     init(_ proc: BlockProcessor) { self.proc = proc }
+    var lowestGain: Double { (proc as? GainReducing)?.lowestGain ?? 1 }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         var out = x.map { [Float](repeating: 0, count: $0.count) }
         proc.process(x, &out)
@@ -266,6 +267,8 @@ public final class FxChainProcessor {
     var units: [FxUnit] = []
     let chain: FxChain
     public let sampleRate: Double
+    /// Levels and gain reduction per module, published from `process` once a reader switches them on.
+    public let meters: FxChainMeters
     public var isEmpty: Bool { runs.isEmpty }
     /// Frames the whole chain delays its output by (summed over its units).
     public var latencyFrames: Int { units.reduce(0) { $0 + $1.latencyFrames } }
@@ -274,6 +277,7 @@ public final class FxChainProcessor {
                 timing: FxAutomationScheduler.Timing = .init()) {
         self.sampleRate = sampleRate
         self.chain = chain
+        meters = FxChainMeters(nodeIds: chain.enabledNodes.map(\.id))
         var presetTargets: [String: [ParamTarget]] = [:]
         for node in chain.enabledNodes {
             let preset = node.fromPreset
@@ -364,13 +368,48 @@ public final class FxChainProcessor {
     /// the render.
     public func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         var tail = finiteSamples(x)
+        guard meters.isEnabled else {
+            for run in runs {
+                let entry = tail
+                for u in run.units { tail = finiteSamples(u.process(tail, frame: frame)) }
+                if let wet = run.wet, let dry = run.dry {
+                    tail = sum(wet.process(tail, frame: frame), dry.process(run.dryDelay.process(entry), frame: frame))
+                }
+            }
+            return tail
+        }
+        return processMetered(tail, frame: frame)
+    }
+
+    /// `process` with every module's input and output measured and published. The measuring reads the blocks the
+    /// chain already holds and writes into the fixed rings, so it adds no allocation. Each reading is tagged with the
+    /// frame its block is heard at: `frame` less what the chain has delayed it by up to and including that module.
+    private func processMetered(_ input: [[Float]], frame: Int) -> [[Float]] {
+        var tail = input
+        let chainInput = FxLevel(tail)
+        var level = chainInput
+        var index = 0
+        var delay = 0
         for run in runs {
             let entry = tail
-            for u in run.units { tail = finiteSamples(u.process(tail, frame: frame)) }
+            for u in run.units {
+                tail = finiteSamples(u.process(tail, frame: frame))
+                delay += u.latencyFrames
+                let out = FxLevel(tail)
+                meters.nodes[index].publish(FxMeterReading(
+                    frame: frame - delay, inputPeak: level.peak, inputRMS: level.rms, outputPeak: out.peak, outputRMS: out.rms,
+                    lowestGain: Float((u as? GainReducing)?.lowestGain ?? 1)))
+                level = out
+                index += 1
+            }
             if let wet = run.wet, let dry = run.dry {
                 tail = sum(wet.process(tail, frame: frame), dry.process(run.dryDelay.process(entry), frame: frame))
+                level = FxLevel(tail)
             }
         }
+        meters.chain.publish(FxMeterReading(
+            frame: frame - latencyFrames, inputPeak: chainInput.peak, inputRMS: chainInput.rms, outputPeak: level.peak,
+            outputRMS: level.rms))
         return tail
     }
 }

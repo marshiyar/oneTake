@@ -16,6 +16,7 @@ import MpvfxCanvas
 import MpvfxShared
 import MpvfxTimeline
 import struct MpvfxAudioGraph.FxNode
+import struct MpvfxAudioGraph.FxMeterSnapshot
 import struct MpvfxAudioGraph.AudioFxModulePreset
 
 /// The Design tab: the flat inspector drawn natively. One accordion group is open at a time; closed groups
@@ -60,6 +61,9 @@ public final class InspectorPanel {
     }
     public var audioFxUserPresets: [AudioFxModulePreset] = []
     public var onSaveAudioFxPreset: ((String, FxNode) -> Void)?
+    /// The Audio FX rack's live meters for an owner (`clip:<id>` or `bus:<id>`), for the sound heard now. Nil: the rack
+    /// shows no meters. Set by the app, which refreshes it at 30 Hz while playing and returns nothing when stopped.
+    public var fxMeterProvider: ((String) -> FxMeterSnapshot?)?
     public var onEdited: (() -> Void)?
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?

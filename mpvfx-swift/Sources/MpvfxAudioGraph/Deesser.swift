@@ -34,7 +34,8 @@ private struct DeesserFilter {
 /// The detector spans roughly 4–10 kHz at the default 6.5 kHz setting. A fourth-order
 /// low-pass at half the detector frequency protects the voice body; only the remainder
 /// is attenuated. A single envelope drives every channel, preserving stereo balance.
-final class DeesserProcessor: BlockProcessor {
+final class DeesserProcessor: BlockProcessor, GainReducing {
+    private(set) var lowestGain = 1.0
     var p: FxParams
     let sampleRate: Double
     var envelope: EnvelopeFollowers
@@ -67,12 +68,14 @@ final class DeesserProcessor: BlockProcessor {
     }
     func process(_ input: [[Float]], _ output: inout [[Float]]) {
         guard let first = input.first else { return }
+        lowestGain = 1
         while filters.count < input.count { filters.append(coefficients.map { DeesserFilter(c: $0) }) }
         // Use the already-sized output as detector scratch, avoiding per-frame allocation.
         for frame in first.indices {
             let peak = detectorPeak(input, frame: frame, scratch: &output)
             let level = 20 * log10(max(1e-12, envelope.push(0, peak)))
             let gain = dbToLin(deesserReduction(level, threshold: p.num("threshold"), range: p.num("range")))
+            lowestGain = min(lowestGain, gain)
             applyGain(input, frame: frame, gain: gain, output: &output)
         }
     }
