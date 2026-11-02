@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import struct MpvfxAudioGraph.MasterLoudnessTarget
 import MpvfxCanvas
 import MpvfxShared
 import MpvfxTimeline
@@ -31,10 +32,12 @@ public struct RenderJobView: Equatable {
     public var createdAt: Double?
     public var sizeBytes: Double?
     public var durationMs: Double?
+    /// The loudness target and measured values as one label ("-23.0 LUFS target, measured -23.1"), in the meta line.
+    public var loudness: String?
     public init(id: String, name: String, status: Status, stage: String = "", progress: Double = 0, detail: String? = nil, error: String? = nil, thumbnail: CanvasImage? = nil,
-                createdAt: Double? = nil, sizeBytes: Double? = nil, durationMs: Double? = nil) {
+                createdAt: Double? = nil, sizeBytes: Double? = nil, durationMs: Double? = nil, loudness: String? = nil) {
         self.id = id; self.name = name; self.status = status; self.stage = stage; self.progress = progress; self.detail = detail; self.error = error; self.thumbnail = thumbnail
-        self.createdAt = createdAt; self.sizeBytes = sizeBytes; self.durationMs = durationMs
+        self.createdAt = createdAt; self.sizeBytes = sizeBytes; self.durationMs = durationMs; self.loudness = loudness
     }
 }
 
@@ -46,6 +49,11 @@ public struct RenderSettingsModel: Equatable, Codable {
     public var resolution: String = "auto"
     public var customWidth: Double = 1920
     public var customHeight: Double = 1080
+    /// Programme loudness in LUFS the export is brought to; nil is Off (the mix is left as it is). Optional, so
+    /// presets saved before it existed still load.
+    public var loudness: Double?
+    /// The true-peak ceiling in dBTP while `loudness` is on; nil is the default (-1).
+    public var truePeak: Double?
     public init() {}
 }
 
@@ -56,7 +64,7 @@ public enum RenderAction: Equatable { case start(RenderSettingsModel), cancel(St
 public final class RightPanel {
     public enum Hit: Equatable {
         case hide, show, design, easing, renders, showRenders, panelMenu, tabOverflow
-        case format, resolution, fps, quality, customW, customH, export, formatInfo
+        case format, resolution, fps, quality, loudness, truePeak, customW, customH, export, formatInfo
         case preset, presetName, savePreset, deletePreset
         case job(String), cancel(String), delete(String), reveal(String), retry(String), hideFinished, dismissError
         case confirmDelete(String), keep(String), thumb(String), listScrollbar
@@ -284,6 +292,18 @@ public final class RightPanel {
         .init(value: "draft", label: "Draft"), .init(value: "standard", label: "Standard"), .init(value: "high", label: "High Quality"),
     ]
     static let rates: [PanelDropdown.Option] = [.init(value: "24", label: "24 fps"), .init(value: "30", label: "30 fps"), .init(value: "60", label: "60 fps")]
+    /// The loudness targets offered, in LUFS: -23 is EBU R128 broadcast, -24 ATSC A/85, -14 and -16 common for streaming.
+    static let loudnessTargets: [PanelDropdown.Option] = [.init(value: "off", label: "Off")] + [-14.0, -16, -18, -23, -24].map {
+        PanelDropdown.Option(value: String(Int($0)), label: "\(Int($0)) LUFS")
+    }
+    static let truePeakCeilings: [PanelDropdown.Option] = [-0.5, -1, -1.5, -2, -3].map {
+        PanelDropdown.Option(value: String($0), label: "\($0) dBTP")
+    }
+    static func loudnessLabel(_ target: Double?) -> String {
+        guard let target else { return "Off" }
+        return "\(target.rounded() == target ? String(Int(target)) : String(target)) LUFS"
+    }
+    static func ceilingLabel(_ ceiling: Double?) -> String { "\(ceiling ?? MasterLoudnessTarget.defaultTruePeak) dBTP" }
     static let formatInfo: [String: String] = [
         "mp4": "Best for general use. H.264 video with lossless FLAC sound.",
         "mov": "Transparent video: lossless PNG frames with 8-bit alpha and 16-bit PCM sound. Very large files.",
@@ -348,6 +368,12 @@ public final class RightPanel {
         if showQuality {
             select(.quality, "Quality", Self.qualities.first { $0.value == settings.quality }?.label ?? settings.quality,
                    CanvasRect(x: x + colW + gap, y: y, width: colW, height: 47))
+        }
+        y += 47 + gap
+        // Loudness: Off leaves the mix as it is; a target brings it there under the true-peak ceiling.
+        select(.loudness, "Loudness", Self.loudnessLabel(settings.loudness), CanvasRect(x: x, y: y, width: colW, height: 47))
+        if settings.loudness != nil {
+            select(.truePeak, "True-peak ceiling", Self.ceilingLabel(settings.truePeak), CanvasRect(x: x + colW + gap, y: y, width: colW, height: 47))
         }
         y += 47 + 12
         if settings.resolution == "custom" {   // custom W×H (aspect locked): grid-cols-2 gap-2 rounded-md border bg-panel-input/40 p-2
@@ -583,6 +609,7 @@ public final class RightPanel {
             var meta: [String] = []
             if let t = j.createdAt { meta.append(Self.timeAgo(t, now: now())) }
             if let b = j.sizeBytes { meta.append(formatExportFileSize(b)) }
+            if let l = j.loudness { meta.append(l) }
             let line = meta.isEmpty ? (j.detail ?? "") : meta.joined(separator: " · ")
             PanelDraw.text(c, line, in: CanvasRect(x: tx, y: ly, width: tw, height: 10), font: small, color: PanelTheme.text5)
         }
@@ -637,6 +664,14 @@ public final class RightPanel {
             }
         case .fps: open("fps", Self.rates, "\(Int(settings.fps))") { [weak self] v in self?.settings.fps = Double(v) ?? 30 }
         case .quality: open("quality", Self.qualities, settings.quality) { [weak self] v in self?.settings.quality = v }
+        case .loudness:
+            open("loudness", Self.loudnessTargets, settings.loudness.map { String(Int($0)) } ?? "off") { [weak self] v in
+                self?.settings.loudness = Double(v)
+            }
+        case .truePeak:
+            open("truePeak", Self.truePeakCeilings, String(settings.truePeak ?? MasterLoudnessTarget.defaultTruePeak)) { [weak self] v in
+                self?.settings.truePeak = Double(v)
+            }
         case .customW: field = PanelTextField(key: "w", value: "\(Int(settings.customWidth))")
         case .customH:
             let h = CompositionRenderResolution.customHeight(forWidth: settings.customWidth, compositionWidth: canvasSize.width,

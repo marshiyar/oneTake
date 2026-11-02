@@ -64,11 +64,13 @@ final class EditorSession {
     /// Timeline card content (toolbar + tracks); set by installShell.
     var timelineRegion: TimelineRegion?
     var volumeAnimating = false
-    private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
+    private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir; clipLoudnessFeed?.reset() } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?
     /// The Info panel's selection reader (EditorSession+DockedPanels.swift).
     var clipInfoFeed: ClipInfoFeed?
+    /// The Loudness row's readings (EditorSession+Loudness.swift); set by installShell.
+    var clipLoudnessFeed: ClipLoudnessFeed?
     /// The router holds its cross-pane drag weakly; the bin and effects drags live here (EditorSession+DockedPanels.swift).
     var crossPaneDrags: CrossPaneDragGroup?
     var desktopPreferences: DesktopPreferences?

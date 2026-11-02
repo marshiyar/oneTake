@@ -33,6 +33,16 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - A per-user text style library: the Text group's Style menu shows each saved style as a sample, applies it to the
   selected text layers (⌥⌘1…9), and saves the current layer as a style (⌥⌘S).
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Voice-over punch-in: with the I and O points set, Record voice plays from a pre-roll before I (Settings > Voice
+  pre-roll, default 2 s), records exactly I to O and stops at O, landing as one clip covering that range.
+- Even Out: a new effect in the audio rack's Dynamics family that lifts quiet passages and holds loud ones down with a
+  single Amount (default 65 %), the same in preview and export.
+- Each clip with sound shows its integrated loudness in the Media group, measured in the background and updated when the
+  clip volume changes.
+- Export loudness: the Renders tab takes a Loudness target (Off, −14, −16, −18, −23, −24 LUFS) and a true-peak ceiling
+  (−0.5 to −3 dBTP, default −1). Export measures the exported span (only the range for a range export), applies one gain
+  to reach the target, and the limiter with a 4x true-peak check keeps the mix under the ceiling; if the ceiling stops it
+  reaching the target, the file is quieter than asked. Off leaves the mix and its history record unchanged.
 - Text reveals: a text layer can arrive and leave per character, word or line (fade, rise, grow or type on, with an
   optional blinking cursor), in forward, backward, centre-out or seeded random order, the same in preview and export.
   The controls come in a later change; the project file already stores them.

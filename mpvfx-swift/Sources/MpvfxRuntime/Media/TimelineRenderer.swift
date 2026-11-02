@@ -23,6 +23,8 @@ import Foundation
 import OneTakeMedia
 import MpvfxShared
 import MpvfxColor
+import struct MpvfxAudioGraph.MasterLoudnessTarget
+import struct MpvfxAudioGraph.MasterLoudnessResult
 
 public struct NativeTimelineRenderInput {
     public var project: NativeProjectDocument
@@ -46,6 +48,10 @@ public struct NativeTimelineRenderInput {
     /// turn on the calling thread: the reference the overlapped output is checked against (ExportOverlapTests) and
     /// the export benchmark's same-machine baseline (MpvfxPreviewBench export-serial).
     public var encodeAhead = true
+    /// Brings the exported sound to this loudness with a true-peak ceiling; nil leaves the mix as it is.
+    public var loudness: MasterLoudnessTarget?
+    /// Called once with what the loudness step measured (only when `loudness` is set and the export has sound).
+    public var onLoudness: ((MasterLoudnessResult) -> Void)?
     public init(project: NativeProjectDocument, projectDir: String, outputPath: String, format: ExportFormat,
                 outputDimensions: ExportDimensions? = nil, outputFps: Double? = nil, quality: ExportQuality? = nil,
                 cancellation: MediaCancellation? = nil, onProgress: ((Double) -> Void)? = nil,
@@ -334,8 +340,9 @@ public func renderNativeTimeline(_ input: NativeTimelineRenderInput) throws {
         throw MediaToolError(EXPORT_NO_FRAME_RENDERER_MESSAGE)
     }
     // Sound first (decoding the stems is the slow part of the mix): 0...10 % of the progress when there is any.
-    let mix = try ExportAudioMix(plan, engine: input.keyframeEngine, cancellation: input.cancellation,
+    let mix = try ExportAudioMix(plan, engine: input.keyframeEngine, cancellation: input.cancellation, loudness: input.loudness,
                                  onProgress: { [onProgress = input.onProgress] in onProgress?($0 * 10) })
+    if let result = mix?.loudnessResult { input.onLoudness?(result) }
     var request = NativeExportFrameRequest(document: plan.project, projectDir: plan.root, width: plan.width, height: plan.height)
     request.transparentPad = input.format == .mov
     request.keyframeEngine = input.keyframeEngine
