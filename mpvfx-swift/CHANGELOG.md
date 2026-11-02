@@ -23,7 +23,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
 - Audio FX rack meters: input and output level bars on every module and a gain-reduction bar on the compressor,
-  limiter, gate and de-esser, following the sound you hear while playing.
+  limiter, gate and de-esser, following the sound you hear while playing. The audio engine can also analyse a
+  module's input and output spectrum for the parametric EQ's live display.
 - Every audio effect's preset menu offers factory settings beyond its defaults (gain, de-esser, noise reduction and
   phaser gained theirs).
 
