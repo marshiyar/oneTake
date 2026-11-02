@@ -78,10 +78,9 @@ final class OnePoleUnit: FxUnit {
     var automation: [String: [ParamTarget]] { [:] }
 }
 
-final class ProcessorUnit: FxUnit, GainReducing {
+final class ProcessorUnit: FxUnit {
     let proc: BlockProcessor
     init(_ proc: BlockProcessor) { self.proc = proc }
-    var lowestGain: Double { (proc as? GainReducing)?.lowestGain ?? 1 }
     func process(_ x: [[Float]], frame: Int) -> [[Float]] {
         var out = x.map { [Float](repeating: 0, count: $0.count) }
         proc.process(x, &out)
@@ -265,6 +264,8 @@ public final class FxChainProcessor {
     var byId: [String: FxUnit] = [:]
     /// Every built unit, in `chain.enabledNodes` order (in-place parameter edits address units by position).
     var units: [FxUnit] = []
+    /// What reports each unit's gain reduction (nil: it does not reduce), found once so the feeder casts nothing.
+    private var reducers: [GainReducing?] = []
     let chain: FxChain
     public let sampleRate: Double
     /// Levels and gain reduction per module, published from `process` once a reader switches them on.
@@ -301,6 +302,7 @@ public final class FxChainProcessor {
             if let id = node.id, byId[id] == nil { byId[id] = u } else if let id = node.id { byId[id] = u }
             runs.append(run)
         }
+        reducers = units.map { unit in (unit as? ProcessorUnit).map { $0.proc as? GainReducing } ?? (unit as? GainReducing) }
         for i in runs.indices {
             runs[i].dryDelay = FxFrameDelay(frames: runs[i].units.reduce(0) { $0 + $1.latencyFrames })
         }
@@ -398,7 +400,7 @@ public final class FxChainProcessor {
                 let out = FxLevel(tail)
                 meters.nodes[index].publish(FxMeterReading(
                     frame: frame - delay, inputPeak: level.peak, inputRMS: level.rms, outputPeak: out.peak, outputRMS: out.rms,
-                    lowestGain: Float((u as? GainReducing)?.lowestGain ?? 1)))
+                    lowestGain: Float(reducers[index]?.lowestGain ?? 1)))
                 level = out
                 index += 1
             }
