@@ -33,9 +33,16 @@ final class InspectorMasksTests: XCTestCase {
         for row in masks(p)?.addressableRows ?? [] { if case .number(let n) = row.kind, n.key == key { return n } }
         throw MissingRow(key: key)
     }
-    func segmented(_ p: InspectorPanel, _ key: String) throws -> InspectorRow.Segmented {
-        for row in masks(p)?.addressableRows ?? [] { if case .segmented(let s) = row.kind, s.key == key { return s } }
-        throw MissingRow(key: key)
+    func pick(_ p: InspectorPanel, _ key: String, _ option: String) throws {
+        try button(p, "\(key).\(option)").action()
+    }
+    func activeOption(_ p: InspectorPanel, _ key: String) -> String? {
+        for row in masks(p)?.addressableRows ?? [] {
+            if case .buttons(let bs) = row.kind, let b = bs.first(where: { $0.key.hasPrefix(key + ".") && $0.style == .chipActive }) {
+                return b.key.replacingOccurrences(of: key + ".", with: "")
+            }
+        }
+        return nil
     }
     func toggle(_ p: InspectorPanel, _ key: String) throws -> InspectorRow.Toggle {
         for row in masks(p)?.addressableRows ?? [] { if case .toggle(let t) = row.kind, t.key == key { return t } }
@@ -81,10 +88,10 @@ final class InspectorMasksTests: XCTestCase {
     func testModeInvertAndRemove() throws {
         let (r, editor) = try panel()
         try button(r.inspector, "masks.add.rectangle").action()
-        try segmented(r.inspector, "masks.mask-1.mode").select("subtract")
+        try pick(r.inspector, "masks.mask-1.mode", "subtract")
         XCTAssertEqual(editor.masks(clipId: "clip:a").first?.mode, "subtract")
-        XCTAssertEqual(try segmented(r.inspector, "masks.mask-1.mode").options.first { $0.active }?.key, "subtract")
-        try segmented(r.inspector, "masks.mask-1.mode").select("add")
+        XCTAssertEqual(activeOption(r.inspector, "masks.mask-1.mode"), "subtract")
+        try pick(r.inspector, "masks.mask-1.mode", "add")
         XCTAssertNil(editor.masks(clipId: "clip:a").first?.mode, "add is the default")
         try toggle(r.inspector, "masks.mask-1.invert").set(true)
         XCTAssertEqual(editor.masks(clipId: "clip:a").first?.invert, true)

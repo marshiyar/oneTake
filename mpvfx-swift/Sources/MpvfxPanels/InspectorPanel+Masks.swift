@@ -77,10 +77,11 @@ extension InspectorPanel {
             edited(editor.setMask(clipId: s.id, maskId: m.id, label: label, edit), label: label)
         }
         var rows: [InspectorRow] = [InspectorRow(.heading("Mask \(number) · \(Self.maskKindLabel(m.kind))", trailing: nil))]
-        rows.append(InspectorRow(.segmented(.init(
-            key: "\(prefix).mode", label: "Mode",
-            options: Self.maskModes.map { (key: $0, label: Self.maskKindLabel($0), active: $0 == m.resolvedMode) },
-            select: { mode in apply("Set mask mode") { $0.mode = mode == "add" ? nil : mode } }))))
+        rows.append(dropdownRow(
+            id: "\(prefix).mode", label: "Mode", options: Self.maskModes.map { PanelDropdown.Option(value: $0, label: Self.maskKindLabel($0)) },
+            current: m.resolvedMode, tier: m.mode == nil ? .default : .explicitCustom,
+            reset: m.mode == nil ? nil : { apply("Reset mask mode") { $0.mode = nil } },
+            pick: { mode in apply("Set mask mode") { $0.mode = mode == "add" ? nil : mode } }))
         for f in Self.maskFields(m.kind) {
             let stored = m[keyPath: f.path] ?? f.def
             let shown = (stored * f.scale * 100).rounded() / 100
