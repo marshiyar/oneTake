@@ -29,8 +29,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   statistics in one undo step.
 - Clip blend modes, a colour key with hue-following spill, and spill/GPU parity coverage.
 - The media bin keeps its filter and sort between launches.
-- Curves and secondary corrections can be animated with the same stopwatch and keyframe buttons as the other grade
-  controls.
+- Curves and secondary corrections can be animated: one stopwatch keys all points of the shown curve, and each
+  secondary setting has its own.
 
 ### Fixes and polish
 - Stage system cursors stay synchronised with the transform box without pointer motion.
