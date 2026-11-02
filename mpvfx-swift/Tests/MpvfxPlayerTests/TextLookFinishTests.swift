@@ -127,10 +127,11 @@ final class TextLookFinishTests: XCTestCase {
 
     func testNeighbouringPlatesWithNoPaddingLeaveNoSeamAtAFractionalEdge() throws {
         // A 41 px font gives 49.2 px lines, so the lines meet at y 89.2 and no pixel boundary.
-        let l = layer(NativeTextLook(plate: .init(color: "#ff0000")), content: "Line one\nLine two", size: 41,
+        let l = layer(NativeTextLook(plate: .init(paddingX: 12, color: "#ff0000")), content: "Line one\nLine two", size: 41,
                       box: CanvasRect(x: 60, y: 40, width: 300, height: 200), align: "left")
         let image = try render(l)
-        for y in 41..<138 { XCTAssertEqual(pixel(image, 61, y), [255, 0, 0, 255], "row \(y)") }
+        // Column 50 is in the side padding, clear of the letters; no vertical padding, so the plates meet at y 89.2.
+        for y in 41..<138 { XCTAssertEqual(pixel(image, 50, y), [255, 0, 0, 255], "row \(y)") }
     }
 
     func testAPlateBelowTheEdgeOfTheBoxDoesNotCrash() throws {
