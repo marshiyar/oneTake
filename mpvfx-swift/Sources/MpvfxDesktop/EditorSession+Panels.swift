@@ -452,6 +452,7 @@ final class SessionPanels {
             self.session.playback.duration = self.session.editor.duration
             self.session.syncStage(); self.redraw()
         }
+        inspector.onEditMaskOnStage = { [weak self] clip, mask in self?.session.editMaskOnStage(clipId: clip, maskId: mask) }
         inspector.onSeek = { [weak self] t in
             guard let self else { return }
             self.session.playback.seek(t); self.session.timeline.syncFromPlayback(); self.session.syncStage(); self.redraw()

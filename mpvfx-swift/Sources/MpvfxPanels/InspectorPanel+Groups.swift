@@ -68,6 +68,7 @@ extension InspectorPanel {
         if let text = textGroup(editor, s) { groups.append(text) }
         if s.isVisual { groups.append(transformGroup(editor, s)); groups.append(styleGroup(editor, s)) }
         if let transition = transitionGroup(editor, s) { groups.append(transition) }
+        if let masks = masksGroup(editor, s) { groups.append(masks) }
         if s.kind == .video || s.kind == .image {
             groups.append(gradeGroup(editor, s))
             if userLookStore != nil { groups.append(userLooksGroup(editor)) }

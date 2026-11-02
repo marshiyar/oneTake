@@ -52,6 +52,8 @@ public final class PlayerController {
         case marquee(x: Double, y: Double, additive: Bool)
         case pan(x: Double, y: Double, panX: Double, panY: Double)
         case compare
+        /// A handle of the target mask (PlayerController+Mask.swift).
+        case maskHandle
     }
     var gesture: Gesture?
     /// Where the move / group / resize press landed (view px) and whether it has travelled past `dragThreshold`.
@@ -66,6 +68,8 @@ public final class PlayerController {
     /// The element as it was when the crop tool opened (Cancel restores it).
     var cropOriginal: StageElement?
     var transformSession = TransformSession()
+    /// The mask being edited on the stage, if any (PlayerController+Mask.swift).
+    var maskStage = MaskStageSession()
 
     // Gesture recording (wired by `enableGestureRecording`).
     public var recordingDocument: (() -> NativeProjectDocument?)?
@@ -135,6 +139,7 @@ public final class PlayerController {
         if ids != view.selectedIds {
             if view.cropActive { cancelCrop() }
             view.selectedIds = ids
+            if maskStage.target.map({ ids != [$0.clipId] }) ?? false { maskTarget = nil }   // another layer: the mask mode ends
             onSelect?(view.selection)
             onSelectionChange?(ids)
         }
@@ -199,6 +204,7 @@ public final class PlayerController {
                 }
                 return   // crop mode: the stage only edits the crop
             }
+            if pressMask(at: p) { return }
             if pressTransform(e, at: p) { return }
         }
         if view.cropActive { return }
@@ -275,7 +281,7 @@ public final class PlayerController {
                 return b.x < m.maxX && b.maxX > m.x && b.y < m.maxY && b.maxY > m.y
             }.map(\.id)
             needsDisplay?()
-        case .move, .group, .resize, .anchor:
+        case .move, .group, .resize, .anchor, .maskHandle:
             // Under the threshold a press is a click: nothing moves. Past it, deltas run from the press point, so the
             // grab offset holds for the whole drag.
             if !dragEngaged {
@@ -291,6 +297,7 @@ public final class PlayerController {
     func drag(_ g: Gesture, _ p: CanvasPoint, scale s: Double) {
         switch g {
         case .pan, .marquee, .compare: break
+        case .maskHandle: dragMask(to: p)
         case let .move(id, start, x0, y0):
             let d = moveDelta(x0: x0, y0: y0, to: p, moving: [start])
             update(id) { $0.rect.x = start.rect.x + d.dx / s; $0.rect.y = start.rect.y + d.dy / s }
@@ -385,6 +392,7 @@ public final class PlayerController {
                 setSelection(ids)
             }
             needsDisplay?()
+        case .maskHandle: finishMaskDrag()
         case .crop, .anchor:
             needsDisplay?()   // crop edits stay a draft until Apply; the anchor is stage state, not an edit
         case let .move(id, start, _, _), let .resize(id, _, start, _):
@@ -479,6 +487,7 @@ public final class PlayerController {
     /// G toggles the grid, R arms Record motion (when wired).
     public func keyDown(_ k: EditorKey) -> Bool {
         guard !k.command, !k.alt else { return false }
+        if maskNudgeKey(k) { return true }
         if nudgeKey(k) { return true }
         flushNudge()
         switch k.code {

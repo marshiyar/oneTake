@@ -61,6 +61,8 @@ public final class InspectorPanel {
     public var audioFxUserPresets: [AudioFxModulePreset] = []
     public var onSaveAudioFxPreset: ((String, FxNode) -> Void)?
     public var onEdited: (() -> Void)?
+    /// "Edit on stage" in the Masks group: (clip id, mask id) of the mask to put on the stage.
+    public var onEditMaskOnStage: ((String, String) -> Void)?
     public var onSeek: ((Double) -> Void)?
     public var onClearSelection: (() -> Void)?
     /// Grade clipboard actions owned by the timeline controller (shared with its menu and shortcuts).

@@ -28,6 +28,7 @@ extension PlayerController {
             savedMuted = view.playback.audioMuted
             store.save(PreviewPreferences(audioMuted: savedMuted))
         }
+        refreshMaskOverlay()
         let t = view.now()
         if let at = nudgeAt, t - at >= Self.nudgeCommitSeconds { flushNudge() }
         if let at = zoomTouchedAt, t - at >= PlayerView.zoomSettleSeconds { zoomTouchedAt = nil; persistZoom() }
@@ -91,6 +92,7 @@ extension PlayerController {
 
     /// Commits a pending nudge burst (one commit per moved element).
     public func flushNudge() {
+        flushMaskNudge()
         guard !nudgeStarts.isEmpty else { nudgeAt = nil; return }
         let starts = nudgeStarts
         nudgeStarts = []; nudgeAt = nil
@@ -110,6 +112,7 @@ extension PlayerController {
             for st in starts { update(st.id) { $0 = st } }
         case .marquee:
             view.marquee = nil; view.marqueeCandidates = []
+        case .maskHandle: cancelMaskDrag()
         case .pan, .anchor, .compare: break   // the compare divider is preview-only state; nothing to restore
         }
         needsDisplay?()
@@ -120,6 +123,7 @@ extension PlayerController {
     func escapeKey() -> Bool {
         if recorder != nil { return recordEscape() }
         if cancelGesture() { return true }
+        if maskEscape() { return true }
         if view.contextMenu != nil { view.contextMenu = nil; needsDisplay?(); return true }
         if view.toolbar.gridPopoverOpen { view.toolbar.gridPopoverOpen = false; needsDisplay?(); return true }
         if view.cropActive { cancelCrop(); return true }

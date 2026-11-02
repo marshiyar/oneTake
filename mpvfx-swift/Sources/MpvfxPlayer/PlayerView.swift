@@ -106,6 +106,8 @@ public final class PlayerView {
     var morph: (from: Double, to: Double, start: Double)?
     var lastPlaying: Bool?
     public var cropActive = false
+    /// The mask being edited and its handles, drawn over the selected layer (PlayerView+MaskHandles.swift).
+    public var maskOverlay: MaskOverlay?
     /// The transform box: anchors, hovered and dragged part, readout and cursor (PlayerView+TransformBox.swift).
     public var transformChrome = TransformChrome()
 
@@ -324,6 +326,7 @@ public final class PlayerView {
         } else if let sel = selection, let e = elements.first(where: { $0.id == sel }) {
             let ve = chromeElement(e, in: size)
             if cropActive { drawCrop(c, ve) } else { drawSelection(c, ve) }
+            if let o = maskOverlay, o.clipId == e.id, !cropActive { drawMask(c, ve, o) }
         }
         // Marquee: candidates accent + accent/5 (square); the box accent + accent/10.
         for id in marqueeCandidates {

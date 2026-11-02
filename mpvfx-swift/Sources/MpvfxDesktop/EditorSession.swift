@@ -134,6 +134,7 @@ final class EditorSession {
         player.onSelectionChange = { [weak self] ids in self?.timeline.view.selection = Set(ids); self?.redraw() }
         player.onCommit = { [weak self] e in self?.stageCommitted(e) }
         installStageTransform()
+        installMaskStage()
         player.onDelete = { [weak self] ids in self?.deleteClips(ids) }
         player.onZOrder = { [weak self] ids, action in self?.applyZOrder(ids, action) }
         player.zOrderEnabled = { [weak self] id in self?.zOrderActions(id) ?? [] }
@@ -389,6 +390,7 @@ final class EditorSession {
     /// a project folder (EditorSession+OpenProject); Cmd+, / Ctrl+, opens and closes Settings (EditorSession+Settings).
     func commandKey(_ k: EditorKey) -> Bool {
         if k.command, k.shift, !k.alt, case .char(let c) = k.code, c.lowercased() == "e" { return requestSaveFrame() }
+        if k.alt, !k.command, !k.shift, !k.ctrl, case .char(let c) = k.code, c.lowercased() == "m" { return addMaskToSelection() }
         guard k.command, !k.alt, !k.shift, case .char(let c) = k.code else { return false }
         switch c.lowercased() {
         case "s":
