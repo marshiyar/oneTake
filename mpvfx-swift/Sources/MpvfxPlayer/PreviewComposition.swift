@@ -295,7 +295,7 @@ public struct PreviewComposition {
             }
             // Its box is not known yet (natural size still probing): not drawn rather than drawn full frame.
             guard !sizePending(asset) else { return nil }
-            let grade = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip), clipId: clip.id, projectDir: projectDir?.path)
+            let grade = ColorGradeRenderer.forClipLayers(clip, projectDir: projectDir?.path)
             return Entry(clip: laidOut(clip, asset), kind: asset.kind == .image ? .image : .video, path: path, layer: layer, grade: grade,
                          mediaAspect: naturalSize(asset).flatMap(\.aspect))
         }

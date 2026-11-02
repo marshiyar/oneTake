@@ -321,6 +321,9 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                         }
                     }
                 }
+                if effects.filter({ str($0["effectId"]) == NativeGradeLayers.effectId }).count > NativeGradeLayers.maxLayers {
+                    pushIssue(&issues, .invalidEffect, "\(clipPath).effects", "A clip may have at most \(NativeGradeLayers.maxLayers) grade layers")
+                }
                 if enabledColorKeyCount > 1 {
                     pushIssue(&issues, .invalidEffect, "\(clipPath).effects", "A clip may have at most one enabled colour-key effect")
                 }

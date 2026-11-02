@@ -44,7 +44,7 @@ public final class PreviewGradeAnimation: @unchecked Sendable {
         lock.lock()
         if let hit = memo[animated] { lock.unlock(); return hit }
         lock.unlock()
-        let made = ColorGradeRenderer.forClip(ColorGradeParams.clipGrade(clip, animated: animated), clipId: clip.id, projectDir: projectDir)
+        let made = ColorGradeRenderer.forClipLayers(clip, animated: animated, projectDir: projectDir)
         lock.lock()
         if memo.count >= Self.memoLimit { memo.removeAll(keepingCapacity: true) }
         memo[animated] = made

@@ -26,26 +26,31 @@ public final class ColorGradeRenderer: Equatable, Sendable {
     public let seed: Int
     public let interpolation: CubeLUT.Interpolation
     let base: GradeProgram
+    /// Grade layers drawn after this one, in order (issue #457). Empty for a single grade.
+    public let following: [ColorGradeRenderer]
 
     /// - Parameters:
     ///   - lut: the grade's `.cube`, already loaded (nil skips the LUT stage; `CubeLUTCache` loads them).
     ///   - seedKey: identifies the clip for the grain seed (the clip id).
-    public init(params: ColorGradeParams, lut: CubeLUT? = nil, seedKey: String = "", interpolation: CubeLUT.Interpolation = .trilinear) {
-        self.params = params; self.lut = lut; self.interpolation = interpolation
+    public init(params: ColorGradeParams, lut: CubeLUT? = nil, seedKey: String = "", interpolation: CubeLUT.Interpolation = .trilinear,
+                following: [ColorGradeRenderer] = []) {
+        self.params = params; self.lut = lut; self.interpolation = interpolation; self.following = following
         seed = colorGradeSeed(seedKey)
         base = Self.program(params, lut: lut, interpolation: interpolation)
         signature = "\(params.hashValueKey)|\(lut.map { "\($0.size):\($0.table.count):\($0.table.reduce(SIMD3<Float>.zero, +))" } ?? "-")|\(seed)|\(interpolation)"
+            + following.map { "+[\($0.signature)]" }.joined()
     }
 
     /// Renderers that draw the same pixels compare equal.
     public static func == (a: ColorGradeRenderer, b: ColorGradeRenderer) -> Bool { a === b || a.signature == b.signature }
 
     /// The renderer for a clip's grade, loading its LUT from the project folder; nil when the clip has no active grade.
-    public static func forClip(_ params: ColorGradeParams?, clipId: String, projectDir: String?, luts: CubeLUTCache = .shared) -> ColorGradeRenderer? {
+    public static func forClip(_ params: ColorGradeParams?, clipId: String, projectDir: String?, luts: CubeLUTCache = .shared,
+                                following: [ColorGradeRenderer] = []) -> ColorGradeRenderer? {
         guard let params, params.isActive else { return nil }
         var lut: CubeLUT?
         if let l = params.lut, l.intensity > 0, let path = CubeLUTCache.resolve(l.src, projectDir: projectDir) { lut = luts.lut(at: path) }
-        return ColorGradeRenderer(params: params, lut: lut, seedKey: clipId)
+        return ColorGradeRenderer(params: params, lut: lut, seedKey: clipId, following: following)
     }
 
     /// A short key that changes whenever the rendered pixels could (cache keys).
@@ -97,7 +102,9 @@ public final class ColorGradeRenderer: Equatable, Sendable {
     /// The grade of one colour, without the spatial effects (scopes, swatches, tests): primary, wheels, curves,
     /// hue curves, secondaries and LUT, mixed by intensity. Inputs and outputs are 0…1.
     public func gradeColor(_ rgb: SIMD3<Float>) -> SIMD3<Float> {
-        mix(rgb, base.applyColorGrade(rgb), base.u.intensity)
+        var out = mix(rgb, base.applyColorGrade(rgb), base.u.intensity)
+        for layer in following { out = layer.gradeColor(out) }
+        return out
     }
 
     // MARK: Program setup (the `Ud` uniform upload and `nx` advanced texture)
