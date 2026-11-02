@@ -261,8 +261,16 @@ final class TextRevealTests: XCTestCase {
             let ms = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
             worst = max(worst, ms); sum += ms
         }
-        print("[bench] 200-character reveal at 1080p: mean \(sum / Double(runs)) ms, worst \(worst) ms")
-        XCTAssertLessThan(sum / Double(runs), 250, "mean milliseconds per frame: a loose guard, the measured value is printed above")
+        l.textFrame = nil; l.text?.reveal = nil
+        var plain = 0.0
+        for _ in 0..<5 {
+            canvas.clear(.transparent)
+            let start = DispatchTime.now().uptimeNanoseconds
+            PreviewPainter.drawText(l, on: canvas, frame: frame, scale: 1)
+            plain += Double(DispatchTime.now().uptimeNanoseconds - start) / 5_000_000
+        }
+        print("[bench] 200-character reveal at 1080p (debug build): mean \(sum / Double(runs)) ms, worst \(worst) ms; the same text unrevealed: \(plain) ms")
+        XCTAssertLessThan(sum / Double(runs), plain * 1.5, "a frame of the reveal costs about what drawing the same text costs (milliseconds)")
     }
 }
 #endif

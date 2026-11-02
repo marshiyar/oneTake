@@ -23,6 +23,15 @@ are typed validator issues; a reveal from a newer version is kept unchanged, not
 `TimelineEditor.setTextReveal` edits them in one undo step; the Moves-group rows are a later slice. Covered by
 `NativeTextRevealTests`, `TextRevealTests` and `InspectorTextAuditTests`.
 
+Text look, glow, plate and gradient (#280): `clip.text.look` also holds `glow` (radius, strength 0 to 1, colour), `plate`
+(mode line or block, horizontal and vertical padding, corner radius, colour with alpha) and `fill` (a two-colour gradient
+with an angle). The plate follows the line boxes of `TextLayout`: a line with no text gets none, and plates of neighbouring
+lines whose gap is within the vertical padding join without a seam. The gradient spans the ink of the whole text, so a
+letter keeps its colour while the rest of a reveal arrives. A glow of strength 0 draws exactly as no glow. A look
+that holds only an idle glow is no look at all. Sizes are in composition pixels and scale with the layer and the export
+resolution. `TimelineEditor.setTextLook` validates and applies them in one undo step; the Look section is a later slice.
+Covered by `NativeTextLookTests` and `TextLookFinishTests`.
+
 Every user-facing ability of the MpVFX editor, with its status at this revision. The editor is native on every
 host: it is drawn on its own 2D canvas and edits one JSON project document; nothing runs HTML, CSS, JavaScript
 or a web view. The design audit in §11 is the floor for how the editor looks.

@@ -162,8 +162,8 @@ public extension TimelineEditor {
         return editClipText(clipId: clipId) { $0.textTransform = transform == "none" ? nil : transform }
     }
 
-    /// Outlines and drop shadow (nil or an empty look removes it). One undo step; false when the look breaks a
-    /// document rule (more than two outlines, a width, offset or blur out of range, a colour that is not hex).
+    /// The text look: outlines, shadow, glow, plate and gradient fill (nil or an empty look removes it). One undo step;
+    /// false when the look breaks a document rule (more than two outlines, a number out of range, a colour that is not hex).
     @discardableResult
     func setTextLook(clipId: String, _ look: NativeTextLook?) -> Bool {
         if let l = look, l.isSupported {
@@ -175,6 +175,19 @@ public extension TimelineEditor {
                 guard isNativeHexColor(sh.color), NativeTextLook.shadowOffsetRange.contains(sh.resolvedX),
                       NativeTextLook.shadowOffsetRange.contains(sh.resolvedY),
                       NativeTextLook.shadowBlurRange.contains(sh.resolvedBlur) else { return false }
+            }
+            if let g = l.glow {
+                guard isNativeHexColor(g.color), NativeTextLook.glowRadiusRange.contains(g.resolvedRadius),
+                      NativeTextLook.glowStrengthRange.contains(g.resolvedStrength) else { return false }
+            }
+            if let p = l.plate {
+                guard isNativeHexColor(p.color), NativeTextLook.plateModes.contains(p.resolvedMode),
+                      NativeTextLook.platePaddingRange.contains(p.resolvedPaddingX),
+                      NativeTextLook.platePaddingRange.contains(p.resolvedPaddingY),
+                      NativeTextLook.plateRadiusRange.contains(p.resolvedRadius) else { return false }
+            }
+            if let f = l.fill {
+                guard isNativeHexColor(f.from), isNativeHexColor(f.to), NativeTextLook.fillAngleRange.contains(f.resolvedAngle) else { return false }
             }
         }
         return editClipText(clipId: clipId) { $0.look = (look?.isEmpty ?? true) ? nil : look }

@@ -13,8 +13,9 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 
-/// How the letters of a text layer are decorated beyond their fill: up to two outlines around the glyphs and a drop
-/// shadow under them (`clip.text.look`). Every field is optional and omitted when it holds its default, so a text
+/// How the letters of a text layer are decorated beyond their fill: up to two outlines around the glyphs, a drop
+/// shadow and a glow under them, a background plate behind each line or the whole block, and a two-colour gradient
+/// in place of the solid fill (`clip.text.look`). Every field is optional and omitted when it holds its default, so a text
 /// layer without a look saves exactly as before. A look whose `v` is not one this editor knows (written by a newer
 /// version) stays in the document unchanged, is not drawn, and is counted by `unsupportedTextLooksNotice`.
 public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
@@ -24,12 +25,26 @@ public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
     public static let shadowOffsetRange = -500.0...500.0
     public static let shadowBlurRange = 0.0...200.0
     public static let positions = ["outside", "center"]
+    public static let glowRadiusRange = 0.0...200.0
+    public static let glowStrengthRange = 0.0...1.0
+    public static let plateModes = ["line", "block"]
+    public static let platePaddingRange = 0.0...500.0
+    public static let plateRadiusRange = 0.0...500.0
+    public static let fillAngleRange = -360.0...360.0
+    public static let defaultGlowRadius = 12.0
+    public static let defaultGlowStrength = 1.0
 
     /// The look's `v`.
     public var v: Int
     /// Closest to the letters first; the second outline starts where the first ends.
     public var outlines: [Outline]?
     public var shadow: Shadow?
+    /// A soft halo of `color` around the letters, outside any outline.
+    public var glow: Glow?
+    /// A rounded rectangle of `color` behind each line of text or behind the whole block.
+    public var plate: Plate?
+    /// Two colours across the text instead of the solid text colour.
+    public var fill: Fill?
     /// The stored value of a look this version cannot read (its `v` or shape is unknown), written back verbatim.
     public private(set) var unsupported: NativeJSONValue?
 
@@ -57,16 +72,60 @@ public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
         public var resolvedBlur: Double { blur ?? 0 }
     }
 
-    public init(outlines: [Outline]? = nil, shadow: Shadow? = nil) {
-        v = Self.version; self.outlines = outlines; self.shadow = shadow
+    /// A glow: a halo `radius` px (0…200, default 12) wide that reaches `strength` (0…1, default 1) of `color` at the
+    /// letter edge. A strength of 0 draws nothing.
+    public struct Glow: Codable, Equatable, Hashable, Sendable {
+        public var radius: Double?
+        public var strength: Double?
+        public var color: String
+        public init(radius: Double? = nil, strength: Double? = nil, color: String) { self.radius = radius; self.strength = strength; self.color = color }
+        public var resolvedRadius: Double { radius ?? NativeTextLook.defaultGlowRadius }
+        public var resolvedStrength: Double { strength ?? NativeTextLook.defaultGlowStrength }
+        /// True when the glow changes the picture.
+        public var isActive: Bool { resolvedStrength > 0 && !(color.count == 9 && color.lowercased().hasSuffix("00")) }
+    }
+
+    /// A plate behind the text: `mode` `line` (the default) puts one rounded rectangle behind each line, `block` one
+    /// behind all of them. `paddingX` and `paddingY` px (0…500, default 0) grow it past the text; `radius` px (0…500,
+    /// default 0) rounds its corners; `color` may carry alpha. Plates of neighbouring lines whose gap is no more than the
+    /// vertical padding join into one shape, and a line with no text gets none.
+    public struct Plate: Codable, Equatable, Hashable, Sendable {
+        public var mode: String?
+        public var paddingX: Double?
+        public var paddingY: Double?
+        public var radius: Double?
+        public var color: String
+        public init(mode: String? = nil, paddingX: Double? = nil, paddingY: Double? = nil, radius: Double? = nil, color: String) {
+            self.mode = mode; self.paddingX = paddingX; self.paddingY = paddingY; self.radius = radius; self.color = color
+        }
+        public var resolvedMode: String { mode ?? "line" }
+        public var resolvedPaddingX: Double { paddingX ?? 0 }
+        public var resolvedPaddingY: Double { paddingY ?? 0 }
+        public var resolvedRadius: Double { radius ?? 0 }
+    }
+
+    /// A gradient fill from `from` to `to` along `angle` degrees (0 runs left to right, 90 top to bottom; −360…360,
+    /// default 0), across the bounds of the letters.
+    public struct Fill: Codable, Equatable, Hashable, Sendable {
+        public var from: String
+        public var to: String
+        public var angle: Double?
+        public init(from: String, to: String, angle: Double? = nil) { self.from = from; self.to = to; self.angle = angle }
+        public var resolvedAngle: Double { angle ?? 0 }
+    }
+
+    public init(outlines: [Outline]? = nil, shadow: Shadow? = nil, glow: Glow? = nil, plate: Plate? = nil, fill: Fill? = nil) {
+        v = Self.version; self.outlines = outlines; self.shadow = shadow; self.glow = glow; self.plate = plate; self.fill = fill
     }
 
     /// False for a look kept verbatim because this version cannot read it.
     public var isSupported: Bool { unsupported == nil }
     /// A supported look that draws nothing extra.
-    public var isEmpty: Bool { isSupported && (outlines ?? []).isEmpty && shadow == nil }
+    public var isEmpty: Bool {
+        isSupported && (outlines ?? []).isEmpty && shadow == nil && glow?.isActive != true && plate == nil && fill == nil
+    }
 
-    private enum Keys: String, CodingKey { case v, outlines, shadow }
+    private enum Keys: String, CodingKey { case v, outlines, shadow, glow, plate, fill }
 
     public init(from decoder: Decoder) throws {
         let raw = try NativeJSONValue(from: decoder)
@@ -81,10 +140,13 @@ public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
         try c.encode(v, forKey: .v)
         try c.encodeIfPresent(outlines, forKey: .outlines)
         try c.encodeIfPresent(shadow, forKey: .shadow)
+        try c.encodeIfPresent(glow, forKey: .glow)
+        try c.encodeIfPresent(plate, forKey: .plate)
+        try c.encodeIfPresent(fill, forKey: .fill)
     }
 
     public func hash(into h: inout Hasher) {
-        h.combine(v); h.combine(outlines); h.combine(shadow)
+        h.combine(v); h.combine(outlines); h.combine(shadow); h.combine(glow); h.combine(plate); h.combine(fill)
         if let unsupported { h.combine(String(describing: unsupported)) }
     }
 
@@ -107,6 +169,23 @@ public struct NativeTextLook: Codable, Equatable, Hashable, Sendable {
             guard s.isRecord, let c = s["color"]?.stringValue else { return nil }
             for k in ["x", "y", "blur"] where s[k] != nil && s[k]?.numberValue == nil { return nil }
             look.shadow = Shadow(x: s["x"]?.numberValue, y: s["y"]?.numberValue, blur: s["blur"]?.numberValue, color: c)
+        }
+        if let g = raw["glow"] {
+            guard g.isRecord, let c = g["color"]?.stringValue else { return nil }
+            for k in ["radius", "strength"] where g[k] != nil && g[k]?.numberValue == nil { return nil }
+            look.glow = Glow(radius: g["radius"]?.numberValue, strength: g["strength"]?.numberValue, color: c)
+        }
+        if let p = raw["plate"] {
+            guard p.isRecord, let c = p["color"]?.stringValue else { return nil }
+            for k in ["paddingX", "paddingY", "radius"] where p[k] != nil && p[k]?.numberValue == nil { return nil }
+            if let m = p["mode"], m.stringValue == nil { return nil }
+            look.plate = Plate(mode: p["mode"]?.stringValue, paddingX: p["paddingX"]?.numberValue, paddingY: p["paddingY"]?.numberValue,
+                               radius: p["radius"]?.numberValue, color: c)
+        }
+        if let f = raw["fill"] {
+            guard f.isRecord, let from = f["from"]?.stringValue, let to = f["to"]?.stringValue else { return nil }
+            if f["angle"] != nil && f["angle"]?.numberValue == nil { return nil }
+            look.fill = Fill(from: from, to: to, angle: f["angle"]?.numberValue)
         }
         return look
     }
@@ -150,6 +229,34 @@ func validateNativeTextLook(_ look: NativeJSONValue?, _ path: String, _ issues: 
         range(s["y"], "\(path).shadow.y", NativeTextLook.shadowOffsetRange, "Shadow y offset")
         range(s["blur"], "\(path).shadow.blur", NativeTextLook.shadowBlurRange, "Shadow blur")
         color(s["color"], "\(path).shadow.color")
+    }
+    if let g = look["glow"] {
+        if g.isRecord {
+            range(g["radius"], "\(path).glow.radius", NativeTextLook.glowRadiusRange, "Glow radius")
+            if let strength = g["strength"],
+               strength.numberValue.map({ $0.isFinite && NativeTextLook.glowStrengthRange.contains($0) }) != true {
+                pushIssue(&issues, .invalidClip, "\(path).glow.strength", "Glow strength must be a number from 0 to 1")
+            }
+            color(g["color"], "\(path).glow.color")
+        } else { pushIssue(&issues, .invalidClip, "\(path).glow", "Glow must be an object") }
+    }
+    if let p = look["plate"] {
+        if p.isRecord {
+            if let mode = p["mode"], mode.stringValue.map(NativeTextLook.plateModes.contains) != true {
+                pushIssue(&issues, .invalidClip, "\(path).plate.mode", "Plate mode must be one of \(NativeTextLook.plateModes.joined(separator: ", "))")
+            }
+            range(p["paddingX"], "\(path).plate.paddingX", NativeTextLook.platePaddingRange, "Plate horizontal padding")
+            range(p["paddingY"], "\(path).plate.paddingY", NativeTextLook.platePaddingRange, "Plate vertical padding")
+            range(p["radius"], "\(path).plate.radius", NativeTextLook.plateRadiusRange, "Plate corner radius")
+            color(p["color"], "\(path).plate.color")
+        } else { pushIssue(&issues, .invalidClip, "\(path).plate", "Plate must be an object") }
+    }
+    if let f = look["fill"] {
+        if f.isRecord {
+            color(f["from"], "\(path).fill.from")
+            color(f["to"], "\(path).fill.to")
+            range(f["angle"], "\(path).fill.angle", NativeTextLook.fillAngleRange, "Fill angle")
+        } else { pushIssue(&issues, .invalidClip, "\(path).fill", "Fill must be an object") }
     }
 }
 
