@@ -61,6 +61,7 @@ final class StageHostCursorTests: XCTestCase {
         XCTAssertFalse(allows(40, 40, ownWindow: false))
     }
 
+#if os(Linux)  // the router draws on the Cairo canvas, which only the Linux build has
     var dirs: [String] = []
     override func tearDown() { for d in dirs { try? FileManager.default.removeItem(atPath: d) } }
 
@@ -106,4 +107,5 @@ final class StageHostCursorTests: XCTestCase {
         XCTAssertEqual(router.cursor(at: player.x, player.y), .move, "over the player: the stage's cursor")
         XCTAssertEqual(router.cursor(at: timeline.x, timeline.y), .arrow, "elsewhere: the arrow")
     }
+#endif
 }
