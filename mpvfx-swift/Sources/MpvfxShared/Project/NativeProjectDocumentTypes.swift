@@ -371,7 +371,7 @@ public extension NativeProjectDocument {
     var undrawnContentNotices: [String] {
         [undrawnElementLayersNotice, unsupportedColorKeysNotice, unsupportedMasksNotice, unsupportedTextLooksNotice,
          unsupportedTextStylesNotice, unsupportedBeatsNotice, unsupportedHoldNotice, undrawnTransitionsNotice,
-         unreadableMovesNotice, unsupportedFillsNotice].compactMap { $0 }
+         unreadableMovesNotice, unsupportedFillsNotice, unreadableCameraMovesNotice].compactMap { $0 }
     }
 }
 

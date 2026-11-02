@@ -471,7 +471,7 @@ public struct PreviewComposition {
                                             z: num(NativeTransform3D.zId) ?? 0, perspective: num(NativeTransform3D.perspectiveId) ?? 0)
         applyTransitions(e.transitions, to: &out, atFrame: Double(frameIndex(at: time)))
         // Moves go over the static and keyframed values (before fades, which multiply the result).
-        return out.moved(by: moveOffsets(c, local: local))
+        return cameraMoved(out.moved(by: moveOffsets(c, local: local)), c, local: local)   // camera moves go over Layer moves
     }
 
     /// Widens the layer over its transitions' handle frames (one decode lane covers the whole range) and mixes it

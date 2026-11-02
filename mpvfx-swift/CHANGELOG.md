@@ -10,6 +10,8 @@ Unreleased; nightly builds of `main` are published as pre-releases named `nightl
 Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binaries.lock`); no version tag yet.
 
 ### Editing
+- Camera moves: a `camera-moves` clip effect shakes, punches in and pushes a layer, the same in preview and export; a
+  shake is repeatable from its seed and covers its own edges. Controls and beat punch-ins follow (#308).
 - Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels
   and dock beside the preview; Design groups can be dragged out into their own panels.
 - Sequence markers: M drops a named marker at the playhead; the Markers panel jumps, renames, recolours and deletes
