@@ -52,7 +52,7 @@ public enum FrameMix {
     /// `a` at (1 − fraction) and `b` at fraction, in linear light, with straight alpha (colours weighted by their
     /// alpha, so a transparent letterbox edge does not darken the mix). Exactly `a` at 0 and `b` at 1.
     public static func mixed(_ a: CanvasImage, _ b: CanvasImage, fraction: Double) -> CanvasImage {
-        guard a.width == b.width, a.height == b.height else { return a }
+        guard a.width == b.width, a.height == b.height, a.rgba.count == b.rgba.count, a.rgba.count == a.width * a.height * 4 else { return a }
         if fraction <= 0 { return a }
         if fraction >= 1 { return b }
         let f = Float(fraction)

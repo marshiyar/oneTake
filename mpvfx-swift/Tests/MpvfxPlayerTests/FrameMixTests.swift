@@ -50,9 +50,11 @@ final class FrameMixTests: XCTestCase {
 
     func testTransparentLetterboxDoesNotDarkenTheMix() {
         let clear = CanvasImage(width: 2, height: 1, rgba: [0, 0, 0, 0, 255, 255, 255, 255])
-        let other = CanvasImage(width: 2, height: 1, rgba: [0, 0, 0, 0, 255, 255, 255, 255])
+        let other = CanvasImage(width: 2, height: 1, rgba: [255, 255, 255, 255, 255, 255, 255, 255])
         let mix = FrameMix.mixed(clear, other, fraction: 0.4)
-        XCTAssertEqual(Array(mix.rgba[0..<4]), [0, 0, 0, 0])
+        // Where only `other` has a picture its colour is kept (not darkened by the transparent pixel) at 0.4 of the alpha.
+        for channel in 0..<3 { XCTAssertEqual(Int(mix.rgba[channel]), 255, accuracy: 1) }
+        XCTAssertEqual(Int(mix.rgba[3]), 102, accuracy: 1)
         XCTAssertEqual(Array(mix.rgba[4..<8]), [255, 255, 255, 255])
     }
 

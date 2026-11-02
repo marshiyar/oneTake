@@ -36,7 +36,8 @@ import CoreGraphics
 //   MpvfxPreviewBench <scenario> <fixtures dir> <results file> [frames] [--no-realtime]
 //   MpvfxPreviewBench --make-clips <fixtures dir>   (writes the clips with the media engine's encoder; Clips.swift)
 //   (--no-realtime: playback only, for allocation counts under valgrind --tool=dhat)
-//   scenarios: 1080p, 4k, stacked, dissolve (Dissolve.swift), graded, ramp, scrub, export, export-serial
+//   scenarios: 1080p, 4k, stacked, dissolve (Dissolve.swift), graded, ramp, mix, scrub, export, export-serial
+//   (mix: 1080p30 at a constant quarter speed with frame mixing, every drawn frame blends two source frames)
 //   (ramp: 8 s of 1080p30 on a speed ramp 1x -> 0.25x -> 1x; its forward playback also counts, measured, the repeated
 //   source frames where speed >= 1 and the skipped ones where speed <= 1 across consecutive draws: RampCounts)
 //   (export: 10 s of 1080p30 exported to MP4 through renderNativeTimeline, frames painted by PreviewExportFrames as
@@ -122,6 +123,9 @@ let typicalGrade = #"{"adjust":{"exposure":0.3,"contrast":0.2,"temperature":0.15
 /// The ramp scenario's time map (clip frames, 30 fps): 1x, down to a quarter speed at 3 s, back to 1x at 6 s, then 1x.
 /// The ease is left out: a point's default is linear.
 let rampCurve = #"{"v":1,"kind":"speed-ramp","points":[{"t":0,"speed":1},{"t":90,"speed":0.25},{"t":180,"speed":1}]}"#
+
+/// The mix scenario's time map: a constant quarter speed with frame mixing (every frame blends two source frames).
+let mixCurve = #"{"v":1,"kind":"speed-ramp","points":[{"t":0,"speed":0.25}],"blend":"mix"}"#
 
 /// Drives a compositor the way the preview view does and times each part.
 final class Run {
@@ -374,6 +378,7 @@ func scenario(_ name: String) -> (clips: [Clip], seconds: Double)? {
     case "stacked": return ([Clip(file: "clip1080.mp4", track: 0), Clip(file: "clip1080b.mp4", track: 1, opacity: 0.6)], 10)
     case "graded": return ([Clip(file: "clip1080.mp4", track: 0, grade: typicalGrade)], 10)
     case "ramp": return ([Clip(file: "clip1080.mp4", track: 0, ramp: rampCurve)], 8)
+    case "mix": return ([Clip(file: "clip1080.mp4", track: 0, ramp: mixCurve)], 8)
     case "scrub": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
     case "export", "export-serial": return ([Clip(file: "clip1080.mp4", track: 0)], 10)
     case "dissolve": return ([Clip(file: "clip1080.mp4", track: 0), Clip(file: "clip1080b.mp4", track: 0)], 10)
@@ -385,7 +390,7 @@ func main() throws {
     let args = CommandLine.arguments
     if args.count == 3 && args[1] == "--make-clips" { try makeClips(args[2]); return }
     guard args.count >= 4, let sc = scenario(args[1]) else {
-        print("usage: MpvfxPreviewBench <1080p|4k|stacked|dissolve|graded|ramp|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
+        print("usage: MpvfxPreviewBench <1080p|4k|stacked|dissolve|graded|ramp|mix|scrub|export|export-serial> <fixtures dir> <results file> [frames]")
         print("       MpvfxPreviewBench --make-clips <fixtures dir>"); exit(2)
     }
     let (width, height) = (1280, 720)

@@ -89,12 +89,12 @@ public final class ExportFramePainter {
             canvas.fillRect(rect, composition.background)
         }
         let frameIndex = composition.frameIndex(at: time)
-        for (layer, w, h) in layers {
+        for (shown, w, h) in layers {
+            var layer = shown
             if layer.isProcedural {
                 PreviewPainter.drawText(layer, on: canvas, frame: rect, scale: s)
                 continue
             }
-            var layer = layer
             layer.mixesFramesNow = layer.mixesFrames(at: time)
             guard var image = frames(layer, layer.sourceTime(at: time), w, h) else { continue }
             // Grades animate on the timeline frame, as in the preview (PreviewCompositor.shownImage).

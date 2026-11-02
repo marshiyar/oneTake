@@ -142,7 +142,7 @@ final class NativeSpeedRampDocumentTests: XCTestCase {
         XCTAssertFalse(plain.contains("blend"), "absent by default")
         let mixed = try withRamp(NativeSpeedRamp(points: [.init(t: 0, speed: 0.5)], blend: "mix"))
         let text = try serialize(mixed)
-        XCTAssertTrue(text.contains(#""blend":"mix""#) || text.contains(#""blend" : "mix""#), text)
+        XCTAssertTrue(text.contains(#""blend": "mix""#), text)
         XCTAssertEqual(try findClip(try parse(J(text)), "clip:audio")?.speedRamp?.blend, "mix")
         XCTAssertEqual(try serialize(try parse(J(text))), text)
         var d = try parse(J(clipCommandsFixtureJSON))
