@@ -49,6 +49,7 @@ public final class PlayerController {
         case rotate(id: String, start: StageElement, startAngle: Double)
         case anchor(id: String, start: StageElement)
         case crop(id: String, edge: CropEdge, start: StageElement)
+        case corner(id: String, corner: NativeClipCorners.Corner)
         case marquee(x: Double, y: Double, additive: Bool)
         case pan(x: Double, y: Double, panX: Double, panY: Double)
         case compare
@@ -65,6 +66,14 @@ public final class PlayerController {
     public var modifiers: PointerModifiers = []
     /// The element as it was when the crop tool opened (Cancel restores it).
     var cropOriginal: StageElement?
+    /// The distort tool (PlayerController+Distort.swift): the element as it was, its corners when the tool opened, and
+    /// whether Apply keys the corners at the playhead. The tool runs inside the crop tool's state (`cropActive`), so
+    /// every guard that keeps other edits out of a crop session keeps them out of a distort session too.
+    var distortOriginal: StageElement?
+    var distortStart = NativeClipCorners.identity
+    public internal(set) var distortKeyframe = false
+    /// The clip's corners at the playhead (wired by the host); the tool starts from them.
+    public var distortCorners: ((String) -> NativeClipCorners)?
     var transformSession = TransformSession()
 
     // Gesture recording (wired by `enableGestureRecording`).
@@ -108,7 +117,7 @@ public final class PlayerController {
     public var editingIds: Set<String> {
         var ids = Set<String>()
         switch gesture {
-        case let .move(id, _, _, _)?, let .resize(id, _, _, _)?, let .rotate(id, _, _)?, let .crop(id, _, _)?: ids.insert(id)
+        case let .move(id, _, _, _)?, let .resize(id, _, _, _)?, let .rotate(id, _, _)?, let .crop(id, _, _)?, let .corner(id, _)?: ids.insert(id)
         case let .group(starts, _, _)?: ids.formUnion(starts.map(\.id))
         default: break
         }
@@ -169,6 +178,7 @@ public final class PlayerController {
             let item = tb.item(at: p, width: size.width, cropAvailable: view.cropAvailable, cropActive: view.cropActive, measure)
             if let item {
                 if let cmd = tb.press(item) { runCrop(cmd) }
+                if item == .distort { runDistort(.start) }
                 needsDisplay?(); return
             }
             if tb.gridPopoverOpen { tb.gridPopoverOpen = false; needsDisplay?() }
@@ -183,6 +193,7 @@ public final class PlayerController {
         }
         if let b = view.button(at: p, in: size) { press(b); return }
         guard vp.contains(p), !recordTakesPress(p, shift: shift) else { return }   // armed Record owns stage presses
+        if view.distortActive { distortPress(p); return }
 
         if let e = selected {
             let ve = view.chromeElement(e, in: size)
@@ -291,6 +302,7 @@ public final class PlayerController {
     func drag(_ g: Gesture, _ p: CanvasPoint, scale s: Double) {
         switch g {
         case .pan, .marquee, .compare: break
+        case let .corner(id, corner): dragCorner(id, corner, p)
         case let .move(id, start, x0, y0):
             let d = moveDelta(x0: x0, y0: y0, to: p, moving: [start])
             update(id) { $0.rect.x = start.rect.x + d.dx / s; $0.rect.y = start.rect.y + d.dy / s }
@@ -385,7 +397,7 @@ public final class PlayerController {
                 setSelection(ids)
             }
             needsDisplay?()
-        case .crop, .anchor:
+        case .crop, .anchor, .corner:
             needsDisplay?()   // crop edits stay a draft until Apply; the anchor is stage state, not an edit
         case let .move(id, start, _, _), let .resize(id, _, start, _):
             if dragEngaged { commit(id, start) } else { needsDisplay?() }   // a click changes nothing
@@ -406,6 +418,7 @@ public final class PlayerController {
     // MARK: Crop tool
 
     public func runCrop(_ cmd: PreviewToolbar.CropCommand) {
+        if view.distortActive { runDistort(cmd); return }
         switch cmd {
         case .start:
             guard view.cropAvailable, let e = selected else { return }
@@ -447,6 +460,7 @@ public final class PlayerController {
 
     func cancelCrop() {
         guard view.cropActive else { return }
+        if view.distortActive { cancelDistort(); return }
         if let o = cropOriginal, let i = view.elements.firstIndex(where: { $0.id == o.id }) { view.elements[i].crop = o.crop }
         view.cropActive = false; cropOriginal = nil
         needsDisplay?()
@@ -479,6 +493,7 @@ public final class PlayerController {
     /// G toggles the grid, R arms Record motion (when wired).
     public func keyDown(_ k: EditorKey) -> Bool {
         guard !k.command, !k.alt else { return false }
+        if distortKey(k) { return true }
         if nudgeKey(k) { return true }
         flushNudge()
         switch k.code {

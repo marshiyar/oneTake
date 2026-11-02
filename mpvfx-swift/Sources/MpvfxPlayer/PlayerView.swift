@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
 import MpvfxTimeline
 import MpvfxPanels
 import MpvfxTheme
@@ -106,6 +107,9 @@ public final class PlayerView {
     var morph: (from: Double, to: Double, start: Double)?
     var lastPlaying: Bool?
     public var cropActive = false
+    /// The distort tool is open (it also sets `cropActive`, which keeps other edits out): corner handles, and which one the arrow keys move.
+    public var distortActive = false
+    public var activeCorner = NativeClipCorners.Corner.topLeft
     /// The transform box: anchors, hovered and dragged part, readout and cursor (PlayerView+TransformBox.swift).
     public var transformChrome = TransformChrome()
 
@@ -181,7 +185,7 @@ public final class PlayerView {
         let s = scale(in: size)
         return StageElement(id: e.id, name: e.name, rect: toView(e.rect, in: size), kind: e.kind, rotation: e.rotation,
                             crop: CropInsets(top: e.crop.top * s, right: e.crop.right * s, bottom: e.crop.bottom * s, left: e.crop.left * s),
-                            opacity: e.opacity, scale: e.scale, locked: e.locked)
+                            opacity: e.opacity, scale: e.scale, locked: e.locked, corners: e.corners)
     }
 
     /// The element as it shows on screen: view coordinates with its uniform scale (transform.scale, live while a
@@ -323,7 +327,7 @@ public final class PlayerView {
             Self.strokeSquare(c, gb, theme.accent, width: 2)
         } else if let sel = selection, let e = elements.first(where: { $0.id == sel }) {
             let ve = chromeElement(e, in: size)
-            if cropActive { drawCrop(c, ve) } else { drawSelection(c, ve) }
+            if distortActive { drawDistort(c, ve) } else if cropActive { drawCrop(c, ve) } else { drawSelection(c, ve) }
         }
         // Marquee: candidates accent + accent/5 (square); the box accent + accent/10.
         for id in marqueeCandidates {

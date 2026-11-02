@@ -24,11 +24,23 @@ extension EditorSession {
 
     func installStageTransform() {
         player.onCommitGroup = { [weak self] es in self?.stageCommitted(es) }
+        player.distortCorners = { [weak self] id in
+            guard let self else { return .identity }
+            return self.editor.corners(clipId: id, time: self.playback.currentTime)
+        }
         player.readoutOrigin = { [weak self] e in
             guard let self else { return nil }
             let base = self.stageBase(e.id, kind: e.kind, time: self.playback.currentTime)
             return CanvasPoint(base.x, base.y)
         }
+    }
+
+    /// Saves the distort tool's corners (Apply): an all-zero set is Reset and clears the corner keyframes too; otherwise
+    /// the offsets are saved, or keyed at the playhead when the clip's corners are keyframed (Shift+Enter starts that).
+    func persistCorners(_ e: StageElement, time t: Double) {
+        guard let corners = e.corners else { return }
+        if corners.isIdentity, !player.distortKeyframe { editor.resetCorners(clipId: e.id); return }
+        editor.setCorners(clipId: e.id, corners, time: t, keyframed: player.distortKeyframe)
     }
 
     /// One history entry for the whole gesture: the edits share a coalesce key no other gesture uses.

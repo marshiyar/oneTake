@@ -108,6 +108,7 @@ extension PlayerController {
             update(id) { $0 = start }
         case let .group(starts, _, _):
             for st in starts { update(st.id) { $0 = st } }
+        case .corner: break
         case .marquee:
             view.marquee = nil; view.marqueeCandidates = []
         case .pan, .anchor, .compare: break   // the compare divider is preview-only state; nothing to restore

@@ -116,6 +116,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Style: gradient / image fill, dashed and other stroke styles, blend, layer blur, backdrop, border radius, overflow | missing (panels + preview + export) | n/a |
 | Color picker (hue, alpha, hex, mixed) | partial: fill and stroke take a hex field (#rgb, #rrggbb, #rrggbbaa, "transparent"); the hue/alpha picker popover is missing (panels) | n/a |
 | Crop: start/apply/cancel/reset, per-side and All insets, link edges | done | exact |
+| Corner-pin distort (#451): four draggable corners per visual clip (Distort tool, D), saved as `clip.corners`, keyframable, reset | partial: stage tool with keyboard path, one undo step, validated round trip, preview = export through one homography and the painter; inspector fields and a keyframe lane for corners are not built | exact |
 | Mask inset rows | missing (panels) | n/a |
 | Clip timing: start, end, duration | removed on purpose (2026-10-13): the timeline rows move, trim and split clips; speed stays as Rate in Media (see §13) | n/a |
 | Media: volume, muted, rate, media start, play video sound | done | exact |

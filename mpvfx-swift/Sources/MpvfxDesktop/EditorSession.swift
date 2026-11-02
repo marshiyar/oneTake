@@ -527,6 +527,7 @@ final class EditorSession {
     func writeStage(_ e: StageElement) {
         persistCrop(id: e.id, e.crop)
         let t = playback.currentTime
+        persistCorners(e, time: t)
         let base = stageBase(e.id, kind: e.kind, time: t)
         let before = StageElement(id: e.id, name: e.name, rect: StageGeometry.rect(base: base, editor.transform(clipId: e.id, time: t)),
                                   kind: e.kind, rotation: editor.transform(clipId: e.id, time: t).rotation ?? 0)

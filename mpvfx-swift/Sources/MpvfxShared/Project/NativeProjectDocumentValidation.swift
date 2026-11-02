@@ -237,6 +237,7 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
                 pushIssue(&issues, .invalidShape, "\(clipPath).shape", "A clip cannot carry both text and a shape")
             }
             validateNativeClipMasks(clip["masks"], "\(clipPath).masks", &issues)
+            validateNativeClipCorners(clip["corners"], "\(clipPath).corners", &issues)
             if let generator = clip["generator"] {
                 let path = "\(clipPath).generator"
                 validateNativeFill(generator, path, allowInherit: false, assets: assetsById, &issues)

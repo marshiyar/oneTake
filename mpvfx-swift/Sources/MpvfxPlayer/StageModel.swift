@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import Foundation
 import MpvfxCanvas
+import MpvfxShared
 import MpvfxTheme
 import MpvfxTimeline
 
@@ -63,10 +64,12 @@ public struct StageElement: Equatable, Sendable {
     public var scale: Double?
     /// On a locked track: the stage selects it but does not move or transform it.
     public var locked = false
+    /// Live corner-pin override while the distort tool is open (nil: the document's corners).
+    public var corners: NativeClipCorners?
     public init(id: String, name: String, rect: CanvasRect, kind: TimelineClipKind, rotation: Double = 0, crop: CropInsets = .zero,
-                opacity: Double? = nil, scale: Double? = nil, locked: Bool = false) {
+                opacity: Double? = nil, scale: Double? = nil, locked: Bool = false, corners: NativeClipCorners? = nil) {
         self.id = id; self.name = name; self.rect = rect; self.kind = kind; self.rotation = rotation; self.crop = crop
-        self.opacity = opacity; self.scale = scale; self.locked = locked
+        self.opacity = opacity; self.scale = scale; self.locked = locked; self.corners = corners
     }
     public var centre: CanvasPoint { CanvasPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) }
     /// Visible (cropped) rect in unrotated element space.
