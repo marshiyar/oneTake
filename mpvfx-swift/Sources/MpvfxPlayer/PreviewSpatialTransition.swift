@@ -46,10 +46,34 @@ extension PreviewPainter {
             }
             return
         }
+        if transition.kind == .slide {
+            guard transition.incoming else { content(c, frame, 1); return }
+            let v = transition.direction.vector
+            c.withState {
+                c.clip(frame)
+                c.translate(v.x * frame.width * (p - 1), v.y * frame.height * (p - 1))
+                content(c, frame, 1)
+            }
+            return
+        }
+        if transition.kind == .zoomThrough {
+            let scale = transition.incoming
+                ? transition.strength - (transition.strength - 1) * p
+                : 1 + (transition.strength - 1) * p
+            let cx = frame.x + frame.width / 2, cy = frame.y + frame.height / 2
+            c.withState {
+                c.clip(frame)
+                c.translate(cx, cy)
+                c.scale(scale, scale)
+                c.translate(-cx, -cy)
+                content(c, frame, 1)
+            }
+            return
+        }
         guard transition.incoming else { content(c, frame, 1); return }
         guard p > 0 else { return }
         if p >= 1 { content(c, frame, 1); return }
-        // Rasterize only the incoming wipe, including its fill, text, crop, transforms and shadows. The mask
+        // Rasterize only the incoming wipe or iris, including its fill, text, crop, transforms and shadows. The mask
         // operates in canvas coordinates rather than image coordinates, so all layer content crosses one edge.
         let k = max(1, c.deviceScale)
         let w = max(1, Int((frame.width * k).rounded(.up))), h = max(1, Int((frame.height * k).rounded(.up)))
@@ -58,14 +82,32 @@ extension PreviewPainter {
         content(canvas, CanvasRect(x: 0, y: 0, width: Double(w), height: Double(h)), k)
         var pixels = canvas.image().rgba
         let softness = min(1, max(0, transition.softness))
+        // Pixel centres and mask geometry share raster coordinates, independent of the output scale.
+        let cx = transition.centreX * Double(w), cy = transition.centreY * Double(h)
+        let maxDx = max(abs(cx), abs(Double(w) - cx))
+        let maxDy = max(abs(cy), abs(Double(h) - cy))
+        let radius = hypot(maxDx, maxDy)
+        let radians = (transition.angle ?? 0) * .pi / 180
+        let vx = cos(radians), vy = sin(radians)
+        let minProjection = min(0, vx * Double(w)) + min(0, vy * Double(h))
+        let projectionRange = abs(vx) * Double(w) + abs(vy) * Double(h)
         for y in 0..<h {
             for x in 0..<w {
                 let q: Double
-                switch transition.direction {
-                case .left: q = 1 - (Double(x) + 0.5) / Double(w)
-                case .right: q = (Double(x) + 0.5) / Double(w)
-                case .up: q = 1 - (Double(y) + 0.5) / Double(h)
-                case .down: q = (Double(y) + 0.5) / Double(h)
+                if transition.kind == .iris {
+                    let dx = abs(Double(x) + 0.5 - cx), dy = abs(Double(y) + 0.5 - cy)
+                    q = transition.irisShape == .rectangle
+                        ? max(dx / maxDx, dy / maxDy)
+                        : hypot(dx, dy) / radius
+                } else if transition.angle != nil {
+                    q = ((Double(x) + 0.5) * vx + (Double(y) + 0.5) * vy - minProjection) / projectionRange
+                } else {
+                    switch transition.direction {
+                    case .left: q = 1 - (Double(x) + 0.5) / Double(w)
+                    case .right: q = (Double(x) + 0.5) / Double(w)
+                    case .up: q = 1 - (Double(y) + 0.5) / Double(h)
+                    case .down: q = (Double(y) + 0.5) / Double(h)
+                    }
                 }
                 let alpha = softness > 0 ? min(1, max(0, (p * (1 + softness) - q) / softness)) : (q < p ? 1.0 : 0.0)
                 let i = (y * w + x) * 4 + 3
