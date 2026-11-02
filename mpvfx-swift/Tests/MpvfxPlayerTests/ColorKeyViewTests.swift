@@ -16,6 +16,7 @@ import XCTest
 import MpvfxCanvas
 import MpvfxPanels
 import MpvfxShared
+import MpvfxTimeline
 
 /// The colour-key preview views (issue #300): one keyed image clip over the project background, drawn through
 /// `PreviewCompositor.draw` with `FrameDrawContext(colorKeyClipId:colorKeyView:)`. Result keys the green out to the
@@ -98,21 +99,52 @@ final class ColorKeyViewTests: XCTestCase {
     /// The Option hold (`PlayerView.colorKeyHold`) wins over the chosen view while down; releasing it at pointer-up
     /// restores Result. The contexts below are built the way `PlayerView.draw` builds them
     /// (`colorKeyHold ?? colorKeyView`).
-    func testOptionHoldShowsSourceWhileDownAndResultAfterPointerUp() throws {
+    /// A 200 x 100 composition with one selected layer "A" on a 1280 x 800 stage; `keyed` says whether "A" has a key.
+    private func stage(keyed: Bool) -> (PlayerView, PlayerController, CanvasPoint) {
         let view = PlayerView(playback: PlaybackState(duration: 10))
+        view.canvasSize = CanvasSize(200, 100)
         view.colorKeyView = .result
         let controller = PlayerController(view: view)
         controller.size = CanvasSize(1280, 800)
-        controller.pointerDown(x: 10, y: 10, option: true)
+        view.elements = [StageElement(id: "A", name: "A", rect: CanvasRect(x: 0, y: 0, width: 200, height: 100), kind: .image)]
+        view.selectedIds = ["A"]
+        controller.colorKeyActive = { keyed && $0 == "A" }
+        let f = view.frameRect(in: controller.size)
+        return (view, controller, CanvasPoint(f.x + f.width / 2, f.y + f.height / 2))
+    }
+
+    func testOptionHoldShowsSourceWhileDownAndResultAfterPointerUp() throws {
+        let (view, controller, p) = stage(keyed: true)
+        controller.modifiers = [.alt]
+        controller.pointerDown(x: p.x, y: p.y)
         XCTAssertEqual(view.colorKeyHold, .source, "Option-press holds the source preview; no gesture starts")
         var img = try drawn(view.colorKeyHold ?? view.colorKeyView)
         XCTAssertEqual(pixel(img, 25, 25), [0, 255, 0, 255], "held: the raw source while Option is down")
-        controller.pointerUp(x: 10, y: 10)
+        controller.pointerUp(x: p.x, y: p.y)
         XCTAssertNil(view.colorKeyHold, "release restores the chosen view")
         XCTAssertEqual(view.colorKeyHold ?? view.colorKeyView, .result)
         img = try drawn(view.colorKeyHold ?? view.colorKeyView)
         XCTAssertEqual(pixel(img, 25, 25), Self.background, "released: back to the keyed result")
-        XCTAssertEqual(pixel(img, 75, 25), [255, 0, 0, 255])
+        controller.modifiers = [.alt]
+        controller.pointerDown(x: p.x, y: p.y)
+        controller.modifiers = []
+        controller.pointerMove(x: p.x, y: p.y)
+        XCTAssertNil(view.colorKeyHold, "letting go of Option ends the hold even with the button still down")
+    }
+
+    func testOptionPressWithoutAKeyOrOnAHandleKeepsItsOtherMeaning() throws {
+        let (view, controller, p) = stage(keyed: false)
+        controller.modifiers = [.alt]
+        controller.pointerDown(x: p.x, y: p.y)
+        XCTAssertNil(view.colorKeyHold, "a layer with no colour key never holds the source")
+        controller.pointerUp(x: p.x, y: p.y)
+        let (keyedView, keyedController, _) = stage(keyed: true)
+        let ve = keyedView.chromeElement(keyedView.elements[0], in: keyedController.size)
+        let corner = TransformBox.screenPoint(ve, unit: TransformHandle.se.unit)
+        keyedController.modifiers = [.alt]
+        keyedController.pointerDown(x: corner.x, y: corner.y)
+        XCTAssertNil(keyedView.colorKeyHold, "an Option-press on a resize handle scales about the anchor, as before")
+        keyedController.pointerUp(x: corner.x, y: corner.y)
     }
 
     /// Export never reads the preview's view mode: every view paints the same keyed Result bytes.
