@@ -46,7 +46,6 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
     var appearanceItems: [ThemeAppearance: NSMenuItem] = [:]
     /// Window > Panels, filled from the dock each time it opens (menuNeedsUpdate).
     var panelsMenu: NSMenu?
-    var appearanceObservation: NSKeyValueObservation?
 
     init(paths: AppPaths, backend: DesktopBackend) { self.paths = paths; self.backend = backend }
 
@@ -188,7 +187,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
 
     func perform(_ action: ShellAction) {
         switch action {
-        case .createWindow: createWindow()
+        case .createWindow: MainActor.assumeIsolated { createWindow() }   // the lifecycle acts on the main thread
         case .presentWindow: window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         case .closeWindow: window?.close()
         case .destroyWindowAndQuit:
@@ -215,7 +214,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
         }
     }
 
-    func createWindow() {
+    @MainActor func createWindow() {
         let session: EditorSession
         do {
             try FileManager.default.createDirectory(atPath: paths.userData, withIntermediateDirectories: true)
@@ -260,9 +259,9 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
             self?.syncAppearanceMenu()
         }
         syncAppearanceMenu()
-        appearanceObservation = NSApp.observe(\.effectiveAppearance) { _, _ in
-            DispatchQueue.main.async { MacShell.current.session?.appearance?.systemAppearanceChanged() }
-        }
+        // Observed by name: Swift 6 refuses a key path to the main-actor `effectiveAppearance`. The shell lives as long
+        // as the app, so the observer is never removed.
+        NSApp.addObserver(self, forKeyPath: "effectiveAppearance", options: [], context: nil)
         w.center()
         window = w
         lifecycle.windowCreated()
@@ -275,7 +274,7 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
 
     /// One full-window canvas; EditorShellRouter lays out [left | preview | right] over the timeline
     /// and routes drawing and input to each region.
-    func makeEditorView(_ session: EditorSession) -> NSView {
+    @MainActor func makeEditorView(_ session: EditorSession) -> NSView {
         // Before installShell: it starts background work (natural-size probes) whose results must land on the UI thread.
         session.postToUI = { body in DispatchQueue.main.async(execute: body) }
         let router = session.installShell(userData: paths.userData) { [weak self] in self?.ensurePlayTimer() }
@@ -351,6 +350,12 @@ final class MacShell: NSObject, NSApplicationDelegate, NSWindowDelegate, EditorS
     }
 
     // MARK: NSApplicationDelegate
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?,
+                               context: UnsafeMutableRawPointer?) {
+        guard keyPath == "effectiveAppearance" else { return super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context) }
+        DispatchQueue.main.async { MacShell.current.session?.appearance?.systemAppearanceChanged() }
+    }
+
     func applicationDidFinishLaunching(_ n: Notification) { lifecycle.activate(); NSApp.activate(ignoringOtherApps: true) }
     func applicationShouldHandleReopen(_ s: NSApplication, hasVisibleWindows: Bool) -> Bool { lifecycle.activate(); return true }
     func applicationShouldTerminate(_ s: NSApplication) -> NSApplication.TerminateReply {
@@ -382,12 +387,14 @@ extension MacShell: SmokeHost {
     }
 
     func writeSmokeSnapshot(_ path: String) {
-        guard let view = window?.contentView else { return }
-        view.layoutSubtreeIfNeeded()
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        let ok = (try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))) != nil
-        print("[MpVFX] smoke snapshot -> \(path) (\(rep.pixelsWide)x\(rep.pixelsHigh), \(ok ? "ok" : "write failed"))")
+        MainActor.assumeIsolated {   // the smoke run calls this from the main-queue timer
+            guard let view = window?.contentView else { return }
+            view.layoutSubtreeIfNeeded()
+            guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            let ok = (try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))) != nil
+            print("[MpVFX] smoke snapshot -> \(path) (\(rep.pixelsWide)x\(rep.pixelsHigh), \(ok ? "ok" : "write failed"))")
+        }
     }
 
     /// Called from a main-queue timer, so it goes through `requestTerminate` (FOOTGUNS: quit hang).

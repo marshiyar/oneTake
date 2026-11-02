@@ -24,7 +24,10 @@ import MpvfxPanels
 import MpvfxDesktopCore
 
 /// Wires the document, playback clock, timeline and player together (host-neutral).
-final class EditorSession {
+/// `@unchecked Sendable`: the session's state is only read and written on the UI thread. Its background tasks (probes,
+/// scene analysis, dialogs) await the backend off that thread and come back through `postToUI` before they touch it, the
+/// same contract the shells (`MacShell`) already declare.
+final class EditorSession: @unchecked Sendable {
     let editor: TimelineEditor
     let playback: PlaybackState
     let timeline: TimelineController
@@ -411,6 +414,8 @@ final class EditorSession {
     func importMedia(paths: [String], completion: @escaping (DesktopMediaImport) -> Void = { _ in }) {
         guard let backend, let project, !paths.isEmpty else { return }
         panels?.left.importing = true; redraw()
+        // Safe: `completion` is only called inside `postToUI`, on the UI thread it was handed in on.
+        nonisolated(unsafe) let completionOnUI = completion
         Task { [weak self] in
             do {
                 let result = try await backend.importMedia(projectId: project.id, paths: paths, directory: nil)
@@ -425,7 +430,7 @@ final class EditorSession {
                     if !result.notices.isEmpty {
                         self.onError("Imported without sound", result.notices.map { "\($0.name) (\($0.reason))" }.joined(separator: ", "))
                     }
-                    completion(result)
+                    completionOnUI(result)
                 }
             } catch {
                 self?.postToUI { self?.panels?.left.importing = false; self?.redraw(); self?.onError("Import failed", "\(error)") }

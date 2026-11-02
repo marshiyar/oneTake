@@ -108,10 +108,10 @@ extension EditorSession {
         guard let dialogs = panels?.dialogs else { return }
         // Safe: the dialogs and the session are only used where they were made, the dialogs from the main actor's hop
         // and the session inside `postToUI`, which runs on the UI thread.
-        nonisolated(unsafe) let dialogs = dialogs
+        nonisolated(unsafe) let dialogsOnMain = dialogs
         nonisolated(unsafe) weak var weakSelf = self
         Task {
-            guard let dir = await dialogs.showOpen(.init(title: "Default Export Folder", directory: true, multiple: false)).first else { return }
+            guard let dir = await dialogsOnMain.showOpen(.init(title: "Default Export Folder", directory: true, multiple: false)).first else { return }
             weakSelf?.postToUI { weakSelf?.settingsPanel.exportFolderChosen(dir) }
         }
     }

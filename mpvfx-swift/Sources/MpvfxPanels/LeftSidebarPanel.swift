@@ -70,7 +70,7 @@ public struct LibraryNavModel: Equatable, Sendable {
 }
 
 /// Commands the navigator issues; the host runs them against `DesktopBackend.libraries` (LibraryCommand).
-public enum LibraryNavCommand: Equatable {
+public enum LibraryNavCommand: Equatable, Sendable {
     case createLibrary, openLibrary
     case createEvent(libraryId: String, name: String)
     case createProject(libraryId: String, eventId: String, name: String)

@@ -25,7 +25,8 @@ import MpvfxAudio
 /// and the library views; the Design panel's inspector edits the open document at the playhead for the current
 /// selection; the Renders panel exports; context-menu and navigator commands go to the backend. They draw into
 /// `shell.panes[.left]`, `[.right]` and `[.renders]`, three dock panels.
-final class SessionPanels {
+/// `@unchecked Sendable` for the same reason as `EditorSession`: UI-thread state that background tasks reach only through `postToUI`.
+final class SessionPanels: @unchecked Sendable {
     unowned let session: EditorSession
     let left: LeftSidebarPanel
     /// The Design panel (the inspector) and the Renders panel: one `RightPanel` each, docked to its tab.
@@ -85,7 +86,7 @@ final class SessionPanels {
     func redraw() { session.redraw() }
 
     /// Hops to the UI thread through whatever the shell installed by the time it is called.
-    var uiPost: (@escaping () -> Void) -> Void {
+    var uiPost: @Sendable (@escaping () -> Void) -> Void {
         { [weak session] body in session?.postToUI(body) }
     }
 
