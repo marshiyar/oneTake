@@ -487,6 +487,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         inspector.lutStatus = { [weak self] src in LutStatusReader.status(src, projectDir: self?.session.projectDir?.path) }
+        inspector.clipLoudness = { [weak self] source in self?.session.clipLoudnessFeed?.reading(for: source) ?? .unavailable }
         wirePresetPreviews(inspector)
         wireCrop(inspector)
         wireEffectPreviews(inspector)
