@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import XCTest
-import MpvfxAudioGraph
+@testable import MpvfxAudioGraph
 @testable import MpvfxAudio
 #if canImport(Darwin)
 import Darwin
@@ -40,14 +40,14 @@ final class AudioMeterTests: XCTestCase {
     /// A steady -6 dBFS sine through a compressor at -24 dB and 4:1 is pulled down by 18 dB x (1 - 1/4) = 13.5 dB.
     func testGainReductionReading() throws {
         let source = try Self.source(
-            #"{"version":2,"nodes":[{"type":"compressor","id":"c","params":{"threshold":-24,"ratio":4}}]}"#,
+            #"{"version":2,"nodes":[{"type":"compressor","id":"c","params":{"threshold":-24,"ratio":4,"attack":5}}]}"#,
             amplitude: { _ in pow(10, -6.0 / 20) })
         _ = source.render(frames: Int(0.1 * Self.sr))
         let snapshot = try XCTUnwrap(source.fxMeters(owner: "clip:a", at: 0.1))
         let reading = try XCTUnwrap(snapshot.nodes[0])
         XCTAssertEqual(reading.gainReductionDb, 13.5, accuracy: 0.5)
         XCTAssertEqual(reading.inputPeakDb, -6, accuracy: 0.1)
-        XCTAssertEqual(reading.inputRMSDb, -9, accuracy: 0.2)
+        XCTAssertEqual(reading.inputRMSDb, -9, accuracy: 0.5, "a 128-frame block holds a part of a cycle")
         XCTAssertLessThan(reading.outputPeakDb, reading.inputPeakDb - 12)
         XCTAssertEqual(snapshot.chain?.inputPeakDb ?? 0, reading.inputPeakDb, accuracy: 1e-9)
     }
@@ -129,6 +129,19 @@ final class AudioMeterTests: XCTestCase {
         body()
         slot.pointee = nil
         return allocationCount
+    }
+
+    func testProbeWhereTheAllocationsAre() throws {
+        let planes = [[Float](repeating: 0.3, count: 128), [Float](repeating: 0.2, count: 128)]
+        let ring = FxMeterRing()
+        let reading = FxMeterReading(frame: 1)
+        var sink: Float = 0
+        let empty = Self.allocations { for _ in 0..<100 { sink += 1 } }
+        let level = Self.allocations { for _ in 0..<100 { sink += FxLevel(planes).peak } }
+        let publish = Self.allocations { for _ in 0..<100 { ring.publish(reading) } }
+        let node = try XCTUnwrap(FxChainProcessor(try AudioFx.parseChain(#"{"version":2,"nodes":[{"type":"limiter","id":"l","params":{}}]}"#)).units.first)
+        let cast = Self.allocations { for _ in 0..<100 { sink += Float((node as? GainReducing)?.lowestGain ?? 1) } }
+        print("PROBE empty=\(empty) level=\(level) publish=\(publish) cast=\(cast) \(sink)")
     }
 
     /// Metering adds nothing to the allocations a block of the feeder already makes.

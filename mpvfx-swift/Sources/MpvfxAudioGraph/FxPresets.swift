@@ -328,6 +328,7 @@ extension AudioFxPresets {
         "gain": [("cut-6", "Cut 6 dB", ["gain": -6]), ("boost-6", "Boost 6 dB", ["gain": 6])],
         "deesser": [("gentle", "Gentle", ["threshold": -24, "range": -8]), ("strong", "Strong", ["threshold": -36, "range": -18])],
         "denoise": [("light", "Light", ["amount": 0.4]), ("strong", "Strong", ["amount": 0.9])],
+        "reverb-v2": [("small-room", "Small room", ["size": 0.3, "wet": 0.25]), ("hall", "Hall", ["size": 0.9, "wet": 0.45])],
         "phaser": [("slow", "Slow sweep", ["speed": 0.2]), ("fast", "Fast sweep", ["speed": 1.5])],
     ]
 

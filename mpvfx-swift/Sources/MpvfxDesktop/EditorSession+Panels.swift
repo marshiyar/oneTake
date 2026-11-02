@@ -19,7 +19,7 @@ import MpvfxPlayer
 import MpvfxPanels
 import MpvfxDesktopCore
 import MpvfxAudio
-import MpvfxAudioGraph
+import struct MpvfxAudioGraph.FxMeterSnapshot
 
 /// Host-side wiring of the side panels:
 /// the left sidebar (the Media panel) gets the project's media list (DesktopBackend.listMedia), thumbnails, waveforms

@@ -59,13 +59,19 @@ struct FxLevel {
         var highest: Float = 0
         var energy = 0.0
         var count = 0
-        for plane in planes {
-            for sample in plane {
-                let magnitude = abs(sample)
+        var channel = 0
+        while channel < planes.count {
+            let length = planes[channel].count
+            count += length
+            var index = 0
+            while index < length {
+                let sample = planes[channel][index]
+                let magnitude = sample < 0 ? -sample : sample
                 if magnitude > highest { highest = magnitude }
-                energy += Double(sample * sample)
+                energy += Double(sample) * Double(sample)
+                index += 1
             }
-            count += plane.count
+            channel += 1
         }
         peak = highest
         rms = count > 0 ? Float((energy / Double(count)).squareRoot()) : 0

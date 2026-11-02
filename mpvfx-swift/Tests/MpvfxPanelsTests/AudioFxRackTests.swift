@@ -208,10 +208,13 @@ final class AudioFxRackTests: XCTestCase {
         }
         now += 0.010
         _ = panel.pointerMove(point(6))
-        XCTAssertEqual(received.count, start, "writes inside 30 ms are coalesced")
+        XCTAssertEqual(received.count, start + 1, "the first move of a drag is written at once")
+        now += 0.010
+        _ = panel.pointerMove(point(9))
+        XCTAssertEqual(received.count, start + 1, "writes inside 30 ms are coalesced")
         now += 0.021
         _ = panel.pointerMove(point(12))
-        XCTAssertEqual(received.count, start + 1)
+        XCTAssertEqual(received.count, start + 2)
         XCTAssertNotEqual(current(), initial)
         XCTAssertEqual(editor.undoStack.count, count, "no history while the drag is in flight")
         updater.waitUntilIdle()

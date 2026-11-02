@@ -41,7 +41,7 @@ final class FxMeterRingTests: XCTestCase {
     func testLevelsOfABlock() {
         let level = FxLevel([[0.5, -0.5, 0.5, -0.5], [0, 0, 0, 1]])
         XCTAssertEqual(level.peak, 1)
-        XCTAssertEqual(Double(level.rms), (4 * 0.25 + 1) / 8, accuracy: 1e-6, "RMS of all samples is the root of the mean square")
+        XCTAssertEqual(Double(level.rms), ((4 * 0.25 + 1) / 8).squareRoot(), accuracy: 1e-6, "RMS of all samples is the root of the mean square")
         XCTAssertEqual(FxLevel([]).rms, 0)
         XCTAssertEqual(FxMeterReading.decibels(1), 0, accuracy: 1e-9)
         XCTAssertEqual(FxMeterReading.decibels(0), -120)
