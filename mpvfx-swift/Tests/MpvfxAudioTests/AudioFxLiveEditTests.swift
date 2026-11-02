@@ -97,7 +97,7 @@ final class AudioFxLiveEditTests: XCTestCase {
         ("gain", #"{"gain":-9}"#), ("peaking", #"{"frequency":1000,"gain":9,"q":1}"#),
         ("lowshelf", #"{"frequency":300,"gain":-9}"#), ("highshelf", #"{"frequency":3000,"gain":9}"#),
         ("highpass", #"{"frequency":800}"#), ("lowpass", #"{"frequency":600}"#),
-        ("compressor", #"{"threshold":-30,"ratio":8}"#), ("limiter", #"{"limit":-6}"#), ("gate", #"{"threshold":-25,"range":-60}"#),
+        ("compressor", #"{"threshold":-30,"ratio":8}"#), ("leveller", #"{"amount":1}"#), ("limiter", #"{"limit":-6}"#), ("gate", #"{"threshold":-25,"range":-60}"#),
         ("deesser", #"{"threshold":-50,"range":-18}"#),
         ("eq", #"{"bands":2,"band1.type":"bell","band1.freq":1000,"band1.gain":9,"band2.type":"lowcut","band2.freq":300}"#),
         ("saturate", #"{"type":"hard","threshold":-12}"#), ("bitcrush", #"{"bits":4}"#), ("pitchshift", #"{"semitones":5}"#),

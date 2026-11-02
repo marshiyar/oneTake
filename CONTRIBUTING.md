@@ -9,7 +9,7 @@ Thanks for helping. A few rules keep the history readable and the project releas
    runs the fetch-script tests, checks copyright blocks and the generated GPU shaders, then builds and tests with
    warnings as errors). `sh mpvfx-swift/scripts/check.sh --fast` skips the build and tests;
    `sh mpvfx-swift/scripts/doctor.sh` names anything a full run still needs.
-3. CI runs the same checks on Linux and Windows ([ci.yml](.github/workflows/ci.yml)). macOS runs them locally.
+3. CI runs the same checks on Linux ([ci.yml](.github/workflows/ci.yml)). Windows runs nightly ([windows.yml](.github/workflows/windows.yml)), and macOS runs them locally.
 4. `main` takes changes through the maintainer's merge system once they build and pass.
 5. Keep a pull request to one change. Say what changed and why in the description, in plain words a user of the
    app would understand where possible.

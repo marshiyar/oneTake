@@ -46,7 +46,7 @@ extension InspectorPanel {
             }
             return .init(.number(row))
         }
-        var rows: [InspectorRow] = []
+        var rows: [InspectorRow] = textStyleRows(editor, s)
         // Content: one line in the field; "\n" types a line break.
         rows.append(field("textContent", "Content", t.content.replacingOccurrences(of: "\n", with: "\\n"), explicit: false,
                           commit: { editor.setTextContent(clipId: id, $0.replacingOccurrences(of: "\\n", with: "\n")) },
@@ -96,6 +96,7 @@ extension InspectorPanel {
                                              s.clip.textStyle == nil ? editor.setTextColor(clipId: id, nil)
                                                  : editor.resetTextStyleOverride(clipId: id, field: "color")
                                          }) { editor.setTextColor(clipId: id, $0) }, clipId: id)
+        rows += textLookRows(editor, s, t)
         let preview = t.preview
         return InspectorGroup(id: "text", title: "Text", summary: preview.isEmpty ? "empty" : preview, rows: rows)
     }

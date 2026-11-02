@@ -377,7 +377,9 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
         // Named versions of an export run (`<project> – <preset>`) are told apart by the history record they write.
         return ProjectRenders.list(dir).filter { !chosen || ProjectRenders.isRenderId($0.id) || hasRenderRecord(dir, $0.id) }.map {
             DesktopRender(id: $0.id, filename: $0.filename, path: $0.path, size: $0.size, createdAt: $0.createdAt,
-                          status: $0.status.rawValue, durationMs: $0.durationMs)
+                          status: $0.status.rawValue, durationMs: $0.durationMs, loudnessTarget: $0.loudnessTarget,
+                          loudnessCeiling: $0.loudnessCeiling, loudnessMeasured: $0.loudnessMeasured,
+                          loudnessMeasuredTruePeak: $0.loudnessMeasuredTruePeak)
         }
     }
 

@@ -27,6 +27,7 @@ public func parseNativeProjectDocument(_ input: NativeJSONValue, engine: Keyfram
     // One-time migration: "ffmpeg" (a legacy value written by older versions) and a missing field both mean the
     // native timeline.
     doc["mediaEngine"] = .string(NativeMediaEngine.native.rawValue)
+    doc = try normalizeNativeNestedSequences(doc)
     var sequence = doc["sequence"]!
     if var groups = sequence["audioGroups"]?.arrayValue {
         for i in groups.indices {

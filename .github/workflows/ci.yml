@@ -1,6 +1,7 @@
 name: CI
 
-# The same checks a contributor runs (mpvfx-swift/scripts/check.sh), on Linux and Windows. macOS runs locally.
+# The gate: the same checks a contributor runs (mpvfx-swift/scripts/check.sh), on Linux. Windows runs nightly
+# (windows.yml), and macOS runs locally.
 on:
   push:
     branches: [main]
@@ -36,30 +37,3 @@ jobs:
           key: linux-${{ github.sha }}
           restore-keys: linux-
       - run: sh mpvfx-swift/scripts/check.sh
-
-  windows:
-    runs-on: windows-2022
-    timeout-minutes: 120
-    defaults:
-      run:
-        shell: bash
-        working-directory: mpvfx-swift
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: compnerd/gha-setup-swift@57fe462cd3c7b05ae8fcff79b00719312e305257
-        with:
-          swift-version: swift-6.3.3-release
-          swift-build: 6.3.3-RELEASE
-      - name: Engine libraries, with their DLL folders on PATH for the tests
-        run: |
-          python -I -B scripts/fetch-binaries.py
-          for d in .binaries/*/bin; do cygpath -w "$PWD/$d" >> "$GITHUB_PATH"; done
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: mpvfx-swift/.build
-          key: windows-${{ github.sha }}
-          restore-keys: windows-
-      - run: swift build --build-tests -Xswiftc -warnings-as-errors -Xcc -Werror
-      - run: swift test -Xswiftc -warnings-as-errors -Xcc -Werror

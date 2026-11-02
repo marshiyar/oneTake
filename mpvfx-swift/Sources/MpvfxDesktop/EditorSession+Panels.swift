@@ -74,6 +74,12 @@ final class SessionPanels {
                 try NativeDurableWrite().write(data, to: path)
             }
         } catch { session.onError("Saved looks unavailable", error.localizedDescription) }
+        let textStyles = TextStyleLibrary(path: URL(fileURLWithPath: userData).appendingPathComponent("text-styles.json").path) { data, path in
+            try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+            try NativeDurableWrite().write(data, to: path)
+        }
+        if let problem = textStyles.loadError { session.onError("Text styles unavailable", problem.localizedDescription) }
+        right.inspector.textStyleLibrary = textStyles
         right.inspector.resolveUserLookLut = { [weak session] source in session?.absoluteMediaPath(source) ?? source }
         wireLeft()
         wireRight()
@@ -487,6 +493,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         inspector.lutStatus = { [weak self] src in LutStatusReader.status(src, projectDir: self?.session.projectDir?.path) }
+        inspector.clipLoudness = { [weak self] source in self?.session.clipLoudnessFeed?.reading(for: source) ?? .unavailable }
         wirePresetPreviews(inspector)
         wireCrop(inspector)
         wireEffectPreviews(inspector)
