@@ -18,7 +18,7 @@ import Foundation
 /// one-pole `OnePoleUnit` coefficients, `kneeGain`), so the curve is the sound and not an illustration of it.
 public enum AudioFxResponse {
     /// Node types with a frequency response.
-    public static let filterTypes: Set<String> = ["peaking", "lowshelf", "highshelf", "highpass", "lowpass"]
+    public static let filterTypes: Set<String> = ["peaking", "lowshelf", "highshelf", "highpass", "lowpass", "eq"]
     /// Node types with a static input/output level curve.
     public static let dynamicsTypes: Set<String> = ["compressor", "limiter", "gate", "deesser"]
 
@@ -27,6 +27,7 @@ public enum AudioFxResponse {
         guard filterTypes.contains(node.type) else { return nil }
         let p = AudioFx.normalize(node.type, node.params, version: node.version ?? 1)
         let w = 2 * Double.pi * frequency / sampleRate
+        if node.type == "eq" { return bandGainDb(p, w: w, sampleRate: sampleRate) }
         let (b, a) = coefficients(node.type, p, sampleRate: sampleRate, version: node.version ?? 1)
         return 20 * log10(max(1e-12, magnitude(b, w) / max(1e-300, magnitude(a, w))))
     }
@@ -34,6 +35,14 @@ public enum AudioFxResponse {
     /// Gain in dB at `frequency` of every enabled filter node in `nodes`, in series.
     public static func gainDb(_ nodes: [FxNode], at frequency: Double, sampleRate: Double = 48_000) -> Double {
         nodes.filter { $0.enabled != false }.reduce(0) { $0 + (gainDb($1, at: frequency, sampleRate: sampleRate) ?? 0) }
+    }
+
+    /// Gain in dB of all the parametric EQ's active bands in series at angular frequency `w`.
+    public static func bandGainDb(_ p: FxParams, w: Double, sampleRate sr: Double, only band: Int? = nil) -> Double {
+        AudioFxEq.activeBands(p).filter { band == nil || $0.band == band }.flatMap(\.sections).reduce(0) { total, s in
+            let c = BiquadCoefficients.make(s.type, frequency: s.frequency / (sr / 2), q: s.q, gain: s.gain, linearPassQ: true)
+            return total + 20 * log10(max(1e-12, magnitude([c.b0, c.b1, c.b2], w) / max(1e-300, magnitude([1, c.a1, c.a2], w))))
+        }
     }
 
     /// Feedforward and feedback coefficients (a0 = 1) as the filter units build them.

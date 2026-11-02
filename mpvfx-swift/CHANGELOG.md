@@ -22,6 +22,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Parametric EQ in the audio rack: up to eight bands (bell, shelves, low and high cut at 12, 24 or 48 dB per octave,
+  notch), each with its own frequency, gain and Q; drag a band's point on the graph, Alt-drag it for Q, double-click
+  the graph to add a band, Delete to remove one.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

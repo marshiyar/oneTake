@@ -42,6 +42,10 @@ public enum AudioFxCopy {
                            params: ["frequency": "Up to", "gain": "How much"]),
         "highshelf": Effect(title: "Brightness", does: "More or less sparkle at the top.", primary: "gain", ends: ("Duller", "Brighter"),
                             params: ["frequency": "From", "gain": "How much"]),
+        "eq": Effect(title: "Equaliser", does: "Shape the tone band by band: lift or cut the parts you pick, and roll off the very top or bottom.",
+                     primary: "bands", ends: ("One band", "Eight bands"),
+                     params: ["bands": "How many bands", "type": "Shape", "freq": "Where", "gain": "How much", "q": "How wide", "slope": "Steepness",
+                              "bypass": "Band on or off"]),
         "compressor": Effect(title: "Even Out Loudness",
                              does: "Brings the quiet parts up and holds the loud parts down, so nothing jumps out at the listener.",
                              primary: "strength", ends: ("Barely touched", "Very even, quite squashed"),
@@ -142,6 +146,12 @@ public enum AudioFxCopy {
         case "highshelf":
             let g = n(p, "gain")
             return g == 0 ? "Doing nothing yet" : "\(g > 0 ? "More" : "Less") sparkle above \(hz(n(p, "frequency")))"
+        case "eq":
+            let moved = AudioFxEq.activeBands(p).filter { b in
+                let kind = p[AudioFxEq.key(b.band, "type")]?.string ?? "bell"
+                return kind == "lowcut" || kind == "highcut" || kind == "notch" || n(p, AudioFxEq.key(b.band, "gain")) != 0
+            }.count
+            return moved == 0 ? "Doing nothing yet" : "Shaping the tone with \(moved) band\(moved == 1 ? "" : "s")"
         case "compressor": return "Evening out — \(strength(min(1, (n(p, "ratio", 3) - 1) / 7), ["gentle", "moderate", "firm"]))"
         case "deesser": return "Taming s sounds around \(s(n(p, "frequency", 6500))) Hz, up to \(s(-n(p, "range", -18))) dB"
         case "limiter": return "Nothing louder than \(s(n(p, "limit", -1))) dB"

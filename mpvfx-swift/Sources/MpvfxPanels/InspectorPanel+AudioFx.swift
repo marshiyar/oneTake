@@ -33,6 +33,8 @@ public struct AudioFxUIState: Equatable {
     /// A response-graph handle drag in flight, and each graph's plot from the last draw (by row id).
     public var graphDrag: AfxGraphDrag?
     public var graphBoxes: [String: AfxGraphBox] = [:]
+    /// The parametric EQ band whose settings the open module shows (1-based).
+    public var selectedBand = 1
 }
 
 /// One run of the hand-built chain: a preset's consecutive nodes, or one bare node (FxSection `runs`).
@@ -61,7 +63,7 @@ extension InspectorPanel {
 
     /// The family a node letters and tints by (fxFamilyOf).
     static func afxFamily(_ n: FxNode) -> String {
-        if n.fromCarve == true || n.fromEq != nil || n.fromLeveller == true { return "smart" }
+        if n.fromCarve == true || n.fromEq != nil || n.fromLeveller == true || n.type == "eq" { return "smart" }
         let g = AudioFx.definition(n.type)?.group
         return g == "dynamics" || g == "nonlinear" || g == "time" ? g! : "filter"
     }
@@ -86,6 +88,7 @@ extension InspectorPanel {
     /// Presets, EQ and the signal chain for one FX chain (a clip's or a bus's); `commit` writes the next chain.
     func audioFxRackRows(_ chain: FxChain, owner: String, subject: String, _ commit: @escaping (FxChain) -> Bool) -> [InspectorRow] {
         afxSeed(owner: owner, chain)
+        fxGraphWheel.removeAll(keepingCapacity: true)
         let ui = audioFxUI
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }
@@ -315,7 +318,7 @@ extension InspectorPanel {
             let bw = c.measureText("BOOST", font: PanelTheme.mono(11)).width + 1
             PanelDraw.tracked(c, "BOOST", in: CanvasRect(x: foot.maxX - bw, y: foot.y, width: bw, height: 12), font: PanelTheme.mono(11),
                               tracking: 0.2, color: PanelTheme.text2)
-        }, pointer: graphPointer)), controls: controls)
+        }, pointer: graphPointer, key: graphKey)), controls: controls)
     }
 
     /// One fader column: the 74px travel (centre detent line, 3px accent fill from 0 dB to the value, the cap), the
@@ -524,10 +527,11 @@ extension InspectorPanel {
                 self?.audioFxUI.modulePreset = nil; write(next)
             }])))
         }
+        if node.type == "eq" { controls += afxEqButtons(chain, node, i, fxKey: fxKey, write: write) }
         // The open face (FxNodeOpenBody): what it is for, the one knob and its ends, then Details.
         let copy = AudioFxCopy.effects[node.type]
         let profile = AudioFxProfiles.profiles[node.type]
-        let primary = AudioFxCopy.primaryParam(node.type)
+        let primary = node.type == "eq" ? nil : AudioFxCopy.primaryParam(node.type)   // an EQ lists its band's settings at once
         let oneKnob = primary != nil || profile != nil
         let details = ui.details.contains(nodeId)
         var face: [AfxParam] = []
@@ -535,7 +539,9 @@ extension InspectorPanel {
         else if let primary, let d = def?.params.first(where: { $0.key == primary }) {
             face = [AfxParam(key: primary, label: AudioFxCopy.paramLabel(node.type, primary, fallback: d.label), def: d)]
         }
-        let all = (def?.params ?? []).map { AfxParam(key: $0.key, label: AudioFxCopy.paramLabel(node.type, $0.key, fallback: $0.label), def: $0) }
+        let eqShown = node.type == "eq" ? Self.afxEqShownKeys(params, selected: ui.selectedBand) : nil
+        let all = (def?.params ?? []).filter { eqShown?.contains($0.key) ?? true }
+            .map { AfxParam(key: $0.key, label: AudioFxCopy.paramLabel(node.type, $0.key, fallback: $0.label), def: $0) }
         let shownFace = details ? [] : face
         let shownAll = details || !oneKnob ? all : []
         var seen = Set<String>()
@@ -550,6 +556,8 @@ extension InspectorPanel {
         let graphH = Self.afxGraphHeight(node.type)
         let openH = open ? doesH + graphH + paramsH(shownFace) + endsH + detailsH + paramsH(shownAll) : 0
         let graphPointer = afxNodeGraphPointer(node, i, update: update)
+        let graphKey = node.type == "eq" ? afxEqKey(node, i, update: update) : nil
+        let graphWheel = node.type == "eq" ? afxEqWheel(node, i, update: update) : nil
         let presetH = 28.0 + (menuOpen ? Double(presets.count + 1) * 24 : 0)
         let cardH = 2 + Self.nodeHeadH + presetH + (summary != nil ? Self.nodeSummaryH : 0) + openH
         let topGap = inRun != nil ? 4.0 : 0
@@ -630,6 +638,11 @@ extension InspectorPanel {
             if graphH > 0 {
                 rule()
                 self.afxDrawModuleGraph(c, CanvasRect(x: bx + 6, y: y + 1 + 6, width: bw - 12, height: Self.afxGraphH), (i: i, node: node), alpha: a)
+                if node.type == "eq" {
+                    self.afxEqStrip(c, CanvasRect(x: bx + 6, y: y + Self.afxGraphBlockH, width: bw - 12, height: Self.afxEqStripH), node, i,
+                                    fxKey: fxKey, alpha: a, enabled: !bypassed)
+                    if !bypassed, let graphWheel, let box = self.audioFxUI.graphBoxes["afx:node:\(i)"]?.box { self.fxGraphWheel["afx:node:\(i)"] = (box, graphWheel) }
+                }
                 y += graphH
             }
             func drawParams(_ ps: [AfxParam]) {

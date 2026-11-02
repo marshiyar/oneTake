@@ -26,6 +26,13 @@ public struct AfxGraphHandle: Equatable {
     public var movesFrequency: Bool
     /// The Tone EQ band it stands for (nil on a module's own graph).
     public var band: String?
+    /// The params it moves: a plain filter's `frequency` and `gain`, a parametric EQ band's `band<k>.freq` and `.gain`.
+    public var freqKey = "frequency"
+    public var gainKey = "gain"
+    /// A parametric EQ band: its number, its Q param and Q (nil for a shelf, which has no Q).
+    public var bandNumber: Int?
+    public var qKey: String?
+    public var q: Double?
 }
 
 /// A response-graph handle drag in flight (committed on release, one undo step), its dB span fixed at the press.
@@ -33,6 +40,9 @@ public struct AfxGraphDrag: Equatable {
     public var graph: String, handle: Int
     public var frequency: Double, gain: Double
     public var range: Double
+    /// An Alt-drag on a band moves its Q, from `q` by the pointer's height since the press.
+    public var q: Double?
+    public var startY = 0.0
 }
 
 /// Where a graph plotted on the last draw, and the dB span it showed.
@@ -105,8 +115,9 @@ extension InspectorPanel {
         return spec.nodes.map { item in
             guard item.i == h.node else { return item.node }
             var n = item.node, p = AudioFx.normalize(n.type, n.params, version: n.version ?? 1)
-            if h.movesFrequency { p["frequency"] = .number(d.frequency) }
-            if h.movesGain { p["gain"] = .number(d.gain) }
+            if h.movesFrequency { p[h.freqKey] = .number(d.frequency) }
+            if h.movesGain { p[h.gainKey] = .number(d.gain) }
+            if let key = h.qKey, let q = d.q { p[key] = .number(q) }
             n.params = p
             return n
         }
@@ -200,30 +211,54 @@ extension InspectorPanel {
     }
 
     /// Drives a graph's handles: a press on handle k starts its drag, moves follow the pointer (log frequency across,
-    /// dB up), the release commits once through `commit(handle, frequency, gain)`. A press on the plot does nothing.
-    func afxGraphPointer(row: String, handles: [AfxGraphHandle],
+    /// dB up), the release commits once through `commit(handle, frequency, gain)`. A press on the plot does nothing,
+    /// except a double-click there, which goes to `plotDoubleClick`. With Alt held at the press, a band's drag moves
+    /// its Q instead (`commitQ`), up for a narrower band.
+    func afxGraphPointer(row: String, handles: [AfxGraphHandle], pressed: ((AfxGraphHandle) -> Void)? = nil,
+                         plotDoubleClick: ((CanvasPoint) -> Void)? = nil, commitQ: ((AfxGraphHandle, Double) -> Void)? = nil,
                          commit: @escaping (AfxGraphHandle, Double, Double) -> Void) -> (Int, CanvasPoint, Int) -> Void {
         { [weak self] part, pt, phase in
-            guard let self, let g = self.audioFxUI.graphBoxes[row], handles.indices.contains(part - 1) else { return }
+            guard let self else { return }
+            if part == 0 {
+                guard phase == 0, let plotDoubleClick else { return }
+                let now = self.fxGestureNow()
+                if let last = self.fxGraphClick, last.row == row, now - last.time < Self.doubleClickInterval,
+                   hypot(pt.x - last.at.x, pt.y - last.at.y) <= 2 * Self.doubleClickSlop {
+                    self.fxGraphClick = nil
+                    plotDoubleClick(pt)
+                } else {
+                    self.fxGraphClick = (row, pt, now)
+                }
+                return
+            }
+            guard let g = self.audioFxUI.graphBoxes[row], handles.indices.contains(part - 1) else { return }
             let h = handles[part - 1]
             if phase == 0 {
-                self.audioFxUI.graphDrag = AfxGraphDrag(graph: row, handle: part, frequency: h.frequency, gain: h.gain, range: g.range)
+                self.fxGraphClick = nil
+                var drag = AfxGraphDrag(graph: row, handle: part, frequency: h.frequency, gain: h.gain, range: g.range)
+                if self.pointerModifiers.contains(.alt), h.q != nil { drag.q = h.q; drag.startY = pt.y }
+                self.audioFxUI.graphDrag = drag
+                pressed?(h)
                 return
             }
             guard var d = self.afxDrag(row) else { return }
-            if h.movesFrequency { d.frequency = AfxGraphScale.frequency(pt.x, in: g.box) }
-            if h.movesGain { d.gain = max(-g.range, min(g.range, AfxGraphScale.gain(pt.y, range: g.range, in: g.box))) }
+            if let q0 = h.q, d.q != nil {
+                d.q = Self.afxBandQ(q0, raisedBy: d.startY - pt.y)
+            } else {
+                if h.movesFrequency { d.frequency = AfxGraphScale.frequency(pt.x, in: g.box) }
+                if h.movesGain { d.gain = max(-g.range, min(g.range, AfxGraphScale.gain(pt.y, range: g.range, in: g.box))) }
+            }
             self.audioFxUI.graphDrag = d
             if phase == 2 { self.audioFxUI.graphDrag = nil }
-            commit(h, d.frequency, d.gain)
+            if let q = d.q, let commitQ { commitQ(h, q) } else { commit(h, d.frequency, d.gain) }
         }
     }
 
     /// A filter module's graph commit: frequency to the Hz and gain to 0.1 dB, inside the effect's ranges.
     static func afxFilterParams(_ node: FxNode, _ h: AfxGraphHandle, frequency: Double, gain: Double) -> FxParams {
         var p = AudioFx.normalize(node.type, node.params, version: node.version ?? 1)
-        if h.movesFrequency { p["frequency"] = .number(frequency.rounded()) }
-        if h.movesGain { p["gain"] = .number((gain * 10).rounded() / 10) }
+        if h.movesFrequency { p[h.freqKey] = .number(frequency.rounded()) }
+        if h.movesGain { p[h.gainKey] = .number((gain * 10).rounded() / 10) }
         return AudioFx.normalize(node.type, p, version: node.version ?? 1)   // clamps into the registry's ranges
     }
 
@@ -231,18 +266,20 @@ extension InspectorPanel {
 
     /// Height an open module's picture adds: a response graph for a filter, a transfer curve for a dynamics node.
     static func afxGraphHeight(_ type: String) -> Double {
-        AudioFxResponse.filterTypes.contains(type) || AudioFxResponse.dynamicsTypes.contains(type) ? afxGraphBlockH : 0
+        (AudioFxResponse.filterTypes.contains(type) || AudioFxResponse.dynamicsTypes.contains(type) ? afxGraphBlockH : 0)
+            + (type == "eq" ? afxEqStripH : 0)
     }
 
     /// An open module's picture: its response with one draggable point, or its static curve.
     func afxDrawModuleGraph(_ c: CanvasContext, _ r: CanvasRect, _ item: (i: Int, node: FxNode), alpha: Double) {
         guard AudioFxResponse.filterTypes.contains(item.node.type) else { Self.afxDrawTransfer(c, r, item.node, alpha: alpha); return }
-        afxDrawResponse(c, r, AfxGraphSpec(row: "afx:node:\(item.i)", nodes: [item], handles: [Self.afxFilterHandle(item.node, item.i)],
-                                           alpha: alpha))
+        let handles = item.node.type == "eq" ? Self.afxEqHandles(item.node, item.i) : [Self.afxFilterHandle(item.node, item.i)]
+        afxDrawResponse(c, r, AfxGraphSpec(row: "afx:node:\(item.i)", nodes: [item], handles: handles, alpha: alpha))
     }
 
     /// The module row's pointer: drags its graph's point (filters only), writing the params through `update`.
     func afxNodeGraphPointer(_ node: FxNode, _ i: Int, update: @escaping (FxParams) -> Void) -> (Int, CanvasPoint, Int) -> Void {
+        if node.type == "eq" { return afxEqPointer(node, i, update: update) }
         guard AudioFxResponse.filterTypes.contains(node.type) else { return { _, _, _ in } }
         return afxGraphPointer(row: "afx:node:\(i)", handles: [Self.afxFilterHandle(node, i)]) { h, f, g in
             update(Self.afxFilterParams(node, h, frequency: f, gain: g))
