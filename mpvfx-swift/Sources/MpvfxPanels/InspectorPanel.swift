@@ -217,6 +217,9 @@ public final class InspectorPanel {
     public var pointerModifiers: PointerModifiers = []
     /// Each EQ graph's plot and its wheel step, rebuilt on every draw.
     var fxGraphWheel: [String: (box: CanvasRect, step: (CanvasPoint, Double) -> Bool)] = [:]
+    /// The latest spectrum behind an EQ module's curve, from the owner's id (`clip:<id>` or `bus:<id>`) and the module's
+    /// chain index: levels in dBFS at `AudioFxSpectrum.frequency(k, of: count)`, or nil when nothing is playing.
+    public var audioFxSpectrumProvider: ((_ owner: String, _ node: Int) -> [Double]?)?
     /// The last press on a graph's plot, for the double-click that adds an EQ band.
     var fxGraphClick: (row: String, at: CanvasPoint, time: Double)?
 

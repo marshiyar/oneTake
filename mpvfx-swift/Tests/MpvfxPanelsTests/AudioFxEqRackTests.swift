@@ -26,9 +26,12 @@ final class AudioFxEqRackTests: XCTestCase {
     func chain(_ e: TimelineEditor) -> FxChain {
         (e.clip("clip:music")?.clip.audioFxChain).flatMap { try? AudioFx.parseChain($0) } ?? FxChain()
     }
-    func eqChain(_ values: [String: JSONValue] = [:]) -> FxChain {
-        FxChain(nodes: [FxNode(type: "eq", version: 2, id: "n1", params: AudioFx.normalize("eq", values, version: 2))])
+    /// Settings as written in a test: numbers and strings by key.
+    func eqChain(_ values: [String: Any] = [:]) -> FxChain {
+        let json = values.mapValues { v in (v as? String).map(JSONValue.string) ?? .number((v as? Double) ?? Double((v as? Int) ?? 0)) }
+        return FxChain(nodes: [FxNode(type: "eq", version: 2, id: "n1", params: AudioFx.normalize("eq", json, version: 2))])
     }
+    func normalized(_ values: [String: Any]) -> FxParams { eqChain(values).nodes[0].params ?? FxParams() }
     func params(_ e: TimelineEditor) throws -> FxParams { try XCTUnwrap(chain(e).nodes.first?.params) }
 
     @discardableResult
@@ -161,9 +164,9 @@ final class AudioFxEqRackTests: XCTestCase {
     }
 
     func testBandCountStopsAtEightAndAtOne() throws {
-        XCTAssertNil(InspectorPanel.afxEqAddingBand(AudioFx.normalize("eq", ["bands": 8], version: 2), frequency: 1000, gain: 0))
-        XCTAssertNil(InspectorPanel.afxEqRemovingBand(AudioFx.normalize("eq", ["bands": 1], version: 2), band: 1))
-        let seven = AudioFx.normalize("eq", ["bands": 7], version: 2)
+        XCTAssertNil(InspectorPanel.afxEqAddingBand(normalized(["bands": 8]), frequency: 1000, gain: 0))
+        XCTAssertNil(InspectorPanel.afxEqRemovingBand(normalized(["bands": 1]), band: 1))
+        let seven = normalized(["bands": 7])
         XCTAssertEqual(InspectorPanel.afxEqAddingBand(seven, frequency: 1000, gain: 0)?.num("bands"), 8)
     }
 
@@ -189,7 +192,7 @@ final class AudioFxEqRackTests: XCTestCase {
         XCTAssertNotNil(p.hits.rect { $0 == .slider("fx:0:band2.q") })
         XCTAssertNil(p.hits.rect { $0 == .slider("fx:0:band2.gain") }, "a cut has no gain")
         XCTAssertNil(p.hits.rect { $0 == .slider("fx:0:band3.freq") }, "other bands stay out of the list")
-        XCTAssertEqual(InspectorPanel.afxEqShownKeys(AudioFx.normalize("eq", ["bands": 2, "band2.type": "lowcut"], version: 2), selected: 2),
+        XCTAssertEqual(InspectorPanel.afxEqShownKeys(normalized(["bands": 2, "band2.type": "lowcut"]), selected: 2),
                        ["bands", "band2.type", "band2.freq", "band2.bypass", "band2.q", "band2.slope"])
     }
 
@@ -211,6 +214,8 @@ final class AudioFxEqRackTests: XCTestCase {
     func testWheelNotchChangesTheNearestBandsQ() throws {
         let (editor, p) = try open(eqChain(["bands": 3, "band2.freq": 400, "band2.q": 1, "band3.freq": 2500]))
         let at = try plotPoint(p, frequency: 450, gain: 3)
+        XCTAssertEqual(p.fxGraphWheel.count, 1, "the open EQ graph registers its wheel step")
+        XCTAssertTrue(p.fxGraphWheel.values.first?.box.contains(at) ?? false, "and the pointer is over its plot")
         XCTAssertTrue(p.scroll(at, dy: -53))
         let q = try params(editor)
         XCTAssertEqual(q.num("band2.q"), pow(2, 53.0 * 40 / 212 / 40), accuracy: 0.02, "a notch up narrows the nearest band")
@@ -218,5 +223,22 @@ final class AudioFxEqRackTests: XCTestCase {
         let narrowed = q.num("band2.q")
         _ = p.scroll(at, dy: -3, precise: true)
         XCTAssertEqual(try params(editor).num("band2.q"), narrowed, "trackpad deltas scroll the panel instead")
+    }
+
+    func testTheOpenEqModuleAsksForItsSpectrumAndClosedOnesDoNot() throws {
+        let (_, p) = try AudioFxRackTests.makeFixture(eqChain())
+        var asked: [String] = []
+        p.audioFxSpectrumProvider = { owner, node in
+            asked.append("\(owner)/\(node)")
+            return (0..<160).map { _ in -40.0 }
+        }
+        draw(p)   // seeds the rack's state
+        p.audioFxUI.openNode = nil
+        asked = []
+        draw(p)
+        XCTAssertTrue(asked.isEmpty, "a closed module draws no graph: \(asked)")
+        p.audioFxUI.openNode = 0
+        draw(p)
+        XCTAssertTrue(asked.contains("clip:music/0"), "\(asked)")
     }
 }

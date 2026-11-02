@@ -131,6 +131,10 @@ extension InspectorPanel {
         let g = AfxGraphFrame(spec: spec, box: box, range: drag?.range ?? AfxGraphScale.range(spec.handles.map(\.gain) + [0]))
         audioFxUI.graphBoxes[spec.row] = AfxGraphBox(box: box, range: g.range)
         Self.afxGraphGrid(c, rect, g)
+        if spec.nodes.count == 1, spec.nodes[0].node.type == "eq", let owner = audioFxUI.owner,
+           let levels = audioFxSpectrumProvider?(owner, spec.nodes[0].i) {
+            Self.afxGraphSpectrum(c, g, levels: levels)
+        }
         Self.afxGraphCurve(c, g, nodes: drawn)
         if spec.alpha >= 1 { addHit(box, .custom(spec.row, 0)) }   // a bypassed module's graph is a picture, not a control
         for (k, h) in spec.handles.enumerated() {

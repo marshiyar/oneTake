@@ -192,6 +192,23 @@ extension InspectorPanel {
                        color: PanelTheme.text2.withAlpha(alpha))
     }
 
+    /// The spectrum as a faint filled area on the plot, -90 dBFS at the bottom and 0 at the top.
+    static func afxGraphSpectrum(_ c: CanvasContext, _ g: AfxGraphFrame, levels: [Double]) {
+        guard levels.count > 1 else { return }
+        let box = g.box
+        let floor = AudioFxSpectrum.floorDb
+        var area = CanvasPath(); area.move(to: CanvasPoint(box.x, box.maxY))
+        for (k, db) in levels.enumerated() {
+            let x = AfxGraphScale.x(AudioFxSpectrum.frequency(k, of: levels.count), in: box)
+            area.line(to: CanvasPoint(x, box.maxY - max(0, min(1, (db - floor) / -floor)) * box.height))
+        }
+        area.line(to: CanvasPoint(box.maxX, box.maxY)); area.close()
+        c.withState {
+            c.clip(box)
+            c.fill(area, PanelTheme.text2.withAlpha(0.22 * g.spec.alpha))
+        }
+    }
+
     /// The params an open EQ module lists: the band count, and the picked band's own (a slope only on a cut, gain
     /// not on a cut or notch, Q not on a shelf).
     static func afxEqShownKeys(_ p: FxParams, selected: Int) -> Set<String> {
