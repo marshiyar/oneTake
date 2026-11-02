@@ -22,6 +22,12 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Clip fades on the timeline: drag the small handle at a clip's top-left or top-right corner to set its fade in or
+  fade out, with the ramp drawn on the clip; Fade In, Fade Out and Remove Fades are in the clip menu.
+- Find beats in the audio clip menu: onset analysis of the clip finds its beats without blocking the editor, can be
+  cancelled, and re-running replaces only the beats it found before, never hand-placed ones.
+- Cut to beats (Shift+Command+B): lay the selected clips end to end with each cut on a beat mark of the music under
+  them; a clip shorter than the next beat keeps its length and a notice says so.
 
 ### Grading
 - Saved looks: name, rename, delete and re-apply a grade from Design > Saved looks.

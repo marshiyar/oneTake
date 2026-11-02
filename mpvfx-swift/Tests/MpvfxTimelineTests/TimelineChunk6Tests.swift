@@ -120,7 +120,7 @@ final class TimelineChunk6Tests: XCTestCase {
         let labels = m.entries.map { e -> String in if case .item(let i) = e { return i.label }; return "—" }
         XCTAssertEqual(labels, ["Split", "—", "Cut", "Copy", "Paste", "Copy grade", "Paste grade", "Duplicate", "Rename…", "Disable", "—",
                                 "Reveal in media bin", "Show in file manager", "—", "Show thumbnails", "—", "Mute",
-                                "Keep audio pitch", "—", "Delete"])
+                                "Keep audio pitch", "—", "Fade In", "Fade Out", "Remove Fades", "—", "Cut to beats", "—", "Delete"])
         XCTAssertTrue(c.runClipMenu(.mute, clipId: "clip:a"))
         XCTAssertTrue(c.view.tracks[0].clips[0].muted)
         XCTAssertTrue(e.undo()); XCTAssertFalse(c.view.tracks[0].clips[0].muted)

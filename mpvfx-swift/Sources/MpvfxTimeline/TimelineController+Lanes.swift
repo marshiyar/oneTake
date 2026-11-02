@@ -58,7 +58,10 @@ public extension TimelineController {
                                                canPaste: clipboard != nil, canPasteGrade: gradeClipboard != nil,
                                                gradePasteReason: gradeClipboard == nil ? "Copy a grade before pasting" : nil,
                                                keepsPitch: sounds ? editor?.preservesPitch(clipId: id) : nil,
-                                               disabled: c.hidden)
+                                               disabled: c.hidden,
+                                               fades: Self.canFade(c.kind) ? .init(fadeIn: c.fadeIn > 0, fadeOut: c.fadeOut > 0, enabled: !(editor?.isClipLocked(id) ?? false)) : nil,
+                                               cutToBeatsReason: .some(cutToBeatsRefusal),
+                                               canFindBeats: onFindBeats != nil && editor?.beatAnalysisSource(clipId: id) != nil)
         var m = TimelineClipMenu(x: x, y: y, clipId: id, entries: entries)
         if viewport.height > 0 { m.maximumHeight = viewport.height }
         if m.x + TimelineClipMenu.width > viewport.width { m.x -= TimelineClipMenu.width }
@@ -111,6 +114,14 @@ public extension TimelineController {
             setThumbnailsEnabled(!view.thumbnailsEnabled)   // thumbnailMode is timeline-wide (adaptive / hidden)
             return true
         case .mute: return editor.setMuted(clipId: id, !c.muted)
+        case .fadeIn: return editor.addDefaultFade(clipId: id, edge: .start)
+        case .fadeOut: return editor.addDefaultFade(clipId: id, edge: .end)
+        case .removeFades: return editor.removeFades(clipId: id)
+        case .cutToBeats: return cutSelectionToBeats()
+        case .findBeats:
+            guard let onFindBeats, editor.beatAnalysisSource(clipId: id) != nil else { return false }
+            onFindBeats(id)
+            return true
         case .detachAudio, .reattachAudio:
             // useNativeAudioActions: the host probes the file for an audio stream and reports failures.
             if let onNativeAudioAction { onNativeAudioAction(id, action == .detachAudio ? .detach : .reattach); return true }

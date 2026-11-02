@@ -202,6 +202,8 @@ public struct TimelineClipModel: Sendable, Equatable {
     /// Enabled nodes in the clip's audio FX chain (TimelineFxButton nodeCount: enabledAudioFxNodes).
     public var fxCount = 0
     public var beatTimes: [Double] = []
+    /// The clip's fade-in / fade-out in seconds (0: none), drawn as ramp lines with a handle at each top corner.
+    public var fadeIn = 0.0, fadeOut = 0.0
     public var end: Double { start + duration }
     public init(id: String? = nil, name: String, start: Double, duration: Double, kind: TimelineClipKind = .video,
                 keyframes: [Double] = [], effectCount: Int = 0) {
@@ -245,6 +247,8 @@ public enum TimelineDragPreview: Equatable, Sendable {
     case slip(clipId: String, deltaFrames: Double, sourceShift: Double)
     /// The cut between two touching clips moved to `time` seconds.
     case roll(outgoingId: String, incomingId: String, time: Double)
+    /// The fade on `edge` (`.start` fade in, `.end` fade out) dragged to `seconds`.
+    case fade(clipId: String, edge: TrimEdge, seconds: Double, snapTime: Double?)
 }
 public enum TrimEdge: Sendable, Equatable { case start, end }
 
@@ -519,12 +523,12 @@ public final class TimelineView {
     }
 
     var snapTime: Double? {
-        switch drag { case .move(_, _, _, let s)?: s; case .trim(_, _, _, let s)?: s; case .slip?, .roll?, nil: nil }
+        switch drag { case .move(_, _, _, let s)?: s; case .trim(_, _, _, let s)?: s; case .fade(_, _, _, let s)?: s; case .slip?, .roll?, nil: nil }
     }
     func isMoving(_ id: String) -> Bool { if case .move(let ids, _, _, _)? = drag { return ids.contains(id) }; return false }
     func isDragged(_ id: String) -> Bool {
         switch drag {
-        case .move(let ids, _, _, _)?: ids.contains(id); case .trim(let cid, _, _, _)?, .slip(let cid, _, _)?: cid == id
+        case .move(let ids, _, _, _)?: ids.contains(id); case .trim(let cid, _, _, _)?, .slip(let cid, _, _)?, .fade(let cid, _, _, _)?: cid == id
         case .roll(let outgoing, let incoming, _)?: outgoing == id || incoming == id; case nil: false
         }
     }
@@ -553,7 +557,7 @@ public final class TimelineView {
     }
 
     func drawClip(_ c: CanvasContext, track i: Int, _ clip: TimelineClipModel) {
-        let t = theme, clip = slipPreview(clip)
+        let t = theme, clip = fadePreview(slipPreview(clip))
         var r = clipRect(track: i, clip)
         r.width = max(r.width, 4)                                   // Math.max(duration * pps, 4)
         let selected = selection.contains(clip.id), hovered = hoveredClip == clip.id, dragging = isDragged(clip.id)
@@ -593,6 +597,7 @@ public final class TimelineView {
                 let bx = x(for: beatPreviewTime(time, clipId: clip.id))
                 c.fillRect(CanvasRect(x: bx - 1, y: r.y + 2, width: 2, height: max(0, r.height - 4)), CanvasColor(ThemeTokens.green500))
             }
+            drawFades(c, clip, in: r, handles: Self.handleOpacity(hovered: hovered, selected: selected, dragging: dragging))
             // Keyframe diamonds (TimelineClipDiamonds), drawn when the bar is at least 20 px wide.
             if r.width >= 20 { drawMarks(c, clip, scope: nil, origin: CanvasPoint(r.x, r.y + r.height / 2)) }
             // Clip name: centred in the header strip, left 12, right 10, 10px/500, ellipsis, at clipNameAlpha.

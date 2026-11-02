@@ -64,6 +64,8 @@ final class EditorSession {
     /// Timeline card content (toolbar + tracks); set by installShell.
     var timelineRegion: TimelineRegion?
     var volumeAnimating = false
+    /// The running Find beats search (EditorSession+TimelineHooks.swift); nil when none runs.
+    var beatSearch: TimelineBeatSearch?
     private(set) var projectDir: URL? { didSet { editor.projectDirectory = projectDir } }
     /// Left sidebar + right panel wiring (EditorSession+Panels.swift); set by installShell.
     var panels: SessionPanels?

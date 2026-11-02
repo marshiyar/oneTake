@@ -184,7 +184,7 @@ final class TimelineClipboardTests: XCTestCase {
         let (c, e) = try make()
         c.openClipMenu("clip:a", x: 10, y: 10)
         XCTAssertEqual(labels(c.view.clipMenu), ["Split", "—", "Cut", "Copy", "Paste", "Copy grade", "Paste grade", "Duplicate", "Rename…", "Disable", "—", "Reveal in media bin", "Show in file manager", "—", "Show thumbnails", "—",
-                                                 "Mute", "Keep audio pitch", "—", "Detach audio", "—", "Delete"])
+                                                 "Mute", "Keep audio pitch", "—", "Fade In", "Fade Out", "Remove Fades", "—", "Cut to beats", "—", "Detach audio", "—", "Delete"])
         func item(_ a: TimelineClipMenu.Action) -> TimelineClipMenu.Item? {
             c.view.clipMenu?.itemRects().map(\.0).first { $0.action == a }
         }
@@ -243,7 +243,7 @@ final class TimelineClipboardTests: XCTestCase {
         c.openClipMenu("clip:a", x: 1100, y: 590)
         let m = try XCTUnwrap(c.view.clipMenu)
         XCTAssertEqual(m.x, 900)
-        XCTAssertEqual(m.y, 590 - m.height)
+        XCTAssertEqual(m.y, max(0, 590 - m.height), "flips up by its own height, held inside the pane")
         XCTAssertLessThanOrEqual(m.rect.maxY, 600)
     }
     // MARK: Review findings (PR #63)
