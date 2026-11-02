@@ -184,14 +184,14 @@ final class TimelineTransitionControllerTests: XCTestCase {
         XCTAssertEqual(transitions(e).first?.durationFrames, 32)
         XCTAssertEqual(e.undoStack.count, steps + 1, "one undo step")
         XCTAssertEqual(starts(e), before, "no clip moved")
-        // Far past the media: B has 30 frames before its in point, so a centred dissolve holds at most 61.
+        // Far past what fits: the clips are 60 frames long (B's 30 frames of media before its in point would allow 61).
         c.view.tracks = e.tracks
         c.pointerDown(x: x(76) - 2, y: rowY)
         c.pointerMove(x: x(170), y: rowY)
-        XCTAssertEqual(c.view.transitionDrag?.frames, 61)
-        XCTAssertEqual(c.view.transitionHint, "At most 61 frames: the clips have no more media for this transition")
+        XCTAssertEqual(c.view.transitionDrag?.frames, 60)
+        XCTAssertEqual(c.view.transitionHint, "At most 60 frames: the clips have no more media for this transition")
         c.pointerUp(x: x(170), y: rowY)
-        XCTAssertEqual(transitions(e).first?.durationFrames, 61)
+        XCTAssertEqual(transitions(e).first?.durationFrames, 60)
         XCTAssertNil(c.view.transitionHint)
         XCTAssertNil(c.view.transitionDrag)
         XCTAssertEqual(starts(e), before, "still no clip moved")
