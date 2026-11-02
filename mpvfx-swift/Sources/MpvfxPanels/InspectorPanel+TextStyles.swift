@@ -45,12 +45,12 @@ enum TextStyleSample {
 
     /// Paints the sample into `rect` (clipped to it).
     static func draw(_ text: NativeClipText, in rect: CanvasRect, on c: CanvasContext) {
-        let block = block(text)
-        c.fillRoundedRect(rect, radius: 3, plate(for: block.color))
+        let laid = block(text)
+        c.fillRoundedRect(rect, radius: 3, plate(for: laid.color))
         c.withState {
             c.clip(rect)
-            let height = block.lineHeight
-            TextLayout.draw(block, in: CanvasRect(x: rect.x + 8, y: rect.midY - height / 2, width: rect.width - 16, height: height), on: c)
+            let height = laid.lineHeight
+            TextLayout.draw(laid, in: CanvasRect(x: rect.x + 8, y: rect.midY - height / 2, width: rect.width - 16, height: height), on: c)
         }
     }
 }
@@ -144,6 +144,9 @@ extension InspectorPanel {
     private func applyTextStyle(_ style: NativeTextStyle, _ editor: TimelineEditor) -> Bool {
         let ids = selectedTextClipIds(editor)
         guard !ids.isEmpty else { reportTextStyle("Select a text layer to apply a style."); return false }
+        // Already following this style with no override: nothing to change, and nothing went wrong.
+        let links = editor.document.sequence.tracks.flatMap(\.clips).filter { ids.contains($0.id) }.map(\.textStyle)
+        if links.allSatisfy({ $0?.styleId == style.id && $0?.overrides.isEmpty == true }) { return true }
         let ok = runTextStyleEdit("Apply text style") { editor.applyLibraryTextStyle(style, clipIds: ids) }
         if !ok { reportTextStyle("The style could not be applied. Unlock the layer’s track and try again.") }
         return ok

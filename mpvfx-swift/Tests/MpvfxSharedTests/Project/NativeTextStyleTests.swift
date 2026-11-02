@@ -194,8 +194,8 @@ internal final class NativeTextStyleTests: XCTestCase {
     internal func testCreateSavesAndLinksTheLayerInOneCommand() throws {
         let document = try run(document(), .create(clipId: "text:2", styleId: "style:new", name: "New"))
         XCTAssertEqual(document.textStyles?.map(\.id), ["style:new"])
-        XCTAssertEqual(document.sequence.tracks[0].clips[1].textStyle?.styleId, "style:new")
-        XCTAssertNil(document.sequence.tracks[0].clips[0].textStyle)
+        XCTAssertEqual(document.sequence.tracks[0].clips[2].textStyle?.styleId, "style:new")
+        XCTAssertNil(document.sequence.tracks[0].clips[1].textStyle)
         XCTAssertThrowsError(try run(document, .create(clipId: "text:3", styleId: "style:new", name: "Again"))) {
             XCTAssertEqual($0 as? NativeTextStyleError, .duplicateStyle)
         }
