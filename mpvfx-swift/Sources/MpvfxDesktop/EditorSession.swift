@@ -76,6 +76,8 @@ final class EditorSession {
     var appearance: AppearanceSettings?
     /// The Settings card (Cmd/Ctrl+,, MpVFX > Settings… on macOS); EditorSession+Settings.
     let settingsPanel = SettingsPanel()
+    /// The Captions dock panel, kept so the Settings card can push the reading rate to it (EditorSession+DockedPanels).
+    var captionsPanel: CaptionsPanel?
     /// Shared media frames/peaks cache (MediaThumbnails.swift): bin cards, audio rows, timeline filmstrips.
     lazy var mediaThumbnails: MediaThumbnails = {
         let t = MediaThumbnails(post: { [weak self] body in self?.postToUI(body) })

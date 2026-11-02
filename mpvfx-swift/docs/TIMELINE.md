@@ -92,6 +92,32 @@ Tests: `TimelineZoomControlsTests.testEffectsAndHintInkContrastInBothModes`, `Ti
 Hints are drawn in `text2` (4.5:1 on `panelBg`; `text3` is under 4.5:1 for 11 px text). The timeline's hint lists
 the main keys: "Space play · S split · I / O in and out · ⇧Z fit".
 
+## Caption lane
+
+The caption lane shows the sequence's caption track under the last track. It appears only when the project has a
+caption track, and each cue is one block at its time, showing its text.
+Drag a block to move the cue, or drag either end to trim it. Both clamp against the neighbouring cues and a
+one-frame minimum.
+Double-click a cue, or press Enter or F2 on the selected cue, to retype it. Enter saves, Shift+Enter adds a line
+and Escape cancels.
+The + in the lane label adds a cue at the playhead: 2 s long, or up to the next cue when the gap is shorter.
+Every edit is one undo step and persists in the edit history.
+A cue that needs more than two lines at the composition size shows a red badge; the preview still shows it whole.
+The drawing is in `Sources/MpvfxTimeline/TimelineView+Captions.swift`, the gestures and keys in
+`Sources/MpvfxTimeline/TimelineController+Captions.swift`, the edits in
+`Sources/MpvfxTimeline/TimelineEditor+Captions.swift`, and the pure edit plans in
+`Sources/MpvfxShared/Project/NativeCaptionEditPlan.swift`.
+
+## Caption list
+
+The Captions panel (Window menu) lists every cue as a row: in and out time, then the text. Click a row or press ↑/↓ to
+put the playhead on the cue. Enter edits the text in place (Enter saves, Shift+Enter adds a line, Escape cancels).
+⌥[ moves the in point one frame earlier and ⌥] the out point one frame later; add ⇧ for the other way. ⌘Enter splits the
+cue at the text caret and the playhead so the two cues stay contiguous; without an open edit it breaks at the space
+nearest the playhead. ⌘J joins the cue with the next one. ⌘F finds and ⌥⌘F finds and replaces across every cue
+(⌥C toggles case-sensitive, ⌥⌘Enter replaces all in one undo step). A row read faster than the reading-rate limit
+(Settings, default 17 characters per second; the limit is the editor's choice, not a standard) shows a badge.
+
 ## Captures
 
 Every change here is captured at 1440 × 900 and 1280 × 800 in dark and light (`TimelineControlsSnapshotTests` (native CoreGraphics timeline fixture on macOS), PNGs

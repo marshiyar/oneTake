@@ -22,7 +22,9 @@ import Foundation
 public struct NativeCaptionTrack: Codable, Equatable, Sendable {
     public var id: String
     public var cues: [NativeCaptionCue]
-    public init(id: String, cues: [NativeCaptionCue]) { self.id = id; self.cues = cues }
+    /// How every cue looks (font, size, plate, position, safe area); absent while the track uses the default look.
+    public var look: NativeCaptionLook? = nil
+    public init(id: String, cues: [NativeCaptionCue], look: NativeCaptionLook? = nil) { self.id = id; self.cues = cues; self.look = look }
 }
 
 /// One caption: `text` shown from `startMs` up to (not including) `endMs`; `\n` breaks a line.
@@ -36,8 +38,10 @@ public struct NativeCaptionCue: Codable, Equatable, Hashable, Sendable {
     /// When each word of `text` is spoken, in the same milliseconds as the cue; absent when the cue has no word
     /// times (an SRT import has none). Omitted from the file when absent, so a project without them is unchanged.
     public var words: [NativeCaptionWord]? = nil
-    public init(id: String, startMs: Int, endMs: Int, text: String, words: [NativeCaptionWord]? = nil) {
-        self.id = id; self.startMs = startMs; self.endMs = endMs; self.text = text; self.words = words
+    /// Where this cue sits instead of the track look's position; absent when it follows the look.
+    public var position: NativeCaptionPosition? = nil
+    public init(id: String, startMs: Int, endMs: Int, text: String, words: [NativeCaptionWord]? = nil, position: NativeCaptionPosition? = nil) {
+        self.id = id; self.startMs = startMs; self.endMs = endMs; self.text = text; self.words = words; self.position = position
     }
 }
 
@@ -117,6 +121,7 @@ func validateNativeCaptionTrack(_ raw: NativeJSONValue?, _ path: String, _ issue
     guard let raw else { return }
     guard raw.isRecord else { return pushIssue(&issues, .invalidCaption, path, "Caption track must be an object") }
     _ = requireId(raw["id"], "\(path).id", &issues)
+    validateNativeCaptionLook(raw["look"], "\(path).look", &issues)
     guard let cues = raw["cues"]?.arrayValue else {
         return pushIssue(&issues, .invalidCaption, "\(path).cues", "Caption cues must be an array")
     }
@@ -128,6 +133,7 @@ func validateNativeCaptionTrack(_ raw: NativeJSONValue?, _ path: String, _ issue
         _ = requireId(cue["id"], "\(cuePath).id", &issues)
         collectDuplicateId(&ids, cue["id"], "\(cuePath).id", &issues)
         validateCaptionText(cue["text"], "\(cuePath).text", &issues)
+        validateNativeCaptionPosition(cue["position"], "\(cuePath).position", &issues)
         guard let timed = captionCueTimes(cue, cuePath, &issues) else { continue }
         if let problem = nativeCaptionTimingProblem(timed, after: previous) { pushIssue(&issues, .invalidCaption, cuePath, problem) }
         validateCaptionWords(cue, timed, cuePath, &issues)
