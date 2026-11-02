@@ -102,6 +102,7 @@ Double-click a cue, or press Enter or F2 on the selected cue, to retype it. Ente
 and Escape cancels.
 The + in the lane label adds a cue at the playhead: 2 s long, or up to the next cue when the gap is shorter.
 Every edit is one undo step and persists in the edit history.
+A cue that needs more than two lines at the composition size shows a red badge; the preview still shows it whole.
 The drawing is in `Sources/MpvfxTimeline/TimelineView+Captions.swift`, the gestures and keys in
 `Sources/MpvfxTimeline/TimelineController+Captions.swift`, the edits in
 `Sources/MpvfxTimeline/TimelineEditor+Captions.swift`, and the pure edit plans in

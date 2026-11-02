@@ -16,6 +16,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
   them, each edit one undo step.
 - Caption lane: the caption track shows under the tracks; drag a cue to move it, drag its ends to trim it,
   double-click to retype it, + adds one at the playhead.
+- Caption look: the preview shows the caption on screen with the track's font, size, outline, plate, position and
+  safe area; a cue over two lines is badged on the lane.
 - Cut transitions grow up: directional wipe and push join dissolve and dip, with direction, softness and duration
   in Design > Transition.
 - Background generator clips (solid, linear gradient, radial gradient) from the Media panel menu, edited under
