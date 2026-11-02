@@ -22,6 +22,8 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - Grouped text looks in the Media sidebar (title, name strap, rolling credits, fade in/out, vertical-video styles)
   that land as ordinary editable text.
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- A Look section in the Text group: outlines, drop shadow, glow, plate and gradient fill, with keyframes on outline
+  width, shadow offset and blur, glow strength, plate opacity and the gradient angle.
 - A per-user text style library: the Text group's Style menu shows each saved style as a sample, applies it to the
   selected text layers (⌥⌘1…9), and saves the current layer as a style (⌥⌘S).
 - Text reveals: a text layer can arrive and leave per character, word or line (fade, rise, grow or type on, with an

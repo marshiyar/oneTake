@@ -13,6 +13,16 @@ override only the changed fields; nil can explicitly restore a field's default, 
 follow the project style again. Preview and export resolve through `resolvedText`; detaching retains the same pixels. Newer
 style/link versions and kinds remain serialized and undrawn with an open notice. Covered by `NativeTextStyleTests`,
 `TextStyleEditTests` and `TextStyleRenderingTests`.
+Look section in the Text group (#281): up to two outlines (width, colour, outside or centre), a drop shadow (offset x and y, blur,
+colour), a glow (radius, strength, colour), a plate (per line or whole block, padding, corner radius, opacity, colour) and a two-colour
+gradient fill (colours, angle). Every row is a slider or hex field reached by Tab; sliders nudge with the arrow keys (Shift for ten),
+take typed values and reset. Outline widths, shadow offset and blur, glow strength, plate opacity and the gradient angle carry the keyframe
+gutter: a value is stored in the look until it is animated, then in a clip parameter track (`text.look.outline.0.width`,
+`text.look.shadow.x`, `text.look.glow.strength`, `text.look.plate.opacity`, `text.look.fill.angle` and so on); preview and export read the
+track at each frame through the same composition and the exporter accepts these ids. Stopping the stopwatch keeps the value at the
+playhead in the look as one undo step; removing a part removes its keys; only the last outline can be removed. A linked text style keeps its
+link and the look becomes a local override. Values that overshoot their range between keys are held to it when drawn. Covered by
+`TextLookRowsTests`, `NativeTextLookParameterTests`, `TextLookAnimationRenderingTests` and `TextLookExportAuditTests`.
 Text style library and Style menu (#283): `<userData>/text-styles.json` (written through the durable writer) keeps the user's
 styles for every project. The Text group's Style button opens a menu of those styles, each drawn as a sample with the text
 painter, then the project's own styles the library lacks; picking one applies it to the selected text layers and copies it
