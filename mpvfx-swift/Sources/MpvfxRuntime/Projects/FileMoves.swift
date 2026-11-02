@@ -46,6 +46,7 @@ public func projectsErrorMessage(_ error: Error) -> String {
 enum FileMoveDigests {
     static let limit = 256
     static let lock = NSLock()
+    // Safe: `cache`, `order` and `hashCount` are only read and written under `lock`.
     nonisolated(unsafe) static var cache: [String: String] = [:]
     nonisolated(unsafe) static var order: [String] = []
     /// Test counter: number of full hashes computed (fileMoves.versionCache.test counts createHash calls).

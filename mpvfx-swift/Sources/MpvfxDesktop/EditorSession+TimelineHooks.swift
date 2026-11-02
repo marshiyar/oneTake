@@ -115,6 +115,8 @@ extension EditorSession {
         guard let backend, let projectId = project?.id else {
             player.view.showToast("Open a project to paste clips from another one", isError: true); redraw(); done(nil); return
         }
+        // Safe: `done` is only called inside `postToUI`, on the UI thread it was handed in on.
+        nonisolated(unsafe) let doneOnUI = done
         Task { [weak self] in
             var copies: [String: String] = [:]
             var failure: String?
@@ -131,8 +133,8 @@ extension EditorSession {
             let copied = copies, failed = failure
             self?.postToUI {
                 guard let self else { return }
-                if let failure = failed { self.onError("Clips not pasted", "Could not copy their media into this project (\(failure))"); done(nil); return }
-                done(copied)
+                if let failure = failed { self.onError("Clips not pasted", "Could not copy their media into this project (\(failure))"); doneOnUI(nil); return }
+                doneOnUI(copied)
                 self.panels?.refreshMedia(); self.playback.duration = self.editor.duration; self.syncStage(); self.redraw()
             }
         }

@@ -175,6 +175,7 @@ The flat inspector is the one inspector: one accordion group open at a time.
 | Grade: custom LUT dropdown and import, LUT strength | done; renders | close |
 | Grade: finish (vignette midpoint/roundness/feather, grain size/roughness) | done; renders | close |
 | Grade: copy grade to current file media / all project media | done | close |
+| Grade: collapsible sections (Looks, Primary, Color wheels, Curves, Secondary color, Custom LUT, Finish), kept between launches; the Looks header names the active look or "Custom"; look tiles preview the clip's grade with the look applied | done (#175; `GradeSectionsTests`) | close |
 | Saved looks: save, rename and delete named grade/effect looks in user data, apply to selected clips | implemented (#456): Design’s Saved looks group; name field and buttons are keyboard-operable. Durable `looks.json` writes; one apply undo step; missing LUT is a typed actionable error. Saved effects use the existing preview/export painter (`UserLookTests`, `UserLookDurableWriteTests`, `UserLookRenderParityTests`) | close |
 | Grade: Auto balance (Exposure, Warmth and Tint from the frame's statistics; one undo step; Tab + Enter) | done (`AutoBalanceTests`) | close |
 | Grade: Match reference look (choose another visual clip; Exposure, Contrast and Offset from exact frames and alpha-weighted channel/luma statistics; context-bound pending work; editable, one undo step; Tab/Enter) | done (`LookMatchTests`, `LookMatchInspectorTests`, `LookMatchPainterTests`) | close |

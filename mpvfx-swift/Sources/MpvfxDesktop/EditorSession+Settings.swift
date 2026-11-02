@@ -114,9 +114,13 @@ extension EditorSession {
     /// Settings > Export folder > Choose…: the native folder dialog.
     func chooseExportFolder() {
         guard let dialogs = panels?.dialogs else { return }
-        Task { [weak self] in
-            guard let dir = await dialogs.showOpen(.init(title: "Default Export Folder", directory: true, multiple: false)).first else { return }
-            self?.postToUI { self?.settingsPanel.exportFolderChosen(dir) }
+        // Safe: the dialogs and the session are only used where they were made, the dialogs from the main actor's hop
+        // and the session inside `postToUI`, which runs on the UI thread.
+        nonisolated(unsafe) let dialogsOnMain = dialogs
+        nonisolated(unsafe) weak var weakSelf = self
+        Task {
+            guard let dir = await dialogsOnMain.showOpen(.init(title: "Default Export Folder", directory: true, multiple: false)).first else { return }
+            weakSelf?.postToUI { weakSelf?.settingsPanel.exportFolderChosen(dir) }
         }
     }
 }

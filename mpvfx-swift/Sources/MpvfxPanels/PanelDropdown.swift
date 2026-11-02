@@ -20,7 +20,7 @@ import MpvfxTimeline
 public final class PanelDropdown {
     /// `checked` marks a current choice besides `selected` (a menu with one choice per group); a `disabled` row
     /// draws dimmed and cannot be hovered or picked.
-    public struct Option: Equatable { public var value: String; public var label: String; public var group: String?
+    public struct Option: Equatable, Sendable { public var value: String; public var label: String; public var group: String?
         public var checked = false, disabled = false
         public init(value: String, label: String, group: String? = nil, checked: Bool = false, disabled: Bool = false) {
             self.value = value; self.label = label; self.group = group; self.checked = checked; self.disabled = disabled } }
