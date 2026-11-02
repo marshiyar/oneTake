@@ -230,7 +230,7 @@ final class AudioFxEqRackTests: XCTestCase {
         var asked: [String] = []
         p.audioFxSpectrumProvider = { owner, node in
             asked.append("\(owner)/\(node)")
-            return (0..<160).map { _ in -40.0 }
+            return (0..<60).map { _ in Float(-40) }
         }
         draw(p)   // seeds the rack's state
         p.audioFxUI.openNode = nil

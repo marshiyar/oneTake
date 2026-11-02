@@ -88,7 +88,6 @@ extension InspectorPanel {
     /// Presets, EQ and the signal chain for one FX chain (a clip's or a bus's); `commit` writes the next chain.
     func audioFxRackRows(_ chain: FxChain, owner: String, subject: String, _ commit: @escaping (FxChain) -> Bool) -> [InspectorRow] {
         afxSeed(owner: owner, chain)
-        fxGraphWheel.removeAll(keepingCapacity: true)
         let ui = audioFxUI
         var rows: [InspectorRow] = []
         func gap(_ h: Double) { rows.append(.init(.spacer(h))) }

@@ -218,8 +218,8 @@ public final class InspectorPanel {
     /// Each EQ graph's plot and its wheel step, rebuilt on every draw.
     var fxGraphWheel: [String: (box: CanvasRect, step: (CanvasPoint, Double) -> Bool)] = [:]
     /// The latest spectrum behind an EQ module's curve, from the owner's id (`clip:<id>` or `bus:<id>`) and the module's
-    /// chain index: levels in dBFS spread evenly on the log axis from 20 Hz to 20 kHz, or nil when nothing is playing.
-    public var audioFxSpectrumProvider: ((_ owner: String, _ node: Int) -> [Double]?)?
+    /// chain index: one level in dBFS per equal log-spaced band from 20 Hz to 20 kHz (band k is centred at (k + 0.5) / count), or nil when nothing is playing.
+    public var audioFxSpectrumProvider: ((_ owner: String, _ node: Int) -> [Float]?)?
     /// The last press on a graph's plot, for the double-click that adds an EQ band.
     var fxGraphClick: (row: String, at: CanvasPoint, time: Double)?
 
@@ -382,6 +382,7 @@ public final class InspectorPanel {
         validateAutoBalanceContext()
         lastRect = r
         fxHeaders.removeAll(keepingCapacity: true)
+        fxGraphWheel.removeAll(keepingCapacity: true)
         hits.reset(); tabBars = [:]
         // The shelf went away (closed, the rack's owner changed, the selection or group moved on): the audition ends.
         defer { if let k = auditionKey, hits.rect(where: { $0 == .button(k) }) == nil { endAudition() } }
