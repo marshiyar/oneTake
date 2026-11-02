@@ -199,6 +199,11 @@ extension EditorShellRouter {
         if dock.keyDown(k) { needsDisplay(); return true }
         let region = focused
         if let input = panes[region]?.input, input.keyDown(k) { return true }
+        // Tab past the last control of a side panel moves on to the next pane (Shift+Tab to the previous one): focus is
+        // never trapped in a panel, and F6 gets there without walking the controls.
+        if k.code == .tab, !k.command, !k.alt, !k.ctrl, region == .left || region == .right {
+            dock.cycleFocus(forward: !k.shift); needsDisplay(); return true
+        }
         if region != .timeline, !k.command, !k.alt, case .char(let ch) = k.code, ch.lowercased() == "m" { return false }
         if region != .timeline, let t = panes[.timeline]?.input { return t.keyDown(k) }
         return false

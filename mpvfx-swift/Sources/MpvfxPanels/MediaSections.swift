@@ -15,7 +15,7 @@ import Foundation
 
 /// One tile of the Media panel: a project file, a library file not in this project yet, or a library export.
 /// The three live in different id spaces, so the reference carries which one it is.
-public enum MediaTileRef: Hashable {
+public enum MediaTileRef: Hashable, Sendable {
     case media(String), library(String), export(String), textLook(String)
     public var id: String {
         switch self { case .media(let id), .library(let id), .export(let id), .textLook(let id): id }
@@ -24,9 +24,9 @@ public enum MediaTileRef: Hashable {
 
 /// What the search row's filter menu narrows the grid to: one kind (or all), timeline use, and the order.
 public struct MediaFilter: Equatable {
-    public enum Kind: String, CaseIterable { case all, video, images, audio, fonts, library, exports }
-    public enum Usage: String, CaseIterable { case all, inTimeline, notInTimeline }
-    public enum Sort: String, CaseIterable { case timelineFirst, name, duration }
+    public enum Kind: String, CaseIterable, Sendable { case all, video, images, audio, fonts, library, exports }
+    public enum Usage: String, CaseIterable, Sendable { case all, inTimeline, notInTimeline }
+    public enum Sort: String, CaseIterable, Sendable { case timelineFirst, name, duration }
     public var kind = Kind.all
     public var usage = Usage.all
     public var sort = Sort.timelineFirst

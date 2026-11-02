@@ -286,6 +286,38 @@ final class RuntimeDesktopBackendTests: XCTestCase {
         b.closeProject(id: p.id)
     }
 
+    /// #334 A1: the versions of one export run are named `<project> – <preset>` and none takes a name that is in use.
+    func testNamedRendersKeepTheirNameAndNeverTakeAUsedOne() throws {
+        let b = backend()
+        let p = try b.createProject(name: "Named", directory: nil)
+        let dir = root + "/userData/renders"
+        let master = try b.renderOutputPath(projectId: p.id, jobId: "job-1", fileStem: "Named – Master", format: "mp4")
+        XCTAssertEqual(master, dir + "/Named – Master.mp4")
+        try Data(repeating: 1, count: 10).write(to: URL(fileURLWithPath: master))
+        // startExport writes this record beside the output.
+        try Data(#"{"status":"complete","durationMs":500}"#.utf8).write(to: URL(fileURLWithPath: dir + "/Named – Master.meta.json"))
+        // The same name again (same preset exported twice, or a file the user made) gets a number, whatever the format.
+        let again = try b.renderOutputPath(projectId: p.id, jobId: "job-2", fileStem: "Named – Master", format: "mov")
+        XCTAssertEqual(again, dir + "/Named – Master 2.mov")
+        try Data(repeating: 2, count: 20).write(to: URL(fileURLWithPath: again))
+        let third = try b.renderOutputPath(projectId: p.id, jobId: "job-3", fileStem: "Named – Master", format: "mp4")
+        XCTAssertEqual(third, dir + "/Named – Master 3.mp4")
+        XCTAssertEqual(Set(try b.renders(projectId: p.id).map(\.id)), ["Named – Master", "Named – Master 2"])
+        XCTAssertEqual(try b.renders(projectId: p.id).first { $0.id == "Named – Master" }?.durationMs, 500)
+        // Text that is not a file name is made into one; an empty name falls back to the job id.
+        let slashes = try b.renderOutputPath(projectId: p.id, jobId: "job-4", fileStem: "Named – 9/16: tall", format: "mp4")
+        XCTAssertEqual(slashes, dir + "/Named – 9-16- tall.mp4")
+        let hidden = try b.renderOutputPath(projectId: p.id, jobId: "job-5", fileStem: "  ..  ", format: "mp4")
+        XCTAssertEqual(hidden, dir + "/job-5.mp4")
+        // A named render is deleted by its name, with its record; a name that climbs out of the folder is refused.
+        try b.deleteRender(projectId: p.id, id: "Named – Master")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: master))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir + "/Named – Master.meta.json"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: again))
+        XCTAssertThrowsError(try b.deleteRender(projectId: p.id, id: "../renders/Named – Master 2"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: again))
+    }
+
     func testRenderHistoryListsRecordsAndDeletesExports() throws {
         let b = backend()
         let p = try b.createProject(name: "Renders", directory: nil)

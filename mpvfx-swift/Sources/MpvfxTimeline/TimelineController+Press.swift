@@ -34,6 +34,7 @@ extension TimelineController {
         case let .groupHeader(id, caret):
             if caret { toggleGroup(id) } else { groupHeaderClick(id, x: x, y: y) }
         case let .clipExtra(id, _): clipExtraPointerDown(id, additive: keys.shift || keys.command)
+        case let .transition(id, _, edge): transitionPointerDown(id: id, edge: edge)
         case .clip: clipPointerDown(hit, x: x, y: y, keys: keys)
         }
     }

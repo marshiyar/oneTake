@@ -354,9 +354,16 @@ extension InspectorPanel {
                 reset: { [weak self] in self?.edited(editor.clearStaticParameter(clipId: s.id, TimelineEditor.volumeId)) },
                 keyframe: keyframe(editor, s, TimelineEditor.volumeId, fallback: .number(vol)), parseInput: Self.gainSliderInput))))
             if editor.isAnimated(clipId: s.id, TimelineEditor.volumeId) { rows += easingRows(editor, s, channels: [TimelineEditor.volumeId]) }
+            // The source's loudness at the clip's static gain (read-only; measured off the UI thread by the host).
+            if let clipLoudness, let source = s.asset?.source, !source.isEmpty {
+                let keyed = editor.isAnimated(clipId: s.id, TimelineEditor.volumeId)
+                let text = ClipLoudnessReading.label(reading: clipLoudness(source), volume: editor.clipVolume(clipId: s.id), keyframed: keyed)
+                rows.append(.init(.number(.init(key: "loudness", label: "Loudness", text: text, tier: .default, commit: { _ in }, readOnly: true))))
+            }
         }
         if s.kind == .video || s.kind == .audio {
-            rows.append(rateRow(editor, s))
+            rows.append(contentsOf: speedRampRows(editor, s))
+            if !editor.isRamped(s.id) { rows.append(rateRow(editor, s)) }
             // A detached video plays no sound (its linked audio clip does, with its own pitch option), like the clip menu.
             let detached = s.kind == .video && editor.document.sequence.tracks.contains { $0.clips.contains { $0.audioDetachedFrom == s.id } }
             if !detached {

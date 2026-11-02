@@ -395,7 +395,7 @@ final class ColorGradingTests: XCTestCase {
         XCTAssertEqual(InspectorPanel.previewGridHeight(count: 0, width: 375), 0)
         XCTAssertEqual(ColorGrading.gradePresets.count, 13)
         for panelW in [409.0, 520.0, 780.0] {
-            let p = InspectorPanel(); p.editor = try demoEditor(); p.selection = ["clip:a"]; p.openGroupId = "grade"
+            let p = InspectorPanel(); p.editor = try demoEditor(); p.selection = ["clip:a"]; p.openGroupId = "grade"; p.gradeSectionOpen["looks"] = true
             let c = PanelMeasureCanvas(); let rect = CanvasRect(x: 0, y: 0, width: panelW, height: 4000)
             p.draw(c, in: rect); c.reset(); p.draw(c, in: rect)   // the second layout knows the width
             let last = try XCTUnwrap(p.hits.rect { $0 == .custom("grade:presets", 12) })

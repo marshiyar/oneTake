@@ -38,7 +38,7 @@ public final class PreviewToolbar {
     public var gridPopoverOpen = false
     /// Record motion's state, shown only when the host handles `onToggleRecording`: off, armed (waiting for a
     /// press on the selected layer) or a take in progress.
-    public enum Recording: Equatable { case idle, armed, recording }
+    public enum Recording: Equatable, Sendable { case idle, armed, recording }
     public var compareEnabled = false
     public var comparePosition = 0.5
     public var recording: Recording = .idle

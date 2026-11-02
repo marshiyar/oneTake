@@ -22,7 +22,8 @@ import OneTakeMedia
 import MpvfxColor
 
 final class ExportColorGradeTests: XCTestCase {
-    static var root = ""
+    /// Safe: XCTest runs class setUp and tearDown serially, before and after the tests that read it.
+    nonisolated(unsafe) static var root = ""
     override class func setUp() {
         super.setUp()
         guard let dir = try? makeMediaTempDir("export-grade-") else { return }

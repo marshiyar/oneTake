@@ -15,8 +15,8 @@
 import Foundation
 import MpvfxShared
 
-public struct LocalMediaImportResult: Codable, Equatable {
-    public struct Invalid: Codable, Equatable { public var name: String; public var reason: String }
+public struct LocalMediaImportResult: Codable, Equatable, Sendable {
+    public struct Invalid: Codable, Equatable, Sendable { public var name: String; public var reason: String }
     public var files: [String] = []
     public var invalid: [Invalid] = []
 }

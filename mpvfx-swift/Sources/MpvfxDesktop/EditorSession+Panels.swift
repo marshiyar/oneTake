@@ -25,7 +25,8 @@ import MpvfxAudio
 /// and the library views; the Design panel's inspector edits the open document at the playhead for the current
 /// selection; the Renders panel exports; context-menu and navigator commands go to the backend. They draw into
 /// `shell.panes[.left]`, `[.right]` and `[.renders]`, three dock panels.
-final class SessionPanels {
+/// `@unchecked Sendable` for the same reason as `EditorSession`: UI-thread state that background tasks reach only through `postToUI`.
+final class SessionPanels: @unchecked Sendable {
     unowned let session: EditorSession
     let left: LeftSidebarPanel
     /// The Design panel (the inspector) and the Renders panel: one `RightPanel` each, docked to its tab.
@@ -74,6 +75,12 @@ final class SessionPanels {
                 try NativeDurableWrite().write(data, to: path)
             }
         } catch { session.onError("Saved looks unavailable", error.localizedDescription) }
+        let textStyles = TextStyleLibrary(path: URL(fileURLWithPath: userData).appendingPathComponent("text-styles.json").path) { data, path in
+            try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+            try NativeDurableWrite().write(data, to: path)
+        }
+        if let problem = textStyles.loadError { session.onError("Text styles unavailable", problem.localizedDescription) }
+        right.inspector.textStyleLibrary = textStyles
         right.inspector.resolveUserLookLut = { [weak session] source in session?.absoluteMediaPath(source) ?? source }
         wireLeft()
         wireRight()
@@ -85,7 +92,7 @@ final class SessionPanels {
     func redraw() { session.redraw() }
 
     /// Hops to the UI thread through whatever the shell installed by the time it is called.
-    var uiPost: (@escaping () -> Void) -> Void {
+    var uiPost: @Sendable (@escaping () -> Void) -> Void {
         { [weak session] body in session?.postToUI(body) }
     }
 
@@ -494,6 +501,7 @@ final class SessionPanels {
         inspector.onImportLut = { [weak self] in self?.importLut() }
         inspector.lutAssets = { [weak self] in self?.media.filter { $0.path.lowercased().hasSuffix(".cube") }.map(\.path) ?? [] }
         inspector.lutStatus = { [weak self] src in LutStatusReader.status(src, projectDir: self?.session.projectDir?.path) }
+        inspector.clipLoudness = { [weak self] source in self?.session.clipLoudnessFeed?.reading(for: source) ?? .unavailable }
         wirePresetPreviews(inspector)
         wireCrop(inspector)
         wireEffectPreviews(inspector)
@@ -645,6 +653,15 @@ final class RightPanelInput: CanvasInput {
     func pointerDown(x: Double, y: Double, shift: Bool) { last = .init(x, y); if panel.pointerDown(.init(x, y)) { panels.redraw() } }
     func pointerMove(x: Double, y: Double) { last = .init(x, y); if panel.pointerMove(.init(x, y)) { panels.redraw() } }
     func pointerUp(x: Double, y: Double) { last = .init(x, y); panel.pointerUp(.init(x, y)); panels.redraw() }
+    /// The inspector reads the held modifiers (Alt-drag on an EQ band moves its Q).
+    func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
+        panel.inspector.pointerModifiers = modifiers
+        if button == PointerButton.primary { pointerDown(x: x, y: y, shift: modifiers.contains(.shift)) }
+    }
+    func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
+        panel.inspector.pointerModifiers = modifiers
+        pointerMove(x: x, y: y)
+    }
     func secondaryClick(x: Double, y: Double) {}
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false) }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {

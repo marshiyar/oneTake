@@ -67,6 +67,7 @@ public enum SQLiteRequirements {
     }
 
     private static let state = NSLock()
+    /// Safe: `result` is only read and written inside `state.withLock` (verifyOnce).
     nonisolated(unsafe) private static var result: Result<Void, Error>?
     /// verify() once per process; the catalog calls this before every command so a missing feature always fails clearly.
     public static func verifyOnce() throws {

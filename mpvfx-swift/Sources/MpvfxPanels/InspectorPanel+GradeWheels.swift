@@ -19,13 +19,13 @@ import MpvfxTimeline
 
 /// One set of colour wheels in the Grade group: the Lift / Gamma / Gain / Offset balance (issue #176), or the older
 /// Shadows / Midtones / Highlights tonal wheels that contract 2 grades carry.
-struct GradeWheelSet {
+struct GradeWheelSet: Sendable {
     var id: String
     var keys: [String]
     var labels: [String]
-    var read: (ColorGrading, String) -> ColorGrading.Wheel
+    var read: @Sendable (ColorGrading, String) -> ColorGrading.Wheel
     /// Writes one wheel (nil = back to neutral).
-    var write: (inout ColorGrading, String, ColorGrading.Wheel?) -> Void
+    var write: @Sendable (inout ColorGrading, String, ColorGrading.Wheel?) -> Void
 
     static let balance = GradeWheelSet(id: "grade:balance", keys: GradeValues.balanceKeys, labels: ["Lift", "Gamma", "Gain", "Offset"],
                                        read: { $0.balanceWheel($1) }, write: { g, k, w in g.balance[k] = w })
