@@ -645,6 +645,15 @@ final class RightPanelInput: CanvasInput {
     func pointerDown(x: Double, y: Double, shift: Bool) { last = .init(x, y); if panel.pointerDown(.init(x, y)) { panels.redraw() } }
     func pointerMove(x: Double, y: Double) { last = .init(x, y); if panel.pointerMove(.init(x, y)) { panels.redraw() } }
     func pointerUp(x: Double, y: Double) { last = .init(x, y); panel.pointerUp(.init(x, y)); panels.redraw() }
+    /// The inspector reads the held modifiers (Alt-drag on an EQ band moves its Q).
+    func pointerDown(x: Double, y: Double, button: Int, modifiers: PointerModifiers) {
+        panel.inspector.pointerModifiers = modifiers
+        if button == PointerButton.primary { pointerDown(x: x, y: y, shift: modifiers.contains(.shift)) }
+    }
+    func pointerMove(x: Double, y: Double, modifiers: PointerModifiers) {
+        panel.inspector.pointerModifiers = modifiers
+        pointerMove(x: x, y: y)
+    }
     func secondaryClick(x: Double, y: Double) {}
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool) { scroll(dx: dx, dy: dy, x: x, ctrl: ctrl, shift: shift, precise: false) }
     func scroll(dx: Double, dy: Double, x: Double, ctrl: Bool, shift: Bool, precise: Bool) {

@@ -240,6 +240,7 @@ func buildFxUnit(_ type: String, _ params: FxParams?, sampleRate sr: Double, ela
     case "biquad-highshelf": return BiquadUnit(.highshelf, p, sr, version: version)
     case "biquad-highpass": return BiquadUnit(.highpass, p, sr, version: version)
     case "biquad-lowpass": return BiquadUnit(.lowpass, p, sr, version: version)
+    case "parametric-eq": return EqUnit(p, sr)
     case "compressor": return ProcessorUnit(version >= 2 ? LinkedDynamicsProcessor(p, sampleRate: sr, gate: false) : CompressorProcessor(p, sampleRate: sr))
     case "leveller": return LevellerUnit(p, sr)
     case "split-band-deesser": return ProcessorUnit(DeesserProcessor(p, sampleRate: sr))
@@ -349,6 +350,13 @@ public final class FxChainProcessor {
             for k in keys {
                 guard let v = py[k]?.number, v.isFinite, let param = u.liveParam(k), !param.hasEvents else { return nil }
                 edits.append { param.glide(to: Float(v), frames: glideFrames) }
+            }
+        case let u as EqUnit:
+            for k in keys {
+                let parts = k.split(separator: ".").map(String.init)
+                guard parts.count == 2, parts[0].hasPrefix("band"), let band = Int(parts[0].dropFirst(4)), let v = py[k]?.number, v.isFinite,
+                      let moves = u.liveEdit(band: band, name: parts[1], value: v, glideFrames: glideFrames) else { return nil }
+                edits += moves
             }
         case let u as GainUnit:
             guard keys == ["gain"], let v = py["gain"]?.number, v.isFinite, !u.g.gain.hasEvents else { return nil }

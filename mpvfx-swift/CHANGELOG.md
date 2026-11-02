@@ -37,6 +37,9 @@ Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binari
 - A per-user text style library: the Text group's Style menu shows each saved style as a sample, applies it to the
   selected text layers (⌥⌘1…9), and saves the current layer as a style (⌥⌘S).
 - Layer moves (in, out, loop) evaluated the same in preview and export.
+- Parametric EQ in the audio rack: up to eight bands (bell, shelves, low and high cut at 12, 24 or 48 dB per octave,
+  notch), each with its own frequency, gain and Q; drag a band's point on the graph, Alt-drag it for Q, double-click
+  the graph to add a band, Delete to remove one.
 - Voice-over punch-in: with the I and O points set, Record voice plays from a pre-roll before I (Settings > Voice
   pre-roll, default 2 s), records exactly I to O and stops at O, landing as one clip covering that range.
 - Even Out: a new effect in the audio rack's Dynamics family that lifts quiet passages and holds loud ones down with a
