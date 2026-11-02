@@ -60,7 +60,7 @@ final class InspectorTransitionKindsTests: XCTestCase {
         XCTFail("Missing control \(key)")
     }
 
-    func hasRow(_ panel: InspectorPanel, _ key: String) -> Bool {
+    func hasRow(_ panel: InspectorPanel, key: String) -> Bool {
         rows(panel).contains {
             switch $0.kind {
             case .segmented(let s): return s.key == key
