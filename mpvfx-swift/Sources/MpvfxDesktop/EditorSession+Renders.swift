@@ -308,7 +308,10 @@ extension SessionPanels {
             redraw(); return
         }
         guard !presets.isEmpty else { rendersPanel.actionError = "Choose at least one preset to export."; redraw(); return }
-        guard !rendersPanel.isRendering else { return }
+        guard !rendersPanel.isRendering else {
+            rendersPanel.actionError = "Wait for the renders in progress to finish, then export versions."
+            redraw(); return
+        }
         if let failure = session.flushSave() { rendersPanel.actionError = "Save the project before rendering: \(failure)"; redraw(); return }
         let document = session.editor.document
         let versions: [RenderVersion]

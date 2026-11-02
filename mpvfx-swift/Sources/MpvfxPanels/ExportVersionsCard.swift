@@ -228,10 +228,14 @@ public final class ExportVersionsCard {
         if dropdown.isOpen { dropdown.scrollBy(dy); return }
         let hidden = max(0, presets.count - visibleRows(in: size))
         scroll = max(0, min(hidden, scroll + (dy > 0 ? 1 : dy < 0 ? -1 : 0)))
+        // Space and Return act on the cursor row, so it stays among the rows that are shown.
+        let rows = visibleRows(in: size)
+        cursor = max(scroll, min(cursor, scroll + rows - 1))
     }
 
     public func keyDown(_ k: EditorKey) -> Bool {
         guard isOpen else { return false }
+        if k.command { return false }   // ⌘Q, ⌘W and the like stay the app's
         if dropdown.key(k) { return true }
         switch k.code {
         case .escape: close()

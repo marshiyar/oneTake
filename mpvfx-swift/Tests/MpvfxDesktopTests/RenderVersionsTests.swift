@@ -135,7 +135,8 @@ final class RenderVersionsTests: XCTestCase {
     }
 
     func testFileStemJoinsProjectAndPreset() {
-        XCTAssertEqual(RenderVersion.fileStem(project: "My film", preset: "9:16"), "My film – 9:16")
+        XCTAssertEqual(RenderVersion.fileStem(project: "My film", preset: "Wide"), "My film – Wide")
+        XCTAssertEqual(RenderVersion.fileStem(project: "My film", preset: "9:16 / tall"), "My film – 9-16 - tall", "as the file is named")
     }
 
     /// The preset file keeps a composition size, and a file written before sizes existed still reads.

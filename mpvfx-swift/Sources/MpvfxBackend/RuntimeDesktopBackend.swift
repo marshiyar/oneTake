@@ -392,7 +392,9 @@ public final class RuntimeDesktopBackend: DesktopBackend, @unchecked Sendable {
     public func renderOutputPath(projectId: String, jobId: String, fileStem: String?, format: String) throws -> String {
         let dir = try rendersDirectory(projectId: projectId)
         let path = try mapErrors { try ProjectRenders.outputPath(dir, jobId: jobId, fileStem: fileStem, format: format) }
-        lock.withLock { renderDirs[jobId] = dir }
+        // A named render is listed, and so deleted, by its file name rather than its job id.
+        let stem = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+        lock.withLock { renderDirs[jobId] = dir; renderDirs[stem] = dir }
         return path
     }
 

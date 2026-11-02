@@ -36,7 +36,11 @@ struct RenderVersion {
     /// The output file's name without extension, "<project> – <preset>".
     var fileStem: String
 
-    static func fileStem(project: String, preset: String) -> String { "\(project) – \(preset)" }
+    /// "<project> – <preset>" as the file will be named (no separators or colons), so the queued row shows its final name.
+    static func fileStem(project: String, preset: String) -> String {
+        let joined = "\(project) – \(preset)"
+        return ProjectRenders.safeFileStem(joined) ?? joined
+    }
 
     static func make(_ preset: RenderPreset, project: String, document: NativeProjectDocument,
                      natural: (NativeProjectAsset) -> NativeMediaNaturalSize?, engine: KeyframeEngine?) throws -> RenderVersion {
