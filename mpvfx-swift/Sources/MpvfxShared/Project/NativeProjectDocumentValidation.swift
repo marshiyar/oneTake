@@ -175,6 +175,9 @@ public func validateNativeProjectDocument(_ input: NativeJSONValue, engine: Keyf
             if clip["scaleRatioLocked"] != nil && clip["scaleRatioLocked"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).scaleRatioLocked", "Scale ratio lock must be a boolean")
             }
+            if let blend = clip["frameBlend"], !(blend.stringValue.map(NativeSpeedRamp.blendValues.contains) ?? false) {
+                pushIssue(&issues, .invalidClip, "\(clipPath).frameBlend", "Frame blend must be none or mix")
+            }
             if clip["preservesPitch"] != nil && clip["preservesPitch"]?.boolValue == nil {
                 pushIssue(&issues, .invalidClip, "\(clipPath).preservesPitch", "Preserves pitch must be a boolean")
             }
@@ -351,6 +354,9 @@ private func validateSpeedRamp(_ raw: NativeJSONValue?, duration: Double?, path:
     }
     if points.isEmpty { pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp needs at least one point") }
     if points.count > 64 { pushIssue(&issues, .invalidSpeedRamp, "\(path).points", "Speed ramp supports at most 64 points") }
+    if let blend = raw["blend"], !(blend.stringValue.map(NativeSpeedRamp.blendValues.contains) ?? false) {
+        pushIssue(&issues, .invalidSpeedRamp, "\(path).blend", "Speed ramp blend must be none or mix")
+    }
     var previous = -Double.infinity
     for (index, point) in points.enumerated() {
         let p = "\(path).points[\(index)]"

@@ -26,6 +26,8 @@ public final class MediaFrameStream {
     /// Source seconds of the stream's n-th frame when playback is not at the constant `rate` (a speed ramp's time
     /// map); nil: the frame n is `startSeconds + n * rate / fps`.
     public var sourceTimeOfFrame: ((Int) -> Double)?
+    /// Whether the n-th frame is a mix of the two source frames around its time (`FrameMix`); nil: never.
+    public var mixesFrame: ((Int) -> Bool)?
 
     /// Which frames a stream returns: from `start` (source seconds), `fps` per timeline second, fitted to
     /// width×height. `rate` is the clip playback rate (frames are 1/fps apart in timeline time, rate/fps in source
@@ -72,8 +74,9 @@ public final class MediaFrameStream {
     /// The next frame; nil at the end of the media (or after a still's one frame) and when it cannot be decoded.
     public func next() -> CanvasImage? {
         if still ? framesRead > 0 : nextTime >= reader.info.duration { return nil }
-        guard let frame = try? reader.frame(at: still ? 0 : max(0, nextTime), width: width, height: height) else { return nil }
+        let mix = !still && (mixesFrame?(framesRead) ?? false)
+        guard let image = try? FrameMix.frame(reader, at: still ? 0 : max(0, nextTime), mix: mix, width: width, height: height) else { return nil }
         framesRead += 1
-        return CanvasImage(width: width, height: height, rgba: frame.rgba)
+        return image
     }
 }

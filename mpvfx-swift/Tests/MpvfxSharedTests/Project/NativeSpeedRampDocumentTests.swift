@@ -134,4 +134,36 @@ final class NativeSpeedRampDocumentTests: XCTestCase {
             XCTAssertEqual(right.speedRamp!.sourcePosition(atClipFrame: f), ramp.sourcePosition(atClipFrame: 50 + f) - cut, accuracy: 1e-3)
         }
     }
+
+    // MARK: frame mixing (#272)
+
+    func testBlendAndFrameBlendRoundTripAndAreOmittedWhenAbsent() throws {
+        let plain = try serialize(try withRamp(NativeSpeedRamp(points: [.init(t: 0, speed: 0.5)])))
+        XCTAssertFalse(plain.contains("blend"), "absent by default")
+        let mixed = try withRamp(NativeSpeedRamp(points: [.init(t: 0, speed: 0.5)], blend: "mix"))
+        let text = try serialize(mixed)
+        XCTAssertTrue(text.contains(#""blend":"mix""#) || text.contains(#""blend" : "mix""#), text)
+        XCTAssertEqual(try findClip(try parse(J(text)), "clip:audio")?.speedRamp?.blend, "mix")
+        XCTAssertEqual(try serialize(try parse(J(text))), text)
+        var d = try parse(J(clipCommandsFixtureJSON))
+        mutateClip(&d, "clip:audio") { $0.frameBlend = "mix" }
+        let framed = try serialize(d)
+        XCTAssertEqual(try findClip(try parse(J(framed)), "clip:audio")?.frameBlend, "mix")
+        XCTAssertFalse(try serialize(try parse(J(clipCommandsFixtureJSON))).contains("frameBlend"))
+    }
+
+    func testBlendMustBeNoneOrMix() {
+        assertRefused(#"{"v":1,"kind":"speed-ramp","points":[{"t":0,"speed":0.5}],"blend":"smooth"}"#, path: "blend")
+        assertRefused(#"{"v":1,"kind":"speed-ramp","points":[{"t":0,"speed":0.5}],"blend":3}"#, path: "blend")
+        var d = J(clipCommandsFixtureJSON)
+        d["sequence"]?["tracks"]?[2]?["clips"]?[0]?["frameBlend"] = J(#""wobble""#)
+        XCTAssertTrue(issues(d).contains { $0.code == .invalidClip && $0.path.hasSuffix("frameBlend") })
+    }
+
+    func testSplitAndTrimKeepTheBlendOfTheRamp() throws {
+        let ramp = NativeSpeedRamp(points: [.init(t: 0, speed: 1), .init(t: 60, speed: 0.5)], blend: "mix")
+        let slice = ramp.sliced(from: 30, until: 90)
+        XCTAssertEqual(slice.blend, "mix")
+        XCTAssertTrue(slice.mixesFrames)
+    }
 }

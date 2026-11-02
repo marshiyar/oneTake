@@ -110,6 +110,26 @@ public struct PreviewLayer: Equatable, Sendable {
     public var rampStart: Double?
     public var timelineFPS = 1.0
 
+    /// The clip mixes frames where it plays slower than 1x: its ramp's `blend`, or `clip.frameBlend` on a constant rate.
+    public var frameBlend = false
+    /// Set by export's painter for the frame it is painting: this frame is a mix of two source frames (`mixesFrames(at:)`).
+    public var mixesFramesNow = false
+    /// Whether any part of the clip can show mixed frames.
+    public var canMixFrames: Bool {
+        if holdSourceTime != nil { return false }
+        if let ramp = speedRamp { return ramp.mixesFrames }
+        return frameBlend && rate < 1 - 1e-9
+    }
+
+    /// Whether the frame at timeline `time` is a mix of the two source frames around its source position: the clip mixes
+    /// frames and plays slower than 1x there.
+    public func mixesFrames(at time: Double) -> Bool {
+        guard canMixFrames else { return false }
+        guard let ramp = speedRamp else { return true }
+        let x = (time - (rampStart ?? start)) * timelineFPS
+        return ramp.speed(atClipFrame: max(0, x)) < 1 - 1e-9
+    }
+
     /// One picture for the whole clip (an image, or a held frame): decoded once and kept (the still lane).
     public var isStill: Bool { kind == .image || holdSourceTime != nil }
 
@@ -141,6 +161,7 @@ public struct PreviewLayer: Equatable, Sendable {
             let points = ramp.points.map { "\($0.t)@\($0.speed)~\($0.ease)" }.joined(separator: ",")
             key += "|ramp:\(ramp.isSupported ? points : "-")|\(rampStart ?? start)|\(timelineFPS)"
         }
+        if canMixFrames { key += "|mix" }
         return holdSourceTime.map { "\(key)|hold:\($0)" } ?? key
     }
 }
@@ -443,6 +464,7 @@ public struct PreviewComposition {
         out.fadeGain = fade
         out.hiddenByFade = fade == 0 && keyed > 0
         out.speedRamp = c.speedRamp?.isSupported == true ? c.speedRamp : nil
+        out.frameBlend = c.frameBlend == NativeSpeedRamp.blendMix
         out.timelineFPS = fps
         out.motionRotation = autoRotate
         out.holdSourceTime = held.map { $0 / fps }

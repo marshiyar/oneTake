@@ -94,6 +94,8 @@ public final class ExportFramePainter {
                 PreviewPainter.drawText(layer, on: canvas, frame: rect, scale: s)
                 continue
             }
+            var layer = layer
+            layer.mixesFramesNow = layer.mixesFrames(at: time)
             guard var image = frames(layer, layer.sourceTime(at: time), w, h) else { continue }
             // Grades animate on the timeline frame, as in the preview (PreviewCompositor.shownImage).
             if let g = layer.grade, g.isActive {
@@ -157,8 +159,7 @@ public final class PreviewExportFrames: NativeExportFrameRenderer {
             let onePicture = layer.kind == .image || lane.reader.info.isStill
             let t = onePicture ? 0 : max(0, min(sourceTime, lane.reader.info.duration - 1e-6))
             framesDecoded += 1
-            let frame = try lane.reader.frame(at: t, width: width, height: height)
-            let image = CanvasImage(width: width, height: height, rgba: frame.rgba)
+            let image = try FrameMix.frame(lane.reader, at: t, mix: layer.mixesFramesNow && !onePicture, width: width, height: height)
             if still { lane.still = image }
             return image
         } catch {

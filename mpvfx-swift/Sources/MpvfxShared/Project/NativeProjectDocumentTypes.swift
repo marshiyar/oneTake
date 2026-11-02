@@ -172,6 +172,9 @@ public struct NativeProjectClip: Codable, Equatable, Sendable {
     public var speedRamp: NativeSpeedRamp? = nil
     /// False plays a sped-up or slowed clip's sound at a pitch that follows the speed; absent or true keeps the pitch.
     public var preservesPitch: Bool? = nil
+    /// `"mix"` blends the two source frames around each mapped position of a constant `playbackRate` below 1x (in linear
+    /// light); absent or `"none"` shows the nearest earlier frame. A speed ramp carries its own `blend`.
+    public var frameBlend: String? = nil
     /// Required on the document; optional only on input (NativeProjectDocumentInput).
     public var muted: Bool
     public var staticParameters: NativeOrderedMap<NativeParameterValue>?

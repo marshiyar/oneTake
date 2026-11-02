@@ -48,14 +48,22 @@ public struct NativeSpeedRamp: Codable, Equatable, Hashable, Sendable {
     public var v: Int
     public var kind: String
     public var points: [Point]
+    /// How frames are mixed where the ramp plays slower than 1x: `"mix"` blends the two source frames around each
+    /// mapped position by its fraction (in linear light); absent or `"none"` shows the nearest earlier source frame.
+    public var blend: String?
     public var spread = NativeSpreadKeys()
-    static let known = ["v", "kind", "points"]
+    static let known = ["v", "kind", "points", "blend"]
+    /// The `blend` value that mixes frames.
+    public static let blendMix = "mix"
+    public static let blendNone = "none"
+    public static let blendValues = [blendNone, blendMix]
+    public var mixesFrames: Bool { isSupported && blend == Self.blendMix }
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(v); hasher.combine(kind); hasher.combine(points)
+        hasher.combine(v); hasher.combine(kind); hasher.combine(points); hasher.combine(blend)
     }
 
-    public init(v: Int = version, kind: String = supportedKind, points: [Point]) {
-        self.v = v; self.kind = kind; self.points = points
+    public init(v: Int = version, kind: String = supportedKind, points: [Point], blend: String? = nil) {
+        self.v = v; self.kind = kind; self.points = points; self.blend = blend
     }
     public var isSupported: Bool { v == Self.version && kind == Self.supportedKind }
     public init(from decoder: Decoder) throws {
@@ -64,11 +72,15 @@ public struct NativeSpeedRamp: Codable, Equatable, Hashable, Sendable {
         // An object of another version or kind is kept verbatim in `spread` and never interpreted, whatever its shape.
         let supported = v == Self.version && kind == Self.supportedKind
         points = supported ? try c.opt([Point].self, "points") ?? [] : []
+        blend = supported ? try c.opt(String.self, "blend") : nil
         spread = try decodeSpread(decoder, known: supported ? Self.known : ["v", "kind"])
     }
     public func encode(to encoder: Encoder) throws {
         try encodeSpread(encoder, spread, known: isSupported ? Self.known : ["v", "kind"]) { key, c in
-            switch key { case "v": try c.put(v, key); case "kind": try c.put(kind, key); default: try c.put(points, key) }
+            switch key {
+            case "v": try c.put(v, key); case "kind": try c.put(kind, key); case "blend": try c.put(blend, key)
+            default: try c.put(points, key)
+            }
         }
     }
 
@@ -193,7 +205,7 @@ public extension NativeSpeedRamp {
         if let last = result.last, last.t < until - from {
             result.append(Point(t: until - from, speed: speed(atClipFrame: until)))
         }
-        return NativeSpeedRamp(points: result)
+        return NativeSpeedRamp(points: result, blend: blend)
     }
 }
 
