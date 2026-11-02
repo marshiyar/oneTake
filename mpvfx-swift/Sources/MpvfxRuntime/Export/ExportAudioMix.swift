@@ -30,15 +30,39 @@ let EXPORT_AUDIO_SAMPLE_RATE = 48_000
 /// clip contributes sound (every clip muted, or no media with an audio track): the export then has no audio track.
 final class ExportAudioMix {
     private let renderer: AudioGraphRenderer
+    /// With a loudness target the exported span of the mix, already brought to it; `next` hands it out. nil: the mix is
+    /// pulled from the graph block by block, exactly as before.
+    private var normalised: (base: Int, samples: [Float], position: Int)?
+    /// What normalising measured, when the export has a loudness target and sound.
+    private(set) var loudnessResult: MasterLoudnessResult?
 
     init?(_ plan: NativeTimelineRenderPlan, engine: KeyframeEngine?, cancellation: MediaCancellation?,
-          onProgress: ((Double) -> Void)?) throws {
+          loudness: MasterLoudnessTarget? = nil, onProgress: ((Double) -> Void)?) throws {
         let project = plan.project
         let all = DocumentAudioGraph.inputs(project, duration: plan.duration, projectDir: URL(fileURLWithPath: plan.root))
         guard let inputs = exportAudioInputs(all, project, media: plan.media) else { return nil }
         let graph = try Self.decode(inputs, engine: engine, cancellation: cancellation, onProgress: onProgress)
         renderer = AudioGraphRenderer(graph)
+        if let loudness { try normalise(plan, loudness, cancellation: cancellation) }
         onProgress?(1)
+    }
+
+    /// Renders the exported span once, measures it and applies the target: programme loudness is a property of what is
+    /// exported, so a range export measures the range, not the whole sequence.
+    private func normalise(_ plan: NativeTimelineRenderPlan, _ target: MasterLoudnessTarget, cancellation: MediaCancellation?) throws {
+        let rate = Double(EXPORT_AUDIO_SAMPLE_RATE)
+        let start = Int((plan.start * rate).rounded())
+        renderer.advance(to: start)
+        try cancellation?.throwIfCancelled()
+        // The samples the encode will pull: its frames' worth, which can run a part of a frame past the duration.
+        let frames = exportOutputFrameCount(plan.outputDuration, fps: plan.outputFps)
+        let wanted = Int((Double(frames) / plan.outputFps * rate).rounded())
+        var span = renderer.render(wanted)
+        if span.count < wanted * 2 { span += [Float](repeating: 0, count: wanted * 2 - span.count) }
+        try cancellation?.throwIfCancelled()
+        let (samples, result) = try MasterLoudness.normalise(span, sampleRate: rate, target: target)
+        normalised = (start, samples, 0)
+        loudnessResult = result
     }
 
     /// The graph project with every stem decoded. Export never drops what playback would play: an unreadable FX
@@ -62,11 +86,23 @@ final class ExportAudioMix {
     }
 
     /// Renders and drops the mix up to sample frame `frame` (the start of a range export).
-    func skip(to frame: Int) { renderer.advance(to: frame) }
+    func skip(to frame: Int) {
+        guard var n = normalised else { renderer.advance(to: frame); return }
+        n.position = max(n.position, min((frame - n.base) * 2, n.samples.count))
+        normalised = n
+    }
 
     /// The next `frames` sample frames, interleaved stereo; silence past the end of the sequence.
     func next(_ frames: Int) throws -> [Float] {
         guard frames > 0 else { return [] }
+        if var n = normalised {
+            let end = min(n.position + frames * 2, n.samples.count)
+            var out = Array(n.samples[n.position..<end])
+            n.position = end
+            normalised = n
+            if out.count < frames * 2 { out += [Float](repeating: 0, count: frames * 2 - out.count) }
+            return out
+        }
         var out = renderer.render(frames)
         if out.count < frames * 2 { out += [Float](repeating: 0, count: frames * 2 - out.count) }
         return out

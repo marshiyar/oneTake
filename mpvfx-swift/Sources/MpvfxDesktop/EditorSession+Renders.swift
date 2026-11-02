@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
+import struct MpvfxAudioGraph.MasterLoudnessTarget
 import MpvfxCanvas
 import MpvfxShared
 import MpvfxRuntime
@@ -46,11 +47,16 @@ struct RenderQueueState {
             RenderJobView(id: r.id, name: r.filename, status: r.status == "failed" ? .failed : .complete, stage: "",
                           progress: 1, detail: RenderQueueState.detail(size: r.size, durationMs: r.durationMs),
                           error: r.status == "failed" ? "Render failed" : nil, thumbnail: r.status == "failed" ? nil : thumbnail(r.path),
-                          createdAt: r.createdAt > 0 ? r.createdAt : nil, sizeBytes: r.size > 0 ? Double(r.size) : nil, durationMs: r.durationMs)
+                          createdAt: r.createdAt > 0 ? r.createdAt : nil, sizeBytes: r.size > 0 ? Double(r.size) : nil, durationMs: r.durationMs,
+                          loudness: RenderQueueState.loudnessLabel(target: r.loudnessTarget, measured: r.loudnessMeasured))
         }
         let current = active.reversed().map { a -> RenderJobView in
             var v = a.view
             if v.status == .complete, v.thumbnail == nil { v.thumbnail = thumbnail(a.outputPath) }
+            // A render finished in this window shows the loudness its history record holds, once the history is read.
+            if v.status == .complete, v.loudness == nil, let r = history.first(where: { $0.id == a.id }) {
+                v.loudness = RenderQueueState.loudnessLabel(target: r.loudnessTarget, measured: r.loudnessMeasured)
+            }
             return v
         }
         return (current + fromHistory).filter { !hidden.contains($0.id) }
@@ -82,13 +88,19 @@ enum RenderSettingsBridge {
         let quality = ExportQuality(rawValue: m.quality) ?? .standard
         let fps = ExportFrameRate(rawValue: m.fps) ?? .fps30
         let target = compositionExportResolution(CompositionRenderResolution(stored: m.resolution), customWidth: m.customWidth, canvas: canvas)
-        return ExportSettings(format: format, quality: quality, fps: fps, resolution: target.resolution, customDimensions: target.customDimensions)
+        let loudness = m.loudness.map { MasterLoudnessTarget(target: $0, truePeak: m.truePeak ?? MasterLoudnessTarget.defaultTruePeak) }
+        return ExportSettings(format: format, quality: quality, fps: fps, resolution: target.resolution, customDimensions: target.customDimensions,
+                              loudness: loudness)
     }
 
     /// `{format, quality, fps, resolution, customDimensions?}` as preferences.json stores it.
     static func json(_ m: RenderSettingsModel) -> JSONValue {
         var o: JSONObject = ["format": .string(m.format), "quality": .string(m.quality), "fps": .number(m.fps), "resolution": .string(m.resolution)]
         if m.resolution == "custom" { o["customDimensions"] = .object(["width": .number(m.customWidth), "height": .number(m.customHeight)]) }
+        // Off writes nothing, so a document of settings without loudness saves exactly as it did.
+        if let target = m.loudness {
+            o["loudness"] = .object(["v": .number(1), "target": .number(target), "truePeak": .number(m.truePeak ?? MasterLoudnessTarget.defaultTruePeak)])
+        }
         return .object(o)
     }
 
@@ -103,6 +115,12 @@ enum RenderSettingsBridge {
         if let r = v["resolution"]?.string { m.resolution = CompositionRenderResolution(stored: r).storedValue }
         if let d = v["customDimensions"], let w = d["width"]?.number, let h = d["height"]?.number, w > 0, h > 0 {
             m.customWidth = w; m.customHeight = h
+        }
+        // An object of another version, or a value the export refuses, reads as Off rather than being clamped.
+        if let l = v["loudness"], l["v"]?.number == 1, let target = l["target"]?.number, let ceiling = l["truePeak"]?.number,
+           MasterLoudnessTarget(target: target, truePeak: ceiling).issue == nil {
+            m.loudness = target
+            m.truePeak = ceiling == MasterLoudnessTarget.defaultTruePeak ? nil : ceiling
         }
         return m
     }
@@ -299,5 +317,16 @@ extension EditorSession {
         let p = backend?.preferences.flatMap { $0.path == path ? $0 : nil } ?? DesktopPreferences(userData: userData)
         desktopPreferences = p
         return p
+    }
+}
+
+extension RenderQueueState {
+    /// "-23.0 LUFS target, measured -23.1" for a render with a loudness target; "-23.0 LUFS target" when it has no
+    /// measurement; nil without a target.
+    static func loudnessLabel(target: Double?, measured: Double?) -> String? {
+        guard let target else { return nil }
+        let label = String(format: "%.1f LUFS target", target)
+        guard let measured else { return label }
+        return label + String(format: ", measured %.1f", measured)
     }
 }
