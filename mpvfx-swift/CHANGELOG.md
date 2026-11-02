@@ -10,6 +10,8 @@ Unreleased; nightly builds of `main` are published as pre-releases named `nightl
 Landed on `main` after 0.1.0 (the media engine is now pinned at 0.2.0 in `binaries.lock`); no version tag yet.
 
 ### Editing
+- Nested sequences in the project file and the plans behind Nest, Un-nest and Make unique (no shortcut or screen yet;
+  nested clips are not drawn until a later change).
 - Dockable panels throughout: a program Scopes panel, a Markers panel and an audio Mixer open from Window / Panels
   and dock beside the preview; Design groups can be dragged out into their own panels.
 - Sequence markers: M drops a named marker at the playhead; the Markers panel jumps, renames, recolours and deletes
