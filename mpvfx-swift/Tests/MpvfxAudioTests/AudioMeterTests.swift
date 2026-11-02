@@ -117,6 +117,26 @@ final class AudioMeterTests: XCTestCase {
         XCTAssertEqual(Double(before.inputPeak), 0.1, accuracy: 0.01)
     }
 
+    // MARK: spectrum of the watched module
+
+    /// The module being watched has its output analysed on the feeder; a 1 kHz sine peaks in the band around 1 kHz at the
+    /// level of the sine, for the time asked about, and watching nothing publishes nothing.
+    func testTheWatchedModulesSpectrumPeaksAtTheSine() throws {
+        let source = try Self.source(#"{"version":2,"nodes":[{"type":"gain","id":"g","params":{"gain":0}}]}"#, amplitude: { _ in 0.5 })
+        _ = source.render(frames: 24000)
+        XCTAssertNil(source.fxSpectrum(owner: "clip:a", at: 0.4)?.output, "nothing is analysed until a module is watched")
+        source.watchSpectrum(owner: "clip:a", nodeIndex: 0)
+        _ = source.render(frames: 48000)
+        let spectrum = try XCTUnwrap(source.fxSpectrum(owner: "clip:a", at: 1.4)?.output)
+        XCTAssertEqual(spectrum.bands.count, SpectrumAnalyzer.bandCount)
+        let loudest = try XCTUnwrap(spectrum.bands.indices.max { spectrum.bands[$0] < spectrum.bands[$1] })
+        XCTAssertLessThan(abs(log2(SpectrumAnalyzer.bandCenter(loudest) / 1000)), 1.0 / 6 + 1e-9, "within 1/6 octave of 1 kHz")
+        XCTAssertEqual(Double(spectrum.bands[loudest]), -6, accuracy: 3)
+        XCTAssertLessThanOrEqual(spectrum.frame, Int(1.4 * Self.sr))
+        XCTAssertNotNil(source.fxSpectrum(owner: "clip:a", at: 1.4)?.input)
+        source.watchSpectrum(owner: "clip:a", nodeIndex: nil)
+    }
+
     // MARK: no allocation on the feeder
 
     #if canImport(Darwin)
@@ -131,32 +151,21 @@ final class AudioMeterTests: XCTestCase {
         return allocationCount
     }
 
-    func testProbeWhereTheAllocationsAre() throws {
-        let planes = [[Float](repeating: 0.3, count: 128), [Float](repeating: 0.2, count: 128)]
-        let ring = FxMeterRing()
-        let reading = FxMeterReading(frame: 1)
-        var sink: Float = 0
-        let empty = Self.allocations { for _ in 0..<100 { sink += 1 } }
-        let level = Self.allocations { for _ in 0..<100 { sink += FxLevel(planes).peak } }
-        let publish = Self.allocations { for _ in 0..<100 { ring.publish(reading) } }
-        let node = try XCTUnwrap(FxChainProcessor(try AudioFx.parseChain(#"{"version":2,"nodes":[{"type":"limiter","id":"l","params":{}}]}"#)).units.first)
-        let cast = Self.allocations { for _ in 0..<100 { sink += Float((node as? GainReducing)?.lowestGain ?? 1) } }
-        print("PROBE empty=\(empty) level=\(level) publish=\(publish) cast=\(cast) \(sink)")
-    }
-
     /// Metering adds nothing to the allocations a block of the feeder already makes.
     func testTheFeederMakesNoAllocationPerBlockWithMetersOn() throws {
         let chain = #"{"version":2,"nodes":[{"type":"compressor","id":"c","params":{"threshold":-24,"ratio":4}},{"type":"limiter","id":"l","params":{}},{"type":"peaking","id":"p","params":{"gain":3}}]}"#
-        func blocks(meters: Bool) throws -> Int {
+        func blocks(meters: Bool, watching: Bool = false) throws -> Int {
             let source = try Self.source(chain, amplitude: { _ in 0.5 })
             source.collectsFxMeters = meters
+            if watching { source.watchSpectrum(owner: "clip:a", nodeIndex: 0) }
             _ = source.render(frames: 128 * 40) // warm-up: lazy runtime tables, protocol caches
             return Self.allocations { for _ in 0..<200 { _ = source.render(frames: 128) } }
         }
-        let off = try blocks(meters: false), on = try blocks(meters: true)
+        let off = try blocks(meters: false), on = try blocks(meters: true), watched = try blocks(meters: true, watching: true)
         XCTAssertGreaterThanOrEqual(off, 0, "the allocation hook must be available")
         XCTAssertGreaterThan(off, 0, "the counter sees the feeder's own allocations")
         XCTAssertEqual(on, off, "meters on made \(on - off) more allocations over 200 blocks")
+        XCTAssertEqual(watched, off, "watching a spectrum made \(watched - off) more allocations over 200 blocks")
     }
     #endif
 }

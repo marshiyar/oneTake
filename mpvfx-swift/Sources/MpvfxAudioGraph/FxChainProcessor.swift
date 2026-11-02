@@ -266,6 +266,8 @@ public final class FxChainProcessor {
     var units: [FxUnit] = []
     /// What reports each unit's gain reduction (nil: it does not reduce), found once so the feeder casts nothing.
     private var reducers: [GainReducing?] = []
+    /// The spectrum analysers of the watched module (`FxChainMeters.watchedNode`), made here so the feeder allocates none.
+    private let spectrumIn: SpectrumAnalyzer, spectrumOut: SpectrumAnalyzer
     let chain: FxChain
     public let sampleRate: Double
     /// Levels and gain reduction per module, published from `process` once a reader switches them on.
@@ -279,6 +281,8 @@ public final class FxChainProcessor {
         self.sampleRate = sampleRate
         self.chain = chain
         meters = FxChainMeters(nodeIds: chain.enabledNodes.map(\.id))
+        spectrumIn = SpectrumAnalyzer(sampleRate: sampleRate)
+        spectrumOut = SpectrumAnalyzer(sampleRate: sampleRate)
         var presetTargets: [String: [ParamTarget]] = [:]
         for node in chain.enabledNodes {
             let preset = node.fromPreset
@@ -392,11 +396,17 @@ public final class FxChainProcessor {
         var level = chainInput
         var index = 0
         var delay = 0
+        let watched = meters.watchedNode.load(ordering: .relaxed)
         for run in runs {
             let entry = tail
             for u in run.units {
+                let before = tail
                 tail = finiteSamples(u.process(tail, frame: frame))
                 delay += u.latencyFrames
+                if index == watched {
+                    if spectrumIn.push(before) { spectrumIn.withUnsafeBands { meters.spectrumInput.publish(frame: frame - delay, bands: $0) } }
+                    if spectrumOut.push(tail) { spectrumOut.withUnsafeBands { meters.spectrumOutput.publish(frame: frame - delay, bands: $0) } }
+                }
                 let out = FxLevel(tail)
                 meters.nodes[index].publish(FxMeterReading(
                     frame: frame - delay, inputPeak: level.peak, inputRMS: level.rms, outputPeak: out.peak, outputRMS: out.rms,

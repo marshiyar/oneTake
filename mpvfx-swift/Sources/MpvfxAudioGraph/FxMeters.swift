@@ -132,6 +132,11 @@ public final class FxChainMeters: @unchecked Sendable {
     public let nodes: [FxMeterRing]
     public let nodeIds: [String?]
     public let enabled = Atomic<Bool>(false)
+    /// The enabled module (by place, as `nodes`) whose input and output are analysed into a spectrum; -1: none. Only
+    /// one is watched at a time, since each analysis is a 4096-point transform per 2048 frames.
+    public let watchedNode = Atomic<Int>(-1)
+    public let spectrumInput = FxSpectrumRing(bandCount: SpectrumAnalyzer.bandCount)
+    public let spectrumOutput = FxSpectrumRing(bandCount: SpectrumAnalyzer.bandCount)
 
     public init(nodeIds: [String?]) {
         self.nodeIds = nodeIds

@@ -53,7 +53,7 @@ public final class FxSpectrumRing: @unchecked Sendable {
     public var count: Int { written.load(ordering: .acquiring) }
 
     /// Feeder thread only. `bands` must hold `bandCount` values; nothing is allocated.
-    public func publish(frame: Int, bands: [Float]) {
+    public func publish(frame: Int, bands: UnsafeBufferPointer<Float>) {
         let next = written.load(ordering: .relaxed)
         let slot = next % Self.capacity
         frames[slot] = frame

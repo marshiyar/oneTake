@@ -83,6 +83,7 @@ public final class GraphAudioSource: AudioRenderSource {
 
     private var fxMeterOwners: [String: AudioGraphRenderer.FxMeterOwner] = [:]
     private var fxMetersOn = false
+    private var watchedSpectrum: (owner: String, nodeIndex: Int)?
 
     /// Whether the chains publish their levels and gain reduction while they render. Off until the Audio FX rack is
     /// showing; an export never turns it on.
@@ -101,7 +102,28 @@ public final class GraphAudioSource: AudioRenderSource {
         let owners = renderer.fxMeterOwners
         meterLock.lock(); defer { meterLock.unlock() }
         fxMeterOwners = owners
-        for owner in owners.values { owner.meters.isEnabled = fxMetersOn }
+        for (name, owner) in owners {
+            owner.meters.isEnabled = fxMetersOn
+            owner.meters.watchedNode.store(watchedSpectrum.flatMap { $0.owner == name ? $0.nodeIndex : nil } ?? -1, ordering: .relaxed)
+        }
+    }
+
+    /// Which module of a rack (`clip:<id>` or `bus:<id>`, by its place among the enabled modules) has its input and output
+    /// analysed into a spectrum; nil stops it. One module is watched across all racks, because each analysis costs a
+    /// 4096-point transform per 2048 frames on the feeder.
+    public func watchSpectrum(owner: String, nodeIndex: Int?) {
+        meterLock.lock(); defer { meterLock.unlock() }
+        for (name, entry) in fxMeterOwners { entry.meters.watchedNode.store(name == owner ? (nodeIndex ?? -1) : -1, ordering: .relaxed) }
+        watchedSpectrum = nodeIndex.map { (owner, $0) }
+    }
+
+    /// The input and output spectra (`SpectrumAnalyzer.bandCount` bands in dBFS) of the watched module for the sound
+    /// heard at `time` seconds.
+    public func fxSpectrum(owner: String, at time: Double) -> (input: FxSpectrumReading?, output: FxSpectrumReading?)? {
+        meterLock.lock(); let entry = fxMeterOwners[owner]; meterLock.unlock()
+        guard let entry, time.isFinite else { return nil }
+        let frame = Int((max(0, time) * Double(format.sampleRate)).rounded()) - entry.startFrame
+        return (entry.meters.spectrumInput.reading(atOrBefore: frame), entry.meters.spectrumOutput.reading(atOrBefore: frame))
     }
 
     /// The levels and gain reduction of one rack (`clip:<id>` or `bus:<id>`) for the sound being heard at `time`
