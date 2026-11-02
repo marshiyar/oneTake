@@ -714,4 +714,17 @@ extension EditorSession {
         fxMeterCache = (owner, now, snapshot)
         return snapshot
     }
+
+    /// The output spectrum (`SpectrumAnalyzer.bandCount` bands, dBFS) of one module for the sound being heard now, which
+    /// is also what starts the analysis of that module; refreshed at most 30 times a second, nothing while stopped.
+    func fxSpectrumBands(owner: String, nodeIndex: Int) -> [Float]? {
+        guard let audio, audio.isPlaying, let graph else { fxSpectrumCache = nil; return nil }
+        graph.collectsFxMeters = true
+        let now = ProcessInfo.processInfo.systemUptime
+        if let cache = fxSpectrumCache, cache.owner == owner, cache.node == nodeIndex, now - cache.at < 1.0 / 30 { return cache.bands }
+        graph.watchSpectrum(owner: owner, nodeIndex: nodeIndex)
+        let bands = graph.fxSpectrum(owner: owner, at: audio.currentTime)?.output?.bands
+        fxSpectrumCache = (owner, nodeIndex, now, bands)
+        return bands
+    }
 }
